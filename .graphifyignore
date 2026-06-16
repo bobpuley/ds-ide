@@ -1,0 +1,9 @@
+# graphify reads this instead of .gitignore at the repo root.
+# Mirrors .gitignore but intentionally does NOT ignore daisy-seed-knowledge/,
+# so graphify can index the vendored Daisy docs/examples.
+# Noise filtering inside that folder is handled by daisy-seed-knowledge/.graphifyignore.
+.DS_Store
+.idea/
+.claude/
+graphify-out/
+# docs/ intentionally NOT ignored — project design docs are worth indexing.
