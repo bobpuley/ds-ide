@@ -42,14 +42,14 @@ Phase: planning & design complete — docs 00–05 drafted, v1 scope + architect
    If green: merge → inspect existing tags → propose next semver tag → update CHANGELOG.md + commit → create annotated tag → push commit and tag.
 
 ## Document map
-| File                             | Purpose                                        | Status  |
-|----------------------------------|------------------------------------------------|---------|
-| docs/00_north-star.md            | Core idea, target UX, MVP definition of done   | drafted |
-| docs/01_input-ideas.md           | Raw collected information                      | drafted; 9 conflicts resolved |
-| docs/02_assumptions-and-risks.md | What we're betting on, where we could be wrong | drafted; A1–A3 verified vs source |
-| docs/03_requirements.md          | Clear, coherent, complete requirements         | drafted; v1 scope locked |
+| File                             | Purpose                                        | Status                              |
+|----------------------------------|------------------------------------------------|-------------------------------------|
+| docs/00_north-star.md            | Core idea, target UX, MVP definition of done   | drafted                             |
+| docs/01_input-ideas.md           | Raw collected information                      | drafted; 9 conflicts resolved       |
+| docs/02_assumptions-and-risks.md | What we're betting on, where we could be wrong | drafted; A1–A3 verified vs source   |
+| docs/03_requirements.md          | Clear, coherent, complete requirements         | drafted; v1 scope locked            |
 | docs/04_architecture.md          | Tech decisions, system design, API contracts   | drafted; process model + components |
-| docs/05_dev-plan.md              | Sprint plan, tasks, DoD                        | drafted; M0–M6 |
+| docs/05_dev-plan.md              | Sprint plan, tasks, DoD                        | drafted; M0–M6                      |
 
 ## Interaction model
 Claude drives. The user responds.
