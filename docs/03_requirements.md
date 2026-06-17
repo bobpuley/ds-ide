@@ -38,12 +38,12 @@ while stepping through the audio callback, and flash to real hardware without le
 |-----|----------|
 | **D10** | **v2 audio input: live host input (priority), WAV file, or sine.** Sine remains as fallback; live input is the headline feature. |
 | **D11** | **v2 audio output: host speaker monitoring** (real-time). Once live, the engine must meet a hard audio deadline. |
-| **D12** | **v2 controllers: buttons / GPIO / Switch** (in addition to v1 pots). |
+| **D12** | **v2 controllers: buttons / GPIO / Switch + LED outputs** (in addition to v1 pots). |
 | **D13** | **v2 debug: full stepping + variable inspection** (step over/into/out, variables, watch, call stack). |
 | **D14** | **v2 hardware path: in-IDE arm-none-eabi build + DFU flash.** |
 
-> ⚠️ ASSUMPTION: D10–D14 are the confirmed v2 scope. Phasing within v2 (which lands first) is
-> recorded in [05_dev-plan.md](05_dev-plan.md) and subject to revision.
+> D10–D14 are the confirmed v2 scope. Milestone ordering is confirmed in
+> [05_dev-plan.md](05_dev-plan.md): M8 → M9 → M10 → M10b → M11 → M12 → M13 → M14.
 
 ---
 
@@ -141,9 +141,9 @@ while stepping through the audio callback, and flash to real hardware without le
 - **NFR-12 (Round-trip latency)** — ds-ide shall display the measured round-trip audio latency
   (input → effect → output). The target is ≤ 30 ms at the default buffer size (256 samples
   @ 48 kHz ≈ 5 ms one-way); achievability depends on the host audio interface.
-- **NFR-4 (Platform, updated)** — v2 host-audio work introduces the first real cross-platform
-  surface. macOS (CoreAudio) is primary; Windows (WASAPI) and Linux (ALSA/JACK) are
-  secondary and may ship in later v2.x milestones. *(Extends v1 NFR-4.)*
+- **NFR-4 (Platform, updated)** — v2 host-audio work targets macOS (CoreAudio) only.
+  Cross-platform host audio (Windows/WASAPI, Linux/ALSA/JACK) is deferred to v3+.
+  *(Extends v1 NFR-4; aligns with CoreAudio-native decision in 04 §2.3.)*
 
 ---
 
@@ -151,7 +151,9 @@ while stepping through the audio callback, and flash to real hardware without le
 
 - **CR-6** — The v1 emulator build and visualization-only mode shall remain available;
   v2 features are additive.
-- **CR-7** — The host audio API dependency shall be MIT/permissive licensed.
+- **CR-7** — If a third-party audio library is added in the future (e.g. for cross-platform
+  host audio in v3+), it shall be MIT/permissive licensed. CoreAudio is a macOS system
+  framework and carries no third-party licensing constraint.
 
 ---
 
@@ -170,7 +172,7 @@ while stepping through the audio callback, and flash to real hardware without le
 | Ref | Open question | Current assumption |
 |-----|---------------|--------------------|
 | Open #1 (01) | ARM toolchain bundle vs detect | Detect + hint (FR-HW-2); bundle deferred |
-| Open #2 (01) | Host audio API: PortAudio vs native | TBD — resolve before M8 |
+| ~~Open #2 (01)~~ | ~~Host audio API: PortAudio vs native~~ | ✅ CoreAudio-native for v2; cross-platform deferred to v3+ |
 | Open #3 (01) | Live input + speaker together or sequenced | Together (same device) |
 | Open #4 (01) | Simulated clock kept alongside real-time clock | Keep for WAV/regression mode |
 | R15 (02) | Stepping into audio callback while OS audio live | Mute audio on breakpoint hit |
