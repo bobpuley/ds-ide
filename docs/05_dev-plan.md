@@ -9,16 +9,16 @@ AC-8 for the v1.1 fast-follow; 03 §8). Components are C1…C6 (04 §2).
 
 ## 0. Milestone Registry
 
-| Milestone | File | Status |
-|-----------|------|--------|
-| M0 — Foundations | [docs/milestones/M0.md](milestones/M0.md) | **released** (0.1.0) |
-| M1 — Headless emulator runtime | [docs/milestones/M1.md](milestones/M1.md) | planned |
-| M2 — Extension run loop + scope | [docs/milestones/M2.md](milestones/M2.md) | planned |
-| M3 — Controllers (pots) | [docs/milestones/M3.md](milestones/M3.md) | planned |
-| M4 — Diagnostics & robustness | [docs/milestones/M4.md](milestones/M4.md) | planned |
-| M5 — Debug (breakpoints) | [docs/milestones/M5.md](milestones/M5.md) | planned |
-| M6 — v1 polish & release | [docs/milestones/M6.md](milestones/M6.md) | planned |
-| M7 — Block-form callback (v1.1) | [docs/milestones/M7.md](milestones/M7.md) | planned |
+| Milestone                       | File                                      | Status               |
+|---------------------------------|-------------------------------------------|----------------------|
+| M0 — Foundations                | [docs/milestones/M0.md](milestones/M0.md) | **released** (0.1.0) |
+| M1 — Headless emulator runtime  | [docs/milestones/M1.md](milestones/M1.md) | **released** (0.1.1) |
+| M2 — Extension run loop + scope | [docs/milestones/M2.md](milestones/M2.md) | planned              |
+| M3 — Controllers (pots)         | [docs/milestones/M3.md](milestones/M3.md) | planned              |
+| M4 — Diagnostics & robustness   | [docs/milestones/M4.md](milestones/M4.md) | planned              |
+| M5 — Debug (breakpoints)        | [docs/milestones/M5.md](milestones/M5.md) | planned              |
+| M6 — v1 polish & release        | [docs/milestones/M6.md](milestones/M6.md) | planned              |
+| M7 — Block-form callback (v1.1) | [docs/milestones/M7.md](milestones/M7.md) | planned              |
 
 ---
 
@@ -56,12 +56,12 @@ pots-only and serve as the v1 test corpus.
 
 ## 3. AC coverage map
 
-| AC | Closed in | AC | Closed in |
-|----|-----------|----|-----------|
-| AC-1 build/deploy/run | M2 | AC-5 NaN/clip flagged | M4 |
-| AC-2 pot → output | M3 | AC-6 hardware build intact | M4 |
-| AC-4 breakpoint/freeze | M5 | AC-7 <30 s loop | M4 |
-| AC-8 block-form (v1.1) | M7 | *(AC-3 removed — pots-only v1)* | — |
+| AC                     | Closed in  | AC                              | Closed in  |
+|------------------------|------------|---------------------------------|------------|
+| AC-1 build/deploy/run  | M2         | AC-5 NaN/clip flagged           | M4         |
+| AC-2 pot → output      | M3         | AC-6 hardware build intact      | M4         |
+| AC-4 breakpoint/freeze | M5         | AC-7 <30 s loop                 | M4         |
+| AC-8 block-form (v1.1) | M7         | *(AC-3 removed — pots-only v1)* | —          |
 
 ---
 
