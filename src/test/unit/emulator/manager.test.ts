@@ -258,4 +258,40 @@ describe('EmulatorManager', () => {
       expect(ipcClientStub.disconnect).toHaveBeenCalled();
     });
   });
+
+  describe('disconnect event suppression', () => {
+    it('does NOT emit disconnect during intentional kill (redeploy)', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+
+      const disconnectSpy = vi.fn();
+      manager.on('disconnect', disconnectSpy);
+
+      // Simulate a second deploy (kills existing then redeploys).
+      // The IpcClient stub's disconnect() fires synchronously, which would
+      // normally emit 'disconnect' — it should be suppressed here.
+      await manager.deploy(() => undefined);
+      // disconnect should NOT have been called (intentional kill)
+      expect(disconnectSpy).not.toHaveBeenCalled();
+    });
+
+    it('DOES emit disconnect when the emulator crashes unexpectedly', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+
+      const disconnectSpy = vi.fn();
+      manager.on('disconnect', disconnectSpy);
+
+      // Simulate the IPC client firing 'disconnect' on its own (emulator crash).
+      // The intentionalDisconnect flag is false here, so it should propagate.
+      ipcClientStub.emit('disconnect');
+      expect(disconnectSpy).toHaveBeenCalledOnce();
+    });
+  });
 });

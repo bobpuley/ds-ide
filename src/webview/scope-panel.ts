@@ -114,7 +114,8 @@ function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>)
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #1e1e1e; color: #d4d4d4; font-family: monospace; font-size: 12px; display: flex; flex-direction: column; height: 100vh; }
-    header { padding: 6px 12px; background: #252526; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #3c3c3c; }
+    header { padding: 6px 12px; background: #252526; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #3c3c3c; flex-wrap: wrap; }
+    #fidelity-caveat { font-size: 10px; color: #6a6a6a; cursor: default; margin-left: auto; }
     #status-text { flex: 1; }
     .legend { display: flex; gap: 12px; }
     .legend span { display: flex; align-items: center; gap: 4px; }
@@ -137,6 +138,7 @@ function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>)
       <span><span class="dot dot-in"></span>Input</span>
       <span><span class="dot dot-out"></span>Output</span>
     </span>
+    <span id="fidelity-caveat" title="Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget">ℹ Approx. Seed</span>
   </header>
   <div id="events"></div>
   <canvas id="scope"></canvas>
@@ -149,6 +151,7 @@ function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>)
     const eventsEl = document.getElementById('events');
 
     let lastIn = [], lastOut = [];
+    const activeEvents = new Set();
 
     function resize() {
       canvas.width  = canvas.clientWidth;
@@ -211,9 +214,13 @@ function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>)
       } else if (msg.command === 'status') {
         const r = msg.running ? '▶ Running' : '■ Stopped';
         statusEl.textContent = r + '  |  ' + msg.sampleRate + ' Hz  |  block ' + msg.blockSize;
+        if (!msg.running) {
+          activeEvents.clear();
+          eventsEl.textContent = '';
+        }
       } else if (msg.command === 'event') {
-        eventsEl.textContent = '⚠ ' + msg.kind.toUpperCase();
-        setTimeout(() => { eventsEl.textContent = ''; }, 4000);
+        activeEvents.add(msg.kind.toUpperCase());
+        eventsEl.textContent = [...activeEvents].map(k => '⚠ ' + k).join('  ');
       }
     });
   </script>
