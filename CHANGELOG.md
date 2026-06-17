@@ -5,6 +5,21 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.1.2 — 2026-06-17
+
+**M2 — Extension run loop + scope**
+
+- Added `src/emulator/ipc-client.ts`: `IpcClient` — EventEmitter wrapping a Node `net.Socket` UNIX-domain connection; sends JSON lines, buffers and parses incoming lines, emits typed `message`/`error`/`disconnect` events.
+- Added `src/emulator/manager.ts`: `EmulatorManager` — orchestrates the full lifecycle: CMake configure + build (auto-detects effect `.cpp` and DaisySP at project root), child-process spawn/kill with socket-path parsing from stdout, IPC client connect, relay of IPC messages as EventEmitter events. Supports injectable factories for testability.
+- Added `src/webview/scope-panel.ts`: `ScopePanel` — VS Code `WebviewPanel` with an inline HTML canvas that draws input (teal) and output (orange) waveforms in real time; relays `scope`, `status`, and `event` frames from the manager into the webview via `postMessage`.
+- Updated `src/commands/build.ts`: `buildForEmulator` now invokes `EmulatorManager.build()` with auto-detected sources and streams output to a dedicated Output Channel.
+- Updated `src/commands/deploy.ts`: `deployToEmulator` opens the scope panel and calls `EmulatorManager.deploy()`, which kills any running emulator, launches the new executable, and connects IPC.
+- Updated `src/commands/transport.ts`: `startAudio`/`stopAudio` call `manager.sendTransport('start'/'stop')`.
+- Updated `src/extension.ts`: creates `EmulatorManager` + `ScopePanel` on activation; wires all four commands; disposes cleanly on deactivate.
+- 35 unit tests across 5 test files (ipc-client, manager, build helpers, transport commands, extension scaffold); all pass; TypeScript strict-mode typecheck clean.
+
+---
+
 ## 0.1.1 — 2026-06-17
 
 **M1 — Headless emulator runtime**
