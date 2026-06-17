@@ -15,20 +15,19 @@ inspect tags → propose semver → update CHANGELOG.md → annotated tag → pu
 
 ## 0. v2 Milestone Registry
 
-| Milestone                         | Theme                                  | Target version | Status         |
-|-----------------------------------|----------------------------------------|----------------|----------------|
-| M8 — Real-time audio I/O          | Live input + speaker output            | 0.2.0          | planned        |
-| M9 — WAV file input               | File-based audio source                | 0.2.1          | planned        |
+| Milestone                          | Theme                                  | Target version | Status         |
+|------------------------------------|----------------------------------------|----------------|----------------|
+| M8 — Real-time audio I/O           | Live input + speaker output            | 0.2.0          | planned        |
+| M9 — WAV file input                | File-based audio source                | 0.2.1          | planned        |
 | M10 — Virtual buttons, GPIO & LEDs | Controls + outputs; scope review first | 0.2.2          | needs review   |
-| M10b — Visual controller editor   | Drag-and-drop panel + pin wiring       | 0.2.3          | planned        |
-| M11 — Full debug                  | Step / variables / call stack          | 0.2.4          | planned        |
-| M12 — Hardware build & flash      | arm-none-eabi + dfu-util               | 0.2.5          | planned        |
-| M13 — Spectrum & FFT              | Frequency-domain view                  | 0.2.6          | planned        |
-| M14 — Session recording           | Record / replay / compare              | 0.2.7          | planned        |
+| M10b — Visual controller editor    | Drag-and-drop panel + pin wiring       | 0.2.3          | planned        |
+| M11 — Full debug                   | Step / variables / call stack          | 0.2.4          | planned        |
+| M12 — Hardware build & flash       | arm-none-eabi + dfu-util               | 0.2.5          | planned        |
+| M13 — Spectrum & FFT               | Frequency-domain view                  | 0.2.6          | planned        |
+| M14 — Session recording            | Record / replay / compare              | 0.2.7          | planned        |
 
-> ⚠️ ASSUMPTION: milestone ordering above is a starting hypothesis. M8 (live audio) is
-> confirmed highest-priority. M9–M14 ordering is subject to user input and dependency analysis.
-> M10 scope (controls + outputs) must be reviewed and locked before implementation begins.
+> M8 is confirmed highest-priority. Milestone ordering M8 → M9 → M10 → M10b → M11 → M12 → M13 → M14
+> is confirmed. M10 scope (controls + outputs) must be reviewed and locked before implementation begins.
 
 ---
 
@@ -65,8 +64,8 @@ M10b (visual editor) depends on M10 (yaml schema and controller panel must exist
 |----|-----------|----|----|
 | AC-9 live audio in + out | M8 | AC-13 hardware build + flash | M12 |
 | AC-10 WAV file input | M9 | AC-14 spectrum FFT spike | M13 |
-| AC-11 virtual button → effect | M10 | — | — |
-| AC-12 step/variables/call stack | M11 | — | — |
+| AC-11 virtual button + LED | M10 | AC-15 visual editor round-trip | M10b |
+| AC-12 step/variables/call stack | M11 | AC-16 session record + replay | M14 |
 
 ---
 
@@ -76,13 +75,15 @@ M10b (visual editor) depends on M10 (yaml schema and controller panel must exist
 **Goal:** play live audio through an effect and hear the output through the host speakers.
 
 Key tasks:
-- Decide host audio API (CoreAudio vs PortAudio — 04 §8 open item).
+- Decide host audio API (CoreAudio vs PortAudio — 04 §9 open item).
 - Implement two-mode clock in C4: real-time (OS callback) + simulated (v1 mode, kept intact).
 - Open host audio input device; feed blocks into the existing effect callback pipeline.
 - Open host audio output device; write processed blocks out.
 - Add input source selector to C2 webview (sine / live / WAV stub).
 - Add xrun counter and round-trip latency display (NFR-11, NFR-12).
 - IPC: `audioMode`, `audioDevice` messages.
+- **Mute-on-breakpoint stub:** add `audioMode: simulated` IPC switch to C4 (no UI wiring yet);
+  M11 will complete the wiring. This stub is required so M11 has something to connect to.
 - **AC-9 green.** No regression to AC-1…AC-8 (simulated mode still works).
 
 ### M9 — WAV file input (0.2.1)
@@ -160,7 +161,7 @@ Key tasks:
 **Goal:** record a run and replay it for regression comparison.
 
 Key tasks:
-- Session recording format design (timestamps + samples + pot/button events).
+- Session recording format design (timestamps + samples + pot/button/LED events).
 - Record mode in C4: write blocks + events to file.
 - Replay mode: feed recorded blocks into the existing pipeline (simulated-clock mode).
 - UI: record/replay controls in C2.
@@ -184,8 +185,8 @@ Key tasks:
 
 | Item | Resolve by |
 |------|-----------|
-| Host audio API decision (CoreAudio vs PortAudio) | Before M8 design |
+| ~~Host audio API decision~~ | ✅ CoreAudio-native for v2; cross-platform deferred to v3+ |
 | ARM toolchain bundle vs detect | Before M12 design |
 | FFT library selection | Before M13 design |
 | Session recording format | Before M14 design |
-| Phasing within v2 (confirm M8 highest priority) | Next session with user |
+| ~~Phasing within v2~~ | ✅ Confirmed: M8→M9→M10→M10b→M11→M12→M13→M14 |

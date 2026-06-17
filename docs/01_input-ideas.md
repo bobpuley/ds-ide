@@ -196,9 +196,8 @@ No cross-source conflicts yet (v2 planning is starting fresh). Open questions to
    setup, or require the user to install it? Trade-off: bundle size + maintenance vs
    install friction.
 
-2. **Host audio API strategy** — use PortAudio (cross-platform) or native APIs directly
-   (CoreAudio on macOS, WASAPI on Windows, ALSA on Linux)? PortAudio abstracts the
-   difference but adds a dependency; native gives more control per platform.
+2. ~~**Host audio API strategy**~~ — ✅ **Resolved:** CoreAudio-native for v2 (macOS-first, zero new dep);
+   cross-platform (PortAudio/WASAPI/ALSA) deferred to v3+.
 
 3. **Live input + speaker output sequencing** — land both together (same host audio device
    open) or live input first (simpler, no real-time deadline) then speaker output?

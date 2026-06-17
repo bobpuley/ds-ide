@@ -61,14 +61,10 @@ Key consequences:
 
 ### 2.3 Audio device abstraction
 
-> ⚠️ ASSUMPTION (host audio API): decision pending (02 §4, 01 Open Conflict #2).
-> Candidates:
-> - **PortAudio** — cross-platform, MIT, widely used. Adds a bundled native dep.
-> - **CoreAudio native** — macOS-only (macOS-first per D4), no new dep. Windows/Linux require
->   separate implementations later.
->
-> Recommendation: CoreAudio-native for v2.0 (macOS-first, zero new dep), PortAudio for v2.x
-> if/when Windows/Linux host audio lands. Decide before M8.
+> **DECISION (host audio API):** **CoreAudio-native** for v2 (macOS-first, zero new dependency).
+> Windows/Linux host audio (WASAPI/ALSA or PortAudio) is deferred to v3+ when cross-platform
+> runtime is in scope. This removes a bundled C library from the v2 build and keeps the
+> dependency surface minimal.
 
 The audio device abstraction lives inside C4, behind an interface the block loop calls:
 `read_input_block(buf)` / `write_output_block(buf)`. In simulated mode these are a sine gen /
@@ -214,8 +210,8 @@ file-editing feature.
 
 | Item | Current stance |
 |------|----------------|
-| Host audio API (CoreAudio vs PortAudio) | Decide before M8; recommendation: CoreAudio-first |
+| ~~Host audio API~~ | ✅ CoreAudio-native for v2; cross-platform deferred to v3+ |
 | Mute-on-breakpoint implementation detail | IPC `audioMode` switch; verify no race with lldb halt |
 | `Switch::Debounce()` call-rate from loop() | Dedicated debounce thread at ~1 kHz; validate against examples |
-| Session recording format | Simple binary (timestamps + samples + pot events); design at M-recording |
+| Session recording format | Simple binary (timestamps + samples + pot/button/LED events); design at M-recording |
 | Spectrum FFT library | FFTW (GPL — bad) / pocketfft (MIT) / kiss_fft (BSD); decide before M-spectrum |

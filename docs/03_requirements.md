@@ -63,7 +63,7 @@ while stepping through the audio callback, and flash to real hardware without le
   256, 512 samples). ds-ide shall display the measured round-trip latency and an xrun counter.
   *(Mitigates R12, R13.)*
 
-### 3.2 Virtual buttons & GPIO (`FR-CT-7…FR-CT-11`)
+### 3.2 Virtual buttons, GPIO & LED outputs (`FR-CT-7…FR-CT-14`)
 
 - **FR-CT-7** — `controllers.yaml` shall support a `buttons:` section alongside `pots:`,
   declaring each button: `id`, `label`, `gpio_pin`, `mode` (momentary/toggle), `active_level`.
@@ -74,8 +74,16 @@ while stepping through the audio callback, and flash to real hardware without le
   **Verify:** AC-11.
 - **FR-CT-10** — The `Switch` shim shall implement `Debounce()`, `Pressed()`, `RisingEdge()`,
   and `FallingEdge()` backed by the IPC virtual button state. *(Upgrades the v1 stub.)*
-- **FR-CT-11** — Controller state (pots + buttons) shall persist across re-deploys within a
-  session (extending v1 FR-CT-4).
+- **FR-CT-11** — Controller state (pots + buttons + LEDs) shall persist across re-deploys
+  within a session (extending v1 FR-CT-4).
+- **FR-CT-12** — `controllers.yaml` shall support a `leds:` section declaring each LED:
+  `id`, `label`, `gpio_pin`.
+- **FR-CT-13** — ds-ide shall render a lit/unlit LED indicator per declared entry in the
+  controller panel.
+- **FR-CT-14** — When the effect writes a HIGH/LOW value to the GPIO pin of a declared LED,
+  the corresponding virtual LED indicator shall update within NFR-3's ≤ 50 ms. The LED shim
+  in C5 shall capture the GPIO output write and emit an IPC `led` message.
+  **Verify:** AC-11.
 
 ### 3.3 Full debug (`FR-DB-7…FR-DB-10`)
 
@@ -106,9 +114,22 @@ while stepping through the audio callback, and flash to real hardware without le
 - **FR-VZ-1** — ds-ide shall display a **spectrum / FFT view** of the input and output
   signals alongside the existing waveform scope.
 - **FR-VZ-2** — ds-ide shall support **session recording**: record a run (input, output,
-  and pot/button timeline) to a file for later replay and comparison.
+  and pot/button/LED timeline) to a file for later replay and comparison. **Verify:** AC-16.
 - **FR-VZ-3** — ds-ide shall support **parameter automation**: record a pot-movement timeline
   during a session and replay it for reproducible test sweeps.
+
+### 3.6 Visual controller editor (`FR-VE-1…FR-VE-4`)
+
+- **FR-VE-1** — ds-ide shall provide a drag-and-drop canvas in the C2 webview for placing
+  virtual controls (pots, buttons, LEDs) on a free-form panel representing the physical
+  hardware layout.
+- **FR-VE-2** — Each placed control shall expose a pin assignment UI: ADC channel selector
+  for pots; GPIO pin selector for buttons and LEDs.
+- **FR-VE-3** — Opening the editor shall parse and visualize the existing `controllers.yaml`;
+  saving shall serialize the canvas state (including control positions as an optional
+  `editor_pos:` field) back to `controllers.yaml`. **Verify:** AC-15.
+- **FR-VE-4** — The editor shall provide a controls palette sidebar; dragging a control type
+  from the palette onto the canvas instantiates a new control with a default pin assignment.
 
 ---
 
@@ -163,11 +184,17 @@ while stepping through the audio callback, and flash to real hardware without le
   speakers. *(FR-AU-5, FR-AU-8)*
 - **AC-10** — WAV file: load a WAV, start the emulator, output waveform matches expected
   transformation of the WAV. *(FR-AU-6)*
-- **AC-11** — Virtual button: pressing a virtual button visibly changes the effect output
-  (e.g. bypass toggle). *(FR-CT-9)*
+- **AC-11** — Virtual controls: (a) pressing a virtual button visibly changes the effect
+  output (e.g. bypass toggle); (b) the effect writing HIGH to a declared LED's GPIO pin
+  lights the virtual LED indicator in the UI. *(FR-CT-9, FR-CT-14)*
 - **AC-12** — Full debug: step over/into a line inside `AudioCallback`; inspect a local
   variable value; view the call stack. *(FR-DB-7, FR-DB-8, FR-DB-10)*
 - **AC-13** — Hardware build + flash: build the project for hardware and flash to a
   connected Daisy Seed without leaving ds-ide. *(FR-HW-1, FR-HW-3)*
 - **AC-14** — Spectrum: with an effect running, a sine input produces a visible spike in
   the FFT output at the expected frequency. *(FR-VZ-1)*
+- **AC-15** — Visual editor: open the editor, drag a pot onto the canvas and assign it to
+  ADC-0, save — verify `controllers.yaml` contains the correct entry with `editor_pos`.
+  Reopen the editor and verify the pot is rendered at the saved position. *(FR-VE-3)*
+- **AC-16** — Session recording: record a run (sine input, pot at 50%), replay it — verify
+  the output waveform from replay matches the recorded run. *(FR-VZ-2)*

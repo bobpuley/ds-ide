@@ -53,8 +53,7 @@ Legend — **Impact if wrong**: 🔴 high · 🟠 medium · 🟡 low.
 
 ## 4. Open items for v2
 
-- **Host audio API decision** (A14 / Open Conflict #2 in 01): PortAudio vs CoreAudio-first.
-  Resolve before M8 design.
+- ~~**Host audio API decision**~~ — ✅ CoreAudio-native for v2 (macOS-first, zero new dep); cross-platform deferred to v3+.
 - **Clock model for debugging** (R15 / R18): decide whether the simulated clock remains
   available alongside the OS-callback clock, or v2 always goes real-time.
 - **ARM toolchain bundle vs detect** (A13 / Open Conflict #1 in 01): resolve before
