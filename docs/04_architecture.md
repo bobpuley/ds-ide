@@ -81,7 +81,7 @@ no-op; in real-time mode they're CoreAudio read/write.
 | # | Component | Tech | v2 changes |
 |---|-----------|------|-----------|
 | C1 | Extension host | TS/Node | Hardware build commands, DFU flash command, full debug UI wiring, audio source selector |
-| C2 | Controller + scope webview | HTML/TS | Add button/GPIO controls; spectrum/FFT view; session recording UI; audio source selector; latency + xrun display |
+| C2 | Controller + scope webview | HTML/TS | Add button/GPIO/LED controls; visual controller editor (M10b); spectrum/FFT view; session recording UI; audio source selector; latency + xrun display |
 | C3 | Emulator build (CMake) | CMake + host clang | No change (emulator build unchanged) |
 | C4 | Emulator runtime | C++ executable | Real-time audio clock mode; host audio I/O; two-mode clock (real-time / simulated); mute-on-breakpoint; WAV file reader; session recorder |
 | C5 | Host libDaisy shim | C++ | Add `Switch`/GPIO shim (FR-CT-10); upgrade LED stub; keep ADC shim unchanged |
@@ -123,6 +123,7 @@ Extending the v1 message table (04v1 §5) with new message types:
 | runtime → ext | `xrun` | count, timestamp |
 | runtime → ext | `latency` | measuredRoundTripMs |
 | runtime → ext | `spectrum` | in_fft[], out_fft[], binHz |
+| runtime → ext | `led` | gpioPin, lit (bool) |
 
 All v1 messages (`pot`, `potSnapshot`, `transport`, `sine`, `config`, `scope`, `status`,
 `event`) are unchanged — backward compatible.
@@ -174,7 +175,42 @@ from starving during a long inspection.
 
 ---
 
-## 8. Open architectural items (v2)
+## 8. Visual controller editor (C2, M10b)
+
+The editor lives entirely inside C2 (a new tab in the existing webview panel). The runtime
+is not involved — the editor only reads and writes `controllers.yaml` via C1.
+
+```
+Open editor
+  → C1 reads controllers.yaml from disk
+  → C1 sends file contents to C2 via webview message
+  → C2 parses yaml, renders controls on canvas
+
+User edits canvas (drag, wire pin, rename)
+  → C2 serializes canvas state to yaml
+  → C2 sends yaml to C1 via webview message
+  → C1 writes controllers.yaml to disk
+```
+
+**No new IPC messages to the runtime.** The runtime reads `controllers.yaml` at deploy time
+(existing behaviour); the editor just provides a visual way to author that file.
+
+**Canvas model:** each control on the canvas carries:
+- type (`pot` | `button` | `led`)
+- label
+- pin assignment (ADC channel for pots; GPIO pin for buttons/LEDs)
+- position (x, y) — stored in yaml as an optional `editor_pos:` field, ignored by the runtime
+
+**Controllers palette:** a sidebar listing available control types. Drag-to-canvas instantiates
+a new control with default pin assignment; the user then adjusts via inline property fields.
+
+**Relationship to M10:** the editor depends on M10's yaml schema (`buttons:`, `leds:` sections)
+and the controller panel being established. It adds no new shim or IPC work — purely a C2/C1
+file-editing feature.
+
+---
+
+## 9. Open architectural items (v2)
 
 | Item | Current stance |
 |------|----------------|
