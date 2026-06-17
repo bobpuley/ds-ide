@@ -5,6 +5,19 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.1.5 — 2026-06-17
+
+**M5 — Debug (breakpoints)**
+
+- Added `src/debug/debug-adapter.ts`: `DaisyDebugAdapterFactory` — locates `lldb-dap` via `xcrun` first, then known Xcode/CLT candidate paths, and returns a `vscode.DebugAdapterExecutable` so VS Code can talk DAP directly to lldb. Covers C6 / FR-DB-6.
+- Added `src/commands/debug-deploy.ts`: `debugDeploy()` — deploys the emulator (same flow as Run mode), replays pot snapshot, reads `childPid`, then calls `vscode.debug.startDebugging()` with a `daisy-debug / attach` config targeting the running process PID. Covers FR-DB-2.
+- Updated `src/emulator/manager.ts`: added `childPid` getter exposing the running emulator's PID. Fixed a race condition where the old process's async `close` event was wiping out `this.childProcess` after a redeploy had already assigned a new child — guard now checks `this.childProcess === child` before nulling. Covers FR-DE-1/FR-DB integrity.
+- Updated `src/extension.ts`: registers `DaisyDebugAdapterFactory` for the `daisy-debug` type; adds `ds-ide.debug` command (Deploy and Debug); listens to `onDidStartDebugSession` / `onDidTerminateDebugSession` to update the status bar. Covers FR-DB-1/3/4/5.
+- Updated `package.json`: added `ds-ide.debug` command and `debuggers` contribution (`type: daisy-debug`, `languages: [c, cpp]`) so gutter breakpoints appear in C/C++ files. Covers FR-DB-1.
+- 125 unit tests across 12 test files; all pass. AC-4 (breakpoint in callback hit; line shown; time frozen; continue/stop) closed.
+
+---
+
 ## 0.1.4 — 2026-06-17
 
 **M4 — Diagnostics & robustness**
