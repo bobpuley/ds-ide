@@ -5,6 +5,18 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.1.7 — 2026-06-17
+
+**M7 — Block-form callback (v1.1)** *(AC-8 green — FR-RU-2 / FR-SH-2 complete)*
+
+- Added `block_cb` field to `EmulatorState`; implemented `DaisySeed::StartAudio(AudioHandle::AudioCallback cb)` shim overload (C5) — previously a no-op stub. Covers FR-SH-2 (block part).
+- Extended `audio_engine.cpp` (C4): detects which callback type was registered, deinterleaves the canonical input buffer into per-channel arrays, dispatches the block-form callback with `const float* const*` / `float* const*` views, then re-interleaves the output back into the canonical buffer. NaN/clip scan, scope tap, soft-paced clock, and sine generator are unchanged (validates the 04 §4.1 one-canonical-buffer assumption). Covers FR-RU-2 (block part).
+- Scope IPC JSON extended with `out_r` (right-channel output) — additive, backward-compatible. Enables block-form effects that write to channel 1 (e.g. `inout`) to be verified via the IPC stream.
+- Added `tests/runtime/test_inout.py`: builds `inout` (block-form example), verifies block callback dispatches, left-channel output is silent, right-channel output (`out_r`) tracks ADC0 (volume pot). AC-8 green.
+- Updated `tests/runtime/build_and_test.sh`: adds inout to the test suite (4/4 pass including bypass, determinism, Osc). No regression to the interleaved corpus.
+
+---
+
 ## 0.1.6 — 2026-06-17
 
 **M6 — v1 polish & release** *(AC-1…AC-7 all green — v1.0 complete)*
