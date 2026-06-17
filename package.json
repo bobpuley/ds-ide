@@ -34,6 +34,29 @@
         "command": "ds-ide.stop",
         "title": "Stop Audio",
         "category": "Daisy IDE"
+      },
+      {
+        "command": "ds-ide.debug",
+        "title": "Deploy and Debug",
+        "category": "Daisy IDE"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "daisy-debug",
+        "label": "Daisy Debug",
+        "languages": ["c", "cpp"],
+        "configurationAttributes": {
+          "attach": {
+            "required": ["pid"],
+            "properties": {
+              "pid": {
+                "type": "number",
+                "description": "PID of the effect_emu process to attach to"
+              }
+            }
+          }
+        }
       }
     ]
   },

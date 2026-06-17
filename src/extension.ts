@@ -7,8 +7,10 @@ import { ScopePanel } from './webview/scope-panel';
 import { buildForEmulator } from './commands/build';
 import { deployToEmulator } from './commands/deploy';
 import { startAudio, stopAudio } from './commands/transport';
+import { debugDeploy, DAISY_DEBUG_TYPE } from './commands/debug-deploy';
 import { parseControllerYaml } from './controllers/controller-config';
 import { PotStore } from './controllers/pot-store';
+import { DaisyDebugAdapterFactory } from './debug/debug-adapter';
 
 const FIDELITY_CAVEAT =
   'Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget.';
@@ -60,9 +62,27 @@ export function activate(context: vscode.ExtensionContext): void {
     );
   });
 
+  // C6: register the daisy-debug adapter (lldb-dap wrapper)
+  const debugAdapterFactory = new DaisyDebugAdapterFactory();
+
+  // Update status bar on debug session lifecycle
+  vscode.debug.onDidStartDebugSession((session) => {
+    if (session.type === DAISY_DEBUG_TYPE) {
+      statusBar.text = '$(bug) Daisy: debugging';
+      statusBar.tooltip = FIDELITY_CAVEAT;
+    }
+  });
+  vscode.debug.onDidTerminateDebugSession((session) => {
+    if (session.type === DAISY_DEBUG_TYPE) {
+      statusBar.text = '$(debug-stop) Daisy: stopped';
+      statusBar.tooltip = FIDELITY_CAVEAT;
+    }
+  });
+
   context.subscriptions.push(
     diagnostics,
     statusBar,
+    vscode.debug.registerDebugAdapterDescriptorFactory(DAISY_DEBUG_TYPE, debugAdapterFactory),
     vscode.commands.registerCommand('ds-ide.build', () =>
       buildForEmulator(manager!, context.extensionPath, diagnostics),
     ),
@@ -77,6 +97,18 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand('ds-ide.start', () => startAudio(manager!)),
     vscode.commands.registerCommand('ds-ide.stop', () => stopAudio(manager!)),
+    vscode.commands.registerCommand('ds-ide.debug', () => {
+      statusBar.text = '$(loading~spin) Daisy: deploying…';
+      statusBar.tooltip = FIDELITY_CAVEAT;
+      const defs = loadControllerDefs();
+      potStore!.setDefaults(defs);
+      return debugDeploy(
+        manager!,
+        () => defs,
+        (d, snap) => scopePanel!.show(d, snap),
+        () => potStore!.getSnapshot(),
+      );
+    }),
     { dispose: () => { manager?.dispose(); scopePanel?.dispose(); } },
   );
 }

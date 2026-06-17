@@ -15,6 +15,7 @@ vi.mock('../../emulator/manager', () => {
     sendTransport = vi.fn();
     sendSine = vi.fn();
     dispose = vi.fn();
+    get childPid() { return 42; }
     constructor() {
       super();
       managerInstances.push(this);
@@ -60,13 +61,14 @@ describe('extension', () => {
     expect(registeredIds).toContain('ds-ide.deploy');
     expect(registeredIds).toContain('ds-ide.start');
     expect(registeredIds).toContain('ds-ide.stop');
+    expect(registeredIds).toContain('ds-ide.debug');
   });
 
   it('activate pushes disposables onto context.subscriptions', () => {
     const ctx = makeContext();
     activate(ctx);
-    // diagnostics + statusBar + 4 commands + 1 manager/scope dispose
-    expect((ctx.subscriptions as unknown[]).length).toBe(7);
+    // diagnostics + statusBar + debug adapter factory + 5 commands + 1 manager/scope dispose
+    expect((ctx.subscriptions as unknown[]).length).toBe(9);
   });
 
   it('deactivate does not throw', () => {
@@ -110,5 +112,37 @@ describe('extension', () => {
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('emulator disconnected'),
     );
+  });
+
+  it('registers a debug adapter descriptor factory for daisy-debug', () => {
+    const ctx = makeContext();
+    activate(ctx);
+    expect(vscode.debug.registerDebugAdapterDescriptorFactory).toHaveBeenCalledWith(
+      'daisy-debug',
+      expect.anything(),
+    );
+  });
+
+  it('updates status bar text when a daisy-debug session starts', () => {
+    const ctx = makeContext();
+    activate(ctx);
+    // Retrieve the onDidStartDebugSession callback registered during activate
+    const startCb = (vscode.debug.onDidStartDebugSession as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
+      ((s: { type: string }) => void) | undefined;
+    const statusBar = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.results[0]?.value as
+      { text: string };
+    startCb?.({ type: 'daisy-debug' });
+    expect(statusBar?.text).toContain('debug');
+  });
+
+  it('updates status bar text when a daisy-debug session terminates', () => {
+    const ctx = makeContext();
+    activate(ctx);
+    const terminateCb = (vscode.debug.onDidTerminateDebugSession as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
+      ((s: { type: string }) => void) | undefined;
+    const statusBar = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.results[0]?.value as
+      { text: string };
+    terminateCb?.({ type: 'daisy-debug' });
+    expect(statusBar?.text).toContain('stopped');
   });
 });

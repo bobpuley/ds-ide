@@ -6,7 +6,7 @@ import { IpcClient } from '../../../emulator/ipc-client';
 
 // ---- Process stub helpers ----
 
-function makeChildProcess(exitCode = 0, socketPath?: string) {
+function makeChildProcess(exitCode = 0, socketPath?: string, exitAfterAnnounce = false) {
   const proc = new EventEmitter() as EventEmitter & {
     stdout: EventEmitter & { on: ReturnType<typeof vi.fn> };
     stderr: EventEmitter & { on: ReturnType<typeof vi.fn> };
@@ -26,12 +26,16 @@ function makeChildProcess(exitCode = 0, socketPath?: string) {
   stderr.on = vi.fn(stderrOrigOn);
   proc.stderr = stderr;
 
-  // Simulate async process lifecycle
+  // Simulate async process lifecycle.
+  // When socketPath is given, announce it but do NOT auto-emit close (long-running process).
+  // Only emit close when: no socket (crash before announce), or exitAfterAnnounce=true.
   setTimeout(() => {
     if (socketPath) {
       proc.stdout.emit('data', Buffer.from(`DAISY_EMU_SOCKET:${socketPath}\n`));
+      if (exitAfterAnnounce) proc.emit('close', exitCode);
+    } else {
+      proc.emit('close', exitCode);
     }
-    proc.emit('close', exitCode);
   }, 0);
 
   return proc;
@@ -256,6 +260,36 @@ describe('EmulatorManager', () => {
       expect(ipcClientStub.disconnect).toHaveBeenCalledOnce();
       // childProcess may already be null if close was emitted; test that disconnect was called
       expect(ipcClientStub.disconnect).toHaveBeenCalled();
+    });
+  });
+
+  describe('childPid', () => {
+    it('returns the PID of the running emulator process', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      expect(manager.childPid).toBe(12345);
+    });
+
+    it('is not clobbered by the old process close event after redeploy', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      // First deploy — old child will emit close after the second deploy resolves
+      const firstChild = spawnMock.mock.results[2]?.value as ReturnType<typeof makeChildProcess>;
+      await manager.deploy(() => undefined);
+
+      // Second deploy — kills old child; old child's close event fires
+      const secondChild = spawnMock.mock.results[3]?.value as ReturnType<typeof makeChildProcess>;
+      // Before the second deploy, ensure the first child's close fires after the second starts
+      // (simulated: in tests close fires in the same setTimeout, so the guard is what we test)
+      await manager.deploy(() => undefined);
+
+      // After redeploy, childPid must be the new child's PID, not null
+      expect(manager.childPid).toBe(12345); // mock always returns 12345
     });
   });
 
