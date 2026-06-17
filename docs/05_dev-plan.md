@@ -11,7 +11,7 @@ AC-8 for the v1.1 fast-follow; 03 §8). Components are C1…C6 (04 §2).
 
 | Milestone | File | Status |
 |-----------|------|--------|
-| M0 — Foundations | [docs/milestones/M0.md](milestones/M0.md) | **in progress** |
+| M0 — Foundations | [docs/milestones/M0.md](milestones/M0.md) | **released** (0.1.0) |
 | M1 — Headless emulator runtime | docs/milestones/M1.md | planned |
 | M2 — Extension run loop + scope | docs/milestones/M2.md | planned |
 | M3 — Controllers (pots) | docs/milestones/M3.md | planned |
