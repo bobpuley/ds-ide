@@ -60,4 +60,5 @@ Do not change requirements or architecture.
    7. Go to "1. Analyze the documents"
 
 # Required skills
-typescript-expert/SKILL.md
+- /typescript-expert
+- /graphify

@@ -91,3 +91,4 @@ Arguments (both optional):
 
 ## Required skills
 - /grill-me
+- /graphify
