@@ -1,9 +1,12 @@
 import * as vscode from 'vscode';
+import { EmulatorManager } from '../emulator/manager';
 
-export function startAudio(): void {
-  void vscode.window.showInformationMessage('ds-ide: start audio — not yet implemented (M2)');
+export function startAudio(manager: EmulatorManager): void {
+  manager.sendTransport('start');
+  void vscode.window.showInformationMessage('ds-ide: audio started');
 }
 
-export function stopAudio(): void {
-  void vscode.window.showInformationMessage('ds-ide: stop audio — not yet implemented (M2)');
+export function stopAudio(manager: EmulatorManager): void {
+  manager.sendTransport('stop');
+  void vscode.window.showInformationMessage('ds-ide: audio stopped');
 }

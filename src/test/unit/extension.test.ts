@@ -34,7 +34,8 @@ describe('extension', () => {
   it('activate pushes disposables onto context.subscriptions', () => {
     const ctx = makeContext();
     activate(ctx);
-    expect((ctx.subscriptions as unknown[]).length).toBe(4);
+    // 4 commands + 1 manager/scope dispose subscription
+    expect((ctx.subscriptions as unknown[]).length).toBe(5);
   });
 
   it('deactivate does not throw', () => {
