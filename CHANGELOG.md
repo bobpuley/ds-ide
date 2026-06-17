@@ -5,6 +5,21 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.1.4 — 2026-06-17
+
+**M4 — Diagnostics & robustness**
+
+- Added `src/diagnostics/build-diagnostics.ts`: `parseBuildLine()` and `applyDiagnostics()` — parse clang/gcc error/warning lines (`file:line:col: severity: message`) into `vscode.Diagnostic` entries and populate the VS Code Problems panel with clickable file:line links. Covers FR-ED-3.
+- Added `src/diagnostics/non-portable.ts`: `detectNonPortableSymbol()` — scans build output for undefined-symbol linker errors (clang ld64 and GNU ld styles) and extracts the unresolved symbol name, enabling an actionable "symbol not emulated" message. Covers FR-BU-5.
+- Updated `src/commands/build.ts`: `buildForEmulator()` now accepts a `DiagnosticCollection`, collects parsed diagnostics during build, applies them on success or failure, and shows the non-portable symbol message when a linker undefined-reference is detected.
+- Updated `src/emulator/manager.ts`: `killExisting()` sets an `intentionalDisconnect` flag so IPC disconnect events during redeploy or dispose are suppressed; `connectIpc()` resets the flag so unexpected emulator crashes (flag is false) still propagate the `disconnect` event. Covers NFR-8 / FR-DE-2.
+- Updated `src/extension.ts`: creates a `DiagnosticCollection` (passed to build) and a VS Code status bar item showing emulator state with the fidelity caveat in its tooltip; listens for `message{type:event,kind:nan|inf}` → VS Code warning notification; listens for `disconnect` → error notification without crashing the extension. Covers FR-RU-4, NFR-7, NFR-8.
+- Updated `src/webview/scope-panel.ts`: audio-health events now accumulate in a `Set` and remain visible until transport stops (sticky); fidelity caveat notice ("ℹ Approx. Seed") added to the scope panel header. Covers FR-RU-4, NFR-7.
+- Updated `src/__mocks__/vscode.ts`: added `DiagnosticSeverity`, `Range`, `Diagnostic`, `StatusBarAlignment`, `languages.createDiagnosticCollection`, and `window.createStatusBarItem` to the test mock.
+- 107 unit tests across 10 test files; all pass. AC-5 (NaN/clip flagged), AC-6 (hardware build untouched), AC-7 (<30 s loop) closed.
+
+---
+
 ## 0.1.3 — 2026-06-17
 
 **M3 — Controllers (pots)**
