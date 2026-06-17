@@ -11,6 +11,7 @@ import { debugDeploy, DAISY_DEBUG_TYPE } from './commands/debug-deploy';
 import { parseControllerYaml } from './controllers/controller-config';
 import { PotStore } from './controllers/pot-store';
 import { DaisyDebugAdapterFactory } from './debug/debug-adapter';
+import { SineParams, SINE_DEFAULTS } from './webview/scope-panel';
 
 const FIDELITY_CAVEAT =
   'Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget.';
@@ -18,9 +19,11 @@ const FIDELITY_CAVEAT =
 let manager: EmulatorManager | undefined;
 let scopePanel: ScopePanel | undefined;
 let potStore: PotStore | undefined;
+let sineState: SineParams = { ...SINE_DEFAULTS };
 
 export function activate(context: vscode.ExtensionContext): void {
   potStore = new PotStore(context.workspaceState);
+  sineState = context.workspaceState.get<SineParams>('ds-ide.sine') ?? { ...SINE_DEFAULTS };
   manager = new EmulatorManager();
 
   // T4.1/T4.2 — diagnostics collection shown in VS Code Problems panel
@@ -32,9 +35,16 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBar.tooltip = FIDELITY_CAVEAT;
   statusBar.show();
 
-  scopePanel = new ScopePanel(manager, (channel, value) => {
-    potStore?.set(channel, value);
-  });
+  scopePanel = new ScopePanel(
+    manager,
+    (channel, value) => {
+      potStore?.set(channel, value);
+    },
+    (freq, amplitude) => {
+      sineState = { freq, amplitude };
+      void context.workspaceState.update('ds-ide.sine', sineState);
+    },
+  );
 
   // T4.3 — forward NaN/Inf audio events as VS Code notifications
   // T4.4 — handle emulator crash/disconnect without crashing ds-ide
@@ -91,9 +101,10 @@ export function activate(context: vscode.ExtensionContext): void {
       statusBar.tooltip = FIDELITY_CAVEAT;
       const defs = loadControllerDefs();
       potStore!.setDefaults(defs);
-      scopePanel!.show(defs, potStore!.getSnapshot());
+      scopePanel!.show(defs, potStore!.getSnapshot(), sineState);
       await deployToEmulator(manager!);
       manager!.sendPotSnapshot(potStore!.getSnapshot());
+      manager!.sendSine(sineState.freq, sineState.amplitude);
     }),
     vscode.commands.registerCommand('ds-ide.start', () => startAudio(manager!)),
     vscode.commands.registerCommand('ds-ide.stop', () => stopAudio(manager!)),
@@ -105,8 +116,9 @@ export function activate(context: vscode.ExtensionContext): void {
       return debugDeploy(
         manager!,
         () => defs,
-        (d, snap) => scopePanel!.show(d, snap),
+        (d, snap) => scopePanel!.show(d, snap, sineState),
         () => potStore!.getSnapshot(),
+        () => { manager!.sendSine(sineState.freq, sineState.amplitude); },
       );
     }),
     { dispose: () => { manager?.dispose(); scopePanel?.dispose(); } },

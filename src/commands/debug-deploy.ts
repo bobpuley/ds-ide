@@ -9,6 +9,7 @@ export async function debugDeploy(
   loadDefs: () => ControllerDef[],
   showPanel: (defs: ControllerDef[], snapshot: Record<number, number>) => void,
   getPotSnapshot: () => Record<number, number>,
+  sendSine?: () => void,
 ): Promise<void> {
   const channel = vscode.window.createOutputChannel('Daisy IDE Emulator');
   channel.show();
@@ -18,6 +19,7 @@ export async function debugDeploy(
     showPanel(defs, getPotSnapshot());
     await manager.deploy((line) => channel.appendLine(line));
     manager.sendPotSnapshot(getPotSnapshot());
+    sendSine?.();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     void vscode.window.showErrorMessage(`ds-ide: deploy failed — ${msg}`);
