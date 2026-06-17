@@ -1,0 +1,17 @@
+.vscode/**
+.vscode-test/**
+src/**
+.gitignore
+esbuild.js
+vitest.config.ts
+tsconfig.json
+tsconfig.test.json
+**/*.map
+**/*.ts
+!dist/**
+node_modules/**
+daisy-seed-knowledge/**
+docs/**
+graphify-out/**
+emulator/**
+tests/**

@@ -1,0 +1,56 @@
+{
+  "name": "ds-ide",
+  "displayName": "Daisy Seed IDE",
+  "description": "Develop, test, and debug Daisy Seed audio effects without physical hardware.",
+  "version": "0.0.1",
+  "publisher": "daisy-ide",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "ds-ide.build",
+        "title": "Build for Emulator",
+        "category": "Daisy IDE"
+      },
+      {
+        "command": "ds-ide.deploy",
+        "title": "Deploy to Emulator",
+        "category": "Daisy IDE"
+      },
+      {
+        "command": "ds-ide.start",
+        "title": "Start Audio",
+        "category": "Daisy IDE"
+      },
+      {
+        "command": "ds-ide.stop",
+        "title": "Stop Audio",
+        "category": "Daisy IDE"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "node esbuild.js",
+    "compile:watch": "node esbuild.js --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "package": "node esbuild.js --production && vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.21.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.5.0"
+  }
+}
