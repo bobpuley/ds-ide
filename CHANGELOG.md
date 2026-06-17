@@ -5,6 +5,19 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.1.6 — 2026-06-17
+
+**M6 — v1 polish & release** *(AC-1…AC-7 all green — v1.0 complete)*
+
+- Added `LICENSES.md`: tracks libDaisy (MIT), DaisySP (MIT), and lldb-dap (Apache 2.0 with LLVM exceptions); notes that neither libDaisy/DaisySP nor lldb-dap are bundled in the extension. Covers NFR-10.
+- Updated `src/webview/scope-panel.ts`: added sine frequency (20–20 000 Hz, default 440 Hz) and amplitude (0–1, default 0.50 ≈ −6 dBFS) controls to the scope panel; wired webview `sine` messages to `manager.sendSine()`; added `SineChangeHandler` callback; added "xruns: n/a" to the runtime status text; added a getting-started state (workflow steps shown before first deploy) and replaced the canvas with instructions until the first `status` IPC message arrives. Covers FR-AU-2, FR-RU-5, NFR-9.
+- Updated `src/extension.ts`: loads and persists sine state (`ds-ide.sine`) via `workspaceState`; passes initial sine params to `scopePanel.show()` on deploy; sends `sendSine()` after every deploy (including debug deploy). Covers FR-AU-2, FR-CF-1.
+- Updated `src/commands/debug-deploy.ts`: accepts an optional `sendSine` callback invoked after deploy, keeping sine replay consistent across Run and Debug modes.
+- Updated `package.json`: added `keybindings` for build (⌘⇧⌥B), deploy (⌘⇧⌥D), start (⌘⇧⌥R), stop (⌘⇧⌥S). Covers NFR-9.
+- 132 unit tests across 12 test files; all pass. Full v1.0 AC sweep (AC-1…AC-7) confirmed green.
+
+---
+
 ## 0.1.5 — 2026-06-17
 
 **M5 — Debug (breakpoints)**

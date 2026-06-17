@@ -17,7 +17,7 @@ AC-8 for the v1.1 fast-follow; 03 §8). Components are C1…C6 (04 §2).
 | M3 — Controllers (pots)         | [docs/milestones/M3.md](milestones/M3.md) | **released** (0.1.3) |
 | M4 — Diagnostics & robustness   | [docs/milestones/M4.md](milestones/M4.md) | **released** (0.1.4) |
 | M5 — Debug (breakpoints)        | [docs/milestones/M5.md](milestones/M5.md) | **released** (0.1.5) |
-| M6 — v1 polish & release        | [docs/milestones/M6.md](milestones/M6.md) | planned              |
+| M6 — v1 polish & release        | [docs/milestones/M6.md](milestones/M6.md) | **released** (0.1.6) |
 | M7 — Block-form callback (v1.1) | [docs/milestones/M7.md](milestones/M7.md) | planned              |
 
 ---
