@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'events';
 import * as vscode from 'vscode';
-import { ScopePanel } from '../../../webview/scope-panel';
+import { ScopePanel, SINE_DEFAULTS } from '../../../webview/scope-panel';
 import { EmulatorManager } from '../../../emulator/manager';
 import type { ControllerDef } from '../../../controllers/controller-config';
 
@@ -11,6 +11,7 @@ function makeManager() {
     sendPot: vi.fn(),
     sendPotSnapshot: vi.fn(),
     sendTransport: vi.fn(),
+    sendSine: vi.fn(),
   }) as unknown as EmulatorManager;
 }
 
@@ -22,6 +23,7 @@ const DEFS: ControllerDef[] = [
 describe('ScopePanel', () => {
   let manager: EmulatorManager;
   let potChangeSpy: ReturnType<typeof vi.fn>;
+  let sineChangeSpy: ReturnType<typeof vi.fn>;
   let panel: ScopePanel;
   let webviewMock: ReturnType<typeof vi.fn>;
 
@@ -29,7 +31,8 @@ describe('ScopePanel', () => {
     vi.clearAllMocks();
     manager = makeManager();
     potChangeSpy = vi.fn();
-    panel = new ScopePanel(manager, potChangeSpy);
+    sineChangeSpy = vi.fn();
+    panel = new ScopePanel(manager, potChangeSpy, sineChangeSpy);
     webviewMock = vscode.window.createWebviewPanel as ReturnType<typeof vi.fn>;
   });
 
@@ -167,5 +170,62 @@ describe('ScopePanel', () => {
     panel.show(DEFS, {});
     const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(created.webview.html).toContain('activeEvents');
+  });
+
+  // T6.1 — Sine controls
+  it('webview HTML contains sine frequency and amplitude controls', () => {
+    panel.show(DEFS, {}, { freq: 440, amplitude: 0.5 });
+    const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(created.webview.html).toContain('id="sine-freq"');
+    expect(created.webview.html).toContain('id="sine-amp"');
+    expect(created.webview.html).toContain('value="440"');
+  });
+
+  it('webview HTML embeds initial sine amplitude', () => {
+    panel.show(DEFS, {}, { freq: 880, amplitude: 0.75 });
+    const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(created.webview.html).toContain('value="880"');
+    expect(created.webview.html).toContain('value="0.75"');
+  });
+
+  it('uses SINE_DEFAULTS when no sineParams provided', () => {
+    panel.show(DEFS, {});
+    const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(created.webview.html).toContain(`value="${SINE_DEFAULTS.freq}"`);
+  });
+
+  it('forwards sine message from webview to manager.sendSine()', () => {
+    panel.show(DEFS, {});
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'sine', freq: 880, amplitude: 0.3 });
+    expect(manager.sendSine).toHaveBeenCalledWith(880, 0.3);
+  });
+
+  it('calls onSineChange callback when sine message received', () => {
+    panel.show(DEFS, {});
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'sine', freq: 220, amplitude: 0.8 });
+    expect(sineChangeSpy).toHaveBeenCalledWith(220, 0.8);
+  });
+
+  // T6.2 — xrun display
+  it('webview HTML status update includes xruns: n/a', () => {
+    panel.show(DEFS, {});
+    const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(created.webview.html).toContain('xruns: n/a');
+  });
+
+  // T6.3 — getting-started state
+  it('webview HTML shows getting-started instructions before first status', () => {
+    panel.show(DEFS, {});
+    const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(created.webview.html).toContain('getting-started');
+    expect(created.webview.html).toContain('Build for Emulator');
   });
 });

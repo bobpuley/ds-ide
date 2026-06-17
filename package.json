@@ -41,6 +41,28 @@
         "category": "Daisy IDE"
       }
     ],
+    "keybindings": [
+      {
+        "command": "ds-ide.build",
+        "key": "ctrl+shift+alt+b",
+        "mac": "cmd+shift+alt+b"
+      },
+      {
+        "command": "ds-ide.deploy",
+        "key": "ctrl+shift+alt+d",
+        "mac": "cmd+shift+alt+d"
+      },
+      {
+        "command": "ds-ide.start",
+        "key": "ctrl+shift+alt+r",
+        "mac": "cmd+shift+alt+r"
+      },
+      {
+        "command": "ds-ide.stop",
+        "key": "ctrl+shift+alt+s",
+        "mac": "cmd+shift+alt+s"
+      }
+    ],
     "debuggers": [
       {
         "type": "daisy-debug",

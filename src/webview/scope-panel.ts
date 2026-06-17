@@ -6,17 +6,27 @@ import { ControllerDef } from '../controllers/controller-config';
 const PANEL_ID = 'daisy-scope';
 const PANEL_TITLE = 'Daisy Scope';
 
+export const SINE_DEFAULTS = { freq: 440, amplitude: 0.5 } as const;
+
+export interface SineParams {
+  freq: number;
+  amplitude: number;
+}
+
 export type PotChangeHandler = (channel: number, value: number) => void;
+export type SineChangeHandler = (freq: number, amplitude: number) => void;
 
 export class ScopePanel {
   private panel: vscode.WebviewPanel | null = null;
   private defs: ControllerDef[] = [];
   private initialValues: Record<number, number> = {};
+  private sineParams: SineParams = { ...SINE_DEFAULTS };
   private msgDisposable: vscode.Disposable | null = null;
 
   constructor(
     private readonly manager: EmulatorManager,
     private readonly onPotChange?: PotChangeHandler,
+    private readonly onSineChange?: SineChangeHandler,
   ) {
     manager.on('message', (msg: IpcMessage) => {
       if (msg['type'] === 'scope') this.postScope(msg);
@@ -25,14 +35,18 @@ export class ScopePanel {
     });
   }
 
-  show(defs: ControllerDef[] = [], initialValues: Record<number, number> = {}): void {
+  show(
+    defs: ControllerDef[] = [],
+    initialValues: Record<number, number> = {},
+    sineParams: SineParams = { ...SINE_DEFAULTS },
+  ): void {
     this.defs = defs;
     this.initialValues = initialValues;
+    this.sineParams = sineParams;
 
     if (this.panel) {
       this.panel.reveal(vscode.ViewColumn.Two);
-      // Refresh HTML to reflect new defs/values
-      this.panel.webview.html = buildHtml(this.defs, this.initialValues);
+      this.panel.webview.html = buildHtml(this.defs, this.initialValues, this.sineParams);
       return;
     }
 
@@ -42,7 +56,7 @@ export class ScopePanel {
       vscode.ViewColumn.Two,
       { enableScripts: true, retainContextWhenHidden: true },
     );
-    this.panel.webview.html = buildHtml(this.defs, this.initialValues);
+    this.panel.webview.html = buildHtml(this.defs, this.initialValues, this.sineParams);
 
     this.msgDisposable = this.panel.webview.onDidReceiveMessage((msg: unknown) => {
       if (!msg || typeof msg !== 'object') return;
@@ -50,6 +64,11 @@ export class ScopePanel {
       if (m['command'] === 'pot' && typeof m['channel'] === 'number' && typeof m['value'] === 'number') {
         this.manager.sendPot(m['channel'], m['value']);
         this.onPotChange?.(m['channel'], m['value']);
+      }
+      if (m['command'] === 'sine' && typeof m['freq'] === 'number' && typeof m['amplitude'] === 'number') {
+        this.sineParams = { freq: m['freq'], amplitude: m['amplitude'] };
+        this.manager.sendSine(m['freq'], m['amplitude']);
+        this.onSineChange?.(m['freq'], m['amplitude']);
       }
     });
 
@@ -99,12 +118,29 @@ function buildControllersHtml(defs: ControllerDef[], initialValues: Record<numbe
   return `<div id="controllers">${sliders}\n</div>`;
 }
 
+function buildSineControlsHtml(sine: SineParams): string {
+  return `<div id="sine-controls">
+    <span class="sine-label">Sine input:</span>
+    <label class="sine-field">
+      <span>Freq</span>
+      <input type="number" id="sine-freq" min="20" max="20000" step="1" value="${sine.freq}"/>
+      <span>Hz</span>
+    </label>
+    <label class="sine-field">
+      <span>Amp</span>
+      <input type="range" id="sine-amp" min="0" max="1" step="0.01" value="${sine.amplitude}"/>
+      <span id="sine-amp-val">${sine.amplitude.toFixed(2)}</span>
+    </label>
+  </div>`;
+}
+
 function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>): string {
+function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>, sine: SineParams): string {
   const controllersHtml = buildControllersHtml(defs, initialValues);
+  const sineHtml = buildSineControlsHtml(sine);
   return /* html */`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -124,16 +160,24 @@ function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>)
     .dot-out { background: #ce9178; }
     #events { padding: 3px 12px; min-height: 22px; background: #252526; border-bottom: 1px solid #3c3c3c; font-size: 11px; color: #f48771; }
     canvas { flex: 1; display: block; width: 100%; }
+    #sine-controls { padding: 6px 12px; background: #252526; border-top: 1px solid #3c3c3c; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .sine-label { color: #9cdcfe; }
+    .sine-field { display: flex; align-items: center; gap: 6px; }
+    .sine-field input[type="number"] { width: 68px; background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 2px 4px; font-family: monospace; }
+    .sine-field input[type="range"] { width: 100px; cursor: pointer; }
     #controllers { padding: 8px 12px; background: #252526; border-top: 1px solid #3c3c3c; display: flex; flex-wrap: wrap; gap: 16px; }
     .pot { display: flex; align-items: center; gap: 8px; }
     .pot-label { min-width: 80px; color: #9cdcfe; }
     .pot-slider { width: 140px; cursor: pointer; }
     .pot-value { min-width: 40px; text-align: right; color: #b5cea8; }
+    #getting-started { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #6a6a6a; padding: 32px; text-align: center; }
+    #getting-started ol { text-align: left; padding-left: 20px; line-height: 2; }
+    #getting-started code { background: #3c3c3c; padding: 1px 4px; border-radius: 2px; color: #9cdcfe; }
   </style>
 </head>
 <body>
   <header>
-    <span id="status-text">Waiting for emulator…</span>
+    <span id="status-text">Deploy to start…</span>
     <span class="legend">
       <span><span class="dot dot-in"></span>Input</span>
       <span><span class="dot dot-out"></span>Output</span>
@@ -141,7 +185,17 @@ function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>)
     <span id="fidelity-caveat" title="Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget">ℹ Approx. Seed</span>
   </header>
   <div id="events"></div>
-  <canvas id="scope"></canvas>
+  <canvas id="scope" style="display:none"></canvas>
+  <div id="getting-started">
+    <div>Open a libDaisy project, then:</div>
+    <ol>
+      <li><code>Daisy IDE: Build for Emulator</code></li>
+      <li><code>Daisy IDE: Deploy to Emulator</code></li>
+      <li><code>Daisy IDE: Start Audio</code></li>
+    </ol>
+    <div style="margin-top:8px;font-size:11px">Use <code>Deploy and Debug</code> to attach breakpoints.</div>
+  </div>
+  ${sineHtml}
   ${controllersHtml}
   <script>
     const vscode = acquireVsCodeApi();
@@ -149,9 +203,20 @@ function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>)
     const ctx = canvas.getContext('2d');
     const statusEl = document.getElementById('status-text');
     const eventsEl = document.getElementById('events');
+    const gettingStarted = document.getElementById('getting-started');
+    const sineFreqEl = document.getElementById('sine-freq');
+    const sineAmpEl  = document.getElementById('sine-amp');
+    const sineAmpValEl = document.getElementById('sine-amp-val');
 
     let lastIn = [], lastOut = [];
     const activeEvents = new Set();
+    let hasStatus = false;
+
+    function showScope() {
+      if (!hasStatus) return;
+      canvas.style.display = 'block';
+      gettingStarted.style.display = 'none';
+    }
 
     function resize() {
       canvas.width  = canvas.clientWidth;
@@ -192,6 +257,20 @@ function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>)
       ctx.stroke();
     }
 
+    function sendSine() {
+      const freq = parseFloat(sineFreqEl.value);
+      const amplitude = parseFloat(sineAmpEl.value);
+      if (!isNaN(freq) && !isNaN(amplitude)) {
+        vscode.postMessage({ command: 'sine', freq, amplitude });
+      }
+    }
+
+    sineFreqEl.addEventListener('change', sendSine);
+    sineAmpEl.addEventListener('input', () => {
+      sineAmpValEl.textContent = parseFloat(sineAmpEl.value).toFixed(2);
+      sendSine();
+    });
+
     // Pot slider wiring
     document.querySelectorAll('.pot-slider').forEach(slider => {
       slider.addEventListener('input', () => {
@@ -212,8 +291,10 @@ function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>)
         lastOut = msg.out || [];
         draw();
       } else if (msg.command === 'status') {
+        hasStatus = true;
+        showScope();
         const r = msg.running ? '▶ Running' : '■ Stopped';
-        statusEl.textContent = r + '  |  ' + msg.sampleRate + ' Hz  |  block ' + msg.blockSize;
+        statusEl.textContent = r + '  |  ' + msg.sampleRate + ' Hz  |  block ' + msg.blockSize + '  |  xruns: n/a';
         if (!msg.running) {
           activeEvents.clear();
           eventsEl.textContent = '';
