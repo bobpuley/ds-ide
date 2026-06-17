@@ -5,7 +5,15 @@ import * as vscode from 'vscode';
 import { activate, deactivate } from '../../extension';
 
 function makeContext(): vscode.ExtensionContext {
-  return { subscriptions: [] } as unknown as vscode.ExtensionContext;
+  return {
+    subscriptions: [],
+    extensionPath: '/ext',
+    workspaceState: {
+      get: (_key: string, defaultValue?: unknown) => defaultValue,
+      update: (_key: string, _value: unknown) => Promise.resolve(),
+      keys: () => [],
+    },
+  } as unknown as vscode.ExtensionContext;
 }
 
 describe('extension', () => {

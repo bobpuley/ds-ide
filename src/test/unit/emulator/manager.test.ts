@@ -189,6 +189,36 @@ describe('EmulatorManager', () => {
     });
   });
 
+  describe('sendPot()', () => {
+    it('sends correct JSON for a pot move', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      manager.sendPot(3, 0.75);
+      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'pot', channel: 3, value: 0.75 });
+    });
+  });
+
+  describe('sendPotSnapshot()', () => {
+    it('sends a potSnapshot with all channel values', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      const values = { 0: 0.5, 1: 0.3 };
+      manager.sendPotSnapshot(values);
+      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'potSnapshot', values });
+    });
+
+    it('is a no-op when not connected', () => {
+      manager.sendPotSnapshot({ 0: 0.5 });
+      expect(ipcClientStub.send).not.toHaveBeenCalled();
+    });
+  });
+
   describe('sendTransport()', () => {
     it('sends correct JSON for start', async () => {
       await manager.build(

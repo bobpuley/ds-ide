@@ -119,6 +119,10 @@ export class EmulatorManager extends EventEmitter {
     this.ipcClient?.send({ type: 'pot', channel, value });
   }
 
+  sendPotSnapshot(values: Record<number, number>): void {
+    this.ipcClient?.send({ type: 'potSnapshot', values });
+  }
+
   dispose(): void {
     this.killExisting();
     this.ipcClient?.disconnect();
