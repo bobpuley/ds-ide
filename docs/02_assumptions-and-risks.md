@@ -23,8 +23,8 @@ or scope cut) · 🟡 low (local fix / deferrable).
 | **A7** | In v1 the **declarative controller config (YAML)** is hand-kept consistent with what the firmware actually reads (no auto-derive until v2). | Bare-Seed target → mapping must be declared; auto-derive deferred. | 🟡 Config can drift from code; surfaced via validation, not prevention. |
 | **A8** | Default **48 kHz / block size 48** matches libDaisy defaults so emulator behaviour mirrors hardware out of the box. | libDaisy defaults; both configurable. | 🟡 Local config fix if wrong. |
 
-> ⚠️ ASSUMPTION: A1–A3 are stated against *typical* Daisy effects, not the user's actual code. They
-> stay assumptions until the real effect source (or its libDaisy/DaisySP usage list) is reviewed.
+> ✅ A1–A3 verified against both typical Daisy effects **and** the user's actual effects
+> (`tremolo`, `equalizzatore`). See §3 for the full source review.
 
 ---
 

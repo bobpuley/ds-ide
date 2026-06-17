@@ -61,8 +61,9 @@ frozen, continue, stop. Native simulation (Option A), VS Code extension, macOS-f
   *(The `arm-none-eabi` bundle-vs-detect question returns with the v2 in-IDE hardware build.)*
 
 ### 2.3 Deploy (`FR-DE`)
-- **FR-DE-1** — ds-ide shall load the emulator build into the emulator runtime ("deploy to
-  emulator"). **Verify:** AC-1.
+- **FR-DE-1** — ds-ide shall launch the emulator executable produced by the emulator build ("deploy
+  to emulator"); each redeploy kills the previous process and starts the new executable. **Verify:**
+  AC-1. *(P1 model — 04 §1.3: standalone executable, not dlopen into a persistent runtime.)*
 - **FR-DE-2** — ds-ide shall re-deploy on rebuild without restarting ds-ide, preserving controller
   positions across the re-deploy. **Verify:** move a pot, rebuild, pot value retained.
 - **FR-DE-3** — On deploy, the emulator runtime shall reset its internal state (audio buffers, shim
@@ -91,8 +92,9 @@ frozen, continue, stop. Native simulation (Option A), VS Code extension, macOS-f
 ### 2.5 Audio input & visualization (`FR-AU`)
 - **FR-AU-1** — The v1 audio input source shall be an **internal sine generator** feeding the input
   buffer(s).
-  > ⚠️ ASSUMPTION (FR-AU-2): sine **frequency and amplitude are adjustable** in v1 (default 440 Hz,
-  > ~−6 dBFS). *(Open: 01 §16 Q7 — adjustable vs fixed; recommended adjustable.)*
+- **FR-AU-2** — The sine generator **frequency and amplitude shall be user-adjustable** in v1
+  (default 440 Hz, ~−6 dBFS) via controls in the UI. The IPC `sine` message (04 §5) carries these
+  values to the runtime.
 - **FR-AU-3** — ds-ide shall display a live **input-vs-output waveform** (scope). This is the
   primary v1 feedback (no host-speaker output in v1). **Verify:** AC-2.
 - **FR-AU-4** — Because v1 has no host-speaker output, the audio engine **need not** meet a hard
@@ -227,8 +229,7 @@ test effects but are not required for v1.
 
 | Ref | Open question | Current assumption |
 |-----|---------------|--------------------|
-| FR-AU-2 | Sine freq/amplitude adjustable vs fixed | Adjustable (low-stakes) |
-| (arch) | Emulator in-process vs out-of-process | Undecided → resolve in 04_architecture (affects NFR-8 isolation) |
+| (arch) | Emulator in-process vs out-of-process | **RESOLVED in 04 §1: out-of-process.** |
 | (v2) | ARM toolchain bundle vs detect | Deferred — only matters when in-IDE hardware build returns (D9) |
 
 ---

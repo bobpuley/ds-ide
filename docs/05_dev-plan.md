@@ -169,7 +169,6 @@ pots-only and serve as the v1 test corpus.
 
 | From | Item | Resolve by |
 |------|------|-----------|
-| 03 FR-AU-2 | Sine adjustable vs fixed | Assumed adjustable; confirm at M6 |
 | 04 §10 | Soft-pace vs free-run; socket type; lldb packaging | Implementation-time (M1/M5) |
 | 04 §4.1 | Non-interleaved/block callback overload; one-canonical-buffer assumption | Scheduled at **M7/v1.1**; confirm buffer-view assumption there |
 | 02 §4 | Live host audio input (v2 priority) | Post-v1 roadmap |

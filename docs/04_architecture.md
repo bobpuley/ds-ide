@@ -271,7 +271,7 @@ runtime atomic pot[channel] → shim AdcHandle.GetFloat(channel) → effect read
 |-----|------|----------------|
 | §4 | Soft-pace-to-real-time vs free-run | Soft-pace (assumption) |
 | §4.1 | Non-interleaved (block) callback overload | Fast-follow v1.1; interleaved ships v1.0. Confirm one-canonical-buffer assumption at impl |
-| §4.1 | FR-RU-2/FR-SH-2 "both forms" phasing | Update 03 to note both delivered across v1.0+v1.1 |
+| §4.1 | FR-RU-2/FR-SH-2 "both forms" phasing | **RESOLVED: 03 FR-RU-2 already notes both forms delivered across v1.0+v1.1.** |
 | §5 | Loopback TCP vs UNIX socket | Either; pick at implementation |
 | C6 | lldb-dap packaging on macOS (Xcode CLT vs bundled) | Detect Xcode CLT lldb first |
 | — | Windows/Linux debugger (gdb) parity | Deferred (macOS-first, D4) |
