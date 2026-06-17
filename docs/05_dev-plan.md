@@ -15,18 +15,20 @@ inspect tags → propose semver → update CHANGELOG.md → annotated tag → pu
 
 ## 0. v2 Milestone Registry
 
-| Milestone                    | Theme                            | Target version | Status  |
-|------------------------------|----------------------------------|----------------|---------|
-| M8 — Real-time audio I/O     | Live input + speaker output      | 0.2.0          | planned |
-| M9 — WAV file input          | File-based audio source          | 0.2.1          | planned |
-| M10 — Virtual buttons & GPIO | Switch shim + button controllers | 0.2.2          | planned |
-| M11 — Full debug             | Step / variables / call stack    | 0.2.3          | planned |
-| M12 — Hardware build & flash | arm-none-eabi + dfu-util         | 0.2.4          | planned |
-| M13 — Spectrum & FFT         | Frequency-domain view            | 0.2.5          | planned |
-| M14 — Session recording      | Record / replay / compare        | 0.2.6          | planned |
+| Milestone                         | Theme                                  | Target version | Status         |
+|-----------------------------------|----------------------------------------|----------------|----------------|
+| M8 — Real-time audio I/O          | Live input + speaker output            | 0.2.0          | planned        |
+| M9 — WAV file input               | File-based audio source                | 0.2.1          | planned        |
+| M10 — Virtual buttons, GPIO & LEDs | Controls + outputs; scope review first | 0.2.2          | needs review   |
+| M10b — Visual controller editor   | Drag-and-drop panel + pin wiring       | 0.2.3          | planned        |
+| M11 — Full debug                  | Step / variables / call stack          | 0.2.4          | planned        |
+| M12 — Hardware build & flash      | arm-none-eabi + dfu-util               | 0.2.5          | planned        |
+| M13 — Spectrum & FFT              | Frequency-domain view                  | 0.2.6          | planned        |
+| M14 — Session recording           | Record / replay / compare              | 0.2.7          | planned        |
 
 > ⚠️ ASSUMPTION: milestone ordering above is a starting hypothesis. M8 (live audio) is
 > confirmed highest-priority. M9–M14 ordering is subject to user input and dependency analysis.
+> M10 scope (controls + outputs) must be reviewed and locked before implementation begins.
 
 ---
 
@@ -44,7 +46,7 @@ inspect tags → propose semver → update CHANGELOG.md → annotated tag → pu
 
 ```
 v1 (0.1.7, stable) ──► M8 real-time audio ──┬──► M9 WAV input
-                                              ├──► M10 buttons / GPIO
+                                              ├──► M10 buttons / GPIO / LEDs ──► M10b visual editor
                                               ├──► M11 full debug (needs M8 mute-on-breakpoint)
                                               ├──► M12 hardware build (independent)
                                               ├──► M13 spectrum (needs M8 real-time stream)
@@ -53,6 +55,7 @@ v1 (0.1.7, stable) ──► M8 real-time audio ──┬──► M9 WAV input
 
 **Critical path:** M8. All subsequent milestones can progress in parallel once M8 is stable,
 but M11 (mute-on-breakpoint) and M13/M14 (audio pipeline) have soft dependencies on it.
+M10b (visual editor) depends on M10 (yaml schema and controller panel must exist first).
 
 ---
 
@@ -92,19 +95,39 @@ Key tasks:
 - UI: file picker in C2, loop toggle.
 - **AC-10 green.**
 
-### M10 — Virtual buttons & GPIO (0.2.2)
-**Goal:** press a virtual button in the UI and have the effect respond via `Switch` APIs.
+### M10 — Virtual buttons, GPIO & LEDs (0.2.2)
+**Goal:** press a virtual button and have the effect respond; trigger an LED from the effect and see it lit in the UI.
 
-Key tasks:
-- `controllers.yaml` `buttons:` section parser (extend FR-CT-7).
+> ⚠️ Scope must be reviewed and locked before implementation. The tasks below are a starting
+> sketch only — minimal controls (buttons) and minimal outputs (LEDs) confirmed; exact
+> IDs and yaml schema details to be finalized in the pre-implementation review.
+
+Key tasks (draft):
+- `controllers.yaml` `buttons:` + `leds:` section parser.
 - Button rendering in C2 (press/release, toggle/momentary visual state).
+- LED rendering in C2 (lit/unlit driven by runtime GPIO output state).
 - `Switch` shim in C5: `Debounce()`, `Pressed()`, `RisingEdge()`, `FallingEdge()` backed by
   atomic button state (same pattern as ADC).
-- IPC: `button`, `buttonSnapshot` messages.
-- Test against an example that uses `Switch` (e.g. `bypass` with a button-controlled bypass).
+- LED shim in C5: GPIO output write → IPC `led` message → C2 indicator.
+- IPC: `button`, `buttonSnapshot`, `led` messages.
+- Test against an example that uses `Switch` + LED (e.g. bypass with button + status LED).
 - **AC-11 green.**
 
-### M11 — Full debug (0.2.3)
+### M10b — Visual controller editor (0.2.3)
+**Goal:** drag controls onto a canvas, wire each to a Daisy pin, and have `controllers.yaml`
+updated automatically — so the layout doubles as a hardware wiring reference.
+
+Key tasks:
+- Editor canvas in C2 (new tab alongside scope/controller panel): drag controls from a
+  palette (pot, button, LED) onto a free-form panel.
+- Pin wiring UI: each placed control exposes an ADC channel (pots) or GPIO pin (buttons/LEDs)
+  selector; selected value written to yaml.
+- `controllers.yaml` round-trip: load → parse → render onto canvas; save → serialize
+  canvas state → write yaml.
+- Controllers palette sidebar: available control types listed; drag-to-canvas to instantiate.
+- No new IPC messages required (runtime reads yaml on deploy; editor only edits the file).
+
+### M11 — Full debug (0.2.4)
 **Goal:** step through the audio callback and inspect variables without leaving ds-ide.
 
 Key tasks:
@@ -114,7 +137,7 @@ Key tasks:
   `audioMode: realtime` on `continued` (R15 mitigation, 04 §7).
 - **AC-12 green.**
 
-### M12 — Hardware build & flash (0.2.4)
+### M12 — Hardware build & flash (0.2.5)
 **Goal:** build and flash to real Daisy Seed hardware without leaving ds-ide.
 
 Key tasks:
@@ -124,7 +147,7 @@ Key tasks:
 - Validate on macOS Apple Silicon with a Daisy Seed connected.
 - **AC-13 green.**
 
-### M13 — Spectrum & FFT (0.2.5)
+### M13 — Spectrum & FFT (0.2.6)
 **Goal:** add a frequency-domain view alongside the existing waveform scope.
 
 Key tasks:
@@ -133,7 +156,7 @@ Key tasks:
 - C2 webview: draw input/output spectrum alongside waveform.
 - **AC-14 green.**
 
-### M14 — Session recording (0.2.6)
+### M14 — Session recording (0.2.7)
 **Goal:** record a run and replay it for regression comparison.
 
 Key tasks:

@@ -52,10 +52,12 @@ before WAV file input (which can replay into the same pipeline).
 
 ---
 
-## 3. Virtual controllers — buttons & GPIO
+## 3. Virtual controllers — buttons, GPIO & outputs
 
-v1 shipped potentiometers only. v2 adds:
+v1 shipped potentiometers only. v2 adds a minimal set of interactive controls and visual
+outputs. Scope to be reviewed and locked before implementation starts.
 
+**Inputs (controls):**
 - **Virtual buttons / switches** driving GPIO pin state (high/low); support press, release,
   toggle / momentary, active level, and debounce semantics matching `Switch::Debounce()` /
   `Switch::RisingEdge()`. *(deferred from v1 §7)*
@@ -64,6 +66,37 @@ v1 shipped potentiometers only. v2 adds:
 - **`controllers.yaml` extended** with a `buttons:` section alongside the existing `pots:`.
 - Real-time interaction: pressing a virtual button updates GPIO/`Switch` state immediately,
   including while paused in debug. *(same pattern as pots in v1)*
+
+**Outputs:**
+- **Virtual LEDs:** the emulator runtime writes GPIO output state; the UI reflects it as a
+  lit/unlit LED indicator. Upgrades the existing LED stub in C5 to a live, IPC-driven display.
+- `controllers.yaml` extended with an `leds:` section declaring each LED: `id`, `label`,
+  `gpio_pin`.
+
+> ⚠️ ASSUMPTION: the minimal output set for v2 is LEDs only. Encoders, displays (OLED), and
+> other peripherals are deferred. Full scope to be confirmed in a pre-implementation M10 review.
+
+---
+
+## 3a. Visual controller editor
+
+A WYSIWYG drag-and-drop editor for `controllers.yaml`, living in the C2 webview alongside
+the existing scope/controller panel.
+
+- **Canvas:** the developer drags controls (pots, buttons) onto a virtual panel and positions
+  them freely — representing the physical layout of controls on their hardware build.
+- **Pin wiring:** each placed control is wired to a specific Daisy Seed ADC channel (for pots)
+  or GPIO pin (for buttons) via a UI affordance (dropdown, connection line, or inline property).
+- **`controllers.yaml` as round-trip format:** opening the editor reads the existing yaml and
+  visualizes it; saving writes changes back to yaml. The yaml remains the source of truth.
+- **Hardware wiring reference:** the editor doubles as a hardware documentation artifact —
+  the visual layout reflects the actual wiring the developer will build on the real Seed.
+- **Controllers palette:** a sidebar listing available control types (pot, button/toggle,
+  encoder in future); drag from palette onto canvas to add.
+
+> ⚠️ ASSUMPTION: the editor lives inside the existing C2 webview (new tab or panel), not as
+> a separate tool window. Implementation requires no new IPC messages beyond what M10 already
+> adds for buttons.
 
 ---
 
