@@ -22,10 +22,14 @@ static void ipc_send(const std::string& msg) {
     if (g_state.send_ipc) g_state.send_ipc(msg);
 }
 
+// Build scope JSON with left-channel input, left-channel output, and right-channel output.
+// out_r is the additive field introduced in v1.1 for block-form effects that write to
+// channel 1 (right) only (e.g. inout). Existing consumers that only read "in"/"out" are unaffected.
 static std::string build_scope_json(const std::vector<float>& in_pts,
-                                    const std::vector<float>& out_pts) {
+                                    const std::vector<float>& out_pts,
+                                    const std::vector<float>& out_r_pts) {
     std::string s;
-    s.reserve(64 + in_pts.size() * 12 + out_pts.size() * 12);
+    s.reserve(64 + (in_pts.size() + out_pts.size() + out_r_pts.size()) * 12);
     s = "{\"type\":\"scope\",\"in\":[";
     char num[32];
     for (size_t i = 0; i < in_pts.size(); ++i) {
@@ -37,6 +41,12 @@ static std::string build_scope_json(const std::vector<float>& in_pts,
     for (size_t i = 0; i < out_pts.size(); ++i) {
         if (i) s += ',';
         std::snprintf(num, sizeof(num), "%.6g", out_pts[i]);
+        s += num;
+    }
+    s += "],\"out_r\":[";
+    for (size_t i = 0; i < out_r_pts.size(); ++i) {
+        if (i) s += ',';
+        std::snprintf(num, sizeof(num), "%.6g", out_r_pts[i]);
         s += num;
     }
     s += "]}";
@@ -55,21 +65,31 @@ void run_audio_engine() {
     }
     if (g_state.shutdown.load()) return;
 
+    // Determine callback type (exactly one is non-null after StartAudio)
+    const bool use_block = (g_state.block_cb != nullptr);
+
     // Snapshot config at callback time (block_size / sample_rate from shim calls)
     float  sample_rate = g_state.sample_rate.load();
     size_t block_size  = g_state.block_size.load();
     // interleaved stereo: 2 samples per frame
     size_t buf_samples = block_size * 2;
 
+    // Canonical interleaved buffers (sine→in, effect→out)
     std::vector<float> in_buf(buf_samples);
     std::vector<float> out_buf(buf_samples);
+
+    // Per-channel buffers for block/non-interleaved form (v1.1).
+    // Preallocated here; only used when use_block == true.
+    std::vector<float> in_ch0(block_size), in_ch1(block_size);
+    std::vector<float> out_ch0(block_size), out_ch1(block_size);
 
     // Scope: collect ~33 blocks then emit one frame (~33 ms at 48kHz/48-block = 30 fps)
     constexpr size_t SCOPE_BLOCKS = 33;
     constexpr size_t SCOPE_STEP   = 4;  // downsample: keep 1 sample per SCOPE_STEP frames
-    std::vector<float> scope_in, scope_out;
+    std::vector<float> scope_in, scope_out, scope_out_r;
     scope_in.reserve(512);
     scope_out.reserve(512);
+    scope_out_r.reserve(512);
     size_t block_count = 0;
 
     // Sine phase accumulator [0, 1)
@@ -101,8 +121,29 @@ void run_audio_engine() {
 
         std::fill(out_buf.begin(), out_buf.end(), 0.f);
 
-        // Invoke the effect's audio callback
-        g_state.interleaving_cb(in_buf.data(), out_buf.data(), buf_samples);
+        if (use_block) {
+            // Deinterleave canonical in_buf → per-channel arrays
+            for (size_t i = 0; i < block_size; ++i) {
+                in_ch0[i] = in_buf[2 * i];
+                in_ch1[i] = in_buf[2 * i + 1];
+            }
+            std::fill(out_ch0.begin(), out_ch0.end(), 0.f);
+            std::fill(out_ch1.begin(), out_ch1.end(), 0.f);
+
+            // Build non-interleaved pointer views (const float* const*)
+            const float* in_ptrs[2]  = { in_ch0.data(), in_ch1.data() };
+            float*       out_ptrs[2] = { out_ch0.data(), out_ch1.data() };
+
+            g_state.block_cb(in_ptrs, out_ptrs, block_size);
+
+            // Re-interleave output channels back into canonical out_buf
+            for (size_t i = 0; i < block_size; ++i) {
+                out_buf[2 * i]     = out_ch0[i];
+                out_buf[2 * i + 1] = out_ch1[i];
+            }
+        } else {
+            g_state.interleaving_cb(in_buf.data(), out_buf.data(), buf_samples);
+        }
 
         // Scan output for NaN/Inf, denormals, and clipping (FR-RU-4)
         bool sent_nan = false, sent_clip = false, sent_denormal = false;
@@ -121,17 +162,19 @@ void run_audio_engine() {
             }
         }
 
-        // Scope tap: downsample by SCOPE_STEP, keep left channel sample
+        // Scope tap: downsample by SCOPE_STEP, keep left-channel input + both output channels
         for (size_t i = 0; i < buf_samples; i += SCOPE_STEP * 2) {
-            scope_in.push_back(in_buf[i]);
-            scope_out.push_back(out_buf[i]);
+            scope_in.push_back(in_buf[i]);        // left input
+            scope_out.push_back(out_buf[i]);      // left output
+            scope_out_r.push_back(out_buf[i + 1]); // right output
         }
 
         ++block_count;
         if (block_count >= SCOPE_BLOCKS) {
-            ipc_send(build_scope_json(scope_in, scope_out));
+            ipc_send(build_scope_json(scope_in, scope_out, scope_out_r));
             scope_in.clear();
             scope_out.clear();
+            scope_out_r.clear();
             block_count = 0;
         }
 

@@ -30,10 +30,11 @@ void DaisySeed::StartAudio(AudioHandle::InterleavingAudioCallback cb) {
     daisy_emu::g_state.callback_cv.notify_one();
 }
 
-void DaisySeed::StartAudio(AudioHandle::AudioCallback /*cb*/) {
-    // Block-form callback — v1.1 (M7 milestone). No-op with a diagnostic.
-    std::fprintf(stderr,
-        "[daisy-emu] StartAudio(AudioCallback) is v1.1 (block-form) — not yet implemented.\n");
+void DaisySeed::StartAudio(AudioHandle::AudioCallback cb) {
+    std::lock_guard<std::mutex> lk(daisy_emu::g_state.callback_mutex);
+    daisy_emu::g_state.block_cb    = cb;
+    daisy_emu::g_state.callback_set = true;
+    daisy_emu::g_state.callback_cv.notify_one();
 }
 
 void DaisySeed::PrintLine(const char* fmt, ...) {

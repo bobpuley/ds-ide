@@ -25,8 +25,11 @@ struct EmulatorState {
     // ADC pot values (0..1), one per channel (Daisy Seed has 12 ADC channels)
     std::atomic<float> pot_values[12];
 
-    // Interleaved audio callback — set by shim StartAudio(), read by audio engine
+    // Audio callbacks — exactly one is set by shim StartAudio(), read by audio engine.
+    // Interleaved form (v1.0): InterleavingAudioCallback — flat L/R array.
+    // Block/non-interleaved form (v1.1): AudioCallback — per-channel pointer array.
     daisy::AudioHandle::InterleavingAudioCallback interleaving_cb{nullptr};
+    daisy::AudioHandle::AudioCallback             block_cb{nullptr};
     std::mutex              callback_mutex;
     std::condition_variable callback_cv;
     bool                    callback_set{false};
