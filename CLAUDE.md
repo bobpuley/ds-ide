@@ -43,6 +43,13 @@ Phase: v1 complete; v2 requirements + architecture drafted (docs 01–05), imple
 7. Sprint-close protocol: after all sprint tasks pass automated tests, collect human-driven test feedback before merging. 
    If green: merge → inspect existing tags → propose next semver tag → update CHANGELOG.md + commit → create annotated tag → push commit and tag.
 
+## Archived docs protocol
+`docs/v1/` and `docs/raw/v1/` are read-only archives. All current project knowledge should be in `docs/00_`–`docs/05_`.
+
+- **Do not read archived docs** unless the root docs genuinely lack the information needed.
+- **If you do read an archived doc**, append an entry to `docs/archived-doc-access-log.md` immediately: date, what was needed, which file was consulted, which root doc should have had it, status = open.
+- **At the start of every new session**, check `docs/archived-doc-access-log.md` for open entries before doing anything else. For each open entry: if it was exceptional (the root docs are fine), mark resolved: exceptional. If info was missing, backport it to the correct root doc and mark resolved: backported to \<file\>.
+
 ## Document map
 | File                             | Purpose                                        | Status                                         |
 |----------------------------------|------------------------------------------------|------------------------------------------------|
