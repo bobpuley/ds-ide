@@ -19,17 +19,19 @@ The system consists of two primary components:
 
     * Executes Daisy Seed applications as native desktop programs
     * Provides a host **libDaisy compatibility layer** (audio, ADC, system) — not emulated STM32 hardware
-    * Simulates audio I/O: internal sine generator in, live input/output scope out (no host speaker in v1)
-    * Simulates physical controls — **potentiometers in v1** (buttons/switches deferred to v2)
-    * Supports interactive testing and breakpoint debugging
+    * Simulates audio I/O: v1 = sine-generator in, scope out; v2 adds live host audio input + speaker output
+    * Simulates physical controls — potentiometers (v1, shipped); buttons/GPIO (v2, planned)
+    * Supports interactive testing and breakpoint debugging; v2 adds full stepping/variables
 
 The emulator executes Daisy applications as native desktop programs through a compatibility layer that implements the Daisy APIs, rather than performing cycle-accurate STM32 hardware emulation. The goal is rapid development, easy debugging, and high developer productivity while preserving behavior that is relevant to audio-effect development.
 
-**Locked v1 scope** (see `docs/03_requirements.md` + `docs/04_architecture.md`): native simulation via the compatibility layer (not STM32 emulation); VS Code extension + out-of-process native emulator; bare libDaisy/DaisySP compiled unchanged; macOS-first / Apple Silicon; emulator-only (no in-IDE hardware flashing); pots-only controllers; visualization-only audio; breakpoint debugging. The bundled `daisy-seed-knowledge/` corpus (libDaisy docs + official examples) is the API reference and v1 test corpus; it is also indexed as a graphify knowledge graph — query it with `/graphify query "…"` (see `graphify-out/`).
+**v1 shipped** (0.1.0–0.1.7, M0–M7, all ACs green): native simulation; VS Code extension; CMake emulator build; sine-input audio engine; virtual potentiometers; waveform scope; breakpoint debugging. Archived docs: `docs/v1/`. The bundled `daisy-seed-knowledge/` corpus is the API reference; indexed as a graphify knowledge graph — query with `/graphify query "…"` (see `graphify-out/`).
 
-Runtime: VS Code (Visual Studio Code — the cross-platform editor, not the full Visual Studio IDE). Primary OS: macOS / Apple Silicon.
+**v2 in progress** (target 0.2.x, M8+): live host audio I/O; virtual buttons/GPIO; full debug (step/variables/call-stack); in-IDE hardware build + DFU flash; spectrum view. See `docs/01_input-ideas.md`–`docs/05_dev-plan.md`.
+
+Runtime: VS Code (Visual Studio Code). Primary OS: macOS / Apple Silicon.
 Audience: developers.
-Phase: planning & design complete — docs 00–05 drafted, v1 scope + architecture locked. Implementation not yet started (M0 pending).
+Phase: v1 complete; v2 requirements + architecture drafted (docs 01–05), implementation not yet started (M8 pending).
 
 ## Working rules
 1. Never make implicit assumptions — ask when something is ambiguous or incomplete
@@ -42,14 +44,16 @@ Phase: planning & design complete — docs 00–05 drafted, v1 scope + architect
    If green: merge → inspect existing tags → propose next semver tag → update CHANGELOG.md + commit → create annotated tag → push commit and tag.
 
 ## Document map
-| File                             | Purpose                                        | Status                              |
-|----------------------------------|------------------------------------------------|-------------------------------------|
-| docs/00_north-star.md            | Core idea, target UX, MVP definition of done   | drafted                             |
-| docs/01_input-ideas.md           | Raw collected information                      | drafted; 9 conflicts resolved       |
-| docs/02_assumptions-and-risks.md | What we're betting on, where we could be wrong | drafted; A1–A3 verified vs source   |
-| docs/03_requirements.md          | Clear, coherent, complete requirements         | drafted; v1 scope locked            |
-| docs/04_architecture.md          | Tech decisions, system design, API contracts   | drafted; process model + components |
-| docs/05_dev-plan.md              | Sprint plan, tasks, DoD                        | drafted; M0–M6                      |
+| File                             | Purpose                                        | Status                                         |
+|----------------------------------|------------------------------------------------|------------------------------------------------|
+| docs/00_north-star.md            | Core idea, target UX, MVP definition of done   | drafted (v1 basis; still valid for v2)         |
+| docs/01_input-ideas.md           | v2 feature ideas (deferred from v1 + new)      | v2 draft; 4 open conflicts                     |
+| docs/02_assumptions-and-risks.md | v2 bets and risks; v1 bets confirmed           | v2 draft; A9–A14 new; R12–R18 new             |
+| docs/03_requirements.md          | v2 requirements (FR/NFR/CR/AC)                 | v2 draft; 5 open items                         |
+| docs/04_architecture.md          | v2 tech decisions, component extensions        | v2 draft; host audio API TBD                   |
+| docs/05_dev-plan.md              | v2 sprint plan M8–M14                          | v2 draft; M8 highest priority                  |
+| docs/v1/                         | v1 archived docs (01–05, read-only)            | complete; do not edit                          |
+| docs/raw/v1/                     | v1 raw contributions (read-only)               | complete; do not edit                          |
 
 ## Interaction model
 Claude drives. The user responds.

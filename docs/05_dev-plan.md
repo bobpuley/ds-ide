@@ -1,99 +1,168 @@
-# 05 — Development Plan
+# 05 — Development Plan (v2)
 
-Sprint/milestone plan for **ds-ide v1**, built on the requirements
-([03](03_requirements.md)) and architecture ([04](04_architecture.md)). Each milestone is a
-**demonstrable vertical slice** and closes against specific acceptance criteria (AC-1…AC-7 for v1.0,
-AC-8 for the v1.1 fast-follow; 03 §8). Components are C1…C6 (04 §2).
+> **v1 complete.** M0–M7 shipped as ds-ide 0.1.0–0.1.7. All ACs (AC-1…AC-8) green.
+> v1 milestone files are in `docs/milestones/v1/M0.md`…`M7.md` (read-only history).
+> Archived plan: `docs/v1/05_dev-plan.md`.
+
+Sprint/milestone plan for **ds-ide v2** (target: 0.2.x). Built on
+[03_requirements.md](03_requirements.md) and [04_architecture.md](04_architecture.md).
+Each milestone is a demonstrable vertical slice closing ≥ 1 AC.
+
+Same sprint-close protocol: automated tests pass → human test feedback → merge →
+inspect tags → propose semver → update CHANGELOG.md → annotated tag → push.
 
 ---
 
-## 0. Milestone Registry
+## 0. v2 Milestone Registry
 
-| Milestone                       | File                                      | Status               |
-|---------------------------------|-------------------------------------------|----------------------|
-| M0 — Foundations                | [docs/milestones/M0.md](milestones/M0.md) | **released** (0.1.0) |
-| M1 — Headless emulator runtime  | [docs/milestones/M1.md](milestones/M1.md) | **released** (0.1.1) |
-| M2 — Extension run loop + scope | [docs/milestones/M2.md](milestones/M2.md) | **released** (0.1.2) |
-| M3 — Controllers (pots)         | [docs/milestones/M3.md](milestones/M3.md) | **released** (0.1.3) |
-| M4 — Diagnostics & robustness   | [docs/milestones/M4.md](milestones/M4.md) | **released** (0.1.4) |
-| M5 — Debug (breakpoints)        | [docs/milestones/M5.md](milestones/M5.md) | **released** (0.1.5) |
-| M6 — v1 polish & release        | [docs/milestones/M6.md](milestones/M6.md) | **released** (0.1.6) |
-| M7 — Block-form callback (v1.1) | [docs/milestones/M7.md](milestones/M7.md) | **released** (0.1.7) |
+| Milestone                    | Theme                            | Target version | Status  |
+|------------------------------|----------------------------------|----------------|---------|
+| M8 — Real-time audio I/O     | Live input + speaker output      | 0.2.0          | planned |
+| M9 — WAV file input          | File-based audio source          | 0.2.1          | planned |
+| M10 — Virtual buttons & GPIO | Switch shim + button controllers | 0.2.2          | planned |
+| M11 — Full debug             | Step / variables / call stack    | 0.2.3          | planned |
+| M12 — Hardware build & flash | arm-none-eabi + dfu-util         | 0.2.4          | planned |
+| M13 — Spectrum & FFT         | Frequency-domain view            | 0.2.5          | planned |
+| M14 — Session recording      | Record / replay / compare        | 0.2.6          | planned |
+
+> ⚠️ ASSUMPTION: milestone ordering above is a starting hypothesis. M8 (live audio) is
+> confirmed highest-priority. M9–M14 ordering is subject to user input and dependency analysis.
 
 ---
 
 ## 1. Approach
 
-- **Walking skeleton first, then thicken.** Get a trivial effect running headless end-to-end
-  (build → run → scope data) before adding UI, controllers, and debug.
-- **Each milestone ships something runnable** and maps to ≥1 AC, so progress is verifiable.
-- **Sprint-close protocol (per project rules):** when a milestone's automated tests pass → collect
-  human test feedback → if green, merge → inspect tags → propose next semver → update CHANGELOG.md
-  → annotated tag → push. Work happens on a branch per milestone, not on `main`.
+- Same walking-skeleton-first principle as v1: land the hardest architectural change (real-
+  time audio clock, M8) before adding features that depend on it.
+- **M8 is the critical v2 gate:** it changes the engine's clock model (04 §2). Everything
+  else in v2 layers on top without rearchitecting.
+- Feature milestones (M9–M14) are relatively independent once M8 is stable.
 
 ---
 
 ## 2. Dependency graph & critical path
 
 ```
-M0 scaffold + shim headers ──┐
-                             ▼
-             C3 CMake build ─┴─► C5 shim ─► C4 runtime ─► (M1 headless)
-                                                 │
-                               C1 extension ◄────┘
-                                     │
-                      ┌──────────────┼───────────────┐
-                      ▼              ▼                ▼
-             C2 scope (M2)   C2 controllers (M3)   C6 debug (M5)
+v1 (0.1.7, stable) ──► M8 real-time audio ──┬──► M9 WAV input
+                                              ├──► M10 buttons / GPIO
+                                              ├──► M11 full debug (needs M8 mute-on-breakpoint)
+                                              ├──► M12 hardware build (independent)
+                                              ├──► M13 spectrum (needs M8 real-time stream)
+                                              └──► M14 session recording (needs M8 pipeline)
 ```
 
-**Critical path:** C3 → C5 → C4 (the runtime is nothing without the shim and a build). C1/C2/C6
-layer on top. **No effect porting needed** (R9 downgraded): the official
-`daisy-seed-knowledge/examples` (`bypass`, `inout`, `Knob`, `Osc`) are already bare-libDaisy +
-pots-only and serve as the v1 test corpus.
+**Critical path:** M8. All subsequent milestones can progress in parallel once M8 is stable,
+but M11 (mute-on-breakpoint) and M13/M14 (audio pipeline) have soft dependencies on it.
 
 ---
 
 ## 3. AC coverage map
 
-| AC                     | Closed in  | AC                              | Closed in  |
-|------------------------|------------|---------------------------------|------------|
-| AC-1 build/deploy/run  | M2         | AC-5 NaN/clip flagged           | M4         |
-| AC-2 pot → output      | M3         | AC-6 hardware build intact      | M4         |
-| AC-4 breakpoint/freeze | M5         | AC-7 <30 s loop                 | M4         |
-| AC-8 block-form (v1.1) | M7         | *(AC-3 removed — pots-only v1)* | —          |
+| AC | Closed in | AC | Closed in |
+|----|-----------|----|----|
+| AC-9 live audio in + out | M8 | AC-13 hardware build + flash | M12 |
+| AC-10 WAV file input | M9 | AC-14 spectrum FFT spike | M13 |
+| AC-11 virtual button → effect | M10 | — | — |
+| AC-12 step/variables/call stack | M11 | — | — |
 
 ---
 
-## 4. Definition of Done (per milestone)
+## 4. Milestone sketches
 
-1. Code + automated tests for the milestone's tasks pass.
-2. The milestone's mapped AC(s) demonstrably pass.
-3. No regression to prior milestones' ACs.
-4. Human test feedback collected (project rule 7).
-5. If green: merge → inspect tags → propose semver → CHANGELOG.md → annotated tag → push.
+### M8 — Real-time audio I/O (0.2.0)
+**Goal:** play live audio through an effect and hear the output through the host speakers.
+
+Key tasks:
+- Decide host audio API (CoreAudio vs PortAudio — 04 §8 open item).
+- Implement two-mode clock in C4: real-time (OS callback) + simulated (v1 mode, kept intact).
+- Open host audio input device; feed blocks into the existing effect callback pipeline.
+- Open host audio output device; write processed blocks out.
+- Add input source selector to C2 webview (sine / live / WAV stub).
+- Add xrun counter and round-trip latency display (NFR-11, NFR-12).
+- IPC: `audioMode`, `audioDevice` messages.
+- **AC-9 green.** No regression to AC-1…AC-8 (simulated mode still works).
+
+### M9 — WAV file input (0.2.1)
+**Goal:** load a WAV file as a repeating or one-shot audio source for automated regression.
+
+Key tasks:
+- WAV file reader in C4 (libsndfile or a minimal MIT WAV parser).
+- Feed WAV blocks into the block loop (simulated-clock mode).
+- IPC: `wavFile` message.
+- UI: file picker in C2, loop toggle.
+- **AC-10 green.**
+
+### M10 — Virtual buttons & GPIO (0.2.2)
+**Goal:** press a virtual button in the UI and have the effect respond via `Switch` APIs.
+
+Key tasks:
+- `controllers.yaml` `buttons:` section parser (extend FR-CT-7).
+- Button rendering in C2 (press/release, toggle/momentary visual state).
+- `Switch` shim in C5: `Debounce()`, `Pressed()`, `RisingEdge()`, `FallingEdge()` backed by
+  atomic button state (same pattern as ADC).
+- IPC: `button`, `buttonSnapshot` messages.
+- Test against an example that uses `Switch` (e.g. `bypass` with a button-controlled bypass).
+- **AC-11 green.**
+
+### M11 — Full debug (0.2.3)
+**Goal:** step through the audio callback and inspect variables without leaving ds-ide.
+
+Key tasks:
+- Wire DAP `next`, `stepIn`, `stepOut` through C6 to VS Code debug UI (FR-DB-7).
+- Variables, watch, and call stack come from lldb-dap responses; VS Code renders them natively.
+- Implement mute-on-breakpoint: C6 sends `audioMode: simulated` on `stopped` DAP event,
+  `audioMode: realtime` on `continued` (R15 mitigation, 04 §7).
+- **AC-12 green.**
+
+### M12 — Hardware build & flash (0.2.4)
+**Goal:** build and flash to real Daisy Seed hardware without leaving ds-ide.
+
+Key tasks:
+- Toolchain detection (C7): user setting → PATH → Homebrew → install hint (FR-HW-2).
+- Hardware build command: invoke project `Makefile` via C7, parse diagnostics (FR-HW-1).
+- DFU flash command (C8): invoke `dfu-util`, stream progress, surface errors (FR-HW-3).
+- Validate on macOS Apple Silicon with a Daisy Seed connected.
+- **AC-13 green.**
+
+### M13 — Spectrum & FFT (0.2.5)
+**Goal:** add a frequency-domain view alongside the existing waveform scope.
+
+Key tasks:
+- FFT library decision (pocketfft or kiss_fft — 04 §8); integrate into C4.
+- Compute FFT per scope tap; send as `spectrum` IPC message.
+- C2 webview: draw input/output spectrum alongside waveform.
+- **AC-14 green.**
+
+### M14 — Session recording (0.2.6)
+**Goal:** record a run and replay it for regression comparison.
+
+Key tasks:
+- Session recording format design (timestamps + samples + pot/button events).
+- Record mode in C4: write blocks + events to file.
+- Replay mode: feed recorded blocks into the existing pipeline (simulated-clock mode).
+- UI: record/replay controls in C2.
 
 ---
 
 ## 5. Risk-driven sequencing notes
 
-- **R9 (porting)** removed from the critical path — official examples are the v1 corpus, so no port
-  blocks M0–M5. **R11 (callback shape)** — the shim declares both `StartAudio` overloads from M0, but
-  they ship **phased** (04 §4.1): interleaving validated in **M1** (`bypass`, `Osc`); the
-  non-interleaving/block overload + marshalling validated in **M7/v1.1** (`inout`). The 44/28 split
-  across the bundled examples means interleaved-first unblocks the larger set for the least effort.
-- **R5 (freeze-time/debug)** isolated to M5; the architecture makes it nearly free (04 §6), but it's
-  scheduled late so a surprise there can't block the core loop (M1–M4).
-- **R1/R4 (fidelity)** never "solved" — surfaced as the NFR-7 caveat (M4 T4.5).
-- **Soft-pacing assumption (04 §10)** validated early in M1 (`Osc` pitch / a tremolo-style LFO must
-  look natural on the scope).
+- **R12/R13 (real-time audio):** M8 is the proof that the clock model change works without
+  xruns. Validate early on the development machine before building M9–M14 on top.
+- **R15 (breakpoint + live audio):** mute-on-breakpoint is a critical M11 task; design it
+  in M8 as a stub (IPC `audioMode` switch) so M11 just wires it.
+- **R14 (debounce timing):** validate the `Switch` shim debounce call-rate in M10 against
+  a real effect before considering it closed.
+- **R16/R17 (hardware toolchain):** M12 is last because it's most machine-dependent and
+  doesn't block any other v2 feature.
 
 ---
 
-## 6. Open items rolled forward
+## 6. Open items for v2 planning
 
-| From    | Item                                                                     | Resolve by                                                     |
-|---------|--------------------------------------------------------------------------|----------------------------------------------------------------|
-| 04 §10  | Soft-pace vs free-run; socket type; lldb packaging                       | Implementation-time (M1/M5)                                    |
-| 04 §4.1 | Non-interleaved/block callback overload; one-canonical-buffer assumption | Scheduled at **M7/v1.1**; confirm buffer-view assumption there |
-| 02 §4   | Live host audio input (v2 priority)                                      | Post-v1 roadmap                                                |
+| Item | Resolve by |
+|------|-----------|
+| Host audio API decision (CoreAudio vs PortAudio) | Before M8 design |
+| ARM toolchain bundle vs detect | Before M12 design |
+| FFT library selection | Before M13 design |
+| Session recording format | Before M14 design |
+| Phasing within v2 (confirm M8 highest priority) | Next session with user |
