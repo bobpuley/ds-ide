@@ -4,6 +4,29 @@ import * as path from 'path';
 import { EventEmitter } from 'events';
 import { IpcClient, IpcMessage } from './ipc-client';
 
+function pidFilePath(buildDir: string): string {
+  return path.join(buildDir, 'emu.pid');
+}
+
+function killStalePid(buildDir: string): void {
+  const pidFile = pidFilePath(buildDir);
+  try {
+    const pid = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
+    if (pid > 0) process.kill(pid, 'SIGKILL');
+  } catch {
+    // no pid file or process already gone — both fine
+  }
+  try { fs.unlinkSync(pidFile); } catch { /* ignore */ }
+}
+
+function writePid(buildDir: string, pid: number): void {
+  try { fs.writeFileSync(pidFilePath(buildDir), String(pid)); } catch { /* ignore */ }
+}
+
+function clearPid(buildDir: string): void {
+  try { fs.unlinkSync(pidFilePath(buildDir)); } catch { /* ignore */ }
+}
+
 export interface BuildOptions {
   projectRoot: string;
   effectSrc: string;
@@ -60,6 +83,8 @@ export class EmulatorManager extends EventEmitter {
     const exePath = path.join(this.buildDir, 'effect_emu');
     const socketPath = `/tmp/daisy_emu_${Date.now()}.sock`;
 
+    // Kill any process left over from a previous session (extension reload, crash, etc.)
+    killStalePid(this.buildDir);
     this.killExisting();
 
     const child = this.spawn(exePath, [socketPath], { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -83,6 +108,8 @@ export class EmulatorManager extends EventEmitter {
           if (match && !resolved) {
             resolved = true;
             clearTimeout(timeout);
+            // Persist PID so a future session can clean up this process
+            if (child.pid !== undefined) writePid(this.buildDir, child.pid);
             void this.connectIpc(match[1]!).then(resolve).catch(reject);
           }
         }
@@ -100,6 +127,7 @@ export class EmulatorManager extends EventEmitter {
       child.stderr?.on('data', (data: Buffer) => onOutput(data.toString('utf8').trim()));
       child.on('error', onError);
       child.on('close', (code) => {
+        clearPid(this.buildDir);
         if (!resolved) {
           resolved = true;
           clearTimeout(timeout);
@@ -154,6 +182,7 @@ export class EmulatorManager extends EventEmitter {
       this.ipcClient.disconnect();
       this.ipcClient = null;
     }
+    if (this.buildDir) clearPid(this.buildDir);
   }
 
   private runProcess(cmd: string, args: string[], onOutput: (line: string) => void): Promise<void> {
