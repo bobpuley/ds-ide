@@ -28,15 +28,16 @@ run_test() {
     fi
 }
 
-echo "=== M1 runtime integration tests ==="
+echo "=== M1/M7 runtime integration tests ==="
 echo "Python : $("${PYTHON}" --version)"
 echo "Repo   : ${REPO_ROOT}"
-[ -n "${DAISYSP_DIR:-}" ] && echo "DaisySP: ${DAISYSP_DIR}" || echo "DaisySP: (not set — Osc test will auto-detect or skip)"
+[ -n "${DAISYSP_DIR:-}" ] && echo "DaisySP: ${DAISYSP_DIR}" || echo "DaisySP: (not set — Osc/inout tests will auto-detect or skip)"
 echo ""
 
-run_test "bypass (out==in)"   "test_bypass.py"
-run_test "determinism (NFR-6)" "test_determinism.py"
-run_test "Osc (oscillator)"   "test_osc.py"
+run_test "bypass (out==in)"        "test_bypass.py"
+run_test "determinism (NFR-6)"     "test_determinism.py"
+run_test "Osc (oscillator)"        "test_osc.py"
+run_test "inout (AC-8 block-form)" "test_inout.py"
 
 echo ""
 echo "Results: ${pass} passed, ${fail} failed."
