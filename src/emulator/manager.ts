@@ -133,7 +133,9 @@ export class EmulatorManager extends EventEmitter {
           clearTimeout(timeout);
           reject(new Error(`Emulator exited with code ${code ?? 'null'} before socket ready`));
         }
-        this.childProcess = null;
+        // Guard: only clear the reference if it still points to this child,
+        // not to a new child spawned by a subsequent deploy.
+        if (this.childProcess === child) this.childProcess = null;
       });
     });
   }
@@ -152,6 +154,10 @@ export class EmulatorManager extends EventEmitter {
 
   sendPotSnapshot(values: Record<number, number>): void {
     this.ipcClient?.send({ type: 'potSnapshot', values });
+  }
+
+  get childPid(): number | undefined {
+    return this.childProcess?.pid;
   }
 
   dispose(): void {

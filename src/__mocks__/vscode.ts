@@ -67,6 +67,21 @@ const languages = {
 
 const DiagnosticSeverity = { Error: 0, Warning: 1, Information: 2, Hint: 3 } as const;
 
+const debug = {
+  registerDebugAdapterDescriptorFactory: vi.fn(() => ({ dispose: vi.fn() })),
+  onDidStartDebugSession: vi.fn(() => ({ dispose: vi.fn() })),
+  onDidTerminateDebugSession: vi.fn(() => ({ dispose: vi.fn() })),
+  startDebugging: vi.fn(() => Promise.resolve(true)),
+};
+
+class DebugAdapterExecutable {
+  constructor(
+    public readonly command: string,
+    public readonly args: string[] = [],
+    public readonly options?: Record<string, unknown>,
+  ) {}
+}
+
 class Range {
   constructor(
     public startLine: number,
@@ -89,4 +104,5 @@ export {
   commands, window, workspace, Uri, ViewColumn,
   DiagnosticSeverity, Range, Diagnostic,
   StatusBarAlignment, languages,
+  debug, DebugAdapterExecutable,
 };
