@@ -29,6 +29,13 @@ const window = {
     reveal: vi.fn(),
     dispose: vi.fn(),
   })),
+  createStatusBarItem: vi.fn((_alignment?: number, _priority?: number) => ({
+    text: '',
+    tooltip: undefined as string | undefined,
+    show: vi.fn(),
+    hide: vi.fn(),
+    dispose: vi.fn(),
+  })),
 };
 
 const workspace = {
@@ -48,4 +55,38 @@ const Uri = {
 
 const ViewColumn = { One: 1, Two: 2, Three: 3 } as const;
 
-export { commands, window, workspace, Uri, ViewColumn };
+const StatusBarAlignment = { Left: 1, Right: 2 } as const;
+
+const languages = {
+  createDiagnosticCollection: vi.fn((_name?: string) => ({
+    set: vi.fn(),
+    clear: vi.fn(),
+    dispose: vi.fn(),
+  })),
+};
+
+const DiagnosticSeverity = { Error: 0, Warning: 1, Information: 2, Hint: 3 } as const;
+
+class Range {
+  constructor(
+    public startLine: number,
+    public startCharacter: number,
+    public endLine: number,
+    public endCharacter: number,
+  ) {}
+}
+
+class Diagnostic {
+  source?: string;
+  constructor(
+    public range: Range,
+    public message: string,
+    public severity: number,
+  ) {}
+}
+
+export {
+  commands, window, workspace, Uri, ViewColumn,
+  DiagnosticSeverity, Range, Diagnostic,
+  StatusBarAlignment, languages,
+};

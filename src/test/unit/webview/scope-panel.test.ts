@@ -155,4 +155,17 @@ describe('ScopePanel', () => {
     expect(webviewMock).toHaveBeenCalledTimes(1);
     expect(created.reveal).toHaveBeenCalled();
   });
+
+  it('includes fidelity caveat notice in webview HTML (T4.5)', () => {
+    panel.show(DEFS, {});
+    const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(created.webview.html).toContain('fidelity-caveat');
+    expect(created.webview.html).toContain('Approx. Seed');
+  });
+
+  it('webview HTML uses sticky event accumulation (T4.3)', () => {
+    panel.show(DEFS, {});
+    const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(created.webview.html).toContain('activeEvents');
+  });
 });

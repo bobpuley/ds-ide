@@ -21,6 +21,9 @@ export class EmulatorManager extends EventEmitter {
   private childProcess: cp.ChildProcess | null = null;
   private ipcClient: IpcClient | null = null;
   private buildDir = '';
+  // Set to true before intentional kills (redeploy/dispose) so the disconnect
+  // event is not forwarded to callers as an unexpected crash.
+  private intentionalDisconnect = false;
 
   private readonly spawn: typeof cp.spawn;
   private readonly ipcClientFactory: () => IpcClient;
@@ -130,15 +133,19 @@ export class EmulatorManager extends EventEmitter {
   }
 
   private async connectIpc(socketPath: string): Promise<void> {
+    this.intentionalDisconnect = false;  // new live connection — reset flag
     const client = this.ipcClientFactory();
     this.ipcClient = client;
     client.on('message', (msg: IpcMessage) => this.emit('message', msg));
     client.on('error', (err: Error) => this.emit('error', err));
-    client.on('disconnect', () => this.emit('disconnect'));
+    client.on('disconnect', () => {
+      if (!this.intentionalDisconnect) this.emit('disconnect');
+    });
     await client.connect(socketPath);
   }
 
   private killExisting(): void {
+    this.intentionalDisconnect = true;  // suppress the subsequent disconnect event
     if (this.childProcess) {
       this.childProcess.kill();
       this.childProcess = null;

@@ -2,10 +2,13 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { EmulatorManager, BuildOptions } from '../emulator/manager';
+import { parseBuildLine, applyDiagnostics, ParsedDiagnostic } from '../diagnostics/build-diagnostics';
+import { detectNonPortableSymbol } from '../diagnostics/non-portable';
 
 export async function buildForEmulator(
   manager: EmulatorManager,
   extensionPath: string,
+  diagnostics?: vscode.DiagnosticCollection,
 ): Promise<void> {
   const folders = vscode.workspace.workspaceFolders;
   if (!folders || folders.length === 0) {
@@ -31,12 +34,32 @@ export async function buildForEmulator(
   const channel = vscode.window.createOutputChannel('Daisy IDE Build');
   channel.show();
 
+  const parsed: ParsedDiagnostic[] = [];
+  const rawLines: string[] = [];
+
+  const onLine = (line: string): void => {
+    channel.appendLine(line);
+    rawLines.push(line);
+    const d = parseBuildLine(line);
+    if (d) parsed.push(d);
+  };
+
   try {
-    await manager.build(opts, (line) => channel.appendLine(line));
+    await manager.build(opts, onLine);
+    if (diagnostics) applyDiagnostics(diagnostics, parsed, projectRoot);
     void vscode.window.showInformationMessage('ds-ide: build succeeded');
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    void vscode.window.showErrorMessage(`ds-ide: build failed — ${msg}`);
+    if (diagnostics) applyDiagnostics(diagnostics, parsed, projectRoot);
+    const nonPortable = detectNonPortableSymbol(rawLines);
+    if (nonPortable) {
+      void vscode.window.showErrorMessage(
+        `ds-ide: build failed — symbol '${nonPortable}' is not emulated. ` +
+        `Add a stub or remove this hardware-only API call.`,
+      );
+    } else {
+      const msg = err instanceof Error ? err.message : String(err);
+      void vscode.window.showErrorMessage(`ds-ide: build failed — ${msg}`);
+    }
   }
 }
 
