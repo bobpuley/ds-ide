@@ -2,6 +2,14 @@
 .idea/
 daisy-seed-knowledge/
 
+# Node / extension build outputs
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Emulator build output (generated per-project, not committed)
+.ds-ide/
+
 # graphify: track the queryable graph + audit report; ignore regenerable/local state
 # (HTML viz, cache/, manifest, cost, and the machine-specific .graphify_* dotfiles)
 graphify-out/*
