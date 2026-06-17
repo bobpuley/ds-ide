@@ -5,6 +5,19 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.1.3 — 2026-06-17
+
+**M3 — Controllers (pots)**
+
+- Added `src/controllers/controller-config.ts`: `parseControllerYaml()` — parses the project's `controllers.yaml` (id, label, adc_channel, range, taper, default); validates duplicate channels, out-of-range channel numbers, missing fields, and invalid taper values; returns valid `ControllerDef[]` plus collected error strings. Covers FR-CT-1/5.
+- Added `src/controllers/pot-store.ts`: `PotStore` — persists pot channel values in `vscode.workspaceState`; `setDefaults()` seeds channels not yet stored; `getSnapshot()` returns a full channel→value map for IPC replay. Covers FR-CT-4, FR-CF.
+- Updated `src/webview/scope-panel.ts`: `ScopePanel.show(defs, initialValues)` now renders a pot-slider row per `ControllerDef`; webview `pot` messages are forwarded to `manager.sendPot()` and an optional `onPotChange` callback; slider initial values come from `PotStore`. Covers FR-CT-2/3, NFR-3 ≤50 ms.
+- Updated `src/emulator/manager.ts`: added `sendPotSnapshot(values)` — sends an IPC `potSnapshot` message to replay all pot values on (re-)deploy. Covers FR-DE-2.
+- Updated `src/extension.ts`: `PotStore` created on activation; deploy command loads `controllers.yaml`, calls `potStore.setDefaults()`, passes defs + initial values to `scopePanel.show()`, and sends `potSnapshot` after IPC connect.
+- 81 unit tests across 8 test files; all pass; TypeScript typecheck clean. AC-2 closed.
+
+---
+
 ## 0.1.2 — 2026-06-17
 
 **M2 — Extension run loop + scope**
