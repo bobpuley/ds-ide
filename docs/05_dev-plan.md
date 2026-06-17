@@ -7,6 +7,21 @@ AC-8 for the v1.1 fast-follow; 03 §8). Components are C1…C6 (04 §2).
 
 ---
 
+## 0. Milestone Registry
+
+| Milestone | File | Status |
+|-----------|------|--------|
+| M0 — Foundations | [docs/milestones/M0.md](milestones/M0.md) | **in progress** |
+| M1 — Headless emulator runtime | docs/milestones/M1.md | planned |
+| M2 — Extension run loop + scope | docs/milestones/M2.md | planned |
+| M3 — Controllers (pots) | docs/milestones/M3.md | planned |
+| M4 — Diagnostics & robustness | docs/milestones/M4.md | planned |
+| M5 — Debug (breakpoints) | docs/milestones/M5.md | planned |
+| M6 — v1 polish & release | docs/milestones/M6.md | planned |
+| M7 — Block-form callback (v1.1) | docs/milestones/M7.md | planned |
+
+---
+
 ## 1. Approach
 
 - **Walking skeleton first, then thicken.** Get a trivial effect running headless end-to-end
@@ -167,8 +182,8 @@ pots-only and serve as the v1 test corpus.
 
 ## 7. Open items rolled forward
 
-| From | Item | Resolve by |
-|------|------|-----------|
-| 04 §10 | Soft-pace vs free-run; socket type; lldb packaging | Implementation-time (M1/M5) |
+| From    | Item                                                                     | Resolve by                                                     |
+|---------|--------------------------------------------------------------------------|----------------------------------------------------------------|
+| 04 §10  | Soft-pace vs free-run; socket type; lldb packaging                       | Implementation-time (M1/M5)                                    |
 | 04 §4.1 | Non-interleaved/block callback overload; one-canonical-buffer assumption | Scheduled at **M7/v1.1**; confirm buffer-view assumption there |
-| 02 §4 | Live host audio input (v2 priority) | Post-v1 roadmap |
+| 02 §4   | Live host audio input (v2 priority)                                      | Post-v1 roadmap                                                |
