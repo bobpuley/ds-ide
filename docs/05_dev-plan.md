@@ -12,13 +12,13 @@ AC-8 for the v1.1 fast-follow; 03 §8). Components are C1…C6 (04 §2).
 | Milestone | File | Status |
 |-----------|------|--------|
 | M0 — Foundations | [docs/milestones/M0.md](milestones/M0.md) | **released** (0.1.0) |
-| M1 — Headless emulator runtime | docs/milestones/M1.md | planned |
-| M2 — Extension run loop + scope | docs/milestones/M2.md | planned |
-| M3 — Controllers (pots) | docs/milestones/M3.md | planned |
-| M4 — Diagnostics & robustness | docs/milestones/M4.md | planned |
-| M5 — Debug (breakpoints) | docs/milestones/M5.md | planned |
-| M6 — v1 polish & release | docs/milestones/M6.md | planned |
-| M7 — Block-form callback (v1.1) | docs/milestones/M7.md | planned |
+| M1 — Headless emulator runtime | [docs/milestones/M1.md](milestones/M1.md) | planned |
+| M2 — Extension run loop + scope | [docs/milestones/M2.md](milestones/M2.md) | planned |
+| M3 — Controllers (pots) | [docs/milestones/M3.md](milestones/M3.md) | planned |
+| M4 — Diagnostics & robustness | [docs/milestones/M4.md](milestones/M4.md) | planned |
+| M5 — Debug (breakpoints) | [docs/milestones/M5.md](milestones/M5.md) | planned |
+| M6 — v1 polish & release | [docs/milestones/M6.md](milestones/M6.md) | planned |
+| M7 — Block-form callback (v1.1) | [docs/milestones/M7.md](milestones/M7.md) | planned |
 
 ---
 
@@ -54,97 +54,7 @@ pots-only and serve as the v1 test corpus.
 
 ---
 
-## 3. Milestones
-
-### M0 — Foundations *(enabler)*
-**Goal:** scaffolding in place; shim interface pinned to the real libDaisy API.
-- T0.1 — VS Code extension scaffold (TS project, activation, command stubs). *(C1)*
-- T0.2 — Pin the **shim API headers** from the canonical libDaisy surface (02 §3.1), validated to
-  compile against the official examples (`bypass`, `inout`, `Knob`, `Osc`). *(C5 interface, FR-SH)*
-- T0.3 — Stand up the `daisy-seed-knowledge/examples` as the v1 test corpus; pick `bypass` (smallest
-  end-to-end) and `Osc` (ADC, **interleaved**) as M1/M2 targets. `inout` (block-form) is the M7/v1.1
-  target (04 §4.1). *(no porting needed — R9 downgraded)*
-- **DoD:** shim headers compile against the chosen examples; extension loads in VS Code.
-  *(No AC yet — enabling work.)*
-
-### M1 — Headless emulator runtime *(critical path)*
-**Goal:** a built effect runs in the runtime and produces output, no UI.
-- T1.1 — **CMake host build** (C3): compile effect + shim + DaisySP + runtime `main()` → executable;
-  `-O0 -g`. *(FR-BU-1/4/6)*
-- T1.2 — **Shim** (C5): `DaisySeed` init, `AudioHandle`/`StartAudio`, `AdcHandle.GetFloat` (atomic
-  pot state), `System`/log + unsupported-peripheral stubs. *(FR-SH-1..6)*
-- T1.3 — **Runtime** (C4): simulated clock, sine generator, block loop with **interleaved**
-  marshalling (v1.0; block-form deferred to M7, 04 §4.1), NaN/Inf/denormal/clip scan.
-  *(FR-RU-2 [interleaved part]/3/4, FR-AU-1)*
-- T1.4 — **IPC server** (JSON/socket): `config`, `transport`, `sine`, `pot`, `scope`, `status`,
-  `event`. *(04 §5)*
-- **DoD:** `bypass` builds & runs headless (out==in over IPC `scope`); `Osc` with a hardcoded pot
-  value shows the oscillator pitch tracking it. Determinism check (NFR-6) passes. *(Both interleaved;
-  block-form `inout` lands at M7.)*
-
-### M2 — Extension run loop + scope
-**Goal:** build → deploy → run → see waveforms, from inside VS Code.
-- T2.1 — Extension build command invokes CMake; launches/stops the runtime; IPC client. *(C1,
-  FR-DE-1, FR-RU-1)*
-- T2.2 — **Scope webview** (C2): draw input vs output from `scope` frames. *(FR-AU-3)*
-- T2.3 — Transport Start/Stop wired UI→IPC. *(FR-RU-1)*
-- **DoD → AC-1** (build/deploy/run) and the scope shows sine in/out live.
-
-### M3 — Controllers (pots)
-**Goal:** turn on-screen pots, hear/see the effect respond.
-- T3.1 — `controllers.yaml` parse + validate (duplicate channel/range/missing). *(FR-CT-1/5)*
-- T3.2 — Pot sliders in webview → IPC `pot` → shim `GetFloat`. *(FR-CT-2/3, NFR-3 ≤50ms)*
-- T3.3 — Pot-state persistence + `potSnapshot` replay on launch. *(FR-CT-4, FR-DE-2, FR-CF)*
-- **DoD → AC-2** (move pot → output changes on scope), demonstrated with `Osc` (interleaved;
-  block-form `inout` re-runs this check at M7/v1.1). Ship its `controllers.yaml` (1 pot; richer
-  multi-pot configs when user effects are ported later).
-
-### M4 — Diagnostics & robustness
-**Goal:** fast, safe inner loop.
-- T4.1 — Parse compiler output → diagnostics with file:line. *(FR-ED-3)*
-- T4.2 — Non-host-portable detection → actionable message. *(FR-BU-5)*
-- T4.3 — Surface NaN/Inf/denormal/clip indicators in UI. *(FR-RU-4)*
-- T4.4 — Redeploy without restart, preserve pot positions; verify isolation (runtime crash ≠ ds-ide
-  crash). *(FR-DE-2, NFR-8)*
-- T4.5 — Visible fidelity caveat (no bit-exactness / no CPU-RAM-budget validation). *(NFR-7)*
-- **DoD → AC-5** (NaN/clip flagged), **AC-7** (<30 s loop), **AC-6** (hardware build untouched —
-  confirm `.ds-ide/` isolation).
-
-### M5 — Debug (breakpoints)
-**Goal:** stop time on a breakpoint inside the audio callback.
-- T5.1 — lldb-dap integration + thin ds-ide debug adapter; Run vs Debug launch modes. *(C6,
-  FR-DB-2/6)*
-- T5.2 — Gutter breakpoints add/remove; pause-on-hit + current-line; support breakpoints in
-  `AudioCallback`. *(FR-DB-1/3)*
-- T5.3 — Continue / Stop; confirm simulated time frozen while paused. *(FR-DB-4/5)*
-- **DoD → AC-4** (breakpoint in callback hit; line shown; time frozen; continue/stop).
-
-### M6 — v1 polish & release
-**Goal:** ship a coherent MVP.
-- T6.1 — Sine frequency/amplitude controls. *(FR-AU-2)*
-- T6.2 — Runtime status display (sample rate, block size, xrun n/a). *(FR-RU-5)*
-- T6.3 — Usability pass: run an effect without a manual. *(NFR-9)*
-- T6.4 — License tracking for bundled bits. *(NFR-10)*
-- T6.5 — Full AC sweep (AC-1..AC-7) + human test feedback.
-- **DoD:** all v1 ACs pass; sprint-close protocol → CHANGELOG + annotated tag. *(Ships v1.0 —
-  interleaved-only; completes every AC. FR-RU-2/FR-SH-2 reach full "both forms" at M7.)*
-
-### M7 — Block-form callback *(fast-follow, v1.1)*
-**Goal:** run the 28 non-interleaved/block examples, completing FR-RU-2 / FR-SH-2 (04 §4.1).
-- T7.1 — **Shim** (C5): add the `StartAudio(AudioCallback)` non-interleaved overload alongside the
-  interleaved one. *(FR-SH-2, block part)*
-- T7.2 — **Runtime** (C4): expose the canonical internal buffer as a `const float* const*` /
-  `float* const*` view (additive adapter; no change to sine gen, scope tap, clock, or NaN/clip scan —
-  validates the 04 §4.1 one-canonical-buffer assumption). *(FR-RU-2, block part)*
-- T7.3 — Validate against `inout` (block-form) and a spot-check of the broader block set (e.g.
-  `chorus`, `string`, `zoscillator`); re-run AC-2 ADC mapping on `inout`.
-- **DoD → AC-8** (`inout` builds & runs; out volume tracks the pot on the scope; second overload +
-  block marshalling proven); no regression to the interleaved corpus (`bypass`/`Osc`). Sprint-close
-  → CHANGELOG + v1.1 annotated tag.
-
----
-
-## 4. AC coverage map
+## 3. AC coverage map
 
 | AC | Closed in | AC | Closed in |
 |----|-----------|----|-----------|
@@ -155,7 +65,7 @@ pots-only and serve as the v1 test corpus.
 
 ---
 
-## 5. Definition of Done (per milestone)
+## 4. Definition of Done (per milestone)
 
 1. Code + automated tests for the milestone's tasks pass.
 2. The milestone's mapped AC(s) demonstrably pass.
@@ -165,7 +75,7 @@ pots-only and serve as the v1 test corpus.
 
 ---
 
-## 6. Risk-driven sequencing notes
+## 5. Risk-driven sequencing notes
 
 - **R9 (porting)** removed from the critical path — official examples are the v1 corpus, so no port
   blocks M0–M5. **R11 (callback shape)** — the shim declares both `StartAudio` overloads from M0, but
@@ -180,7 +90,7 @@ pots-only and serve as the v1 test corpus.
 
 ---
 
-## 7. Open items rolled forward
+## 6. Open items rolled forward
 
 | From    | Item                                                                     | Resolve by                                                     |
 |---------|--------------------------------------------------------------------------|----------------------------------------------------------------|
