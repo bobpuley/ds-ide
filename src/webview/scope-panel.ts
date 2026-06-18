@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { EmulatorManager } from '../emulator/manager';
 import { IpcMessage } from '../emulator/ipc-client';
-import { ControllerDef } from '../controllers/controller-config';
+import { ControllerDef, ButtonDef, LedDef } from '../controllers/controller-config';
 
 const PANEL_ID = 'daisy-scope';
 const PANEL_TITLE = 'Daisy Scope';
@@ -37,6 +37,7 @@ export type PotChangeHandler = (channel: number, value: number) => void;
 export type SineChangeHandler = (freq: number, amplitude: number) => void;
 export type AudioSourceChangeHandler = (source: AudioSource) => void;
 export type PickWavHandler = () => void;
+export type ButtonChangeHandler = (gpioPin: number, pressed: boolean) => void;
 
 export class ScopePanel {
   private panel: vscode.WebviewPanel | null = null;
@@ -44,6 +45,9 @@ export class ScopePanel {
   private initialValues: Record<number, number> = {};
   private sineParams: SineParams = { ...SINE_DEFAULTS };
   private audioSource: AudioSource = { ...AUDIO_SOURCE_DEFAULTS };
+  private buttons: ButtonDef[] = [];
+  private leds: LedDef[] = [];
+  private initialButtons: Record<number, boolean> = {};
   private msgDisposable: vscode.Disposable | null = null;
 
   constructor(
@@ -52,6 +56,7 @@ export class ScopePanel {
     private readonly onSineChange?: SineChangeHandler,
     private readonly onAudioSourceChange?: AudioSourceChangeHandler,
     private readonly onPickWav?: PickWavHandler,
+    private readonly onButtonChange?: ButtonChangeHandler,
   ) {
     manager.on('message', (msg: IpcMessage) => {
       if (msg['type'] === 'scope') this.postScope(msg);
@@ -59,6 +64,7 @@ export class ScopePanel {
       if (msg['type'] === 'event') this.postEvent(msg);
       if (msg['type'] === 'xrun') this.postXrun(msg);
       if (msg['type'] === 'latency') this.postLatency(msg);
+      if (msg['type'] === 'led') this.postLed(msg);
     });
   }
 
@@ -67,15 +73,21 @@ export class ScopePanel {
     initialValues: Record<number, number> = {},
     sineParams: SineParams = { ...SINE_DEFAULTS },
     audioSource: AudioSource = { ...AUDIO_SOURCE_DEFAULTS },
+    buttons: ButtonDef[] = [],
+    leds: LedDef[] = [],
+    initialButtons: Record<number, boolean> = {},
   ): void {
     this.defs = defs;
     this.initialValues = initialValues;
     this.sineParams = sineParams;
     this.audioSource = audioSource;
+    this.buttons = buttons;
+    this.leds = leds;
+    this.initialButtons = initialButtons;
 
     if (this.panel) {
       this.panel.reveal(vscode.ViewColumn.Two);
-      this.panel.webview.html = buildHtml(this.defs, this.initialValues, this.sineParams, this.audioSource);
+      this.panel.webview.html = this.html();
       return;
     }
 
@@ -85,7 +97,7 @@ export class ScopePanel {
       vscode.ViewColumn.Two,
       { enableScripts: true, retainContextWhenHidden: true },
     );
-    this.panel.webview.html = buildHtml(this.defs, this.initialValues, this.sineParams, this.audioSource);
+    this.panel.webview.html = this.html();
 
     this.msgDisposable = this.panel.webview.onDidReceiveMessage((msg: unknown) => {
       if (!msg || typeof msg !== 'object') return;
@@ -116,6 +128,10 @@ export class ScopePanel {
       }
       if (m['command'] === 'pickWav') {
         this.onPickWav?.();
+      }
+      if (m['command'] === 'button' && typeof m['gpioPin'] === 'number' && typeof m['pressed'] === 'boolean') {
+        this.manager.sendButton(m['gpioPin'], m['pressed']);
+        this.onButtonChange?.(m['gpioPin'], m['pressed']);
       }
     });
 
@@ -159,6 +175,17 @@ export class ScopePanel {
   private postLatency(msg: IpcMessage): void {
     this.panel?.webview.postMessage({ command: 'latency', measuredMs: msg['measuredMs'] });
   }
+
+  private postLed(msg: IpcMessage): void {
+    this.panel?.webview.postMessage({ command: 'led', gpioPin: msg['gpioPin'], lit: msg['lit'] });
+  }
+
+  private html(): string {
+    return buildHtml(
+      this.defs, this.initialValues, this.sineParams, this.audioSource,
+      this.buttons, this.leds, this.initialButtons,
+    );
+  }
 }
 
 function buildControllersHtml(defs: ControllerDef[], initialValues: Record<number, number>): string {
@@ -178,6 +205,35 @@ function buildControllersHtml(defs: ControllerDef[], initialValues: Record<numbe
   }).join('\n');
 
   return `<div id="controllers">${sliders}\n</div>`;
+}
+
+function buildButtonsHtml(buttons: ButtonDef[], initial: Record<number, boolean>): string {
+  if (buttons.length === 0) return '';
+
+  const items = buttons.map(b => {
+    const pressed = initial[b.gpioPin] ?? false;
+    return `
+      <button class="vbutton ${pressed ? 'vbutton-on' : ''}" type="button"
+              data-pin="${b.gpioPin}" data-mode="${b.mode}"
+              aria-pressed="${pressed}">
+        <span class="vbutton-label">${escHtml(b.label)}</span>
+        <span class="vbutton-pin">pin ${b.gpioPin}${b.mode === 'toggle' ? ' · toggle' : ''}</span>
+      </button>`;
+  }).join('\n');
+
+  return `<div id="buttons"><span class="section-label">Buttons:</span>${items}\n</div>`;
+}
+
+function buildLedsHtml(leds: LedDef[]): string {
+  if (leds.length === 0) return '';
+
+  const items = leds.map(l => `
+      <div class="vled" data-pin="${l.gpioPin}">
+        <span class="vled-dot" data-pin="${l.gpioPin}"></span>
+        <span class="vled-label">${escHtml(l.label)}</span>
+      </div>`).join('\n');
+
+  return `<div id="leds"><span class="section-label">LEDs:</span>${items}\n</div>`;
 }
 
 function buildSineControlsHtml(sine: SineParams): string {
@@ -246,10 +302,15 @@ function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>, sine: SineParams, source: AudioSource): string {
+function buildHtml(
+  defs: ControllerDef[], initialValues: Record<number, number>, sine: SineParams, source: AudioSource,
+  buttons: ButtonDef[] = [], leds: LedDef[] = [], initialButtons: Record<number, boolean> = {},
+): string {
   const controllersHtml = buildControllersHtml(defs, initialValues);
   const sineHtml = buildSineControlsHtml(sine);
   const audioSourceHtml = buildAudioSourceHtml(source);
+  const buttonsHtml = buildButtonsHtml(buttons, initialButtons);
+  const ledsHtml = buildLedsHtml(leds);
   return /* html */`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -284,6 +345,19 @@ function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>,
     #wav-choose { background: #0e639c; color: #fff; border: none; padding: 3px 10px; font-family: monospace; cursor: pointer; border-radius: 2px; }
     #wav-choose:hover { background: #1177bb; }
     .wav-name { color: #b5cea8; font-style: italic; }
+    .section-label { color: #9cdcfe; align-self: center; }
+    #buttons { padding: 8px 12px; background: #252526; border-top: 1px solid #3c3c3c; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    .vbutton { display: flex; flex-direction: column; align-items: center; gap: 2px; background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; border-radius: 4px; padding: 6px 12px; font-family: monospace; cursor: pointer; user-select: none; }
+    .vbutton:active { background: #4a4a4a; }
+    .vbutton-on { background: #0e639c; border-color: #1177bb; color: #fff; }
+    .vbutton-label { font-size: 12px; }
+    .vbutton-pin { font-size: 9px; color: #9a9a9a; }
+    .vbutton-on .vbutton-pin { color: #cfe8ff; }
+    #leds { padding: 8px 12px; background: #252526; border-top: 1px solid #3c3c3c; display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+    .vled { display: flex; align-items: center; gap: 6px; }
+    .vled-dot { width: 12px; height: 12px; border-radius: 50%; background: #3c3c3c; border: 1px solid #555; box-shadow: none; }
+    .vled-dot.vled-lit { background: #f04a4a; border-color: #ff6a6a; box-shadow: 0 0 6px 1px #f04a4a; }
+    .vled-label { color: #b5cea8; }
     .wav-loop { display: flex; align-items: center; gap: 4px; cursor: pointer; }
     .wav-loop input { cursor: pointer; accent-color: #4ec9b0; }
     #sine-controls { padding: 6px 12px; background: #252526; border-top: 1px solid #3c3c3c; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
@@ -324,6 +398,8 @@ function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>,
   ${audioSourceHtml}
   ${sineHtml}
   ${controllersHtml}
+  ${buttonsHtml}
+  ${ledsHtml}
   <script>
     const vscode = acquireVsCodeApi();
     const canvas = document.getElementById('scope');
@@ -434,6 +510,34 @@ function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>,
       });
     });
 
+    // Virtual buttons (M10): momentary = held; toggle = latched per click.
+    function setButtonVisual(btn, pressed) {
+      btn.classList.toggle('vbutton-on', pressed);
+      btn.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+    }
+    function sendButton(pin, pressed) {
+      vscode.postMessage({ command: 'button', gpioPin: pin, pressed });
+    }
+    document.querySelectorAll('.vbutton').forEach(btn => {
+      const pin = parseInt(btn.dataset.pin, 10);
+      const mode = btn.dataset.mode;
+      if (mode === 'toggle') {
+        btn.addEventListener('click', () => {
+          const next = btn.getAttribute('aria-pressed') !== 'true';
+          setButtonVisual(btn, next);
+          sendButton(pin, next);
+        });
+      } else {
+        const press   = () => { setButtonVisual(btn, true);  sendButton(pin, true); };
+        const release = () => { setButtonVisual(btn, false); sendButton(pin, false); };
+        btn.addEventListener('mousedown', press);
+        btn.addEventListener('mouseup', release);
+        btn.addEventListener('mouseleave', () => {
+          if (btn.getAttribute('aria-pressed') === 'true') release();
+        });
+      }
+    });
+
     window.addEventListener('resize', resize);
     resize();
 
@@ -483,6 +587,10 @@ function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>,
       } else if (msg.command === 'latency') {
         const ms = msg.measuredMs;
         latencyEl.textContent = 'latency: ' + (ms ? ms.toFixed(1) + ' ms' : '—');
+      } else if (msg.command === 'led') {
+        document.querySelectorAll('.vled-dot[data-pin="' + msg.gpioPin + '"]').forEach(dot => {
+          dot.classList.toggle('vled-lit', !!msg.lit);
+        });
       }
     });
   </script>

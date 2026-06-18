@@ -170,6 +170,16 @@ export class EmulatorManager extends EventEmitter {
     this.ipcClient?.send({ type: 'wavFile', path, loop });
   }
 
+  // M10: virtual button press/release, keyed by Daisy GPIO pin number.
+  sendButton(gpioPin: number, pressed: boolean): void {
+    this.ipcClient?.send({ type: 'button', gpioPin, pressed });
+  }
+
+  // M10: full button-state replay after (re)deploy (FR-CT-11).
+  sendButtonSnapshot(values: Record<number, boolean>): void {
+    this.ipcClient?.send({ type: 'buttonSnapshot', values });
+  }
+
   get childPid(): number | undefined {
     return this.childProcess?.pid;
   }

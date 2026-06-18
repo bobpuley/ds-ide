@@ -8,8 +8,9 @@ import { buildForEmulator } from './commands/build';
 import { deployToEmulator } from './commands/deploy';
 import { startAudio, stopAudio } from './commands/transport';
 import { debugDeploy, DAISY_DEBUG_TYPE } from './commands/debug-deploy';
-import { parseControllerYaml } from './controllers/controller-config';
+import { parseControllerConfig, ControllerDef, ButtonDef, LedDef } from './controllers/controller-config';
 import { PotStore } from './controllers/pot-store';
+import { ButtonStore } from './controllers/button-store';
 import { DaisyDebugAdapterFactory } from './debug/debug-adapter';
 import { SineParams, SINE_DEFAULTS, AudioSource, AUDIO_SOURCE_DEFAULTS } from './webview/scope-panel';
 
@@ -19,11 +20,13 @@ const FIDELITY_CAVEAT =
 let manager: EmulatorManager | undefined;
 let scopePanel: ScopePanel | undefined;
 let potStore: PotStore | undefined;
+let buttonStore: ButtonStore | undefined;
 let sineState: SineParams = { ...SINE_DEFAULTS };
 let audioSourceState: AudioSource = { ...AUDIO_SOURCE_DEFAULTS };
 
 export function activate(context: vscode.ExtensionContext): void {
   potStore = new PotStore(context.workspaceState);
+  buttonStore = new ButtonStore(context.workspaceState);
   sineState = context.workspaceState.get<SineParams>('ds-ide.sine') ?? { ...SINE_DEFAULTS };
   audioSourceState = {
     ...AUDIO_SOURCE_DEFAULTS,
@@ -80,6 +83,11 @@ export function activate(context: vscode.ExtensionContext): void {
       manager?.sendWavFile(wavPath, audioSourceState.wavLoop);
       scopePanel?.notifyWavSelected(path.basename(wavPath), wavPath);
     },
+    (gpioPin, pressed) => {
+      // onButtonChange: persist button state (FR-CT-11). Toggle stays latched;
+      // momentary settles to released as each release is recorded.
+      buttonStore?.set(gpioPin, pressed);
+    },
   );
 
   // T4.3 — forward NaN/Inf audio events as VS Code notifications
@@ -135,11 +143,16 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('ds-ide.deploy', async () => {
       statusBar.text = '$(loading~spin) Daisy: deploying…';
       statusBar.tooltip = FIDELITY_CAVEAT;
-      const defs = loadControllerDefs();
-      potStore!.setDefaults(defs);
-      scopePanel!.show(defs, potStore!.getSnapshot(), sineState, audioSourceState);
+      const cfg = loadControllerConfig();
+      potStore!.setDefaults(cfg.pots);
+      buttonStore!.setDefaults(cfg.buttons);
+      scopePanel!.show(
+        cfg.pots, potStore!.getSnapshot(), sineState, audioSourceState,
+        cfg.buttons, cfg.leds, buttonStore!.getSnapshot(),
+      );
       await deployToEmulator(manager!);
       manager!.sendPotSnapshot(potStore!.getSnapshot());
+      manager!.sendButtonSnapshot(buttonStore!.getSnapshot());
       manager!.sendSine(sineState.freq, sineState.amplitude);
       const mode = audioSourceState.input === 'live' ? 'realtime' : 'simulated';
       manager!.sendAudioMode(mode);
@@ -153,14 +166,19 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('ds-ide.debug', () => {
       statusBar.text = '$(loading~spin) Daisy: deploying…';
       statusBar.tooltip = FIDELITY_CAVEAT;
-      const defs = loadControllerDefs();
-      potStore!.setDefaults(defs);
+      const cfg = loadControllerConfig();
+      potStore!.setDefaults(cfg.pots);
+      buttonStore!.setDefaults(cfg.buttons);
       return debugDeploy(
         manager!,
-        () => defs,
-        (d, snap) => scopePanel!.show(d, snap, sineState, audioSourceState),
+        () => cfg.pots,
+        (d, snap) => scopePanel!.show(
+          d, snap, sineState, audioSourceState,
+          cfg.buttons, cfg.leds, buttonStore!.getSnapshot(),
+        ),
         () => potStore!.getSnapshot(),
         () => {
+          manager!.sendButtonSnapshot(buttonStore!.getSnapshot());
           manager!.sendSine(sineState.freq, sineState.amplitude);
           const mode = audioSourceState.input === 'live' ? 'realtime' : 'simulated';
           manager!.sendAudioMode(mode);
@@ -180,18 +198,24 @@ export function deactivate(): void {
   scopePanel?.dispose();
 }
 
-function loadControllerDefs() {
+interface LoadedControllers {
+  pots: ControllerDef[];
+  buttons: ButtonDef[];
+  leds: LedDef[];
+}
+
+function loadControllerConfig(): LoadedControllers {
   const folders = vscode.workspace.workspaceFolders;
-  if (!folders?.[0]) return [];
+  if (!folders?.[0]) return { pots: [], buttons: [], leds: [] };
   const yamlPath = path.join(folders[0].uri.fsPath, 'controllers.yaml');
   try {
     const text = fs.readFileSync(yamlPath, 'utf8');
-    const { defs, errors } = parseControllerYaml(text);
+    const { pots, buttons, leds, errors } = parseControllerConfig(text);
     for (const e of errors) {
       void vscode.window.showWarningMessage(`controllers.yaml: ${e}`);
     }
-    return defs;
+    return { pots, buttons, leds };
   } catch {
-    return [];
+    return { pots: [], buttons: [], leds: [] };
   }
 }
