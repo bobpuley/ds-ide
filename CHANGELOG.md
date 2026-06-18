@@ -5,6 +5,20 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.2.3 — 2026-06-18
+
+**M10b — Visual controller editor** *(AC-15 green — FR-VE-1…FR-VE-4)*
+
+- **Tab bar (C2):** the Scope panel gains a `Scope | Controller Editor` tab bar; both tabs share the same VS Code webview panel — no second window needed.
+- **Palette sidebar (FR-VE-4):** three draggable chips — Pot, Button, LED — dropped onto the canvas instantiate a new control with a default id, label, and first available pin.
+- **Free-form canvas (FR-VE-1):** placed controls are absolutely-positioned, draggable cards. Drag by the card header; position updates live.
+- **Pin wiring UI (FR-VE-2):** each card exposes inline editing for label, ID, and pin assignment (ADC channel 0–11 for pots; GPIO pin 0–31 for buttons/LEDs), plus taper and mode selectors where applicable. A delete button removes the control from the canvas.
+- **YAML round-trip (FR-VE-3):** `editor_pos: [x, y]` added as an optional field to all three controller sections; the runtime parser ignores it (backward-compatible). `serializeControllerConfig()` writes a deterministic YAML including positions. Clicking **Save controllers.yaml** sends the canvas state to C1, which writes the file.
+- **Command:** `Daisy IDE: Open Controller Editor` reads `controllers.yaml`, parses it, and loads the canvas — existing controls appear at their saved positions.
+- **Tests:** 10 new unit tests for `editor_pos` parsing and round-trip serialization (including label quoting and fractional position rounding); extension subscription count updated. 199/199 pass. AC-15 green; no regression to AC-1…AC-11.
+
+---
+
 ## 0.2.2 — 2026-06-18
 
 **M10 — Virtual buttons, GPIO & LEDs** *(AC-11 green — FR-CT-7…FR-CT-14)*

@@ -20,7 +20,7 @@ inspect tags → propose semver → update CHANGELOG.md → annotated tag → pu
 | M8 — Real-time audio I/O           | [docs/milestones/v2/M8.md](milestones/v2/M8.md)      | 0.2.0          | **released**    |
 | M9 — WAV file input                | [docs/milestones/v2/M9.md](milestones/v2/M9.md)      | 0.2.1          | **released**    |
 | M10 — Virtual buttons, GPIO & LEDs | [docs/milestones/v2/M10.md](milestones/v2/M10.md)    | 0.2.2          | **released**    |
-| M10b — Visual controller editor    | [docs/milestones/v2/M10b.md](milestones/v2/M10b.md)  | 0.2.3          | **in progress** |
+| M10b — Visual controller editor    | [docs/milestones/v2/M10b.md](milestones/v2/M10b.md)  | 0.2.3          | **released**    |
 | M11 — Full debug                   | [docs/milestones/v2/M11.md](milestones/v2/M11.md)    | 0.2.4          | planned         |
 | M12 — Hardware build & flash       | [docs/milestones/v2/M12.md](milestones/v2/M12.md)    | 0.2.5          | planned         |
 | M13 — Spectrum & FFT               | [docs/milestones/v2/M13.md](milestones/v2/M13.md)    | 0.2.6          | planned         |
