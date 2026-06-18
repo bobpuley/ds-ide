@@ -39,6 +39,7 @@ run_test "determinism (NFR-6)"     "test_determinism.py"
 run_test "Osc (oscillator)"        "test_osc.py"
 run_test "inout (AC-8 block-form)" "test_inout.py"
 run_test "WAV input (AC-10)"       "test_wav.py"
+run_test "buttons + LED (AC-11)"   "test_buttons.py"
 
 echo ""
 echo "Results: ${pass} passed, ${fail} failed."

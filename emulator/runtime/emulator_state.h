@@ -31,6 +31,20 @@ struct EmulatorState {
     // ADC pot values (0..1), one per channel (Daisy Seed has 12 ADC channels)
     std::atomic<float> pot_values[12];
 
+    // v2 (M10): virtual button state, indexed by Daisy pin number (0..31).
+    // Written by the IPC `button`/`buttonSnapshot` thread, read by the Switch
+    // shim's Debounce(). The stored value is the *logical* press (active_level
+    // is resolved UI-side), so Switch::Pressed() returns it directly.
+    static constexpr int kNumGpioPins = 32;
+    std::atomic<bool> button_states[kNumGpioPins];
+
+    // v2 (M10): LED output. The LED shim (SetLed / Led::Update) emits a `led`
+    // IPC message on each *change*; led_last_state holds the last emitted level
+    // per pin (-1 = none yet) so unchanged writes are suppressed. The onboard
+    // user LED maps to pin 23 (emulator convention) for hw.SetLed().
+    static constexpr int kOnboardLedPin = 23;
+    std::atomic<int8_t> led_last_state[kNumGpioPins];
+
     // v2: audio mode (simulated / realtime) and real-time audio configuration
     std::atomic<int>    audio_mode{0};           // AudioMode enum value
     std::atomic<size_t> rt_buffer_size{256};     // target buffer size for CoreAudio (FR-AU-9)
@@ -67,6 +81,8 @@ struct EmulatorState {
 
     EmulatorState() {
         for (auto& v : pot_values) v.store(0.f);
+        for (auto& b : button_states) b.store(false);
+        for (auto& l : led_last_state) l.store(-1);
     }
 };
 

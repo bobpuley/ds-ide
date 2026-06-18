@@ -42,6 +42,10 @@ public:
     // Start the audio engine with a block/non-interleaved callback (v1.1).
     void StartAudio(AudioHandle::AudioCallback cb);
 
+    // Drive the onboard user LED (M10). Maps to the declared onboard LED
+    // (gpio_pin 23) and emits an IPC `led` message on change.
+    void SetLed(bool state);
+
     // Map to the host logger.  Accepts printf-style format string.
     void PrintLine(const char* fmt, ...);
 };
