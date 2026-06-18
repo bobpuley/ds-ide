@@ -121,6 +121,26 @@ static void dispatch(const std::string& line) {
             });
         }
     }
+    else if (type == "audioMode") {
+        auto mode = json_get(line, "mode");
+        int new_mode = (mode == "realtime") ? 1 : 0;
+        {
+            std::lock_guard<std::mutex> lk(g_state.mode_mutex);
+            g_state.audio_mode.store(new_mode);
+        }
+        g_state.mode_cv.notify_all();
+    }
+    else if (type == "audioDevice") {
+        auto sr = json_get(line, "sampleRate");
+        auto bs = json_get(line, "bufferSize");
+        if (!sr.empty()) g_state.sample_rate.store(std::stof(sr));
+        if (!bs.empty()) g_state.rt_buffer_size.store(static_cast<size_t>(std::stoul(bs)));
+        // Notify audio engine of device config change
+        {
+            std::lock_guard<std::mutex> lk(g_state.mode_mutex);
+        }
+        g_state.mode_cv.notify_all();
+    }
 }
 
 // ---- Helper: send a line to the active client (must hold send_mutex) --------

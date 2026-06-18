@@ -11,7 +11,7 @@ import { debugDeploy, DAISY_DEBUG_TYPE } from './commands/debug-deploy';
 import { parseControllerYaml } from './controllers/controller-config';
 import { PotStore } from './controllers/pot-store';
 import { DaisyDebugAdapterFactory } from './debug/debug-adapter';
-import { SineParams, SINE_DEFAULTS } from './webview/scope-panel';
+import { SineParams, SINE_DEFAULTS, AudioSource, AUDIO_SOURCE_DEFAULTS } from './webview/scope-panel';
 
 const FIDELITY_CAVEAT =
   'Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget.';
@@ -20,10 +20,12 @@ let manager: EmulatorManager | undefined;
 let scopePanel: ScopePanel | undefined;
 let potStore: PotStore | undefined;
 let sineState: SineParams = { ...SINE_DEFAULTS };
+let audioSourceState: AudioSource = { ...AUDIO_SOURCE_DEFAULTS };
 
 export function activate(context: vscode.ExtensionContext): void {
   potStore = new PotStore(context.workspaceState);
   sineState = context.workspaceState.get<SineParams>('ds-ide.sine') ?? { ...SINE_DEFAULTS };
+  audioSourceState = context.workspaceState.get<AudioSource>('ds-ide.audioSource') ?? { ...AUDIO_SOURCE_DEFAULTS };
   manager = new EmulatorManager();
 
   // T4.1/T4.2 — diagnostics collection shown in VS Code Problems panel
@@ -43,6 +45,13 @@ export function activate(context: vscode.ExtensionContext): void {
     (freq, amplitude) => {
       sineState = { freq, amplitude };
       void context.workspaceState.update('ds-ide.sine', sineState);
+    },
+    (source) => {
+      audioSourceState = source;
+      void context.workspaceState.update('ds-ide.audioSource', audioSourceState);
+      const mode = source.input === 'live' ? 'realtime' : 'simulated';
+      manager?.sendAudioMode(mode);
+      manager?.sendAudioDevice(source.sampleRate, source.bufferSize);
     },
   );
 
@@ -101,10 +110,13 @@ export function activate(context: vscode.ExtensionContext): void {
       statusBar.tooltip = FIDELITY_CAVEAT;
       const defs = loadControllerDefs();
       potStore!.setDefaults(defs);
-      scopePanel!.show(defs, potStore!.getSnapshot(), sineState);
+      scopePanel!.show(defs, potStore!.getSnapshot(), sineState, audioSourceState);
       await deployToEmulator(manager!);
       manager!.sendPotSnapshot(potStore!.getSnapshot());
       manager!.sendSine(sineState.freq, sineState.amplitude);
+      const mode = audioSourceState.input === 'live' ? 'realtime' : 'simulated';
+      manager!.sendAudioMode(mode);
+      manager!.sendAudioDevice(audioSourceState.sampleRate, audioSourceState.bufferSize);
     }),
     vscode.commands.registerCommand('ds-ide.start', () => startAudio(manager!)),
     vscode.commands.registerCommand('ds-ide.stop', () => stopAudio(manager!)),
@@ -116,9 +128,14 @@ export function activate(context: vscode.ExtensionContext): void {
       return debugDeploy(
         manager!,
         () => defs,
-        (d, snap) => scopePanel!.show(d, snap, sineState),
+        (d, snap) => scopePanel!.show(d, snap, sineState, audioSourceState),
         () => potStore!.getSnapshot(),
-        () => { manager!.sendSine(sineState.freq, sineState.amplitude); },
+        () => {
+          manager!.sendSine(sineState.freq, sineState.amplitude);
+          const mode = audioSourceState.input === 'live' ? 'realtime' : 'simulated';
+          manager!.sendAudioMode(mode);
+          manager!.sendAudioDevice(audioSourceState.sampleRate, audioSourceState.bufferSize);
+        },
       );
     }),
     { dispose: () => { manager?.dispose(); scopePanel?.dispose(); } },

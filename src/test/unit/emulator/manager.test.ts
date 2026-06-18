@@ -223,6 +223,50 @@ describe('EmulatorManager', () => {
     });
   });
 
+  describe('sendAudioMode()', () => {
+    it('sends audioMode:simulated IPC message', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      manager.sendAudioMode('simulated');
+      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'audioMode', mode: 'simulated' });
+    });
+
+    it('sends audioMode:realtime IPC message', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      manager.sendAudioMode('realtime');
+      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'audioMode', mode: 'realtime' });
+    });
+
+    it('is a no-op when not connected', () => {
+      manager.sendAudioMode('simulated');
+      expect(ipcClientStub.send).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('sendAudioDevice()', () => {
+    it('sends audioDevice IPC message with sampleRate and bufferSize', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      manager.sendAudioDevice(48000, 256);
+      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'audioDevice', sampleRate: 48000, bufferSize: 256 });
+    });
+
+    it('is a no-op when not connected', () => {
+      manager.sendAudioDevice(48000, 128);
+      expect(ipcClientStub.send).not.toHaveBeenCalled();
+    });
+  });
+
   describe('sendTransport()', () => {
     it('sends correct JSON for start', async () => {
       await manager.build(

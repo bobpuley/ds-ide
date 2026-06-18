@@ -156,6 +156,14 @@ export class EmulatorManager extends EventEmitter {
     this.ipcClient?.send({ type: 'potSnapshot', values });
   }
 
+  sendAudioMode(mode: 'simulated' | 'realtime'): void {
+    this.ipcClient?.send({ type: 'audioMode', mode });
+  }
+
+  sendAudioDevice(sampleRate: number, bufferSize: number): void {
+    this.ipcClient?.send({ type: 'audioDevice', sampleRate, bufferSize });
+  }
+
   get childPid(): number | undefined {
     return this.childProcess?.pid;
   }

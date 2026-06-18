@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'events';
 import * as vscode from 'vscode';
-import { ScopePanel, SINE_DEFAULTS } from '../../../webview/scope-panel';
+import { ScopePanel, SINE_DEFAULTS, AUDIO_SOURCE_DEFAULTS } from '../../../webview/scope-panel';
 import { EmulatorManager } from '../../../emulator/manager';
 import type { ControllerDef } from '../../../controllers/controller-config';
 
@@ -12,6 +12,8 @@ function makeManager() {
     sendPotSnapshot: vi.fn(),
     sendTransport: vi.fn(),
     sendSine: vi.fn(),
+    sendAudioMode: vi.fn(),
+    sendAudioDevice: vi.fn(),
   }) as unknown as EmulatorManager;
 }
 
@@ -24,6 +26,7 @@ describe('ScopePanel', () => {
   let manager: EmulatorManager;
   let potChangeSpy: ReturnType<typeof vi.fn>;
   let sineChangeSpy: ReturnType<typeof vi.fn>;
+  let audioSourceChangeSpy: ReturnType<typeof vi.fn>;
   let panel: ScopePanel;
   let webviewMock: ReturnType<typeof vi.fn>;
 
@@ -32,7 +35,8 @@ describe('ScopePanel', () => {
     manager = makeManager();
     potChangeSpy = vi.fn();
     sineChangeSpy = vi.fn();
-    panel = new ScopePanel(manager, potChangeSpy, sineChangeSpy);
+    audioSourceChangeSpy = vi.fn();
+    panel = new ScopePanel(manager, potChangeSpy, sineChangeSpy, audioSourceChangeSpy);
     webviewMock = vscode.window.createWebviewPanel as ReturnType<typeof vi.fn>;
   });
 
@@ -214,11 +218,12 @@ describe('ScopePanel', () => {
     expect(sineChangeSpy).toHaveBeenCalledWith(220, 0.8);
   });
 
-  // T6.2 — xrun display
-  it('webview HTML status update includes xruns: n/a', () => {
+  // T6.2 — xrun display (v2: shown as 0 in audio-source bar, updated dynamically)
+  it('webview HTML includes xrun display element', () => {
     panel.show(DEFS, {});
     const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(created.webview.html).toContain('xruns: n/a');
+    expect(created.webview.html).toContain('xrun-display');
+    expect(created.webview.html).toContain('xruns: 0');
   });
 
   // T6.3 — getting-started state
@@ -227,5 +232,84 @@ describe('ScopePanel', () => {
     const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(created.webview.html).toContain('getting-started');
     expect(created.webview.html).toContain('Build for Emulator');
+  });
+
+  // T8.6 / T8.7 — audio source selector
+  it('webview HTML includes audio source selector with sine/live/wav options', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('audio-source-bar');
+    expect(webview.html).toContain('value="sine"');
+    expect(webview.html).toContain('value="live"');
+    expect(webview.html).toContain('value="wav"');
+  });
+
+  it('webview HTML defaults to sine input source', () => {
+    panel.show(DEFS, {}, SINE_DEFAULTS, AUDIO_SOURCE_DEFAULTS);
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('value="sine" checked');
+  });
+
+  it('webview HTML shows live input as checked when audioSource.input is live', () => {
+    panel.show(DEFS, {}, SINE_DEFAULTS, { input: 'live', sampleRate: 48000, bufferSize: 256 });
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('value="live" checked');
+  });
+
+  it('webview HTML includes buffer size selector with 256 selected by default', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="buffer-size"');
+    expect(webview.html).toContain('<option value="256" selected>256</option>');
+  });
+
+  it('webview HTML includes latency display element', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="latency-display"');
+    expect(webview.html).toContain('latency: —');
+  });
+
+  it('calls onAudioSourceChange when audioSource message received from webview', () => {
+    panel.show(DEFS, {});
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'audioSource', input: 'live', sampleRate: 48000, bufferSize: 128 });
+    expect(audioSourceChangeSpy).toHaveBeenCalledWith({ input: 'live', sampleRate: 48000, bufferSize: 128 });
+  });
+
+  it('ignores audioSource message with missing fields', () => {
+    panel.show(DEFS, {});
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'audioSource', input: 'live' }); // missing sampleRate and bufferSize
+    expect(audioSourceChangeSpy).not.toHaveBeenCalled();
+  });
+
+  // T8.7 — xrun and latency message forwarding
+  it('forwards xrun message from manager to webview', () => {
+    panel.show(DEFS, {});
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { postMessage: ReturnType<typeof vi.fn> };
+    };
+    (manager as unknown as EventEmitter).emit('message', { type: 'xrun', count: 3 });
+    expect(created.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'xrun', count: 3 }),
+    );
+  });
+
+  it('forwards latency message from manager to webview', () => {
+    panel.show(DEFS, {});
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { postMessage: ReturnType<typeof vi.fn> };
+    };
+    (manager as unknown as EventEmitter).emit('message', { type: 'latency', measuredMs: 10.5 });
+    expect(created.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'latency', measuredMs: 10.5 }),
+    );
   });
 });
