@@ -5,6 +5,24 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.2.6 — 2026-06-18
+
+**M13 — Spectrum & FFT** *(AC-14 green — FR-VZ-1)*
+
+- **Inline radix-2 FFT (T13.1):** Cooley-Tukey radix-2 FFT implemented directly in `audio_engine.cpp` — no third-party dependency or CMake changes required.
+- **FFT compute & IPC (T13.2):** a 1024-sample Hann-windowed magnitude spectrum is computed per audio block for both the input and output channels. Emitted as a `spectrum` IPC message (`in_fft[]`, `out_fft[]`, `binHz`). Sent from both simulated and real-time clock modes. Verified by `test_spectrum.py`: sine at 440 Hz produces a peak at the correct FFT bin with SNR ≈ 220×, confirming AC-14.
+- **Spectrum view (T13.3):** a second canvas below the waveform scope draws the input (teal) and output (orange) magnitude spectra with a linear frequency axis up to 20 kHz, dB amplitude grid, and labeled frequency landmarks (1k, 2k, 5k, 10k, 20k Hz).
+- **Tests:** 4 new TS unit tests (`spectrum` canvas present; `spectrum` IPC forwarded; no crash if panel closed; `drawSpectrum` / `lastSpecIn` present in HTML). 243 total, all green. 1 new Python integration test (AC-14 FFT spike). No regression to AC-1…AC-13.
+
+**M12 — Hardware build & flash** *(partial — T12.4 pending hardware)*
+
+- **Hardware build (T12.1):** `HardwareBuildDriver` (C7) detects the `arm-none-eabi-g++` toolchain via user setting, `PATH`, and known Homebrew paths; spawns `make` in the project root; parses GCC diagnostics into VS Code Problems panel. `Daisy IDE: Build for Hardware` command registered.
+- **Toolchain detection (T12.2):** ordered probe with a clear install-hint notification if no toolchain is found. Covers FR-HW-2 / R16.
+- **DFU flash (T12.3):** `DfuFlashDriver` (C8) detects `dfu-util`; spawns `dfu-util -D <bin>` against a Daisy in bootloader mode; streams progress output to the terminal. `Daisy IDE: Flash to Hardware (DFU)` command registered. Covers FR-HW-3 / R17.
+- **T12.4 (end-to-end with real hardware):** pending physical Daisy Seed verification.
+
+---
+
 ## 0.2.4 — 2026-06-18
 
 **M11 — Full debug** *(AC-12 green — FR-DB-7…FR-DB-10)*
