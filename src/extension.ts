@@ -12,6 +12,8 @@ import { parseControllerConfig, serializeControllerConfig, ControllerConfig, Con
 import { PotStore } from './controllers/pot-store';
 import { ButtonStore } from './controllers/button-store';
 import { DaisyDebugAdapterFactory, DaisyDebugAdapterTrackerFactory } from './debug/debug-adapter';
+import { buildForHardware } from './commands/hardware-build';
+import { flashToHardware } from './commands/dfu-flash';
 import { SineParams, SINE_DEFAULTS, AudioSource, AUDIO_SOURCE_DEFAULTS, EditorSaveHandler } from './webview/scope-panel';
 
 const FIDELITY_CAVEAT =
@@ -179,6 +181,22 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('ds-ide.openControllerEditor', () => {
       const cfg = loadControllerConfig();
       scopePanel!.loadEditor(cfg);
+    }),
+    vscode.commands.registerCommand('ds-ide.buildHardware', () => {
+      const folders = vscode.workspace.workspaceFolders;
+      if (!folders?.[0]) {
+        void vscode.window.showErrorMessage('ds-ide: no workspace folder open');
+        return;
+      }
+      return buildForHardware(folders[0].uri.fsPath, diagnostics);
+    }),
+    vscode.commands.registerCommand('ds-ide.flash', () => {
+      const folders = vscode.workspace.workspaceFolders;
+      if (!folders?.[0]) {
+        void vscode.window.showErrorMessage('ds-ide: no workspace folder open');
+        return;
+      }
+      return flashToHardware(folders[0].uri.fsPath);
     }),
     vscode.commands.registerCommand('ds-ide.debug', () => {
       statusBar.text = '$(loading~spin) Daisy: deploying…';

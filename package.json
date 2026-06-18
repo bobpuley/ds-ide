@@ -44,6 +44,16 @@
         "command": "ds-ide.openControllerEditor",
         "title": "Open Controller Editor",
         "category": "Daisy IDE"
+      },
+      {
+        "command": "ds-ide.buildHardware",
+        "title": "Build for Hardware",
+        "category": "Daisy IDE"
+      },
+      {
+        "command": "ds-ide.flash",
+        "title": "Flash to Daisy Seed",
+        "category": "Daisy IDE"
       }
     ],
     "keybindings": [
