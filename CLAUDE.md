@@ -33,6 +33,13 @@ Runtime: VS Code (Visual Studio Code). Primary OS: macOS / Apple Silicon.
 Audience: developers.
 Phase: v1 complete; v2 requirements + architecture drafted (docs 01–05), implementation not yet started (M8 pending).
 
+## Daisy API knowledge — query graphify first
+The `daisy-seed-knowledge/` corpus (libDaisy docs + DaisyExamples) is indexed as a knowledge graph in `graphify-out/`. **Before answering any question about Daisy/libDaisy APIs, hardware behavior, or example patterns — and before reading raw files under `daisy-seed-knowledge/` — run `graphify query "<question>"` (Bash) first.** It returns a budgeted answer and does not load the graph into context.
+
+- **Use it when:** you need libDaisy API semantics (audio callback, ADC/`AdcChannelConfig`, GPIO, SAI/SPI, `System`), how an official example does something, or which header/class to use.
+- **Don't use it for:** this project's own source under `src/` (read those files directly — they are NOT in the graph), or general C++/CMake/VS Code questions.
+- Refresh after the corpus changes: `graphify ./daisy-seed-knowledge/ --update`.
+
 ## Working rules
 1. Never make implicit assumptions — ask when something is ambiguous or incomplete
 2. One question at a time — never bundle more than 2 questions in a single turn
