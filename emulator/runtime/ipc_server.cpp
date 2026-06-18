@@ -1,5 +1,7 @@
 #include "ipc_server.h"
 #include "emulator_state.h"
+#include "session_recorder.h"
+#include "session_player.h"
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -118,8 +120,12 @@ static void dispatch(const std::string& line) {
         auto val = json_get(line, "value");
         if (!ch.empty() && !val.empty()) {
             int c = std::stoi(ch);
-            if (c >= 0 && c < 12)
-                g_state.pot_values[c].store(std::stof(val));
+            if (c >= 0 && c < 12) {
+                float v = std::stof(val);
+                g_state.pot_values[c].store(v);
+                if (g_state.recorder.active())
+                    g_state.recorder.enqueuePot(static_cast<uint8_t>(c), v);
+            }
         }
     }
     else if (type == "potSnapshot") {
@@ -133,12 +139,16 @@ static void dispatch(const std::string& line) {
         }
     }
     else if (type == "button") {
-        auto pin = json_get(line, "gpioPin");
+        auto pin     = json_get(line, "gpioPin");
         auto pressed = json_get(line, "pressed");
         if (!pin.empty()) {
             int p = std::stoi(pin);
-            if (p >= 0 && p < EmulatorState::kNumGpioPins)
-                g_state.button_states[p].store(pressed == "true");
+            if (p >= 0 && p < EmulatorState::kNumGpioPins) {
+                bool pr = (pressed == "true");
+                g_state.button_states[p].store(pr);
+                if (g_state.recorder.active())
+                    g_state.recorder.enqueueButton(static_cast<uint8_t>(p), pr);
+            }
         }
     }
     else if (type == "buttonSnapshot") {
@@ -169,6 +179,50 @@ static void dispatch(const std::string& line) {
             std::lock_guard<std::mutex> lk(g_state.mode_mutex);
         }
         g_state.mode_cv.notify_all();
+    }
+    else if (type == "recordStart") {
+        auto path = json_get(line, "path");
+        if (!path.empty()) {
+            auto sr = static_cast<uint32_t>(g_state.sample_rate.load());
+            auto bs = static_cast<uint32_t>(g_state.block_size.load());
+            std::lock_guard<std::mutex> lk(g_state.recorder_mutex);
+            g_state.recorder.start(path, sr, bs);
+        }
+    }
+    else if (type == "recordStop") {
+        std::lock_guard<std::mutex> lk(g_state.recorder_mutex);
+        g_state.recorder.stop();
+    }
+    else if (type == "replayStart") {
+        auto path = json_get(line, "path");
+        if (!path.empty()) {
+            uint32_t sr = 0, bs = 0;
+            bool ok;
+            {
+                std::lock_guard<std::mutex> lk(g_state.player_mutex);
+                g_state.player.close();
+                ok = g_state.player.open(path, sr, bs);
+            }
+            if (ok) {
+                // Ensure simulated mode and stop any active transport before replay
+                {
+                    std::lock_guard<std::mutex> lk(g_state.mode_mutex);
+                    g_state.audio_mode.store(0);  // simulated
+                }
+                g_state.mode_cv.notify_all();
+                g_state.replay_active.store(true);
+                g_state.transport_running.store(true);
+            } else {
+                emit_event("{\"type\":\"event\",\"kind\":\"replay_error\"}");
+            }
+        }
+    }
+    else if (type == "replayStop") {
+        g_state.replay_active.store(false);
+        {
+            std::lock_guard<std::mutex> lk(g_state.player_mutex);
+            g_state.player.close();
+        }
     }
     else if (type == "wavFile") {
         // {path, loop}: a non-empty path loads & activates WAV input; an empty

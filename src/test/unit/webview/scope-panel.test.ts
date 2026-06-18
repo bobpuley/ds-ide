@@ -495,4 +495,72 @@ describe('ScopePanel', () => {
     expect(webview.html).toContain('lastSpecIn');
     expect(webview.html).toContain('lastSpecOut');
   });
+
+  // T14.4 — Recording bar
+  it('webview HTML includes recording bar elements', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="recording-bar"');
+    expect(webview.html).toContain('id="rec-start-btn"');
+    expect(webview.html).toContain('id="rec-stop-btn"');
+    expect(webview.html).toContain('id="replay-start-btn"');
+  });
+
+  it('forwards recordStart command from webview to onRecordStart', () => {
+    const onRecordStart = vi.fn();
+    const p = new ScopePanel(manager, undefined, undefined, undefined, undefined, undefined, undefined, onRecordStart);
+    p.show();
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'recordStart' });
+    expect(onRecordStart).toHaveBeenCalledOnce();
+  });
+
+  it('forwards recordStop command from webview to onRecordStop', () => {
+    const onRecordStop = vi.fn();
+    const p = new ScopePanel(manager, undefined, undefined, undefined, undefined, undefined, undefined, undefined, onRecordStop);
+    p.show();
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'recordStop' });
+    expect(onRecordStop).toHaveBeenCalledOnce();
+  });
+
+  it('forwards replayStart command from webview to onReplayStart', () => {
+    const onReplayStart = vi.fn();
+    const p = new ScopePanel(manager, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, onReplayStart);
+    p.show();
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'replayStart' });
+    expect(onReplayStart).toHaveBeenCalledOnce();
+  });
+
+  it('forwards replayDone from manager to webview', () => {
+    panel.show(DEFS, {});
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { postMessage: ReturnType<typeof vi.fn> };
+    };
+    (manager as unknown as EventEmitter).emit('message', { type: 'replayDone' });
+    expect(created.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'replayDone' }),
+    );
+  });
+
+  it('notifyRecordingState posts recordingState to webview', () => {
+    panel.show(DEFS, {});
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { postMessage: ReturnType<typeof vi.fn> };
+    };
+    panel.notifyRecordingState(true, false, 'my-session.dsrec');
+    expect(created.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'recordingState', recording: true, replaying: false, fileName: 'my-session.dsrec' }),
+    );
+  });
 });
