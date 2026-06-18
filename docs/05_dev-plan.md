@@ -17,7 +17,7 @@ inspect tags → propose semver → update CHANGELOG.md → annotated tag → pu
 
 | Milestone                          | Theme                                  | Target version | Status         |
 |------------------------------------|----------------------------------------|----------------|----------------|
-| M8 — Real-time audio I/O           | Live input + speaker output            | 0.2.0          | planned        |
+| M8 — Real-time audio I/O           | Live input + speaker output            | 0.2.0          | in progress    |
 | M9 — WAV file input                | File-based audio source                | 0.2.1          | planned        |
 | M10 — Virtual buttons, GPIO & LEDs | Controls + outputs; scope review first | 0.2.2          | needs review   |
 | M10b — Visual controller editor    | Drag-and-drop panel + pin wiring       | 0.2.3          | planned        |

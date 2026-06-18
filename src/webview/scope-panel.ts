@@ -13,25 +13,44 @@ export interface SineParams {
   amplitude: number;
 }
 
+export type AudioInputSource = 'sine' | 'live' | 'wav';
+
+export interface AudioSource {
+  input: AudioInputSource;
+  sampleRate: number;
+  bufferSize: number;
+}
+
+export const AUDIO_SOURCE_DEFAULTS: AudioSource = {
+  input: 'sine',
+  sampleRate: 48000,
+  bufferSize: 256,
+};
+
 export type PotChangeHandler = (channel: number, value: number) => void;
 export type SineChangeHandler = (freq: number, amplitude: number) => void;
+export type AudioSourceChangeHandler = (source: AudioSource) => void;
 
 export class ScopePanel {
   private panel: vscode.WebviewPanel | null = null;
   private defs: ControllerDef[] = [];
   private initialValues: Record<number, number> = {};
   private sineParams: SineParams = { ...SINE_DEFAULTS };
+  private audioSource: AudioSource = { ...AUDIO_SOURCE_DEFAULTS };
   private msgDisposable: vscode.Disposable | null = null;
 
   constructor(
     private readonly manager: EmulatorManager,
     private readonly onPotChange?: PotChangeHandler,
     private readonly onSineChange?: SineChangeHandler,
+    private readonly onAudioSourceChange?: AudioSourceChangeHandler,
   ) {
     manager.on('message', (msg: IpcMessage) => {
       if (msg['type'] === 'scope') this.postScope(msg);
       if (msg['type'] === 'status') this.postStatus(msg);
       if (msg['type'] === 'event') this.postEvent(msg);
+      if (msg['type'] === 'xrun') this.postXrun(msg);
+      if (msg['type'] === 'latency') this.postLatency(msg);
     });
   }
 
@@ -39,14 +58,16 @@ export class ScopePanel {
     defs: ControllerDef[] = [],
     initialValues: Record<number, number> = {},
     sineParams: SineParams = { ...SINE_DEFAULTS },
+    audioSource: AudioSource = { ...AUDIO_SOURCE_DEFAULTS },
   ): void {
     this.defs = defs;
     this.initialValues = initialValues;
     this.sineParams = sineParams;
+    this.audioSource = audioSource;
 
     if (this.panel) {
       this.panel.reveal(vscode.ViewColumn.Two);
-      this.panel.webview.html = buildHtml(this.defs, this.initialValues, this.sineParams);
+      this.panel.webview.html = buildHtml(this.defs, this.initialValues, this.sineParams, this.audioSource);
       return;
     }
 
@@ -56,7 +77,7 @@ export class ScopePanel {
       vscode.ViewColumn.Two,
       { enableScripts: true, retainContextWhenHidden: true },
     );
-    this.panel.webview.html = buildHtml(this.defs, this.initialValues, this.sineParams);
+    this.panel.webview.html = buildHtml(this.defs, this.initialValues, this.sineParams, this.audioSource);
 
     this.msgDisposable = this.panel.webview.onDidReceiveMessage((msg: unknown) => {
       if (!msg || typeof msg !== 'object') return;
@@ -69,6 +90,15 @@ export class ScopePanel {
         this.sineParams = { freq: m['freq'], amplitude: m['amplitude'] };
         this.manager.sendSine(m['freq'], m['amplitude']);
         this.onSineChange?.(m['freq'], m['amplitude']);
+      }
+      if (m['command'] === 'audioSource') {
+        const input = m['input'] as AudioInputSource;
+        const sampleRate = m['sampleRate'] as number;
+        const bufferSize = m['bufferSize'] as number;
+        if (input && sampleRate && bufferSize) {
+          this.audioSource = { input, sampleRate, bufferSize };
+          this.onAudioSourceChange?.(this.audioSource);
+        }
       }
     });
 
@@ -96,6 +126,14 @@ export class ScopePanel {
 
   private postEvent(msg: IpcMessage): void {
     this.panel?.webview.postMessage({ command: 'event', kind: msg['kind'] });
+  }
+
+  private postXrun(msg: IpcMessage): void {
+    this.panel?.webview.postMessage({ command: 'xrun', count: msg['count'] });
+  }
+
+  private postLatency(msg: IpcMessage): void {
+    this.panel?.webview.postMessage({ command: 'latency', measuredMs: msg['measuredMs'] });
   }
 }
 
@@ -134,13 +172,46 @@ function buildSineControlsHtml(sine: SineParams): string {
   </div>`;
 }
 
+function buildAudioSourceHtml(source: AudioSource): string {
+  const isSine = source.input === 'sine';
+  const isLive = source.input === 'live';
+  const isWav  = source.input === 'wav';
+  const bufSizes = [64, 128, 256, 512];
+  const bufOptions = bufSizes.map(s =>
+    `<option value="${s}" ${s === source.bufferSize ? 'selected' : ''}>${s}</option>`
+  ).join('');
+  return `<div id="audio-source-bar">
+    <span class="source-label">Input:</span>
+    <label class="source-option">
+      <input type="radio" name="audio-input" value="sine" ${isSine ? 'checked' : ''}/> Sine
+    </label>
+    <label class="source-option">
+      <input type="radio" name="audio-input" value="live" ${isLive ? 'checked' : ''}/> Live (mic)
+    </label>
+    <label class="source-option source-disabled" title="WAV file input — available in M9">
+      <input type="radio" name="audio-input" value="wav" ${isWav ? 'checked' : ''} disabled/> WAV <span class="coming-soon">(M9)</span>
+    </label>
+    <span class="source-sep">|</span>
+    <label class="source-field">
+      <span>Buffer</span>
+      <select id="buffer-size">${bufOptions}</select>
+      <span>samples</span>
+    </label>
+    <span class="source-sep">|</span>
+    <span id="latency-display" class="latency-text">latency: —</span>
+    <span class="source-sep">|</span>
+    <span id="xrun-display" class="xrun-text">xruns: 0</span>
+  </div>`;
+}
+
 function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>, sine: SineParams): string {
+function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>, sine: SineParams, source: AudioSource): string {
   const controllersHtml = buildControllersHtml(defs, initialValues);
   const sineHtml = buildSineControlsHtml(sine);
+  const audioSourceHtml = buildAudioSourceHtml(source);
   return /* html */`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -160,6 +231,18 @@ function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>,
     .dot-out { background: #ce9178; }
     #events { padding: 3px 12px; min-height: 22px; background: #252526; border-bottom: 1px solid #3c3c3c; font-size: 11px; color: #f48771; }
     canvas { flex: 1; display: block; width: 100%; }
+    #audio-source-bar { padding: 6px 12px; background: #252526; border-top: 1px solid #3c3c3c; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .source-label { color: #9cdcfe; }
+    .source-option { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+    .source-option input[type="radio"] { cursor: pointer; accent-color: #4ec9b0; }
+    .source-disabled { opacity: 0.45; cursor: not-allowed; }
+    .coming-soon { font-size: 10px; color: #6a6a6a; }
+    .source-sep { color: #3c3c3c; user-select: none; }
+    .source-field { display: flex; align-items: center; gap: 6px; }
+    .source-field select { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 2px 4px; font-family: monospace; cursor: pointer; }
+    .latency-text { color: #b5cea8; }
+    .xrun-text { color: #b5cea8; }
+    .xrun-text.xrun-warning { color: #f48771; }
     #sine-controls { padding: 6px 12px; background: #252526; border-top: 1px solid #3c3c3c; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
     .sine-label { color: #9cdcfe; }
     .sine-field { display: flex; align-items: center; gap: 6px; }
@@ -195,6 +278,7 @@ function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>,
     </ol>
     <div style="margin-top:8px;font-size:11px">Use <code>Deploy and Debug</code> to attach breakpoints.</div>
   </div>
+  ${audioSourceHtml}
   ${sineHtml}
   ${controllersHtml}
   <script>
@@ -207,15 +291,20 @@ function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>,
     const sineFreqEl = document.getElementById('sine-freq');
     const sineAmpEl  = document.getElementById('sine-amp');
     const sineAmpValEl = document.getElementById('sine-amp-val');
+    const bufferSizeEl = document.getElementById('buffer-size');
+    const latencyEl = document.getElementById('latency-display');
+    const xrunEl = document.getElementById('xrun-display');
 
     let lastIn = [], lastOut = [];
     const activeEvents = new Set();
     let hasStatus = false;
+    let xrunCount = 0;
 
     function showScope() {
       if (!hasStatus) return;
       canvas.style.display = 'block';
       gettingStarted.style.display = 'none';
+      resize();
     }
 
     function resize() {
@@ -265,11 +354,24 @@ function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>,
       }
     }
 
+    function sendAudioSource() {
+      const input = document.querySelector('input[name="audio-input"]:checked')?.value || 'sine';
+      const bufferSize = parseInt(bufferSizeEl.value, 10);
+      const sampleRate = 48000;
+      vscode.postMessage({ command: 'audioSource', input, sampleRate, bufferSize });
+    }
+
     sineFreqEl.addEventListener('change', sendSine);
     sineAmpEl.addEventListener('input', () => {
       sineAmpValEl.textContent = parseFloat(sineAmpEl.value).toFixed(2);
       sendSine();
     });
+
+    // Audio source selector
+    document.querySelectorAll('input[name="audio-input"]').forEach(radio => {
+      radio.addEventListener('change', sendAudioSource);
+    });
+    bufferSizeEl.addEventListener('change', sendAudioSource);
 
     // Pot slider wiring
     document.querySelectorAll('.pot-slider').forEach(slider => {
@@ -294,14 +396,34 @@ function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>,
         hasStatus = true;
         showScope();
         const r = msg.running ? '▶ Running' : '■ Stopped';
-        statusEl.textContent = r + '  |  ' + msg.sampleRate + ' Hz  |  block ' + msg.blockSize + '  |  xruns: n/a';
+        statusEl.textContent = r + '  |  ' + msg.sampleRate + ' Hz  |  block ' + msg.blockSize + '  |  xruns: ' + xrunCount;
         if (!msg.running) {
           activeEvents.clear();
           eventsEl.textContent = '';
         }
       } else if (msg.command === 'event') {
+        if (msg.kind === 'realtime_unavailable') {
+          eventsEl.textContent = '⚠ Live input unavailable — check microphone permission. Falling back to sine.';
+          // Uncheck "live", re-check "sine"
+          const sineRadio = document.querySelector('input[name="audio-input"][value="sine"]');
+          const liveRadio = document.querySelector('input[name="audio-input"][value="live"]');
+          if (sineRadio) sineRadio.checked = true;
+          if (liveRadio) liveRadio.checked = false;
+          return;
+        }
         activeEvents.add(msg.kind.toUpperCase());
         eventsEl.textContent = [...activeEvents].map(k => '⚠ ' + k).join('  ');
+      } else if (msg.command === 'xrun') {
+        xrunCount = msg.count || 0;
+        xrunEl.textContent = 'xruns: ' + xrunCount;
+        xrunEl.className = xrunCount > 0 ? 'xrun-text xrun-warning' : 'xrun-text';
+        // Also update status text xrun count if shown
+        if (hasStatus) {
+          statusEl.textContent = statusEl.textContent.replace(/xruns: \d+/, 'xruns: ' + xrunCount);
+        }
+      } else if (msg.command === 'latency') {
+        const ms = msg.measuredMs;
+        latencyEl.textContent = 'latency: ' + (ms ? ms.toFixed(1) + ' ms' : '—');
       }
     });
   </script>

@@ -9,6 +9,9 @@
 
 namespace daisy_emu {
 
+// Clock mode: simulated = v1 sleep-paced loop; realtime = CoreAudio OS callback.
+enum class AudioMode { Simulated = 0, Realtime = 1 };
+
 struct EmulatorState {
     // Audio configuration — set via IPC config message or shim calls
     std::atomic<float>  sample_rate{48000.f};
@@ -24,6 +27,15 @@ struct EmulatorState {
 
     // ADC pot values (0..1), one per channel (Daisy Seed has 12 ADC channels)
     std::atomic<float> pot_values[12];
+
+    // v2: audio mode (simulated / realtime) and real-time audio configuration
+    std::atomic<int>    audio_mode{0};           // AudioMode enum value
+    std::atomic<size_t> rt_buffer_size{256};     // target buffer size for CoreAudio (FR-AU-9)
+    std::atomic<uint32_t> xrun_count{0};         // incremented by CoreAudio on deadline miss
+
+    // Audio mode change notification — audio engine waits on this when in realtime mode.
+    std::mutex              mode_mutex;
+    std::condition_variable mode_cv;
 
     // Audio callbacks — exactly one is set by shim StartAudio(), read by audio engine.
     // Interleaved form (v1.0): InterleavingAudioCallback — flat L/R array.

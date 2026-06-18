@@ -32,6 +32,7 @@ set(SHIM_SRC
 set(RUNTIME_SRC
     "${CMAKE_SOURCE_DIR}/runtime/main.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/audio_engine.cpp"
+    "${CMAKE_SOURCE_DIR}/runtime/core_audio_device.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/ipc_server.cpp"
 )
 
@@ -91,3 +92,10 @@ target_compile_options(effect_emu PRIVATE
 
 find_package(Threads REQUIRED)
 target_link_libraries(effect_emu PRIVATE Threads::Threads m)
+
+# CoreAudio + AudioToolbox for real-time audio I/O (macOS only)
+if(APPLE)
+    find_library(COREAUDIO_LIB CoreAudio REQUIRED)
+    find_library(AUDIOTOOLBOX_LIB AudioToolbox REQUIRED)
+    target_link_libraries(effect_emu PRIVATE ${COREAUDIO_LIB} ${AUDIOTOOLBOX_LIB})
+endif()
