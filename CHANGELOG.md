@@ -5,6 +5,19 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.2.1 — 2026-06-18
+
+**M9 — WAV file input** *(AC-10 green — FR-AU-6, FR-AU-7)*
+
+- **WAV reader (C4):** new self-contained `wav_reader.h/cpp` — a RIFF/WAVE parser decoding 8/16/24/32-bit integer PCM and 32-bit IEEE float, mono or multi-channel, normalized to float. No new dependency (per 04 §2.3 / CR-7).
+- **WAV playback into the simulated clock (C4):** `wav_fill_stereo_block()` renders interleaved-stereo blocks from the loaded file — linear resampling to the engine rate, mono→stereo duplication, and loop / one-shot handling (silence past end). The simulated loop feeds WAV into the input buffer when WAV input is active, otherwise the sine generator (unchanged).
+- **IPC `wavFile` message:** `{path, loop}` dispatch in `ipc_server` loads and activates WAV input; an empty path deactivates it (runtime reverts to sine); a load failure emits a `wav_error` event. `EmulatorManager.sendWavFile()` added on the extension side.
+- **Scope panel (C2):** WAV input radio enabled; `Choose WAV…` button (native open dialog driven by the extension), chosen-file label, and a loop toggle. The selection persists across re-deploys; `wav_error` surfaces a clear message in the panel.
+- **Audio source mode:** sine/WAV run in simulated-clock mode (scope/regression source — no host-speaker output by design; speakers remain the realtime/live-input path from M8).
+- **Tests:** new `tests/wav-reader/` C++ unit suite (parser + playback: resampling, loop-wrap, one-shot silence, mono dup); `tests/runtime/test_wav.py` integration test (AC-10 — WAV → bypass → output scope matches, with stereo L/R mapping, then reverts to sine). 155 unit tests across 12 files (9 new); all pass. 5 Python runtime integration tests pass (AC-1…AC-9 no regression). AC-10 green.
+
+---
+
 ## 0.2.0 — 2026-06-18
 
 **M8 — Real-time audio I/O** *(AC-9 green — FR-AU-5, FR-AU-7, FR-AU-8, FR-AU-9, NFR-11, NFR-12)*
