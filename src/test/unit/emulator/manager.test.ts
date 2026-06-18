@@ -267,6 +267,33 @@ describe('EmulatorManager', () => {
     });
   });
 
+  describe('sendWavFile()', () => {
+    it('sends wavFile IPC message with path and loop', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      manager.sendWavFile('/tmp/sample.wav', true);
+      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'wavFile', path: '/tmp/sample.wav', loop: true });
+    });
+
+    it('sends an empty path to deactivate WAV input', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      manager.sendWavFile('', false);
+      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'wavFile', path: '', loop: false });
+    });
+
+    it('is a no-op when not connected', () => {
+      manager.sendWavFile('/tmp/x.wav', true);
+      expect(ipcClientStub.send).not.toHaveBeenCalled();
+    });
+  });
+
   describe('sendTransport()', () => {
     it('sends correct JSON for start', async () => {
       await manager.build(

@@ -2,10 +2,13 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <string>
 #include "daisy/audio_handle.h"
+#include "wav_reader.h"
 
 namespace daisy_emu {
 
@@ -32,6 +35,17 @@ struct EmulatorState {
     std::atomic<int>    audio_mode{0};           // AudioMode enum value
     std::atomic<size_t> rt_buffer_size{256};     // target buffer size for CoreAudio (FR-AU-9)
     std::atomic<uint32_t> xrun_count{0};         // incremented by CoreAudio on deadline miss
+
+    // v2 (M9): WAV file input. When wav_active is true, the simulated-clock loop
+    // feeds wav_data into the input buffer instead of the sine generator.
+    // wav_data is published under wav_mutex by the IPC thread; the audio engine
+    // copies the shared_ptr per block. wav_generation bumps on each (un)load so
+    // the engine can reset its playhead.
+    std::atomic<bool>     wav_active{false};
+    std::atomic<bool>     wav_loop{false};
+    std::atomic<uint64_t> wav_generation{0};
+    std::mutex                       wav_mutex;
+    std::shared_ptr<const WavData>   wav_data;
 
     // Audio mode change notification — audio engine waits on this when in realtime mode.
     std::mutex              mode_mutex;

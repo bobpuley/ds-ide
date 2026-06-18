@@ -27,6 +27,7 @@ describe('ScopePanel', () => {
   let potChangeSpy: ReturnType<typeof vi.fn>;
   let sineChangeSpy: ReturnType<typeof vi.fn>;
   let audioSourceChangeSpy: ReturnType<typeof vi.fn>;
+  let pickWavSpy: ReturnType<typeof vi.fn>;
   let panel: ScopePanel;
   let webviewMock: ReturnType<typeof vi.fn>;
 
@@ -36,7 +37,8 @@ describe('ScopePanel', () => {
     potChangeSpy = vi.fn();
     sineChangeSpy = vi.fn();
     audioSourceChangeSpy = vi.fn();
-    panel = new ScopePanel(manager, potChangeSpy, sineChangeSpy, audioSourceChangeSpy);
+    pickWavSpy = vi.fn();
+    panel = new ScopePanel(manager, potChangeSpy, sineChangeSpy, audioSourceChangeSpy, pickWavSpy);
     webviewMock = vscode.window.createWebviewPanel as ReturnType<typeof vi.fn>;
   });
 
@@ -277,7 +279,9 @@ describe('ScopePanel', () => {
     };
     const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
     handler({ command: 'audioSource', input: 'live', sampleRate: 48000, bufferSize: 128 });
-    expect(audioSourceChangeSpy).toHaveBeenCalledWith({ input: 'live', sampleRate: 48000, bufferSize: 128 });
+    expect(audioSourceChangeSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ input: 'live', sampleRate: 48000, bufferSize: 128 }),
+    );
   });
 
   it('ignores audioSource message with missing fields', () => {
@@ -310,6 +314,66 @@ describe('ScopePanel', () => {
     (manager as unknown as EventEmitter).emit('message', { type: 'latency', measuredMs: 10.5 });
     expect(created.webview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ command: 'latency', measuredMs: 10.5 }),
+    );
+  });
+
+  // T9.4 — WAV file input UI
+  it('webview HTML enables the WAV radio (no longer disabled)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('value="wav"');
+    expect(webview.html).not.toContain('value="wav" checked disabled');
+    expect(webview.html).not.toContain('(M9)');
+  });
+
+  it('webview HTML includes WAV file controls (choose button + loop toggle)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="wav-choose"');
+    expect(webview.html).toContain('id="wav-loop"');
+    expect(webview.html).toContain('id="wav-name"');
+  });
+
+  it('webview HTML reflects the chosen WAV file name and loop state', () => {
+    panel.show(DEFS, {}, SINE_DEFAULTS, {
+      input: 'wav', sampleRate: 48000, bufferSize: 256, wavLoop: true, wavPath: '/tmp/audio/drums.wav',
+    });
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('value="wav" checked');
+    expect(webview.html).toContain('drums.wav');
+    expect(webview.html).toContain('id="wav-loop" checked');
+  });
+
+  it('forwards pickWav command from webview to onPickWav', () => {
+    panel.show(DEFS, {});
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'pickWav' });
+    expect(pickWavSpy).toHaveBeenCalledOnce();
+  });
+
+  it('includes wavLoop in the audioSource change payload', () => {
+    panel.show(DEFS, {});
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'audioSource', input: 'wav', sampleRate: 48000, bufferSize: 256, wavLoop: false });
+    expect(audioSourceChangeSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ input: 'wav', wavLoop: false }),
+    );
+  });
+
+  it('notifyWavSelected posts the chosen file name to the webview', () => {
+    panel.show(DEFS, {});
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { postMessage: ReturnType<typeof vi.fn> };
+    };
+    panel.notifyWavSelected('drums.wav', '/tmp/audio/drums.wav');
+    expect(created.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'wavSelected', name: 'drums.wav' }),
     );
   });
 });

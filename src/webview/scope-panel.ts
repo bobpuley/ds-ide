@@ -19,17 +19,24 @@ export interface AudioSource {
   input: AudioInputSource;
   sampleRate: number;
   bufferSize: number;
+  // M9: WAV input. wavPath is the chosen file (empty = none); wavLoop toggles
+  // repeating vs one-shot playback.
+  wavLoop: boolean;
+  wavPath?: string;
 }
 
 export const AUDIO_SOURCE_DEFAULTS: AudioSource = {
   input: 'sine',
   sampleRate: 48000,
   bufferSize: 256,
+  wavLoop: true,
+  wavPath: '',
 };
 
 export type PotChangeHandler = (channel: number, value: number) => void;
 export type SineChangeHandler = (freq: number, amplitude: number) => void;
 export type AudioSourceChangeHandler = (source: AudioSource) => void;
+export type PickWavHandler = () => void;
 
 export class ScopePanel {
   private panel: vscode.WebviewPanel | null = null;
@@ -44,6 +51,7 @@ export class ScopePanel {
     private readonly onPotChange?: PotChangeHandler,
     private readonly onSineChange?: SineChangeHandler,
     private readonly onAudioSourceChange?: AudioSourceChangeHandler,
+    private readonly onPickWav?: PickWavHandler,
   ) {
     manager.on('message', (msg: IpcMessage) => {
       if (msg['type'] === 'scope') this.postScope(msg);
@@ -96,9 +104,18 @@ export class ScopePanel {
         const sampleRate = m['sampleRate'] as number;
         const bufferSize = m['bufferSize'] as number;
         if (input && sampleRate && bufferSize) {
-          this.audioSource = { input, sampleRate, bufferSize };
+          this.audioSource = {
+            ...this.audioSource,
+            input,
+            sampleRate,
+            bufferSize,
+            wavLoop: m['wavLoop'] === true,
+          };
           this.onAudioSourceChange?.(this.audioSource);
         }
+      }
+      if (m['command'] === 'pickWav') {
+        this.onPickWav?.();
       }
     });
 
@@ -107,6 +124,13 @@ export class ScopePanel {
       this.msgDisposable = null;
       this.panel = null;
     });
+  }
+
+  // Called by the extension after the user picks a WAV file via the native open
+  // dialog: records the path and updates the webview (filename label + selection).
+  notifyWavSelected(fileName: string, wavPath: string): void {
+    this.audioSource = { ...this.audioSource, input: 'wav', wavPath };
+    this.panel?.webview.postMessage({ command: 'wavSelected', name: fileName });
   }
 
   dispose(): void {
@@ -180,6 +204,7 @@ function buildAudioSourceHtml(source: AudioSource): string {
   const bufOptions = bufSizes.map(s =>
     `<option value="${s}" ${s === source.bufferSize ? 'selected' : ''}>${s}</option>`
   ).join('');
+  const wavName = source.wavPath ? baseName(source.wavPath) : '';
   return `<div id="audio-source-bar">
     <span class="source-label">Input:</span>
     <label class="source-option">
@@ -188,8 +213,8 @@ function buildAudioSourceHtml(source: AudioSource): string {
     <label class="source-option">
       <input type="radio" name="audio-input" value="live" ${isLive ? 'checked' : ''}/> Live (mic)
     </label>
-    <label class="source-option source-disabled" title="WAV file input — available in M9">
-      <input type="radio" name="audio-input" value="wav" ${isWav ? 'checked' : ''} disabled/> WAV <span class="coming-soon">(M9)</span>
+    <label class="source-option">
+      <input type="radio" name="audio-input" value="wav" ${isWav ? 'checked' : ''}/> WAV
     </label>
     <span class="source-sep">|</span>
     <label class="source-field">
@@ -201,7 +226,20 @@ function buildAudioSourceHtml(source: AudioSource): string {
     <span id="latency-display" class="latency-text">latency: —</span>
     <span class="source-sep">|</span>
     <span id="xrun-display" class="xrun-text">xruns: 0</span>
+  </div>
+  <div id="wav-controls">
+    <span class="wav-label">WAV file:</span>
+    <button id="wav-choose" type="button">Choose WAV…</button>
+    <span id="wav-name" class="wav-name">${wavName ? escHtml(wavName) : 'no file selected'}</span>
+    <label class="wav-loop">
+      <input type="checkbox" id="wav-loop" ${source.wavLoop ? 'checked' : ''}/> Loop
+    </label>
   </div>`;
+}
+
+function baseName(p: string): string {
+  const parts = p.split(/[\\/]/);
+  return parts[parts.length - 1] || p;
 }
 
 function escHtml(s: string): string {
@@ -235,14 +273,19 @@ function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>,
     .source-label { color: #9cdcfe; }
     .source-option { display: flex; align-items: center; gap: 4px; cursor: pointer; }
     .source-option input[type="radio"] { cursor: pointer; accent-color: #4ec9b0; }
-    .source-disabled { opacity: 0.45; cursor: not-allowed; }
-    .coming-soon { font-size: 10px; color: #6a6a6a; }
     .source-sep { color: #3c3c3c; user-select: none; }
     .source-field { display: flex; align-items: center; gap: 6px; }
     .source-field select { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 2px 4px; font-family: monospace; cursor: pointer; }
     .latency-text { color: #b5cea8; }
     .xrun-text { color: #b5cea8; }
     .xrun-text.xrun-warning { color: #f48771; }
+    #wav-controls { padding: 6px 12px; background: #252526; border-top: 1px solid #3c3c3c; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .wav-label { color: #9cdcfe; }
+    #wav-choose { background: #0e639c; color: #fff; border: none; padding: 3px 10px; font-family: monospace; cursor: pointer; border-radius: 2px; }
+    #wav-choose:hover { background: #1177bb; }
+    .wav-name { color: #b5cea8; font-style: italic; }
+    .wav-loop { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+    .wav-loop input { cursor: pointer; accent-color: #4ec9b0; }
     #sine-controls { padding: 6px 12px; background: #252526; border-top: 1px solid #3c3c3c; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
     .sine-label { color: #9cdcfe; }
     .sine-field { display: flex; align-items: center; gap: 6px; }
@@ -294,6 +337,9 @@ function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>,
     const bufferSizeEl = document.getElementById('buffer-size');
     const latencyEl = document.getElementById('latency-display');
     const xrunEl = document.getElementById('xrun-display');
+    const wavChooseEl = document.getElementById('wav-choose');
+    const wavNameEl = document.getElementById('wav-name');
+    const wavLoopEl = document.getElementById('wav-loop');
 
     let lastIn = [], lastOut = [];
     const activeEvents = new Set();
@@ -358,7 +404,8 @@ function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>,
       const input = document.querySelector('input[name="audio-input"]:checked')?.value || 'sine';
       const bufferSize = parseInt(bufferSizeEl.value, 10);
       const sampleRate = 48000;
-      vscode.postMessage({ command: 'audioSource', input, sampleRate, bufferSize });
+      const wavLoop = !!(wavLoopEl && wavLoopEl.checked);
+      vscode.postMessage({ command: 'audioSource', input, sampleRate, bufferSize, wavLoop });
     }
 
     sineFreqEl.addEventListener('change', sendSine);
@@ -372,6 +419,10 @@ function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>,
       radio.addEventListener('change', sendAudioSource);
     });
     bufferSizeEl.addEventListener('change', sendAudioSource);
+
+    // WAV controls
+    wavChooseEl?.addEventListener('click', () => vscode.postMessage({ command: 'pickWav' }));
+    wavLoopEl?.addEventListener('change', sendAudioSource);
 
     // Pot slider wiring
     document.querySelectorAll('.pot-slider').forEach(slider => {
@@ -401,6 +452,10 @@ function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>,
           activeEvents.clear();
           eventsEl.textContent = '';
         }
+      } else if (msg.command === 'wavSelected') {
+        if (wavNameEl) wavNameEl.textContent = msg.name || 'no file selected';
+        const wavRadio = document.querySelector('input[name="audio-input"][value="wav"]');
+        if (wavRadio) wavRadio.checked = true;
       } else if (msg.command === 'event') {
         if (msg.kind === 'realtime_unavailable') {
           eventsEl.textContent = '⚠ Live input unavailable — check microphone permission. Falling back to sine.';
@@ -409,6 +464,10 @@ function buildHtml(defs: ControllerDef[], initialValues: Record<number, number>,
           const liveRadio = document.querySelector('input[name="audio-input"][value="live"]');
           if (sineRadio) sineRadio.checked = true;
           if (liveRadio) liveRadio.checked = false;
+          return;
+        }
+        if (msg.kind === 'wav_error') {
+          eventsEl.textContent = '⚠ Could not load WAV file — unsupported format or unreadable.';
           return;
         }
         activeEvents.add(msg.kind.toUpperCase());

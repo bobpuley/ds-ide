@@ -25,7 +25,10 @@ let audioSourceState: AudioSource = { ...AUDIO_SOURCE_DEFAULTS };
 export function activate(context: vscode.ExtensionContext): void {
   potStore = new PotStore(context.workspaceState);
   sineState = context.workspaceState.get<SineParams>('ds-ide.sine') ?? { ...SINE_DEFAULTS };
-  audioSourceState = context.workspaceState.get<AudioSource>('ds-ide.audioSource') ?? { ...AUDIO_SOURCE_DEFAULTS };
+  audioSourceState = {
+    ...AUDIO_SOURCE_DEFAULTS,
+    ...context.workspaceState.get<Partial<AudioSource>>('ds-ide.audioSource'),
+  };
   manager = new EmulatorManager();
 
   // T4.1/T4.2 — diagnostics collection shown in VS Code Problems panel
@@ -47,11 +50,35 @@ export function activate(context: vscode.ExtensionContext): void {
       void context.workspaceState.update('ds-ide.sine', sineState);
     },
     (source) => {
-      audioSourceState = source;
+      audioSourceState = { ...audioSourceState, ...source };
       void context.workspaceState.update('ds-ide.audioSource', audioSourceState);
       const mode = source.input === 'live' ? 'realtime' : 'simulated';
       manager?.sendAudioMode(mode);
       manager?.sendAudioDevice(source.sampleRate, source.bufferSize);
+      // M9: activate WAV input when selected (with a chosen file); otherwise
+      // deactivate it so the runtime reverts to the sine generator.
+      if (source.input === 'wav' && audioSourceState.wavPath) {
+        manager?.sendWavFile(audioSourceState.wavPath, audioSourceState.wavLoop);
+      } else {
+        manager?.sendWavFile('', audioSourceState.wavLoop);
+      }
+    },
+    async () => {
+      // onPickWav: open the native file dialog and route the chosen WAV to the runtime.
+      const picked = await vscode.window.showOpenDialog({
+        canSelectMany: false,
+        openLabel: 'Use as input',
+        filters: { 'WAV audio': ['wav'] },
+      });
+      const uri = picked?.[0];
+      if (!uri) return;
+      const wavPath = uri.fsPath;
+      audioSourceState = { ...audioSourceState, input: 'wav', wavPath };
+      void context.workspaceState.update('ds-ide.audioSource', audioSourceState);
+      manager?.sendAudioMode('simulated');
+      manager?.sendAudioDevice(audioSourceState.sampleRate, audioSourceState.bufferSize);
+      manager?.sendWavFile(wavPath, audioSourceState.wavLoop);
+      scopePanel?.notifyWavSelected(path.basename(wavPath), wavPath);
     },
   );
 
@@ -117,6 +144,9 @@ export function activate(context: vscode.ExtensionContext): void {
       const mode = audioSourceState.input === 'live' ? 'realtime' : 'simulated';
       manager!.sendAudioMode(mode);
       manager!.sendAudioDevice(audioSourceState.sampleRate, audioSourceState.bufferSize);
+      if (audioSourceState.input === 'wav' && audioSourceState.wavPath) {
+        manager!.sendWavFile(audioSourceState.wavPath, audioSourceState.wavLoop);
+      }
     }),
     vscode.commands.registerCommand('ds-ide.start', () => startAudio(manager!)),
     vscode.commands.registerCommand('ds-ide.stop', () => stopAudio(manager!)),
@@ -135,6 +165,9 @@ export function activate(context: vscode.ExtensionContext): void {
           const mode = audioSourceState.input === 'live' ? 'realtime' : 'simulated';
           manager!.sendAudioMode(mode);
           manager!.sendAudioDevice(audioSourceState.sampleRate, audioSourceState.bufferSize);
+          if (audioSourceState.input === 'wav' && audioSourceState.wavPath) {
+            manager!.sendWavFile(audioSourceState.wavPath, audioSourceState.wavLoop);
+          }
         },
       );
     }),
