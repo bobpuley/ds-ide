@@ -39,6 +39,9 @@ export type AudioSourceChangeHandler = (source: AudioSource) => void;
 export type PickWavHandler = () => void;
 export type ButtonChangeHandler = (gpioPin: number, pressed: boolean) => void;
 export type EditorSaveHandler = (cfg: ControllerConfig) => void;
+export type RecordStartHandler = () => void;
+export type RecordStopHandler = () => void;
+export type ReplayStartHandler = () => void;
 
 export class ScopePanel {
   private panel: vscode.WebviewPanel | null = null;
@@ -59,6 +62,9 @@ export class ScopePanel {
     private readonly onPickWav?: PickWavHandler,
     private readonly onButtonChange?: ButtonChangeHandler,
     private readonly onEditorSave?: EditorSaveHandler,
+    private readonly onRecordStart?: RecordStartHandler,
+    private readonly onRecordStop?: RecordStopHandler,
+    private readonly onReplayStart?: ReplayStartHandler,
   ) {
     manager.on('message', (msg: IpcMessage) => {
       if (msg['type'] === 'scope') this.postScope(msg);
@@ -68,6 +74,7 @@ export class ScopePanel {
       if (msg['type'] === 'latency') this.postLatency(msg);
       if (msg['type'] === 'led') this.postLed(msg);
       if (msg['type'] === 'spectrum') this.postSpectrum(msg);
+      if (msg['type'] === 'replayDone') this.postReplayDone();
     });
   }
 
@@ -140,6 +147,9 @@ export class ScopePanel {
         const cfg = m['cfg'] as ControllerConfig | undefined;
         if (cfg) this.onEditorSave?.(cfg);
       }
+      if (m['command'] === 'recordStart') this.onRecordStart?.();
+      if (m['command'] === 'recordStop')  this.onRecordStop?.();
+      if (m['command'] === 'replayStart') this.onReplayStart?.();
     });
 
     this.panel.onDidDispose(() => {
@@ -205,6 +215,15 @@ export class ScopePanel {
       out_fft: msg['out_fft'],
       binHz: msg['binHz'],
     });
+  }
+
+  private postReplayDone(): void {
+    this.panel?.webview.postMessage({ command: 'replayDone' });
+  }
+
+  // Called by the extension after starting/stopping recording or replay.
+  notifyRecordingState(recording: boolean, replaying: boolean, fileName?: string): void {
+    this.panel?.webview.postMessage({ command: 'recordingState', recording, replaying, fileName });
   }
 
   private html(): string {
@@ -320,6 +339,16 @@ function buildAudioSourceHtml(source: AudioSource): string {
   </div>`;
 }
 
+function buildRecordingBarHtml(): string {
+  return `<div id="recording-bar">
+    <span class="rec-label">Session:</span>
+    <button id="rec-start-btn" class="rec-btn" type="button">&#9679; Record</button>
+    <button id="rec-stop-btn"  class="rec-btn" type="button" disabled>&#9632; Stop</button>
+    <button id="replay-start-btn" class="rec-btn" type="button">&#9654; Replay file&hellip;</button>
+    <span id="rec-filename" class="rec-filename"></span>
+  </div>`;
+}
+
 function baseName(p: string): string {
   const parts = p.split(/[\\/]/);
   return parts[parts.length - 1] || p;
@@ -338,6 +367,7 @@ function buildHtml(
   const audioSourceHtml = buildAudioSourceHtml(source);
   const buttonsHtml = buildButtonsHtml(buttons, initialButtons);
   const ledsHtml = buildLedsHtml(leds);
+  const recordingBarHtml = buildRecordingBarHtml();
   return /* html */`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -399,6 +429,19 @@ function buildHtml(
     .pot-label { min-width: 80px; color: #9cdcfe; }
     .pot-slider { width: 140px; cursor: pointer; }
     .pot-value { min-width: 40px; text-align: right; color: #b5cea8; }
+    #recording-bar { padding: 6px 12px; background: #252526; border-top: 1px solid #3c3c3c; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
+    .rec-label { color: #9cdcfe; }
+    .rec-btn { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 3px 10px; font-family: monospace; font-size: 12px; cursor: pointer; border-radius: 2px; }
+    .rec-btn:hover { background: #4a4a4a; }
+    .rec-btn:disabled { opacity: 0.4; cursor: default; }
+    #rec-start-btn { border-color: #c94040; color: #f48771; }
+    #rec-start-btn:hover:not(:disabled) { background: #5a1a1a; }
+    #rec-start-btn.recording { background: #c94040; color: #fff; border-color: #ff6060; animation: blink 1s step-end infinite; }
+    @keyframes blink { 50% { opacity: 0.5; } }
+    #replay-start-btn { border-color: #4ec9b0; color: #4ec9b0; }
+    #replay-start-btn:hover:not(:disabled) { background: #1a3a35; }
+    #replay-start-btn.replaying { background: #1e5a4a; color: #fff; }
+    .rec-filename { color: #b5cea8; font-style: italic; font-size: 11px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #getting-started { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #6a6a6a; padding: 32px; text-align: center; }
     #getting-started ol { text-align: left; padding-left: 20px; line-height: 2; }
     #getting-started code { background: #3c3c3c; padding: 1px 4px; border-radius: 2px; color: #9cdcfe; }
@@ -469,6 +512,7 @@ function buildHtml(
   ${controllersHtml}
   ${buttonsHtml}
   ${ledsHtml}
+  ${recordingBarHtml}
   </div><!-- #scope-content -->
   <div id="editor-wrap" style="display:none">
     <div id="editor-toolbar">
@@ -752,9 +796,46 @@ function buildHtml(
         specCanvas.width = specCanvas.clientWidth;
         specCanvas.height = specCanvas.clientHeight;
         drawSpectrum();
+      } else if (msg.command === 'recordingState') {
+        setRecordingState(!!msg.recording, !!msg.replaying, msg.fileName);
+      } else if (msg.command === 'replayDone') {
+        setRecordingState(false, false, null);
       } else if (msg.command === 'editorLoad') {
         editorLoad(msg.cfg || {});
       }
+    });
+
+    // ── Recording bar (M14) ──────────────────────────────────────────────
+    const recStartBtn   = document.getElementById('rec-start-btn');
+    const recStopBtn    = document.getElementById('rec-stop-btn');
+    const replayBtn     = document.getElementById('replay-start-btn');
+    const recFilenameEl = document.getElementById('rec-filename');
+
+    let isRecording = false;
+    let isReplaying = false;
+
+    function setRecordingState(recording, replaying, fileName) {
+      isRecording = recording;
+      isReplaying = replaying;
+      recStartBtn.disabled  = recording || replaying;
+      recStopBtn.disabled   = !recording;
+      replayBtn.disabled    = recording || replaying;
+      recStartBtn.classList.toggle('recording', recording);
+      replayBtn.classList.toggle('replaying', replaying);
+      if (fileName != null) recFilenameEl.textContent = fileName || '';
+    }
+
+    recStartBtn.addEventListener('click', () => {
+      if (isRecording || isReplaying) return;
+      vscode.postMessage({ command: 'recordStart' });
+    });
+    recStopBtn.addEventListener('click', () => {
+      if (!isRecording) return;
+      vscode.postMessage({ command: 'recordStop' });
+    });
+    replayBtn.addEventListener('click', () => {
+      if (isRecording || isReplaying) return;
+      vscode.postMessage({ command: 'replayStart' });
     });
 
     // ── Controller Editor (M10b) ──────────────────────────────────────────

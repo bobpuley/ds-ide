@@ -8,6 +8,8 @@
 #include <mutex>
 #include <string>
 #include "daisy/audio_handle.h"
+#include "session_recorder.h"
+#include "session_player.h"
 #include "wav_reader.h"
 
 namespace daisy_emu {
@@ -60,6 +62,17 @@ struct EmulatorState {
     std::atomic<uint64_t> wav_generation{0};
     std::mutex                       wav_mutex;
     std::shared_ptr<const WavData>   wav_data;
+
+    // v2 (M14): session recorder and player.
+    // recorder is driven by the audio engine (writeBlock per block) and the IPC
+    // thread (enqueuePot/enqueueButton). player is used by run_simulated as an
+    // input source when replay_active is true.
+    // Both fields are protected by recorder_mutex / player_mutex.
+    std::mutex       recorder_mutex;
+    SessionRecorder  recorder;
+    std::mutex       player_mutex;
+    SessionPlayer    player;
+    std::atomic<bool> replay_active{false};
 
     // Audio mode change notification — audio engine waits on this when in realtime mode.
     std::mutex              mode_mutex;

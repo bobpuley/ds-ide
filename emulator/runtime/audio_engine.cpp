@@ -1,6 +1,8 @@
 #include "audio_engine.h"
 #include "core_audio_device.h"
 #include "emulator_state.h"
+#include "session_player.h"
+#include "session_recorder.h"
 #include "wav_reader.h"
 #include <algorithm>
 #include <cfloat>
@@ -251,15 +253,46 @@ static void run_simulated(bool use_block,
 
     while (!g_state.shutdown.load()) {
         // Exit simulated loop if mode has changed to realtime
-        if (static_cast<AudioMode>(g_state.audio_mode.load()) != AudioMode::Simulated) return;
+        if (static_cast<AudioMode>(g_state.audio_mode.load()) != AudioMode::Simulated) {
+            // Cancel any in-progress replay when switching to realtime
+            if (g_state.replay_active.load()) {
+                g_state.replay_active.store(false);
+                std::lock_guard<std::mutex> lk(g_state.player_mutex);
+                g_state.player.close();
+            }
+            return;
+        }
 
         if (!g_state.transport_running.load()) {
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
             continue;
         }
 
-        // --- Input generation: WAV file (M9) or sine generator ---
-        if (g_state.wav_active.load()) {
+        // --- Input generation: replay (M14) / WAV file (M9) / sine ---
+        if (g_state.replay_active.load()) {
+            std::vector<ReplayEvent> events;
+            bool got_block;
+            {
+                std::lock_guard<std::mutex> lk(g_state.player_mutex);
+                got_block = g_state.player.nextBlock(in_buf.data(), block_size, events);
+            }
+            if (!got_block) {
+                // Replay finished
+                g_state.replay_active.store(false);
+                ipc_send("{\"type\":\"replayDone\"}");
+                continue;
+            }
+            // Apply events to emulator state
+            for (const auto& ev : events) {
+                if (ev.type == kRecTypePotEvent) {
+                    if (ev.channel_or_pin < 12)
+                        g_state.pot_values[ev.channel_or_pin].store(ev.value);
+                } else if (ev.type == kRecTypeButtonEvent) {
+                    if (ev.channel_or_pin < EmulatorState::kNumGpioPins)
+                        g_state.button_states[ev.channel_or_pin].store(ev.pressed != 0);
+                }
+            }
+        } else if (g_state.wav_active.load()) {
             std::shared_ptr<const WavData> wav;
             {
                 std::lock_guard<std::mutex> lk(g_state.wav_mutex);
@@ -284,6 +317,12 @@ static void run_simulated(bool use_block,
                 phase += static_cast<double>(freq) / static_cast<double>(sample_rate);
                 if (phase >= 1.0) phase -= 1.0;
             }
+        }
+
+        // Record input block (M14): flush pending events then write block.
+        if (g_state.recorder.active()) {
+            std::lock_guard<std::mutex> lk(g_state.recorder_mutex);
+            g_state.recorder.writeBlock(in_buf.data(), block_size);
         }
 
         std::fill(out_buf.begin(), out_buf.end(), 0.f);

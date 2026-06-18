@@ -15,6 +15,7 @@ import { DaisyDebugAdapterFactory, DaisyDebugAdapterTrackerFactory } from './deb
 import { buildForHardware } from './commands/hardware-build';
 import { flashToHardware } from './commands/dfu-flash';
 import { SineParams, SINE_DEFAULTS, AudioSource, AUDIO_SOURCE_DEFAULTS, EditorSaveHandler } from './webview/scope-panel';
+import * as os from 'os';
 
 const FIDELITY_CAVEAT =
   'Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget.';
@@ -25,6 +26,7 @@ let potStore: PotStore | undefined;
 let buttonStore: ButtonStore | undefined;
 let sineState: SineParams = { ...SINE_DEFAULTS };
 let audioSourceState: AudioSource = { ...AUDIO_SOURCE_DEFAULTS };
+let activeRecordPath: string | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
   potStore = new PotStore(context.workspaceState);
@@ -100,6 +102,36 @@ export function activate(context: vscode.ExtensionContext): void {
       } catch (err) {
         void vscode.window.showErrorMessage(`ds-ide: could not write controllers.yaml: ${String(err)}`);
       }
+    },
+    async () => {
+      // onRecordStart: prompt for save path and start recording.
+      const uri = await vscode.window.showSaveDialog({
+        defaultUri: vscode.Uri.file(path.join(os.homedir(), 'session.dsrec')),
+        filters: { 'Daisy Session': ['dsrec'] },
+        saveLabel: 'Start Recording',
+      });
+      if (!uri) return;
+      activeRecordPath = uri.fsPath;
+      manager?.sendRecordStart(activeRecordPath);
+      scopePanel?.notifyRecordingState(true, false, path.basename(activeRecordPath));
+    },
+    () => {
+      // onRecordStop: stop recording.
+      manager?.sendRecordStop();
+      scopePanel?.notifyRecordingState(false, false, activeRecordPath ? path.basename(activeRecordPath) : undefined);
+      activeRecordPath = undefined;
+    },
+    async () => {
+      // onReplayStart: prompt for file and start replay.
+      const picked = await vscode.window.showOpenDialog({
+        canSelectMany: false,
+        openLabel: 'Replay',
+        filters: { 'Daisy Session': ['dsrec'] },
+      });
+      const uri = picked?.[0];
+      if (!uri) return;
+      scopePanel?.notifyRecordingState(false, true, path.basename(uri.fsPath));
+      manager?.sendReplayStart(uri.fsPath);
     },
   );
 

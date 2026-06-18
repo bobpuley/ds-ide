@@ -180,6 +180,23 @@ export class EmulatorManager extends EventEmitter {
     this.ipcClient?.send({ type: 'buttonSnapshot', values });
   }
 
+  // M14: session recording
+  sendRecordStart(filePath: string): void {
+    this.ipcClient?.send({ type: 'recordStart', path: filePath });
+  }
+
+  sendRecordStop(): void {
+    this.ipcClient?.send({ type: 'recordStop' });
+  }
+
+  sendReplayStart(filePath: string): void {
+    this.ipcClient?.send({ type: 'replayStart', path: filePath });
+  }
+
+  sendReplayStop(): void {
+    this.ipcClient?.send({ type: 'replayStop' });
+  }
+
   get childPid(): number | undefined {
     return this.childProcess?.pid;
   }
