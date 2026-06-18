@@ -15,16 +15,16 @@ inspect tags → propose semver → update CHANGELOG.md → annotated tag → pu
 
 ## 0. v2 Milestone Registry
 
-| Milestone                          | Theme                                  | Target version | Status         |
-|------------------------------------|----------------------------------------|----------------|----------------|
-| M8 — Real-time audio I/O           | Live input + speaker output            | 0.2.0          | released       |
-| M9 — WAV file input                | File-based audio source                | 0.2.1          | planned        |
-| M10 — Virtual buttons, GPIO & LEDs | Controls + outputs; scope review first | 0.2.2          | needs review   |
-| M10b — Visual controller editor    | Drag-and-drop panel + pin wiring       | 0.2.3          | planned        |
-| M11 — Full debug                   | Step / variables / call stack          | 0.2.4          | planned        |
-| M12 — Hardware build & flash       | arm-none-eabi + dfu-util               | 0.2.5          | planned        |
-| M13 — Spectrum & FFT               | Frequency-domain view                  | 0.2.6          | planned        |
-| M14 — Session recording            | Record / replay / compare              | 0.2.7          | planned        |
+| Milestone                          | File                                                  | Target version | Status         |
+|------------------------------------|-------------------------------------------------------|----------------|----------------|
+| M8 — Real-time audio I/O           | [docs/milestones/v2/M8.md](milestones/v2/M8.md)       | 0.2.0          | **released**   |
+| M9 — WAV file input                | [docs/milestones/v2/M9.md](milestones/v2/M9.md)       | 0.2.1          | planned        |
+| M10 — Virtual buttons, GPIO & LEDs | [docs/milestones/v2/M10.md](milestones/v2/M10.md)     | 0.2.2          | needs review   |
+| M10b — Visual controller editor    | [docs/milestones/v2/M10b.md](milestones/v2/M10b.md)   | 0.2.3          | planned        |
+| M11 — Full debug                   | [docs/milestones/v2/M11.md](milestones/v2/M11.md)     | 0.2.4          | planned        |
+| M12 — Hardware build & flash       | [docs/milestones/v2/M12.md](milestones/v2/M12.md)     | 0.2.5          | planned        |
+| M13 — Spectrum & FFT               | [docs/milestones/v2/M13.md](milestones/v2/M13.md)     | 0.2.6          | planned        |
+| M14 — Session recording            | [docs/milestones/v2/M14.md](milestones/v2/M14.md)     | 0.2.7          | planned        |
 
 > M8 is confirmed highest-priority. Milestone ordering M8 → M9 → M10 → M10b → M11 → M12 → M13 → M14
 > is confirmed. M10 scope (controls + outputs) must be reviewed and locked before implementation begins.
@@ -69,102 +69,16 @@ M10b (visual editor) depends on M10 (yaml schema and controller panel must exist
 
 ---
 
-## 4. Milestone sketches
+## 4. Definition of Done (per milestone)
 
-### M8 — Real-time audio I/O (0.2.0)
-**Goal:** play live audio through an effect and hear the output through the host speakers.
+Per-milestone goals, tasks, and DoD live in the milestone files linked from the registry (§0):
+`docs/milestones/v2/M8.md`…`M14.md`. Each milestone closes when:
 
-Key tasks:
-- Decide host audio API (CoreAudio vs PortAudio — 04 §9 open item).
-- Implement two-mode clock in C4: real-time (OS callback) + simulated (v1 mode, kept intact).
-- Open host audio input device; feed blocks into the existing effect callback pipeline.
-- Open host audio output device; write processed blocks out.
-- Add input source selector to C2 webview (sine / live / WAV stub).
-- Add xrun counter and round-trip latency display (NFR-11, NFR-12).
-- IPC: `audioMode`, `audioDevice` messages.
-- **Mute-on-breakpoint stub:** add `audioMode: simulated` IPC switch to C4 (no UI wiring yet);
-  M11 will complete the wiring. This stub is required so M11 has something to connect to.
-- **AC-9 green.** No regression to AC-1…AC-8 (simulated mode still works).
-
-### M9 — WAV file input (0.2.1)
-**Goal:** load a WAV file as a repeating or one-shot audio source for automated regression.
-
-Key tasks:
-- WAV file reader in C4 (libsndfile or a minimal MIT WAV parser).
-- Feed WAV blocks into the block loop (simulated-clock mode).
-- IPC: `wavFile` message.
-- UI: file picker in C2, loop toggle.
-- **AC-10 green.**
-
-### M10 — Virtual buttons, GPIO & LEDs (0.2.2)
-**Goal:** press a virtual button and have the effect respond; trigger an LED from the effect and see it lit in the UI.
-
-> ⚠️ Scope must be reviewed and locked before implementation. The tasks below are a starting
-> sketch only — minimal controls (buttons) and minimal outputs (LEDs) confirmed; exact
-> IDs and yaml schema details to be finalized in the pre-implementation review.
-
-Key tasks (draft):
-- `controllers.yaml` `buttons:` + `leds:` section parser.
-- Button rendering in C2 (press/release, toggle/momentary visual state).
-- LED rendering in C2 (lit/unlit driven by runtime GPIO output state).
-- `Switch` shim in C5: `Debounce()`, `Pressed()`, `RisingEdge()`, `FallingEdge()` backed by
-  atomic button state (same pattern as ADC).
-- LED shim in C5: GPIO output write → IPC `led` message → C2 indicator.
-- IPC: `button`, `buttonSnapshot`, `led` messages.
-- Test against an example that uses `Switch` + LED (e.g. bypass with button + status LED).
-- **AC-11 green.**
-
-### M10b — Visual controller editor (0.2.3)
-**Goal:** drag controls onto a canvas, wire each to a Daisy pin, and have `controllers.yaml`
-updated automatically — so the layout doubles as a hardware wiring reference.
-
-Key tasks:
-- Editor canvas in C2 (new tab alongside scope/controller panel): drag controls from a
-  palette (pot, button, LED) onto a free-form panel.
-- Pin wiring UI: each placed control exposes an ADC channel (pots) or GPIO pin (buttons/LEDs)
-  selector; selected value written to yaml.
-- `controllers.yaml` round-trip: load → parse → render onto canvas; save → serialize
-  canvas state → write yaml.
-- Controllers palette sidebar: available control types listed; drag-to-canvas to instantiate.
-- No new IPC messages required (runtime reads yaml on deploy; editor only edits the file).
-
-### M11 — Full debug (0.2.4)
-**Goal:** step through the audio callback and inspect variables without leaving ds-ide.
-
-Key tasks:
-- Wire DAP `next`, `stepIn`, `stepOut` through C6 to VS Code debug UI (FR-DB-7).
-- Variables, watch, and call stack come from lldb-dap responses; VS Code renders them natively.
-- Implement mute-on-breakpoint: C6 sends `audioMode: simulated` on `stopped` DAP event,
-  `audioMode: realtime` on `continued` (R15 mitigation, 04 §7).
-- **AC-12 green.**
-
-### M12 — Hardware build & flash (0.2.5)
-**Goal:** build and flash to real Daisy Seed hardware without leaving ds-ide.
-
-Key tasks:
-- Toolchain detection (C7): user setting → PATH → Homebrew → install hint (FR-HW-2).
-- Hardware build command: invoke project `Makefile` via C7, parse diagnostics (FR-HW-1).
-- DFU flash command (C8): invoke `dfu-util`, stream progress, surface errors (FR-HW-3).
-- Validate on macOS Apple Silicon with a Daisy Seed connected.
-- **AC-13 green.**
-
-### M13 — Spectrum & FFT (0.2.6)
-**Goal:** add a frequency-domain view alongside the existing waveform scope.
-
-Key tasks:
-- FFT library decision (pocketfft or kiss_fft — 04 §8); integrate into C4.
-- Compute FFT per scope tap; send as `spectrum` IPC message.
-- C2 webview: draw input/output spectrum alongside waveform.
-- **AC-14 green.**
-
-### M14 — Session recording (0.2.7)
-**Goal:** record a run and replay it for regression comparison.
-
-Key tasks:
-- Session recording format design (timestamps + samples + pot/button/LED events).
-- Record mode in C4: write blocks + events to file.
-- Replay mode: feed recorded blocks into the existing pipeline (simulated-clock mode).
-- UI: record/replay controls in C2.
+1. Code + automated tests for the milestone's tasks pass.
+2. The milestone's mapped AC(s) demonstrably pass (§3).
+3. No regression to prior milestones' ACs.
+4. Human test feedback collected (project rule 7).
+5. If green: merge → inspect tags → propose semver → CHANGELOG.md → annotated tag → push.
 
 ---
 
