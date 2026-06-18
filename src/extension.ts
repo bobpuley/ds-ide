@@ -11,7 +11,7 @@ import { debugDeploy, DAISY_DEBUG_TYPE } from './commands/debug-deploy';
 import { parseControllerConfig, serializeControllerConfig, ControllerConfig, ControllerDef, ButtonDef, LedDef } from './controllers/controller-config';
 import { PotStore } from './controllers/pot-store';
 import { ButtonStore } from './controllers/button-store';
-import { DaisyDebugAdapterFactory } from './debug/debug-adapter';
+import { DaisyDebugAdapterFactory, DaisyDebugAdapterTrackerFactory } from './debug/debug-adapter';
 import { SineParams, SINE_DEFAULTS, AudioSource, AUDIO_SOURCE_DEFAULTS, EditorSaveHandler } from './webview/scope-panel';
 
 const FIDELITY_CAVEAT =
@@ -127,8 +127,9 @@ export function activate(context: vscode.ExtensionContext): void {
     );
   });
 
-  // C6: register the daisy-debug adapter (lldb-dap wrapper)
+  // C6: register the daisy-debug adapter (lldb-dap wrapper) and mute-on-breakpoint tracker
   const debugAdapterFactory = new DaisyDebugAdapterFactory();
+  const debugTrackerFactory = new DaisyDebugAdapterTrackerFactory((mode) => manager?.sendAudioMode(mode));
 
   // Update status bar on debug session lifecycle
   vscode.debug.onDidStartDebugSession((session) => {
@@ -148,6 +149,7 @@ export function activate(context: vscode.ExtensionContext): void {
     diagnostics,
     statusBar,
     vscode.debug.registerDebugAdapterDescriptorFactory(DAISY_DEBUG_TYPE, debugAdapterFactory),
+    vscode.debug.registerDebugAdapterTrackerFactory(DAISY_DEBUG_TYPE, debugTrackerFactory),
     vscode.commands.registerCommand('ds-ide.build', () =>
       buildForEmulator(manager!, context.extensionPath, diagnostics),
     ),

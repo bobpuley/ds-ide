@@ -39,3 +39,35 @@ export class DaisyDebugAdapterFactory implements vscode.DebugAdapterDescriptorFa
     return new vscode.DebugAdapterExecutable(lldbDap, []);
   }
 }
+
+export type AudioModeCallback = (mode: 'simulated' | 'realtime') => void;
+
+// T11.3 — mute-on-breakpoint (R15 mitigation, 04 §7).
+// Intercepts DAP events from lldb-dap and switches the emulator audio clock:
+//   stopped  → simulated (avoids xruns while lldb holds the audio thread)
+//   continued / exited / terminated → realtime (resumes OS callback)
+export class MuteOnBreakpointTracker implements vscode.DebugAdapterTracker {
+  constructor(private readonly onAudioMode: AudioModeCallback) {}
+
+  onDidSendMessage(message: unknown): void {
+    if (typeof message !== 'object' || message === null) return;
+    const msg = message as Record<string, unknown>;
+    if (msg['type'] !== 'event') return;
+    const event = msg['event'];
+    if (event === 'stopped') {
+      this.onAudioMode('simulated');
+    } else if (event === 'continued' || event === 'exited' || event === 'terminated') {
+      this.onAudioMode('realtime');
+    }
+  }
+}
+
+export class DaisyDebugAdapterTrackerFactory implements vscode.DebugAdapterTrackerFactory {
+  constructor(private readonly onAudioMode: AudioModeCallback) {}
+
+  createDebugAdapterTracker(
+    _session: vscode.DebugSession,
+  ): vscode.ProviderResult<vscode.DebugAdapterTracker> {
+    return new MuteOnBreakpointTracker(this.onAudioMode);
+  }
+}

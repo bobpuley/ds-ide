@@ -69,6 +69,7 @@ const DiagnosticSeverity = { Error: 0, Warning: 1, Information: 2, Hint: 3 } as 
 
 const debug = {
   registerDebugAdapterDescriptorFactory: vi.fn(() => ({ dispose: vi.fn() })),
+  registerDebugAdapterTrackerFactory: vi.fn(() => ({ dispose: vi.fn() })),
   onDidStartDebugSession: vi.fn(() => ({ dispose: vi.fn() })),
   onDidTerminateDebugSession: vi.fn(() => ({ dispose: vi.fn() })),
   startDebugging: vi.fn(() => Promise.resolve(true)),

@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
-import { findLldbDap, DaisyDebugAdapterFactory } from '../../../debug/debug-adapter';
+import {
+  findLldbDap,
+  DaisyDebugAdapterFactory,
+  MuteOnBreakpointTracker,
+  DaisyDebugAdapterTrackerFactory,
+  type AudioModeCallback,
+} from '../../../debug/debug-adapter';
 import * as vscode from 'vscode';
 
 describe('findLldbDap()', () => {
@@ -65,5 +71,74 @@ describe('DaisyDebugAdapterFactory', () => {
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('lldb-dap not found'),
     );
+  });
+});
+
+describe('MuteOnBreakpointTracker', () => {
+  function makeTracker(): { tracker: MuteOnBreakpointTracker; cb: ReturnType<typeof vi.fn> } {
+    const cb = vi.fn() as ReturnType<typeof vi.fn>;
+    const tracker = new MuteOnBreakpointTracker(cb as AudioModeCallback);
+    return { tracker, cb };
+  }
+
+  it('sends simulated on stopped event', () => {
+    const { tracker, cb } = makeTracker();
+    tracker.onDidSendMessage!({ type: 'event', event: 'stopped' });
+    expect(cb).toHaveBeenCalledWith('simulated');
+  });
+
+  it('sends realtime on continued event', () => {
+    const { tracker, cb } = makeTracker();
+    tracker.onDidSendMessage!({ type: 'event', event: 'continued' });
+    expect(cb).toHaveBeenCalledWith('realtime');
+  });
+
+  it('sends realtime on exited event', () => {
+    const { tracker, cb } = makeTracker();
+    tracker.onDidSendMessage!({ type: 'event', event: 'exited' });
+    expect(cb).toHaveBeenCalledWith('realtime');
+  });
+
+  it('sends realtime on terminated event', () => {
+    const { tracker, cb } = makeTracker();
+    tracker.onDidSendMessage!({ type: 'event', event: 'terminated' });
+    expect(cb).toHaveBeenCalledWith('realtime');
+  });
+
+  it('ignores non-event messages', () => {
+    const { tracker, cb } = makeTracker();
+    tracker.onDidSendMessage!({ type: 'response', command: 'next' });
+    expect(cb).not.toHaveBeenCalled();
+  });
+
+  it('ignores events with unrelated names', () => {
+    const { tracker, cb } = makeTracker();
+    tracker.onDidSendMessage!({ type: 'event', event: 'output' });
+    expect(cb).not.toHaveBeenCalled();
+  });
+
+  it('ignores null and non-object messages', () => {
+    const { tracker, cb } = makeTracker();
+    tracker.onDidSendMessage!(null);
+    tracker.onDidSendMessage!('string');
+    tracker.onDidSendMessage!(42);
+    expect(cb).not.toHaveBeenCalled();
+  });
+});
+
+describe('DaisyDebugAdapterTrackerFactory', () => {
+  it('creates a MuteOnBreakpointTracker for any session', () => {
+    const cb = vi.fn() as ReturnType<typeof vi.fn>;
+    const factory = new DaisyDebugAdapterTrackerFactory(cb as AudioModeCallback);
+    const tracker = factory.createDebugAdapterTracker({} as vscode.DebugSession);
+    expect(tracker).toBeInstanceOf(MuteOnBreakpointTracker);
+  });
+
+  it('the created tracker calls the provided callback', () => {
+    const cb = vi.fn() as ReturnType<typeof vi.fn>;
+    const factory = new DaisyDebugAdapterTrackerFactory(cb as AudioModeCallback);
+    const tracker = factory.createDebugAdapterTracker({} as vscode.DebugSession) as MuteOnBreakpointTracker;
+    tracker.onDidSendMessage!({ type: 'event', event: 'stopped' });
+    expect(cb).toHaveBeenCalledWith('simulated');
   });
 });

@@ -14,6 +14,10 @@ vi.mock('../../emulator/manager', () => {
     sendPot = vi.fn();
     sendTransport = vi.fn();
     sendSine = vi.fn();
+    sendAudioMode = vi.fn();
+    sendAudioDevice = vi.fn();
+    sendButtonSnapshot = vi.fn();
+    sendWavFile = vi.fn();
     dispose = vi.fn();
     get childPid() { return 42; }
     constructor() {
@@ -67,8 +71,8 @@ describe('extension', () => {
   it('activate pushes disposables onto context.subscriptions', () => {
     const ctx = makeContext();
     activate(ctx);
-    // diagnostics + statusBar + debug adapter factory + 6 commands + 1 manager/scope dispose
-    expect((ctx.subscriptions as unknown[]).length).toBe(10);
+    // diagnostics + statusBar + descriptor factory + tracker factory + 6 commands + 1 manager/scope dispose
+    expect((ctx.subscriptions as unknown[]).length).toBe(11);
   });
 
   it('deactivate does not throw', () => {
@@ -118,6 +122,15 @@ describe('extension', () => {
     const ctx = makeContext();
     activate(ctx);
     expect(vscode.debug.registerDebugAdapterDescriptorFactory).toHaveBeenCalledWith(
+      'daisy-debug',
+      expect.anything(),
+    );
+  });
+
+  it('registers a debug adapter tracker factory for daisy-debug (mute-on-breakpoint)', () => {
+    const ctx = makeContext();
+    activate(ctx);
+    expect(vscode.debug.registerDebugAdapterTrackerFactory).toHaveBeenCalledWith(
       'daisy-debug',
       expect.anything(),
     );
