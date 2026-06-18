@@ -1,4 +1,5 @@
 #include "daisy/daisy_seed_class.h"
+#include "daisy/led.h"
 #include "emulator_state.h"
 #include <cstdarg>
 #include <cstdio>
@@ -35,6 +36,10 @@ void DaisySeed::StartAudio(AudioHandle::AudioCallback cb) {
     daisy_emu::g_state.block_cb    = cb;
     daisy_emu::g_state.callback_set = true;
     daisy_emu::g_state.callback_cv.notify_one();
+}
+
+void DaisySeed::SetLed(bool state) {
+    emit_led_change(daisy_emu::EmulatorState::kOnboardLedPin, state);
 }
 
 void DaisySeed::PrintLine(const char* fmt, ...) {

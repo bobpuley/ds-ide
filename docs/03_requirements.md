@@ -85,6 +85,16 @@ while stepping through the audio callback, and flash to real hardware without le
   in C5 shall capture the GPIO output write and emit an IPC `led` message.
   **Verify:** AC-11.
 
+> **Locked (M10 pre-implementation review — see [milestones/v2/M10.md](milestones/v2/M10.md)):**
+> - The `buttons:`/`leds:` sections are **additive** top-level sections; `pots:` in FR-CT-7 ≡ the
+>   existing `controllers:` section (kept as-is for v1 compatibility, CR-6).
+> - `mode` defaults to `momentary`, `active_level` defaults to `low`. `active_level` is hardware-
+>   wiring metadata (used by M10b/M12); the emulator returns the **logical** press from `Pressed()`.
+> - LED output is captured from **two paths, both keyed to a declared `gpio_pin`**:
+>   `DaisySeed::SetLed(bool)` → onboard LED (`gpio_pin 23`, emulator convention); `Led::Set()` +
+>   `Led::Update()` → declared external pin. This satisfies FR-CT-14 while supporting the canonical
+>   `Button` example, which drives the onboard LED via `hw.SetLed`.
+
 ### 3.3 Full debug (`FR-DB-7…FR-DB-10`)
 
 - **FR-DB-7** — ds-ide shall provide **step over, step into, step out** while paused at a

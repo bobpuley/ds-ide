@@ -294,6 +294,35 @@ describe('EmulatorManager', () => {
     });
   });
 
+  describe('sendButton() / sendButtonSnapshot()', () => {
+    it('sends a button press IPC message', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      manager.sendButton(28, true);
+      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'button', gpioPin: 28, pressed: true });
+    });
+
+    it('sends a buttonSnapshot IPC message', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      const values = { 28: true, 25: false };
+      manager.sendButtonSnapshot(values);
+      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'buttonSnapshot', values });
+    });
+
+    it('button sends are a no-op when not connected', () => {
+      manager.sendButton(28, true);
+      manager.sendButtonSnapshot({ 28: true });
+      expect(ipcClientStub.send).not.toHaveBeenCalled();
+    });
+  });
+
   describe('sendTransport()', () => {
     it('sends correct JSON for start', async () => {
       await manager.build(

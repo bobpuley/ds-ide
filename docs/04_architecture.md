@@ -97,11 +97,31 @@ IPC `button{gpioPin, pressed}` → runtime atomic button[pin] →
 shim Switch::Debounce() reads button[pin] → effect sees Pressed()/RisingEdge()
 ```
 
-- `Switch::Debounce()` is called by the effect from `loop()` or the audio callback. The
-  shim calls it at audio-block rate when invoked from the callback, or polls at a configured
-  rate from a dedicated thread when called from `loop()`. (R14 — debounce timing.)
+- `Switch::Debounce()` is called by the effect from `loop()` or the audio callback. **Locked
+  (M10 review):** `Debounce()` simply *samples* the IPC-backed atomic button state for its pin at
+  each call — no dedicated debounce thread. Edge detection is relative to the previous `Debounce()`
+  call, which is exactly the hardware contract, so the effect's own call rate governs timing
+  (resolves R14; validate against `Button`, a 1 kHz `loop()`).
 - Debounce semantics: a "press" sets `rising_edge_ = true` for one Debounce call, then
   clears; `pressed_` stays true while the button is held. This matches the real `Switch` impl.
+
+### 4.1 LED output shim (C5 extension, M10)
+
+LED output mirrors the button path in reverse — the effect writes, the shim emits IPC:
+
+```
+effect SetLed(bool) / Led::Update()  →  C5 captures lit state  →
+IPC led{gpioPin, lit}  →  C2 LED indicator (lit/unlit)
+```
+
+- **Two capture paths, both keyed to a declared `gpio_pin`:**
+  - `DaisySeed::SetLed(bool)` → the declared **onboard** LED (`gpio_pin 23`, emulator convention).
+    Emits immediately. Matches the canonical `Button` example (`hw.SetLed(button.Pressed())`).
+  - `Led::Init(pin, invert)` + `Led::Set(brightness)` + `Led::Update()` → the declared LED on
+    `pin`. libDaisy stages on `Set` and writes on `Update`, so the shim captures on **`Update()`**
+    with `lit = (brightness > 0) XOR invert`.
+- Only LEDs declared in the `leds:` section produce an indicator; writes to undeclared pins are
+  ignored (no-op, as on hardware without a connected LED).
 
 ---
 
@@ -212,6 +232,7 @@ file-editing feature.
 |------|----------------|
 | ~~Host audio API~~ | ✅ CoreAudio-native for v2; cross-platform deferred to v3+ |
 | Mute-on-breakpoint implementation detail | IPC `audioMode` switch; verify no race with lldb halt |
-| `Switch::Debounce()` call-rate from loop() | Dedicated debounce thread at ~1 kHz; validate against examples |
+| ~~`Switch::Debounce()` call-rate from loop()~~ | ✅ M10 review: sample atomic at each `Debounce()` call; no dedicated thread (§4) |
+| ~~LED output capture path~~ | ✅ M10 review: `SetLed`→onboard `gpio_pin 23`; `Led::Update()`→declared pin (§4.1) |
 | Session recording format | Simple binary (timestamps + samples + pot/button/LED events); design at M-recording |
 | Spectrum FFT library | FFTW (GPL — bad) / pocketfft (MIT) / kiss_fft (BSD); decide before M-spectrum |

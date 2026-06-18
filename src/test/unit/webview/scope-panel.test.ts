@@ -14,6 +14,8 @@ function makeManager() {
     sendSine: vi.fn(),
     sendAudioMode: vi.fn(),
     sendAudioDevice: vi.fn(),
+    sendButton: vi.fn(),
+    sendButtonSnapshot: vi.fn(),
   }) as unknown as EmulatorManager;
 }
 
@@ -22,12 +24,19 @@ const DEFS: ControllerDef[] = [
   { id: 'volume', label: 'Volume', adcChannel: 1, range: [0, 1], taper: 'linear', default: 0.8 },
 ];
 
+const BUTTONS = [
+  { id: 'bypass', label: 'Bypass', gpioPin: 28, mode: 'toggle' as const, activeLevel: 'low' as const },
+  { id: 'tap', label: 'Tap', gpioPin: 25, mode: 'momentary' as const, activeLevel: 'low' as const },
+];
+const LEDS = [{ id: 'status', label: 'Status', gpioPin: 23 }];
+
 describe('ScopePanel', () => {
   let manager: EmulatorManager;
   let potChangeSpy: ReturnType<typeof vi.fn>;
   let sineChangeSpy: ReturnType<typeof vi.fn>;
   let audioSourceChangeSpy: ReturnType<typeof vi.fn>;
   let pickWavSpy: ReturnType<typeof vi.fn>;
+  let buttonChangeSpy: ReturnType<typeof vi.fn>;
   let panel: ScopePanel;
   let webviewMock: ReturnType<typeof vi.fn>;
 
@@ -38,7 +47,8 @@ describe('ScopePanel', () => {
     sineChangeSpy = vi.fn();
     audioSourceChangeSpy = vi.fn();
     pickWavSpy = vi.fn();
-    panel = new ScopePanel(manager, potChangeSpy, sineChangeSpy, audioSourceChangeSpy, pickWavSpy);
+    buttonChangeSpy = vi.fn();
+    panel = new ScopePanel(manager, potChangeSpy, sineChangeSpy, audioSourceChangeSpy, pickWavSpy, buttonChangeSpy);
     webviewMock = vscode.window.createWebviewPanel as ReturnType<typeof vi.fn>;
   });
 
@@ -374,6 +384,73 @@ describe('ScopePanel', () => {
     panel.notifyWavSelected('drums.wav', '/tmp/audio/drums.wav');
     expect(created.webview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ command: 'wavSelected', name: 'drums.wav' }),
+    );
+  });
+
+  // T10.4 — button rendering + forwarding
+  it('renders a button element per declared button', () => {
+    panel.show(DEFS, {}, SINE_DEFAULTS, AUDIO_SOURCE_DEFAULTS, BUTTONS, LEDS);
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="buttons"');
+    expect(webview.html).toContain('data-pin="28"');
+    expect(webview.html).toContain('data-mode="toggle"');
+    expect(webview.html).toContain('data-pin="25"');
+    expect(webview.html).toContain('data-mode="momentary"');
+    expect(webview.html).toContain('Bypass');
+    expect(webview.html).toContain('Tap');
+  });
+
+  it('does not render the buttons section when there are no buttons', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).not.toContain('id="buttons"');
+  });
+
+  it('reflects initial button state as pressed', () => {
+    panel.show(DEFS, {}, SINE_DEFAULTS, AUDIO_SOURCE_DEFAULTS, BUTTONS, LEDS, { 28: true });
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    // the pin-28 (bypass) button carries the on class + aria-pressed
+    expect(webview.html).toMatch(/data-pin="28"[\s\S]*?aria-pressed="true"/);
+  });
+
+  it('forwards a button press to manager.sendButton and onButtonChange', () => {
+    panel.show(DEFS, {}, SINE_DEFAULTS, AUDIO_SOURCE_DEFAULTS, BUTTONS, LEDS);
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'button', gpioPin: 28, pressed: true });
+    expect(manager.sendButton).toHaveBeenCalledWith(28, true);
+    expect(buttonChangeSpy).toHaveBeenCalledWith(28, true);
+  });
+
+  it('ignores malformed button messages', () => {
+    panel.show(DEFS, {}, SINE_DEFAULTS, AUDIO_SOURCE_DEFAULTS, BUTTONS, LEDS);
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'button', gpioPin: 28 }); // missing pressed
+    expect(manager.sendButton).not.toHaveBeenCalled();
+  });
+
+  // T10.5 — LED rendering + forwarding
+  it('renders an LED indicator per declared LED', () => {
+    panel.show(DEFS, {}, SINE_DEFAULTS, AUDIO_SOURCE_DEFAULTS, BUTTONS, LEDS);
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="leds"');
+    expect(webview.html).toContain('vled-dot');
+    expect(webview.html).toContain('Status');
+  });
+
+  it('forwards a led message from manager to the webview', () => {
+    panel.show(DEFS, {}, SINE_DEFAULTS, AUDIO_SOURCE_DEFAULTS, BUTTONS, LEDS);
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { postMessage: ReturnType<typeof vi.fn> };
+    };
+    (manager as unknown as EventEmitter).emit('message', { type: 'led', gpioPin: 23, lit: true });
+    expect(created.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'led', gpioPin: 23, lit: true }),
     );
   });
 });

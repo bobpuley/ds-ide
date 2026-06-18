@@ -47,9 +47,10 @@ static std::string json_get(const std::string& json, const std::string& key) {
     return json.substr(start, pos - start);
 }
 
-// Parse {"0":0.5,"1":0.3} and invoke cb(channel, value) for each entry.
-static void parse_values_object(const std::string& obj,
-                                void (*cb)(int, float)) {
+// Parse {"0":0.5,"1":0.3} (numbers) or {"28":true,...} (bools) and invoke
+// cb(key, rawValueString) for each entry. The caller interprets the value.
+static void parse_kv_object(const std::string& obj,
+                            void (*cb)(int, const std::string&)) {
     size_t pos = 0;
     while (pos < obj.size()) {
         auto ks = obj.find('"', pos);
@@ -64,7 +65,7 @@ static void parse_values_object(const std::string& obj,
         auto vs = pos;
         while (pos < obj.size() && obj[pos] != ',' && obj[pos] != '}') ++pos;
         std::string val = obj.substr(vs, pos - vs);
-        try { cb(std::stoi(key), std::stof(val)); } catch (...) {}
+        try { cb(std::stoi(key), val); } catch (...) {}
         ++pos;
     }
 }
@@ -124,8 +125,28 @@ static void dispatch(const std::string& line) {
     else if (type == "potSnapshot") {
         auto obj = json_get(line, "values");
         if (!obj.empty()) {
-            parse_values_object(obj, [](int c, float v) {
-                if (c >= 0 && c < 12) g_state.pot_values[c].store(v);
+            parse_kv_object(obj, [](int c, const std::string& v) {
+                if (c >= 0 && c < 12) {
+                    try { g_state.pot_values[c].store(std::stof(v)); } catch (...) {}
+                }
+            });
+        }
+    }
+    else if (type == "button") {
+        auto pin = json_get(line, "gpioPin");
+        auto pressed = json_get(line, "pressed");
+        if (!pin.empty()) {
+            int p = std::stoi(pin);
+            if (p >= 0 && p < EmulatorState::kNumGpioPins)
+                g_state.button_states[p].store(pressed == "true");
+        }
+    }
+    else if (type == "buttonSnapshot") {
+        auto obj = json_get(line, "values");
+        if (!obj.empty()) {
+            parse_kv_object(obj, [](int p, const std::string& v) {
+                if (p >= 0 && p < EmulatorState::kNumGpioPins)
+                    g_state.button_states[p].store(v == "true");
             });
         }
     }
