@@ -5,6 +5,22 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.2.2 — 2026-06-18
+
+**M10 — Virtual buttons, GPIO & LEDs** *(AC-11 green — FR-CT-7…FR-CT-14)*
+
+- **YAML schema (C1):** `controllers.yaml` gains two new top-level sections: `buttons:` (fields `id`, `label`, `gpio_pin`, `mode` `momentary`|`toggle`, `active_level` `high`|`low`; defaults applied) and `leds:` (fields `id`, `label`, `gpio_pin`). The existing `controllers:` (pots) section is unchanged — v1 files load without modification (CR-6). YAML inline comments are now correctly stripped from unquoted scalar values.
+- **Switch shim (C5/C4):** real `Switch::Init/Debounce/Pressed/RisingEdge/FallingEdge` backed by `EmulatorState::button_states[32]`. `Debounce()` samples the IPC-backed atomic button state at call time (no debounce thread); edge detection follows the effect's own call rate — matching the hardware contract.
+- **Led shim (C5/C4):** `Led::Init/Set/Update` emits change-deduped `led{gpioPin,lit}` IPC on `Update()` (`lit = brightness>0 XOR invert`). `DaisySeed::SetLed(bool)` routes to the declared onboard LED (pin 23).
+- **IPC protocol (C4):** inbound `button{gpioPin,pressed}` and `buttonSnapshot{array}` drive the button state table; outbound `led{gpioPin,lit}` reports LED state changes.
+- **Scope panel (C2):** a `Buttons:` row renders one control per declared button — momentary (held) posts press/release on mousedown/mouseup; toggle latches on click. A `LEDs:` row shows a lit/unlit dot indicator per declared LED, driven by incoming `led` IPC.
+- **ButtonStore (C1):** toggle button state persists across re-deploys via `workspaceState`; momentary buttons reset to released on re-deploy (FR-CT-11).
+- **Extension wiring (C1):** `loadControllerConfig()` passes buttons + LEDs to `show()`; `buttonSnapshot` is sent after deploy and debug-attach alongside the existing `potSnapshot`.
+- **Example:** `examples/m10-demo/` — `button_bypass.cpp` effect (toggle mute / boost) with matching `controllers.yaml`.
+- **Tests:** C++ unit suites `tests/switch-shim/` and `tests/led-shim/`; Python runtime integration `tests/runtime/test_buttons.py` (AC-11a: button press flips muted→pass-through; AC-11b: `SetLed` drives `led{pin:23}` on/off; 6/6 pass). 189 TypeScript unit tests across 13 files; all pass. AC-1…AC-10 no regression.
+
+---
+
 ## 0.2.1 — 2026-06-18
 
 **M9 — WAV file input** *(AC-10 green — FR-AU-6, FR-AU-7)*
