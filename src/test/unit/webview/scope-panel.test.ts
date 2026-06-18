@@ -453,4 +453,46 @@ describe('ScopePanel', () => {
       expect.objectContaining({ command: 'led', gpioPin: 23, lit: true }),
     );
   });
+
+  // T13.3 — Spectrum view
+  it('webview HTML includes a spectrum canvas element', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="spectrum"');
+  });
+
+  it('forwards spectrum message from manager to webview', () => {
+    panel.show(DEFS, {});
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { postMessage: ReturnType<typeof vi.fn> };
+    };
+    const in_fft  = [0.1, 0.5, 0.2];
+    const out_fft = [0.1, 0.4, 0.15];
+    (manager as unknown as EventEmitter).emit('message', {
+      type: 'spectrum', in_fft, out_fft, binHz: 46.875,
+    });
+    expect(created.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'spectrum', in_fft, out_fft, binHz: 46.875 }),
+    );
+  });
+
+  it('does not forward spectrum message if panel is not open', () => {
+    // No show() call — panel is null
+    const spy = vi.fn();
+    // spectrum message emitted before panel is shown — should not throw
+    expect(() =>
+      (manager as unknown as EventEmitter).emit('message', {
+        type: 'spectrum', in_fft: [0.1], out_fft: [0.1], binHz: 46.875,
+      }),
+    ).not.toThrow();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('webview HTML includes drawSpectrum function', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('drawSpectrum');
+    expect(webview.html).toContain('lastSpecIn');
+    expect(webview.html).toContain('lastSpecOut');
+  });
 });

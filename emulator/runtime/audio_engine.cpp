@@ -6,6 +6,7 @@
 #include <cfloat>
 #include <chrono>
 #include <cmath>
+#include <complex>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -26,6 +27,119 @@ static void ipc_send(const std::string& msg) {
     std::lock_guard<std::mutex> lk(g_state.send_mutex);
     if (g_state.send_ipc) g_state.send_ipc(msg);
 }
+
+// ---- Inline radix-2 FFT (Cooley-Tukey, power-of-2 N) -----------------------
+
+static void fft_radix2(std::vector<std::complex<float>>& x) {
+    size_t N = x.size();
+    // Bit-reversal permutation
+    for (size_t i = 1, j = 0; i < N; ++i) {
+        size_t bit = N >> 1;
+        for (; j & bit; bit >>= 1) j ^= bit;
+        j ^= bit;
+        if (i < j) std::swap(x[i], x[j]);
+    }
+    // Butterfly stages
+    for (size_t len = 2; len <= N; len <<= 1) {
+        float angle = static_cast<float>(-2.0 * M_PI / static_cast<double>(len));
+        std::complex<float> wlen(std::cos(angle), std::sin(angle));
+        for (size_t i = 0; i < N; i += len) {
+            std::complex<float> w(1.f, 0.f);
+            for (size_t j = 0; j < len / 2; ++j) {
+                std::complex<float> u = x[i + j];
+                std::complex<float> v = x[i + j + len / 2] * w;
+                x[i + j]           = u + v;
+                x[i + j + len / 2] = u - v;
+                w *= wlen;
+            }
+        }
+    }
+}
+
+// Returns single-sided magnitude spectrum (N/2 bins). Applies a Hann window.
+static std::vector<float> magnitude_spectrum(const std::vector<float>& samples) {
+    const size_t N = samples.size();
+    std::vector<std::complex<float>> X(N);
+    const float inv_n1 = 1.f / static_cast<float>(N > 1 ? N - 1 : 1);
+    for (size_t i = 0; i < N; ++i) {
+        float w = 0.5f * (1.f - std::cos(2.f * static_cast<float>(M_PI) * static_cast<float>(i) * inv_n1));
+        X[i] = std::complex<float>(samples[i] * w, 0.f);
+    }
+    fft_radix2(X);
+    const float norm = 2.f / static_cast<float>(N);
+    std::vector<float> mag(N / 2);
+    for (size_t i = 0; i < N / 2; ++i)
+        mag[i] = std::abs(X[i]) * norm;
+    return mag;
+}
+
+static std::string build_spectrum_json(const std::vector<float>& in_mag,
+                                       const std::vector<float>& out_mag,
+                                       float bin_hz) {
+    std::string s;
+    s.reserve(64 + (in_mag.size() + out_mag.size()) * 10);
+    char num[32];
+    std::snprintf(num, sizeof(num), "%.4f", static_cast<double>(bin_hz));
+    s = "{\"type\":\"spectrum\",\"binHz\":";
+    s += num;
+    s += ",\"in_fft\":[";
+    for (size_t i = 0; i < in_mag.size(); ++i) {
+        if (i) s += ',';
+        std::snprintf(num, sizeof(num), "%.6g", static_cast<double>(in_mag[i]));
+        s += num;
+    }
+    s += "],\"out_fft\":[";
+    for (size_t i = 0; i < out_mag.size(); ++i) {
+        if (i) s += ',';
+        std::snprintf(num, sizeof(num), "%.6g", static_cast<double>(out_mag[i]));
+        s += num;
+    }
+    s += "]}";
+    return s;
+}
+
+// ---- FFT accumulation state -------------------------------------------------
+
+struct FftState {
+    static constexpr size_t N_FFT = 1024;
+
+    std::vector<float> in_samples, out_samples;
+
+    FftState() { in_samples.reserve(N_FFT); out_samples.reserve(N_FFT); }
+
+    void reset() { in_samples.clear(); out_samples.clear(); }
+
+    // Accumulate left-channel samples from interleaved stereo buffers.
+    // Returns true when N_FFT samples are ready.
+    bool accumulate(const std::vector<float>& in_buf,
+                    const std::vector<float>& out_buf,
+                    size_t frames) {
+        size_t space = N_FFT - in_samples.size();
+        size_t take  = std::min(frames, space);
+        for (size_t i = 0; i < take; ++i) {
+            in_samples.push_back(in_buf[2 * i]);
+            out_samples.push_back(out_buf[2 * i]);
+        }
+        return in_samples.size() >= N_FFT;
+    }
+};
+
+// ---- Scope + Spectrum emit helper -------------------------------------------
+
+static void emit_spectrum_if_ready(FftState& fft,
+                                   const std::vector<float>& in_buf,
+                                   const std::vector<float>& out_buf,
+                                   size_t frames,
+                                   float sample_rate) {
+    if (!fft.accumulate(in_buf, out_buf, frames)) return;
+    auto in_mag  = magnitude_spectrum(fft.in_samples);
+    auto out_mag = magnitude_spectrum(fft.out_samples);
+    float bin_hz = sample_rate / static_cast<float>(FftState::N_FFT);
+    ipc_send(build_spectrum_json(in_mag, out_mag, bin_hz));
+    fft.reset();
+}
+
+// ----------------------------------------------------------------------------
 
 static std::string build_scope_json(const std::vector<float>& in_pts,
                                     const std::vector<float>& out_pts,
@@ -122,6 +236,7 @@ static void run_simulated(bool use_block,
                           std::vector<float>& out_ch0,
                           std::vector<float>& out_ch1) {
     ScopeState scope;
+    FftState fft;
     double phase = 0.0;
 
     // WAV playhead (M9): fractional read position and the generation we last saw,
@@ -200,6 +315,8 @@ static void run_simulated(bool use_block,
             scope.reset();
         }
 
+        emit_spectrum_if_ready(fft, in_buf, out_buf, block_size, sample_rate);
+
         std::this_thread::sleep_for(std::chrono::nanoseconds(block_ns()));
     }
 }
@@ -216,6 +333,7 @@ static void run_realtime(bool use_block,
 
     // State captured by the CoreAudio render callback (called on the real-time thread).
     ScopeState scope;
+    FftState fft;
     std::vector<float> in_buf(buffer_size * 2);
     std::vector<float> out_buf(buffer_size * 2);
     std::vector<float> local_in_ch0(buffer_size), local_in_ch1(buffer_size);
@@ -266,6 +384,9 @@ static void run_realtime(bool use_block,
             ipc_send(build_scope_json(scope.in, scope.out, scope.out_r));
             scope.reset();
         }
+
+        emit_spectrum_if_ready(fft, in_buf, out_buf, frames,
+                               static_cast<float>(sample_rate));
 
         // Latency reporting (~once per SCOPE_BLOCKS)
         ++xrun_report_blocks;

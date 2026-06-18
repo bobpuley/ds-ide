@@ -67,6 +67,7 @@ export class ScopePanel {
       if (msg['type'] === 'xrun') this.postXrun(msg);
       if (msg['type'] === 'latency') this.postLatency(msg);
       if (msg['type'] === 'led') this.postLed(msg);
+      if (msg['type'] === 'spectrum') this.postSpectrum(msg);
     });
   }
 
@@ -195,6 +196,15 @@ export class ScopePanel {
 
   private postLed(msg: IpcMessage): void {
     this.panel?.webview.postMessage({ command: 'led', gpioPin: msg['gpioPin'], lit: msg['lit'] });
+  }
+
+  private postSpectrum(msg: IpcMessage): void {
+    this.panel?.webview.postMessage({
+      command: 'spectrum',
+      in_fft: msg['in_fft'],
+      out_fft: msg['out_fft'],
+      binHz: msg['binHz'],
+    });
   }
 
   private html(): string {
@@ -346,7 +356,9 @@ function buildHtml(
     .dot-in  { background: #4ec9b0; }
     .dot-out { background: #ce9178; }
     #events { padding: 3px 12px; min-height: 22px; background: #252526; border-bottom: 1px solid #3c3c3c; font-size: 11px; color: #f48771; }
-    canvas { flex: 1; display: block; width: 100%; }
+    canvas { display: block; width: 100%; }
+    #scope { flex: 1; }
+    #spectrum { height: 140px; border-top: 1px solid #3c3c3c; background: #1a1a1a; flex-shrink: 0; }
     #audio-source-bar { padding: 6px 12px; background: #252526; border-top: 1px solid #3c3c3c; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .source-label { color: #9cdcfe; }
     .source-option { display: flex; align-items: center; gap: 4px; cursor: pointer; }
@@ -435,13 +447,14 @@ function buildHtml(
   <header>
     <span id="status-text">Deploy to start…</span>
     <span class="legend">
-      <span><span class="dot dot-in"></span>Input</span>
-      <span><span class="dot dot-out"></span>Output</span>
+      <span><span class="dot dot-in"></span>In</span>
+      <span><span class="dot dot-out"></span>Out</span>
     </span>
     <span id="fidelity-caveat" title="Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget">ℹ Approx. Seed</span>
   </header>
   <div id="events"></div>
   <canvas id="scope" style="display:none"></canvas>
+  <canvas id="spectrum" style="display:none"></canvas>
   <div id="getting-started">
     <div>Open a libDaisy project, then:</div>
     <ol>
@@ -478,6 +491,8 @@ function buildHtml(
     const vscode = acquireVsCodeApi();
     const canvas = document.getElementById('scope');
     const ctx = canvas.getContext('2d');
+    const specCanvas = document.getElementById('spectrum');
+    const specCtx = specCanvas.getContext('2d');
     const statusEl = document.getElementById('status-text');
     const eventsEl = document.getElementById('events');
     const gettingStarted = document.getElementById('getting-started');
@@ -492,6 +507,7 @@ function buildHtml(
     const wavLoopEl = document.getElementById('wav-loop');
 
     let lastIn = [], lastOut = [];
+    let lastSpecIn = [], lastSpecOut = [], lastBinHz = 0;
     const activeEvents = new Set();
     let hasStatus = false;
     let xrunCount = 0;
@@ -499,6 +515,7 @@ function buildHtml(
     function showScope() {
       if (!hasStatus) return;
       canvas.style.display = 'block';
+      specCanvas.style.display = 'block';
       gettingStarted.style.display = 'none';
       resize();
     }
@@ -506,7 +523,10 @@ function buildHtml(
     function resize() {
       canvas.width  = canvas.clientWidth;
       canvas.height = canvas.clientHeight;
+      specCanvas.width  = specCanvas.clientWidth;
+      specCanvas.height = specCanvas.clientHeight;
       draw();
+      drawSpectrum();
     }
 
     function draw() {
@@ -540,6 +560,66 @@ function buildHtml(
         else         ctx.lineTo(x, y);
       }
       ctx.stroke();
+    }
+
+    function drawSpectrum() {
+      const W = specCanvas.width, H = specCanvas.height;
+      specCtx.clearRect(0, 0, W, H);
+      specCtx.fillStyle = '#1a1a1a';
+      specCtx.fillRect(0, 0, W, H);
+
+      if (!lastSpecIn || lastSpecIn.length < 2) return;
+
+      const N = lastSpecIn.length;
+      // Display bins up to 20 kHz (or Nyquist, whichever is lower)
+      const maxFreq = Math.min(20000, lastBinHz * N);
+      const maxBin  = lastBinHz > 0 ? Math.min(N, Math.ceil(maxFreq / lastBinHz)) : N;
+      const peak = Math.max(
+        lastSpecIn.slice(0, maxBin).reduce((a, v) => Math.max(a, v), 1e-9),
+        lastSpecOut.slice(0, maxBin).reduce((a, v) => Math.max(a, v), 1e-9),
+      );
+
+      // Grid lines (dB style: 0, -20, -40, -60 dB)
+      specCtx.strokeStyle = '#2a2a2a';
+      specCtx.lineWidth = 1;
+      for (let db = 0; db >= -60; db -= 20) {
+        const lin = Math.pow(10, db / 20) * peak;
+        const y = H - (lin / peak) * (H - 4) - 2;
+        specCtx.beginPath();
+        specCtx.moveTo(0, y); specCtx.lineTo(W, y);
+        specCtx.stroke();
+        specCtx.fillStyle = '#777';
+        specCtx.font = '9px monospace';
+        specCtx.fillText(db + 'dB', 2, y - 2);
+      }
+
+      function drawSpecLine(fft, color) {
+        specCtx.strokeStyle = color;
+        specCtx.lineWidth = 1.5;
+        specCtx.beginPath();
+        for (let i = 0; i < maxBin; i++) {
+          const x = (i / (maxBin - 1)) * W;
+          const y = H - (fft[i] / peak) * (H - 4) - 2;
+          if (i === 0) specCtx.moveTo(x, y);
+          else         specCtx.lineTo(x, y);
+        }
+        specCtx.stroke();
+      }
+
+      drawSpecLine(lastSpecIn,  '#4ec9b0');
+      drawSpecLine(lastSpecOut, '#ce9178');
+
+      // Frequency axis labels
+      if (lastBinHz > 0) {
+        specCtx.fillStyle = '#999';
+        specCtx.font = '10px monospace';
+        const freqLabels = [1000, 2000, 5000, 10000, 20000];
+        for (const f of freqLabels) {
+          if (f > maxFreq) break;
+          const x = (f / maxFreq) * W;
+          specCtx.fillText(f >= 1000 ? (f / 1000) + 'k' : f, x + 2, H - 2);
+        }
+      }
     }
 
     function sendSine() {
@@ -665,6 +745,13 @@ function buildHtml(
         document.querySelectorAll('.vled-dot[data-pin="' + msg.gpioPin + '"]').forEach(dot => {
           dot.classList.toggle('vled-lit', !!msg.lit);
         });
+      } else if (msg.command === 'spectrum') {
+        lastSpecIn  = msg.in_fft  || [];
+        lastSpecOut = msg.out_fft || [];
+        lastBinHz   = msg.binHz   || 0;
+        specCanvas.width = specCanvas.clientWidth;
+        specCanvas.height = specCanvas.clientHeight;
+        drawSpectrum();
       } else if (msg.command === 'editorLoad') {
         editorLoad(msg.cfg || {});
       }
