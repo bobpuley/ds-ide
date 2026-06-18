@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseControllerYaml } from '../../../controllers/controller-config';
+import { parseControllerYaml, parseControllerConfig } from '../../../controllers/controller-config';
 
 const MINIMAL_VALID = `
 controllers:
@@ -223,5 +223,196 @@ controllers:
       expect(defs).toHaveLength(1);
       expect(defs[0]!.id).toBe('good_one');
     });
+  });
+});
+
+// ---- M10: buttons + LEDs (T10.1) ----
+
+const FULL_CONFIG = `
+controllers:
+  - id: vol
+    label: Volume
+    adc_channel: 0
+    range: [0, 1]
+    taper: linear
+    default: 0.5
+buttons:
+  - id: bypass
+    label: Bypass
+    gpio_pin: 28
+    mode: toggle
+    active_level: low
+leds:
+  - id: status
+    label: Status
+    gpio_pin: 23
+`;
+
+describe('parseControllerConfig (M10)', () => {
+  describe('valid input', () => {
+    it('parses pots, buttons, and leds together', () => {
+      const { pots, buttons, leds, errors } = parseControllerConfig(FULL_CONFIG);
+      expect(errors).toHaveLength(0);
+      expect(pots).toHaveLength(1);
+      expect(buttons).toHaveLength(1);
+      expect(leds).toHaveLength(1);
+      expect(pots[0]!.id).toBe('vol');
+    });
+
+    it('keeps the controllers: (pots) section unchanged', () => {
+      const { pots } = parseControllerConfig(FULL_CONFIG);
+      expect(pots[0]!.adcChannel).toBe(0);
+      expect(pots[0]!.taper).toBe('linear');
+    });
+
+    it('parses a button with all fields', () => {
+      const { buttons } = parseControllerConfig(FULL_CONFIG);
+      const b = buttons[0]!;
+      expect(b.id).toBe('bypass');
+      expect(b.label).toBe('Bypass');
+      expect(b.gpioPin).toBe(28);
+      expect(b.mode).toBe('toggle');
+      expect(b.activeLevel).toBe('low');
+    });
+
+    it('defaults mode to momentary and active_level to low when omitted', () => {
+      const yaml = `
+buttons:
+  - id: tap
+    label: Tap
+    gpio_pin: 25
+`;
+      const { buttons, errors } = parseControllerConfig(yaml);
+      expect(errors).toHaveLength(0);
+      expect(buttons[0]!.mode).toBe('momentary');
+      expect(buttons[0]!.activeLevel).toBe('low');
+    });
+
+    it('parses an led entry', () => {
+      const { leds } = parseControllerConfig(FULL_CONFIG);
+      expect(leds[0]!.id).toBe('status');
+      expect(leds[0]!.gpioPin).toBe(23);
+    });
+
+    it('returns empty sections when buttons:/leds: are absent', () => {
+      const yaml = `
+controllers:
+  - id: vol
+    label: Volume
+    adc_channel: 0
+    range: [0, 1]
+    taper: linear
+    default: 0.5
+`;
+      const { buttons, leds, errors } = parseControllerConfig(yaml);
+      expect(errors).toHaveLength(0);
+      expect(buttons).toHaveLength(0);
+      expect(leds).toHaveLength(0);
+    });
+
+    it('accepts gpio_pin boundaries 0 and 31', () => {
+      const yaml = `
+buttons:
+  - id: a
+    label: A
+    gpio_pin: 0
+  - id: b
+    label: B
+    gpio_pin: 31
+`;
+      const { buttons, errors } = parseControllerConfig(yaml);
+      expect(errors).toHaveLength(0);
+      expect(buttons).toHaveLength(2);
+    });
+  });
+
+  describe('button validation', () => {
+    it('reports gpio_pin out of range (> 31)', () => {
+      const yaml = `buttons:\n  - id: a\n    label: A\n    gpio_pin: 32\n`;
+      const { errors } = parseControllerConfig(yaml);
+      expect(errors.some(e => e.includes("'gpio_pin'"))).toBe(true);
+    });
+
+    it('reports duplicate gpio_pin among buttons', () => {
+      const yaml = `buttons:\n  - id: a\n    label: A\n    gpio_pin: 5\n  - id: b\n    label: B\n    gpio_pin: 5\n`;
+      const { buttons, errors } = parseControllerConfig(yaml);
+      expect(errors.some(e => e.includes('duplicate gpio_pin'))).toBe(true);
+      expect(buttons).toHaveLength(1);
+    });
+
+    it('reports duplicate button id', () => {
+      const yaml = `buttons:\n  - id: a\n    label: A\n    gpio_pin: 5\n  - id: a\n    label: B\n    gpio_pin: 6\n`;
+      const { errors } = parseControllerConfig(yaml);
+      expect(errors.some(e => e.includes('duplicate id'))).toBe(true);
+    });
+
+    it('reports invalid mode', () => {
+      const yaml = `buttons:\n  - id: a\n    label: A\n    gpio_pin: 5\n    mode: latching\n`;
+      const { errors } = parseControllerConfig(yaml);
+      expect(errors.some(e => e.includes("'mode'"))).toBe(true);
+    });
+
+    it('reports invalid active_level', () => {
+      const yaml = `buttons:\n  - id: a\n    label: A\n    gpio_pin: 5\n    active_level: middle\n`;
+      const { errors } = parseControllerConfig(yaml);
+      expect(errors.some(e => e.includes("'active_level'"))).toBe(true);
+    });
+
+    it('reports missing gpio_pin', () => {
+      const yaml = `buttons:\n  - id: a\n    label: A\n`;
+      const { errors } = parseControllerConfig(yaml);
+      expect(errors.some(e => e.includes("'gpio_pin'"))).toBe(true);
+    });
+  });
+
+  describe('led validation', () => {
+    it('reports led gpio_pin out of range', () => {
+      const yaml = `leds:\n  - id: x\n    label: X\n    gpio_pin: -1\n`;
+      const { errors } = parseControllerConfig(yaml);
+      expect(errors.some(e => e.includes("'gpio_pin'"))).toBe(true);
+    });
+
+    it('reports duplicate led gpio_pin', () => {
+      const yaml = `leds:\n  - id: x\n    label: X\n    gpio_pin: 23\n  - id: y\n    label: Y\n    gpio_pin: 23\n`;
+      const { leds, errors } = parseControllerConfig(yaml);
+      expect(errors.some(e => e.includes('duplicate gpio_pin'))).toBe(true);
+      expect(leds).toHaveLength(1);
+    });
+
+    it('button and led may share a pin number (independent sections)', () => {
+      const yaml = `buttons:\n  - id: b\n    label: B\n    gpio_pin: 10\nleds:\n  - id: l\n    label: L\n    gpio_pin: 10\n`;
+      const { buttons, leds, errors } = parseControllerConfig(yaml);
+      expect(errors).toHaveLength(0);
+      expect(buttons).toHaveLength(1);
+      expect(leds).toHaveLength(1);
+    });
+  });
+
+  it('parseControllerYaml still returns only pots (backward compatible)', () => {
+    const { defs, errors } = parseControllerYaml(FULL_CONFIG);
+    expect(errors).toHaveLength(0);
+    expect(defs).toHaveLength(1);
+    expect(defs[0]!.id).toBe('vol');
+  });
+
+  it('strips inline YAML comments from unquoted scalar values', () => {
+    const yaml = `
+buttons:
+  - id: bypass
+    label: Bypass
+    gpio_pin: 28
+    mode: toggle        # click to latch audio on/off
+    active_level: low
+  - id: boost
+    label: Boost
+    gpio_pin: 25
+    mode: momentary     # louder only while held
+    active_level: low
+`;
+    const { buttons, errors } = parseControllerConfig(yaml);
+    expect(errors).toHaveLength(0);
+    expect(buttons).toHaveLength(2);
+    expect(buttons[0]!.mode).toBe('toggle');
+    expect(buttons[1]!.mode).toBe('momentary');
   });
 });
