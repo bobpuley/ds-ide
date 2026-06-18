@@ -19,7 +19,7 @@ inspect tags → propose semver → update CHANGELOG.md → annotated tag → pu
 |------------------------------------|-------------------------------------------------------|----------------|----------------|
 | M8 — Real-time audio I/O           | [docs/milestones/v2/M8.md](milestones/v2/M8.md)       | 0.2.0          | **released**   |
 | M9 — WAV file input                | [docs/milestones/v2/M9.md](milestones/v2/M9.md)       | 0.2.1          | **released**   |
-| M10 — Virtual buttons, GPIO & LEDs | [docs/milestones/v2/M10.md](milestones/v2/M10.md)     | 0.2.2          | needs review   |
+| M10 — Virtual buttons, GPIO & LEDs | [docs/milestones/v2/M10.md](milestones/v2/M10.md)     | 0.2.2          | ready          |
 | M10b — Visual controller editor    | [docs/milestones/v2/M10b.md](milestones/v2/M10b.md)   | 0.2.3          | planned        |
 | M11 — Full debug                   | [docs/milestones/v2/M11.md](milestones/v2/M11.md)     | 0.2.4          | planned        |
 | M12 — Hardware build & flash       | [docs/milestones/v2/M12.md](milestones/v2/M12.md)     | 0.2.5          | planned        |
@@ -27,7 +27,8 @@ inspect tags → propose semver → update CHANGELOG.md → annotated tag → pu
 | M14 — Session recording            | [docs/milestones/v2/M14.md](milestones/v2/M14.md)     | 0.2.7          | planned        |
 
 > M8 is confirmed highest-priority. Milestone ordering M8 → M9 → M10 → M10b → M11 → M12 → M13 → M14
-> is confirmed. M10 scope (controls + outputs) must be reviewed and locked before implementation begins.
+> is confirmed. ✅ M10 scope reviewed and **locked** (2026-06-18) — see the locked-decisions section
+> in [milestones/v2/M10.md](milestones/v2/M10.md); ready to implement.
 
 ---
 
@@ -88,8 +89,9 @@ Per-milestone goals, tasks, and DoD live in the milestone files linked from the 
   xruns. Validate early on the development machine before building M9–M14 on top.
 - **R15 (breakpoint + live audio):** mute-on-breakpoint is a critical M11 task; design it
   in M8 as a stub (IPC `audioMode` switch) so M11 just wires it.
-- **R14 (debounce timing):** validate the `Switch` shim debounce call-rate in M10 against
-  a real effect before considering it closed.
+- **R14 (debounce timing):** ✅ resolved in the M10 review — the `Switch` shim samples the atomic
+  button state at each `Debounce()` call (no debounce thread); edge detection follows the effect's
+  own call rate (04 §4). Validate against `Button` (1 kHz `loop()`) during M10 implementation.
 - **R16/R17 (hardware toolchain):** M12 is last because it's most machine-dependent and
   doesn't block any other v2 feature.
 
