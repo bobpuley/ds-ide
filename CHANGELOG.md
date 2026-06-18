@@ -5,6 +5,18 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.2.7 — 2026-06-18
+
+**M14 — Session recording** *(AC-16 green — FR-REC-1…FR-REC-3)*
+
+- **Binary .dsrec format (T14.1):** 16-byte header (`DSREC\0` magic + version + sample rate + block size) followed by typed records: `AUDIO_BLOCK` (0x01), `POT_EVENT` (0x02), `BUTTON_EVENT` (0x03), `END` (0xFF). Only input is stored; output is re-generated on replay.
+- **Record mode (T14.2):** `SessionRecorder` in `emulator/runtime/`. IPC thread enqueues pot/button events via `enqueuePot()`/`enqueueButton()`; audio engine flushes the queue before each block with `writeBlock()`. IPC commands: `recordStart` (with file path) / `recordStop`.
+- **Replay mode (T14.3):** `SessionPlayer` pre-scans block count on open for progress reporting; `nextBlock()` feeds the stored audio buffer as input and fires stored pot/button events back into emulator state. Wired into `run_simulated` as the replay input source; emits `replayDone` when exhausted. IPC commands: `replayStart` / `replayStop`. Verified by `tests/runtime/test_recording.py`: 0.00% output difference live vs replay (AC-16 green).
+- **Recording bar UI (T14.4):** a row of controls below the audio-source bar — **Record** (opens Save dialog, lights red when active), **Stop**, **Replay file…** (opens Open dialog). `notifyRecordingState()` + `replayDone` IPC message update button states. Extension wired via `showSaveDialog`/`showOpenDialog` → `EmulatorManager.sendRecord*/sendReplay*`.
+- **Tests:** 6 new TS unit tests (recording bar elements; `recordStart/Stop/replayStart` callbacks; `replayDone` forwarding; `notifyRecordingState`). 249 total, all green. 1 new Python integration test (AC-16 passthrough passthrough fixture). No regression to AC-1…AC-15.
+
+---
+
 ## 0.2.6 — 2026-06-18
 
 **M13 — Spectrum & FFT** *(AC-14 green — FR-VZ-1)*
