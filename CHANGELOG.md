@@ -5,6 +5,21 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.2.0 — 2026-06-18
+
+**M8 — Real-time audio I/O** *(AC-9 green — FR-AU-5, FR-AU-7, FR-AU-8, FR-AU-9, NFR-11, NFR-12)*
+
+- **CoreAudio duplex I/O (C4, macOS):** new `core_audio_device.h/cpp` wraps a AUHAL AudioUnit with explicit default-input-device selection and hardware channel count query (handles mono microphones correctly). Output render callback pulls live mic input via `AudioUnitRender`, runs the effect, and writes to host speakers.
+- **Two-mode audio clock (C4):** `run_audio_engine()` now dispatches to a simulated path (v1 sleep-paced loop, unchanged) or a realtime path (CoreAudio OS-callback driven) based on `g_state.audio_mode`. Mode switches atomically without stopping the engine thread. Simulated mode (sine/WAV) and all AC-1…AC-8 tests are unaffected.
+- **Mute-on-breakpoint stub (C4):** `audioMode: simulated` IPC message switches the engine to simulated mode; `audioMode: realtime` resumes. M11 will wire the DAP `stopped` event to trigger this.
+- **IPC additions:** `audioMode` (simulated|realtime) and `audioDevice` (sampleRate, bufferSize) inbound messages; `xrun` and `latency` outbound messages emitted by the realtime engine.
+- **CMake:** CoreAudio and AudioToolbox frameworks linked on Apple platforms; `core_audio_device.cpp` added to `RUNTIME_SRC`.
+- **Extension (C1):** `EmulatorManager.sendAudioMode()` and `sendAudioDevice()` added; audio source state (`audioSource`) persisted to `workspaceState` and sent after every deploy alongside sine and potSnapshot.
+- **Scope panel (C2):** audio source selector row (sine / live / WAV-stub for M9); buffer size picker (64/128/256/512 samples); live xrun counter and round-trip latency display; canvas `resize()` now called on first show (fixes blank scope regression).
+- 146 unit tests across 12 test files (14 new); all pass. 4 Python runtime integration tests pass (AC-1…AC-8 no regression). AC-9 green (live mic through effect to speaker, verified manually).
+
+---
+
 ## 0.1.7 — 2026-06-17
 
 **M7 — Block-form callback (v1.1)** *(AC-8 green — FR-RU-2 / FR-SH-2 complete)*
