@@ -8,11 +8,11 @@ import { buildForEmulator } from './commands/build';
 import { deployToEmulator } from './commands/deploy';
 import { startAudio, stopAudio } from './commands/transport';
 import { debugDeploy, DAISY_DEBUG_TYPE } from './commands/debug-deploy';
-import { parseControllerConfig, ControllerDef, ButtonDef, LedDef } from './controllers/controller-config';
+import { parseControllerConfig, serializeControllerConfig, ControllerConfig, ControllerDef, ButtonDef, LedDef } from './controllers/controller-config';
 import { PotStore } from './controllers/pot-store';
 import { ButtonStore } from './controllers/button-store';
 import { DaisyDebugAdapterFactory } from './debug/debug-adapter';
-import { SineParams, SINE_DEFAULTS, AudioSource, AUDIO_SOURCE_DEFAULTS } from './webview/scope-panel';
+import { SineParams, SINE_DEFAULTS, AudioSource, AUDIO_SOURCE_DEFAULTS, EditorSaveHandler } from './webview/scope-panel';
 
 const FIDELITY_CAVEAT =
   'Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget.';
@@ -87,6 +87,17 @@ export function activate(context: vscode.ExtensionContext): void {
       // onButtonChange: persist button state (FR-CT-11). Toggle stays latched;
       // momentary settles to released as each release is recorded.
       buttonStore?.set(gpioPin, pressed);
+    },
+    (cfg) => {
+      // onEditorSave: serialize the updated config and write controllers.yaml.
+      const folders = vscode.workspace.workspaceFolders;
+      if (!folders?.[0]) return;
+      const yamlPath = path.join(folders[0].uri.fsPath, 'controllers.yaml');
+      try {
+        fs.writeFileSync(yamlPath, serializeControllerConfig(cfg), 'utf8');
+      } catch (err) {
+        void vscode.window.showErrorMessage(`ds-ide: could not write controllers.yaml: ${String(err)}`);
+      }
     },
   );
 
@@ -163,6 +174,10 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand('ds-ide.start', () => startAudio(manager!)),
     vscode.commands.registerCommand('ds-ide.stop', () => stopAudio(manager!)),
+    vscode.commands.registerCommand('ds-ide.openControllerEditor', () => {
+      const cfg = loadControllerConfig();
+      scopePanel!.loadEditor(cfg);
+    }),
     vscode.commands.registerCommand('ds-ide.debug', () => {
       statusBar.text = '$(loading~spin) Daisy: deploying…';
       statusBar.tooltip = FIDELITY_CAVEAT;
@@ -198,24 +213,18 @@ export function deactivate(): void {
   scopePanel?.dispose();
 }
 
-interface LoadedControllers {
-  pots: ControllerDef[];
-  buttons: ButtonDef[];
-  leds: LedDef[];
-}
-
-function loadControllerConfig(): LoadedControllers {
+function loadControllerConfig(): ControllerConfig {
   const folders = vscode.workspace.workspaceFolders;
-  if (!folders?.[0]) return { pots: [], buttons: [], leds: [] };
+  if (!folders?.[0]) return { pots: [], buttons: [], leds: [], errors: [] };
   const yamlPath = path.join(folders[0].uri.fsPath, 'controllers.yaml');
   try {
     const text = fs.readFileSync(yamlPath, 'utf8');
-    const { pots, buttons, leds, errors } = parseControllerConfig(text);
-    for (const e of errors) {
+    const cfg = parseControllerConfig(text);
+    for (const e of cfg.errors) {
       void vscode.window.showWarningMessage(`controllers.yaml: ${e}`);
     }
-    return { pots, buttons, leds };
+    return cfg;
   } catch {
-    return { pots: [], buttons: [], leds: [] };
+    return { pots: [], buttons: [], leds: [], errors: [] };
   }
 }

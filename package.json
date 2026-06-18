@@ -39,6 +39,11 @@
         "command": "ds-ide.debug",
         "title": "Deploy and Debug",
         "category": "Daisy IDE"
+      },
+      {
+        "command": "ds-ide.openControllerEditor",
+        "title": "Open Controller Editor",
+        "category": "Daisy IDE"
       }
     ],
     "keybindings": [

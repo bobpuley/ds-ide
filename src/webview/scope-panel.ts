@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { EmulatorManager } from '../emulator/manager';
 import { IpcMessage } from '../emulator/ipc-client';
-import { ControllerDef, ButtonDef, LedDef } from '../controllers/controller-config';
+import { ControllerDef, ButtonDef, LedDef, ControllerConfig } from '../controllers/controller-config';
 
 const PANEL_ID = 'daisy-scope';
 const PANEL_TITLE = 'Daisy Scope';
@@ -38,6 +38,7 @@ export type SineChangeHandler = (freq: number, amplitude: number) => void;
 export type AudioSourceChangeHandler = (source: AudioSource) => void;
 export type PickWavHandler = () => void;
 export type ButtonChangeHandler = (gpioPin: number, pressed: boolean) => void;
+export type EditorSaveHandler = (cfg: ControllerConfig) => void;
 
 export class ScopePanel {
   private panel: vscode.WebviewPanel | null = null;
@@ -57,6 +58,7 @@ export class ScopePanel {
     private readonly onAudioSourceChange?: AudioSourceChangeHandler,
     private readonly onPickWav?: PickWavHandler,
     private readonly onButtonChange?: ButtonChangeHandler,
+    private readonly onEditorSave?: EditorSaveHandler,
   ) {
     manager.on('message', (msg: IpcMessage) => {
       if (msg['type'] === 'scope') this.postScope(msg);
@@ -133,6 +135,10 @@ export class ScopePanel {
         this.manager.sendButton(m['gpioPin'], m['pressed']);
         this.onButtonChange?.(m['gpioPin'], m['pressed']);
       }
+      if (m['command'] === 'editorSave') {
+        const cfg = m['cfg'] as ControllerConfig | undefined;
+        if (cfg) this.onEditorSave?.(cfg);
+      }
     });
 
     this.panel.onDidDispose(() => {
@@ -140,6 +146,17 @@ export class ScopePanel {
       this.msgDisposable = null;
       this.panel = null;
     });
+  }
+
+  // Opens the panel (creating it if needed) and switches to the Controller Editor tab,
+  // pushing cfg to the canvas. Can be called before or after show().
+  loadEditor(cfg: ControllerConfig): void {
+    if (!this.panel) {
+      // Panel not open yet — create it with defaults so the HTML renders.
+      this.show();
+    }
+    this.panel!.reveal(vscode.ViewColumn.Two);
+    this.panel!.webview.postMessage({ command: 'editorLoad', cfg });
   }
 
   // Called by the extension after the user picks a WAV file via the native open
@@ -373,9 +390,48 @@ function buildHtml(
     #getting-started { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #6a6a6a; padding: 32px; text-align: center; }
     #getting-started ol { text-align: left; padding-left: 20px; line-height: 2; }
     #getting-started code { background: #3c3c3c; padding: 1px 4px; border-radius: 2px; color: #9cdcfe; }
+    /* M10b — Controller Editor tab */
+    #tab-bar { display: flex; background: #2d2d30; border-bottom: 1px solid #3c3c3c; flex-shrink: 0; }
+    .tab { background: transparent; color: #9a9a9a; border: none; border-bottom: 2px solid transparent; padding: 7px 18px; cursor: pointer; font-family: monospace; font-size: 12px; }
+    .tab:hover { color: #d4d4d4; background: #37373d; }
+    .tab-active { color: #fff; border-bottom-color: #4ec9b0; }
+    #scope-content { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+    #editor-wrap { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+    #editor-toolbar { padding: 6px 12px; background: #252526; border-bottom: 1px solid #3c3c3c; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+    #save-btn { background: #0e639c; color: #fff; border: none; padding: 4px 14px; font-family: monospace; cursor: pointer; border-radius: 2px; font-size: 12px; }
+    #save-btn:hover { background: #1177bb; }
+    #save-status { font-size: 11px; color: #b5cea8; }
+    #editor-main { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+    #palette { width: 140px; background: #252526; border-right: 1px solid #3c3c3c; padding: 10px 8px; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; overflow-y: auto; }
+    .palette-title { font-size: 10px; color: #6a6a6a; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+    .palette-item { padding: 7px 10px; border-radius: 4px; border: 1px solid #555; background: #3c3c3c; color: #d4d4d4; cursor: grab; user-select: none; font-size: 11px; text-align: center; }
+    .palette-item:hover { background: #4a4a4a; }
+    .palette-item[data-kind="pot"]    { border-left: 3px solid #4ec9b0; }
+    .palette-item[data-kind="button"] { border-left: 3px solid #569cd6; }
+    .palette-item[data-kind="led"]    { border-left: 3px solid #f04a4a; }
+    #canvas-area { flex: 1; position: relative; overflow: auto; background: #1e1e1e; }
+    #canvas-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #3c3c3c; font-size: 13px; pointer-events: none; }
+    .ctrl-card { position: absolute; min-width: 168px; background: #252526; border: 1px solid #555; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.4); }
+    .ctrl-card[data-kind="pot"]    { border-top: 3px solid #4ec9b0; }
+    .ctrl-card[data-kind="button"] { border-top: 3px solid #569cd6; }
+    .ctrl-card[data-kind="led"]    { border-top: 3px solid #f04a4a; }
+    .card-header { padding: 4px 6px 4px 8px; display: flex; align-items: center; justify-content: space-between; cursor: move; background: rgba(255,255,255,0.03); }
+    .card-kind { font-size: 9px; color: #6a6a6a; text-transform: uppercase; letter-spacing: 0.5px; }
+    .card-del { background: none; border: none; color: #555; cursor: pointer; font-size: 15px; padding: 0 2px; line-height: 1; }
+    .card-del:hover { color: #f04a4a; }
+    .card-body { padding: 5px 8px 8px; display: flex; flex-direction: column; gap: 4px; }
+    .card-field { display: flex; align-items: center; gap: 5px; }
+    .card-field label { font-size: 10px; color: #9a9a9a; min-width: 46px; }
+    .card-inp { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 2px 4px; font-family: monospace; font-size: 11px; flex: 1; min-width: 0; }
+    .card-sel { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 2px 4px; font-family: monospace; font-size: 11px; flex: 1; }
   </style>
 </head>
 <body>
+  <div id="tab-bar">
+    <button class="tab tab-active" id="tab-scope-btn">Scope</button>
+    <button class="tab" id="tab-editor-btn">Controller Editor</button>
+  </div>
+  <div id="scope-content">
   <header>
     <span id="status-text">Deploy to start…</span>
     <span class="legend">
@@ -400,6 +456,24 @@ function buildHtml(
   ${controllersHtml}
   ${buttonsHtml}
   ${ledsHtml}
+  </div><!-- #scope-content -->
+  <div id="editor-wrap" style="display:none">
+    <div id="editor-toolbar">
+      <button id="save-btn">Save controllers.yaml</button>
+      <span id="save-status"></span>
+    </div>
+    <div id="editor-main">
+      <div id="palette">
+        <div class="palette-title">Palette</div>
+        <div class="palette-item" data-kind="pot" draggable="true">Pot</div>
+        <div class="palette-item" data-kind="button" draggable="true">Button</div>
+        <div class="palette-item" data-kind="led" draggable="true">LED</div>
+      </div>
+      <div id="canvas-area">
+        <div id="canvas-hint">Drag a control from the palette</div>
+      </div>
+    </div>
+  </div><!-- #editor-wrap -->
   <script>
     const vscode = acquireVsCodeApi();
     const canvas = document.getElementById('scope');
@@ -591,7 +665,167 @@ function buildHtml(
         document.querySelectorAll('.vled-dot[data-pin="' + msg.gpioPin + '"]').forEach(dot => {
           dot.classList.toggle('vled-lit', !!msg.lit);
         });
+      } else if (msg.command === 'editorLoad') {
+        editorLoad(msg.cfg || {});
       }
+    });
+
+    // ── Controller Editor (M10b) ──────────────────────────────────────────
+    let editorControls = [];
+    let nextCtrlIdx = 0;
+
+    function escJ(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function switchTab(tab) {
+      const scopeEl  = document.getElementById('scope-content');
+      const editorEl = document.getElementById('editor-wrap');
+      const sBtn = document.getElementById('tab-scope-btn');
+      const eBtn = document.getElementById('tab-editor-btn');
+      if (tab === 'editor') {
+        scopeEl.style.display  = 'none';
+        editorEl.style.display = 'flex';
+        sBtn.classList.remove('tab-active');
+        eBtn.classList.add('tab-active');
+      } else {
+        scopeEl.style.display  = 'flex';
+        editorEl.style.display = 'none';
+        sBtn.classList.add('tab-active');
+        eBtn.classList.remove('tab-active');
+        resize();
+      }
+    }
+
+    document.getElementById('tab-scope-btn').addEventListener('click',  () => switchTab('scope'));
+    document.getElementById('tab-editor-btn').addEventListener('click', () => switchTab('editor'));
+
+    function editorLoad(cfg) {
+      editorControls = [];
+      let ax = 20, ay = 20;
+      function nextPos() { const p = [ax, ay]; ax += 190; if (ax > 580) { ax = 20; ay += 170; } return p; }
+      for (const p of (cfg.pots   || [])) editorControls.push({ kind:'pot',    id:p.id, label:p.label, adcChannel:p.adcChannel, range:p.range||[0,1], taper:p.taper||'linear', def:p.default??0.5, gpioPin:null, mode:null, activeLevel:null, pos:p.pos||nextPos() });
+      for (const b of (cfg.buttons|| [])) editorControls.push({ kind:'button', id:b.id, label:b.label, adcChannel:null, range:null, taper:null, def:null, gpioPin:b.gpioPin??0, mode:b.mode||'momentary', activeLevel:b.activeLevel||'low', pos:b.pos||nextPos() });
+      for (const l of (cfg.leds   || [])) editorControls.push({ kind:'led',    id:l.id, label:l.label, adcChannel:null, range:null, taper:null, def:null, gpioPin:l.gpioPin??0, mode:null, activeLevel:null, pos:l.pos||nextPos() });
+      nextCtrlIdx = Math.max(editorControls.length, nextCtrlIdx);
+      renderCanvas();
+      switchTab('editor');
+    }
+
+    function renderCanvas() {
+      const area = document.getElementById('canvas-area');
+      const hint = document.getElementById('canvas-hint');
+      area.innerHTML = '';
+      if (hint) area.appendChild(hint);
+      hint && (hint.style.display = editorControls.length ? 'none' : 'flex');
+      for (const ctrl of editorControls) area.appendChild(buildCard(ctrl));
+    }
+
+    function buildCard(ctrl) {
+      const kindLabel = ctrl.kind === 'pot' ? 'Pot' : ctrl.kind === 'button' ? 'Button' : 'LED';
+      const pinOpts = [...Array(32).keys()].map(i => '<option value="'+i+'"'+(ctrl.gpioPin===i?' selected':'')+'>pin '+i+'</option>').join('');
+      const chOpts  = [...Array(12).keys()].map(i => '<option value="'+i+'"'+(ctrl.adcChannel===i?' selected':'')+'>ch '+i+'</option>').join('');
+      const taperOpts = ['linear','log','antilog'].map(t => '<option value="'+t+'"'+(ctrl.taper===t?' selected':'')+'>'+t+'</option>').join('');
+      const modeOpts  = ['momentary','toggle'].map(m => '<option value="'+m+'"'+(ctrl.mode===m?' selected':'')+'>'+m+'</option>').join('');
+
+      const card = document.createElement('div');
+      card.className = 'ctrl-card';
+      card.dataset.kind = ctrl.kind;
+      card.style.left = ctrl.pos[0] + 'px';
+      card.style.top  = ctrl.pos[1] + 'px';
+      card.innerHTML =
+        '<div class="card-header">' +
+          '<span class="card-kind">'+kindLabel+'</span>' +
+          '<button class="card-del" title="Remove">×</button>' +
+        '</div>' +
+        '<div class="card-body">' +
+          '<div class="card-field"><label>ID</label><input class="card-inp card-id" value="'+escJ(ctrl.id)+'"/></div>' +
+          '<div class="card-field"><label>Label</label><input class="card-inp card-lbl" value="'+escJ(ctrl.label)+'"/></div>' +
+          (ctrl.kind === 'pot'
+            ? '<div class="card-field"><label>ADC ch</label><select class="card-sel card-ch">'+chOpts+'</select></div>' +
+              '<div class="card-field"><label>Taper</label><select class="card-sel card-taper">'+taperOpts+'</select></div>' +
+              '<div class="card-field"><label>Default</label><input class="card-inp card-def" type="number" min="0" max="1" step="0.01" value="'+ctrl.def+'"/></div>'
+            : '<div class="card-field"><label>GPIO pin</label><select class="card-sel card-pin">'+pinOpts+'</select></div>' +
+              (ctrl.kind === 'button' ? '<div class="card-field"><label>Mode</label><select class="card-sel card-mode">'+modeOpts+'</select></div>' : '')) +
+        '</div>';
+
+      card.querySelector('.card-del').addEventListener('click', () => {
+        editorControls = editorControls.filter(c => c !== ctrl);
+        card.remove();
+        const hint = document.getElementById('canvas-hint');
+        if (hint) hint.style.display = editorControls.length ? 'none' : 'flex';
+      });
+      card.querySelector('.card-id').addEventListener('input',  e => { ctrl.id    = e.target.value; });
+      card.querySelector('.card-lbl').addEventListener('input', e => { ctrl.label = e.target.value; });
+      if (ctrl.kind === 'pot') {
+        card.querySelector('.card-ch').addEventListener('change',    e => { ctrl.adcChannel = parseInt(e.target.value, 10); });
+        card.querySelector('.card-taper').addEventListener('change', e => { ctrl.taper = e.target.value; });
+        card.querySelector('.card-def').addEventListener('change',   e => { ctrl.def = parseFloat(e.target.value); });
+      } else {
+        card.querySelector('.card-pin').addEventListener('change', e => { ctrl.gpioPin = parseInt(e.target.value, 10); });
+        if (ctrl.kind === 'button') card.querySelector('.card-mode').addEventListener('change', e => { ctrl.mode = e.target.value; });
+      }
+      makeDraggable(card, ctrl);
+      return card;
+    }
+
+    function makeDraggable(card, ctrl) {
+      const header = card.querySelector('.card-header');
+      let drag = false, sx, sy, sl, st;
+      header.addEventListener('mousedown', e => {
+        if (e.target.closest('.card-del')) return;
+        drag = true; sx = e.clientX; sy = e.clientY;
+        sl = parseInt(card.style.left,10)||0; st = parseInt(card.style.top,10)||0;
+        e.preventDefault();
+      });
+      document.addEventListener('mousemove', e => {
+        if (!drag) return;
+        const nx = Math.max(0, sl + e.clientX - sx);
+        const ny = Math.max(0, st + e.clientY - sy);
+        card.style.left = nx + 'px'; card.style.top = ny + 'px';
+        ctrl.pos = [nx, ny];
+      });
+      document.addEventListener('mouseup', () => { drag = false; });
+    }
+
+    // Palette → canvas drop
+    document.querySelectorAll('.palette-item').forEach(item => {
+      item.addEventListener('dragstart', e => e.dataTransfer.setData('text/plain', item.dataset.kind));
+    });
+    const canvasArea = document.getElementById('canvas-area');
+    canvasArea.addEventListener('dragover', e => e.preventDefault());
+    canvasArea.addEventListener('drop', e => {
+      e.preventDefault();
+      const kind = e.dataTransfer.getData('text/plain');
+      if (!['pot','button','led'].includes(kind)) return;
+      const rect = canvasArea.getBoundingClientRect();
+      const x = Math.max(0, e.clientX - rect.left);
+      const y = Math.max(0, e.clientY - rect.top);
+      nextCtrlIdx++;
+      const ctrl = {
+        kind, pos: [x, y],
+        id: kind + '_' + nextCtrlIdx,
+        label: (kind==='pot'?'Pot':kind==='button'?'Button':'LED') + ' ' + nextCtrlIdx,
+        adcChannel: kind==='pot'?0:null, range:kind==='pot'?[0,1]:null,
+        taper:kind==='pot'?'linear':null, def:kind==='pot'?0.5:null,
+        gpioPin:kind!=='pot'?0:null, mode:kind==='button'?'momentary':null,
+        activeLevel:kind==='button'?'low':null,
+      };
+      editorControls.push(ctrl);
+      canvasArea.appendChild(buildCard(ctrl));
+      const hint = document.getElementById('canvas-hint');
+      if (hint) hint.style.display = 'none';
+    });
+
+    // Save
+    document.getElementById('save-btn').addEventListener('click', () => {
+      const pots    = editorControls.filter(c=>c.kind==='pot').map(c=>({ id:c.id, label:c.label, adcChannel:c.adcChannel??0, range:c.range||[0,1], taper:c.taper||'linear', default:c.def??0.5, errors:[], pos:c.pos }));
+      const buttons = editorControls.filter(c=>c.kind==='button').map(c=>({ id:c.id, label:c.label, gpioPin:c.gpioPin??0, mode:c.mode||'momentary', activeLevel:c.activeLevel||'low', pos:c.pos }));
+      const leds    = editorControls.filter(c=>c.kind==='led').map(c=>({ id:c.id, label:c.label, gpioPin:c.gpioPin??0, pos:c.pos }));
+      vscode.postMessage({ command:'editorSave', cfg:{ pots, buttons, leds, errors:[] } });
+      const st = document.getElementById('save-status');
+      st.textContent = 'Saved ✓';
+      setTimeout(()=>{ st.textContent=''; }, 2000);
     });
   </script>
 </body>

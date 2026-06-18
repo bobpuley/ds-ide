@@ -9,6 +9,7 @@ export interface ControllerDef {
   range: [number, number];
   taper: Taper;
   default: number;
+  pos?: [number, number]; // editor_pos — canvas position (x, y); ignored by runtime
 }
 
 // M10: a virtual button declared in the `buttons:` section.
@@ -18,6 +19,7 @@ export interface ButtonDef {
   gpioPin: number;       // Daisy pin number 0–31 (matches hw.GetPin(n))
   mode: ButtonMode;      // momentary (held) | toggle (latched)
   activeLevel: ActiveLevel;  // wiring metadata; runtime returns the logical press
+  pos?: [number, number]; // editor_pos — canvas position (x, y); ignored by runtime
 }
 
 // M10: a virtual LED declared in the `leds:` section. gpio_pin 23 = onboard LED.
@@ -25,6 +27,7 @@ export interface LedDef {
   id: string;
   label: string;
   gpioPin: number;
+  pos?: [number, number]; // editor_pos — canvas position (x, y); ignored by runtime
 }
 
 export interface ParseResult {
@@ -202,11 +205,21 @@ function parsePots(rawItems: Record<string, unknown>[]): { pots: ControllerDef[]
         range: range as [number, number],
         taper: taper as Taper,
         default: defaultVal as number,
+        pos: parseEditorPos(raw['editor_pos']),
       });
     }
   }
 
   return { pots, errors };
+}
+
+// Parse an optional editor_pos value ([x, y] inline array) from a raw item field.
+function parseEditorPos(raw: unknown): [number, number] | undefined {
+  if (!Array.isArray(raw) || raw.length !== 2) return undefined;
+  const x = Number(raw[0]);
+  const y = Number(raw[1]);
+  if (isNaN(x) || isNaN(y)) return undefined;
+  return [x, y];
 }
 
 // Shared validation for id / label / gpio_pin (buttons and LEDs).
@@ -281,6 +294,7 @@ function parseButtons(rawItems: Record<string, unknown>[]): { buttons: ButtonDef
         gpioPin: base.gpioPin,
         mode: mode as ButtonMode,
         activeLevel: activeLevel as ActiveLevel,
+        pos: parseEditorPos(raw['editor_pos']),
       });
     }
   }
@@ -299,7 +313,7 @@ function parseLeds(rawItems: Record<string, unknown>[]): { leds: LedDef[]; error
     const raw = rawItems[i]!;
     const ctx = `led ${i + 1}`;
     const base = validateDigitalEntry(raw, ctx, seenIds, seenPins, errors);
-    if (base) leds.push({ id: base.id, label: base.label, gpioPin: base.gpioPin });
+    if (base) leds.push({ id: base.id, label: base.label, gpioPin: base.gpioPin, pos: parseEditorPos(raw['editor_pos']) });
   }
 
   return { leds, errors };
@@ -325,4 +339,59 @@ export function parseControllerConfig(text: string): ControllerConfig {
   const { buttons, errors: buttonErrors } = parseButtons(sections['buttons'] ?? []);
   const { leds, errors: ledErrors } = parseLeds(sections['leds'] ?? []);
   return { pots, buttons, leds, errors: [...potErrors, ...buttonErrors, ...ledErrors] };
+}
+
+/**
+ * Serialize a ControllerConfig back to `controllers.yaml` text.
+ * Preserves editor_pos positions when present. Produces a deterministic,
+ * human-readable YAML that the parser can round-trip correctly.
+ */
+export function serializeControllerConfig(cfg: ControllerConfig): string {
+  const lines: string[] = [];
+
+  if (cfg.pots.length > 0) {
+    lines.push('controllers:');
+    for (const p of cfg.pots) {
+      lines.push(`  - id: ${p.id}`);
+      lines.push(`    label: ${yamlQuote(p.label)}`);
+      lines.push(`    adc_channel: ${p.adcChannel}`);
+      lines.push(`    range: [${p.range[0]}, ${p.range[1]}]`);
+      lines.push(`    taper: ${p.taper}`);
+      lines.push(`    default: ${p.default}`);
+      if (p.pos) lines.push(`    editor_pos: [${Math.round(p.pos[0])}, ${Math.round(p.pos[1])}]`);
+    }
+  }
+
+  if (cfg.buttons.length > 0) {
+    lines.push('buttons:');
+    for (const b of cfg.buttons) {
+      lines.push(`  - id: ${b.id}`);
+      lines.push(`    label: ${yamlQuote(b.label)}`);
+      lines.push(`    gpio_pin: ${b.gpioPin}`);
+      lines.push(`    mode: ${b.mode}`);
+      lines.push(`    active_level: ${b.activeLevel}`);
+      if (b.pos) lines.push(`    editor_pos: [${Math.round(b.pos[0])}, ${Math.round(b.pos[1])}]`);
+    }
+  }
+
+  if (cfg.leds.length > 0) {
+    lines.push('leds:');
+    for (const l of cfg.leds) {
+      lines.push(`  - id: ${l.id}`);
+      lines.push(`    label: ${yamlQuote(l.label)}`);
+      lines.push(`    gpio_pin: ${l.gpioPin}`);
+      if (l.pos) lines.push(`    editor_pos: [${Math.round(l.pos[0])}, ${Math.round(l.pos[1])}]`);
+    }
+  }
+
+  return lines.join('\n') + '\n';
+}
+
+// Quote a label value for YAML: wraps in double-quotes if it contains
+// characters that could be misread as YAML syntax (colon, hash, quote, etc.).
+function yamlQuote(s: string): string {
+  if (/[:#\[\]{},'"&*?|<>=!%@`]/.test(s) || s.trim() !== s || s === '' || /^[0-9]/.test(s)) {
+    return '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  }
+  return s;
 }

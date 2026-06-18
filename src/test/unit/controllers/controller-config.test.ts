@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseControllerYaml, parseControllerConfig } from '../../../controllers/controller-config';
+import { parseControllerYaml, parseControllerConfig, serializeControllerConfig } from '../../../controllers/controller-config';
 
 const MINIMAL_VALID = `
 controllers:
@@ -414,5 +414,163 @@ buttons:
     expect(buttons).toHaveLength(2);
     expect(buttons[0]!.mode).toBe('toggle');
     expect(buttons[1]!.mode).toBe('momentary');
+  });
+});
+
+// ---- M10b: editor_pos + serializer (T10b.3) ----
+
+describe('editor_pos parsing (M10b)', () => {
+  it('parses editor_pos on a pot', () => {
+    const yaml = `
+controllers:
+  - id: vol
+    label: Volume
+    adc_channel: 0
+    range: [0, 1]
+    taper: linear
+    default: 0.5
+    editor_pos: [120, 80]
+`;
+    const { pots, errors } = parseControllerConfig(yaml);
+    expect(errors).toHaveLength(0);
+    expect(pots[0]!.pos).toEqual([120, 80]);
+  });
+
+  it('parses editor_pos on a button', () => {
+    const yaml = `
+buttons:
+  - id: bypass
+    label: Bypass
+    gpio_pin: 28
+    editor_pos: [250, 80]
+`;
+    const { buttons } = parseControllerConfig(yaml);
+    expect(buttons[0]!.pos).toEqual([250, 80]);
+  });
+
+  it('parses editor_pos on a led', () => {
+    const yaml = `
+leds:
+  - id: status
+    label: Status
+    gpio_pin: 23
+    editor_pos: [380, 80]
+`;
+    const { leds } = parseControllerConfig(yaml);
+    expect(leds[0]!.pos).toEqual([380, 80]);
+  });
+
+  it('leaves pos undefined when editor_pos is absent', () => {
+    const yaml = `
+controllers:
+  - id: vol
+    label: Volume
+    adc_channel: 0
+    range: [0, 1]
+    taper: linear
+    default: 0.5
+`;
+    const { pots } = parseControllerConfig(yaml);
+    expect(pots[0]!.pos).toBeUndefined();
+  });
+});
+
+describe('serializeControllerConfig (M10b)', () => {
+  it('round-trips a full config without editor_pos', () => {
+    const yaml = `controllers:
+  - id: vol
+    label: Volume
+    adc_channel: 0
+    range: [0, 1]
+    taper: linear
+    default: 0.5
+buttons:
+  - id: bypass
+    label: Bypass
+    gpio_pin: 28
+    mode: toggle
+    active_level: low
+leds:
+  - id: status
+    label: Status
+    gpio_pin: 23
+`;
+    const cfg = parseControllerConfig(yaml);
+    const out = serializeControllerConfig(cfg);
+    const reparsed = parseControllerConfig(out);
+    expect(reparsed.errors).toHaveLength(0);
+    expect(reparsed.pots[0]!.id).toBe('vol');
+    expect(reparsed.buttons[0]!.id).toBe('bypass');
+    expect(reparsed.leds[0]!.id).toBe('status');
+  });
+
+  it('round-trips editor_pos positions', () => {
+    const cfg = parseControllerConfig(`
+controllers:
+  - id: vol
+    label: Volume
+    adc_channel: 0
+    range: [0, 1]
+    taper: linear
+    default: 0.5
+    editor_pos: [120, 80]
+buttons:
+  - id: bypass
+    label: Bypass
+    gpio_pin: 28
+    editor_pos: [250, 80]
+leds:
+  - id: status
+    label: Status
+    gpio_pin: 23
+    editor_pos: [380, 80]
+`);
+    const out = serializeControllerConfig(cfg);
+    const reparsed = parseControllerConfig(out);
+    expect(reparsed.pots[0]!.pos).toEqual([120, 80]);
+    expect(reparsed.buttons[0]!.pos).toEqual([250, 80]);
+    expect(reparsed.leds[0]!.pos).toEqual([380, 80]);
+  });
+
+  it('omits editor_pos line when pos is undefined', () => {
+    const cfg = parseControllerConfig(`
+leds:
+  - id: status
+    label: Status
+    gpio_pin: 23
+`);
+    const out = serializeControllerConfig(cfg);
+    expect(out).not.toContain('editor_pos');
+  });
+
+  it('rounds fractional positions to integers', () => {
+    const cfg = parseControllerConfig(`
+leds:
+  - id: x
+    label: X
+    gpio_pin: 5
+    editor_pos: [10, 20]
+`);
+    cfg.leds[0]!.pos = [100.7, 200.3];
+    const out = serializeControllerConfig(cfg);
+    expect(out).toContain('editor_pos: [101, 200]');
+  });
+
+  it('quotes labels containing special YAML characters', () => {
+    const cfg = parseControllerConfig(`
+leds:
+  - id: x
+    label: "Status: on"
+    gpio_pin: 5
+`);
+    const out = serializeControllerConfig(cfg);
+    expect(out).toContain('"Status: on"');
+  });
+
+  it('produces no pots section when pots is empty', () => {
+    const cfg = parseControllerConfig(`leds:\n  - id: x\n    label: X\n    gpio_pin: 5\n`);
+    const out = serializeControllerConfig(cfg);
+    expect(out).not.toContain('controllers:');
+    expect(out).toContain('leds:');
   });
 });
