@@ -81,6 +81,14 @@ static std::string build_status_json() {
     return buf;
 }
 
+// ---- Outbound event helper --------------------------------------------------
+// Send a JSON line to the connected client (if any) from the dispatch thread.
+
+static void emit_event(const std::string& msg) {
+    std::lock_guard<std::mutex> lk(g_state.send_mutex);
+    if (g_state.send_ipc) g_state.send_ipc(msg);
+}
+
 // ---- Message dispatch -------------------------------------------------------
 
 static void dispatch(const std::string& line) {
@@ -140,6 +148,36 @@ static void dispatch(const std::string& line) {
             std::lock_guard<std::mutex> lk(g_state.mode_mutex);
         }
         g_state.mode_cv.notify_all();
+    }
+    else if (type == "wavFile") {
+        // {path, loop}: a non-empty path loads & activates WAV input; an empty
+        // path deactivates it (the simulated loop reverts to the sine generator).
+        auto path = json_get(line, "path");
+        auto loop = json_get(line, "loop");
+        g_state.wav_loop.store(loop == "true");
+
+        if (path.empty()) {
+            {
+                std::lock_guard<std::mutex> lk(g_state.wav_mutex);
+                g_state.wav_data.reset();
+            }
+            g_state.wav_active.store(false);
+            g_state.wav_generation.fetch_add(1);
+        } else {
+            auto wav = std::make_shared<WavData>();
+            std::string err;
+            if (load_wav_file(path, *wav, err)) {
+                {
+                    std::lock_guard<std::mutex> lk(g_state.wav_mutex);
+                    g_state.wav_data = wav;
+                }
+                g_state.wav_generation.fetch_add(1);
+                g_state.wav_active.store(true);
+            } else {
+                g_state.wav_active.store(false);
+                emit_event("{\"type\":\"event\",\"kind\":\"wav_error\"}");
+            }
+        }
     }
 }
 

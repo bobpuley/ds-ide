@@ -1,11 +1,15 @@
 #include "audio_engine.h"
 #include "core_audio_device.h"
 #include "emulator_state.h"
+#include "wav_reader.h"
+#include <algorithm>
 #include <cfloat>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
@@ -120,6 +124,11 @@ static void run_simulated(bool use_block,
     ScopeState scope;
     double phase = 0.0;
 
+    // WAV playhead (M9): fractional read position and the generation we last saw,
+    // so a freshly-loaded file restarts from the beginning.
+    double   wav_pos      = 0.0;
+    uint64_t wav_gen_seen = g_state.wav_generation.load();
+
     auto block_ns = [&]() -> long long {
         return static_cast<long long>(
             static_cast<double>(block_size) / static_cast<double>(sample_rate) * 1e9);
@@ -134,15 +143,32 @@ static void run_simulated(bool use_block,
             continue;
         }
 
-        const float freq = g_state.sine_freq.load();
-        const float amp  = g_state.sine_amp.load();
-
-        for (size_t i = 0; i < block_size; ++i) {
-            float s = amp * static_cast<float>(std::sin(2.0 * M_PI * phase));
-            in_buf[2 * i]     = s;
-            in_buf[2 * i + 1] = s;
-            phase += static_cast<double>(freq) / static_cast<double>(sample_rate);
-            if (phase >= 1.0) phase -= 1.0;
+        // --- Input generation: WAV file (M9) or sine generator ---
+        if (g_state.wav_active.load()) {
+            std::shared_ptr<const WavData> wav;
+            {
+                std::lock_guard<std::mutex> lk(g_state.wav_mutex);
+                wav = g_state.wav_data;
+            }
+            uint64_t gen = g_state.wav_generation.load();
+            if (gen != wav_gen_seen) { wav_gen_seen = gen; wav_pos = 0.0; }
+            if (wav && !wav->empty()) {
+                wav_fill_stereo_block(*wav, wav_pos, g_state.wav_loop.load(),
+                                      sample_rate, block_size, in_buf.data());
+            } else {
+                std::fill(in_buf.begin(),
+                          in_buf.begin() + static_cast<ptrdiff_t>(block_size * 2), 0.f);
+            }
+        } else {
+            const float freq = g_state.sine_freq.load();
+            const float amp  = g_state.sine_amp.load();
+            for (size_t i = 0; i < block_size; ++i) {
+                float s = amp * static_cast<float>(std::sin(2.0 * M_PI * phase));
+                in_buf[2 * i]     = s;
+                in_buf[2 * i + 1] = s;
+                phase += static_cast<double>(freq) / static_cast<double>(sample_rate);
+                if (phase >= 1.0) phase -= 1.0;
+            }
         }
 
         std::fill(out_buf.begin(), out_buf.end(), 0.f);

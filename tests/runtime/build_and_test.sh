@@ -38,6 +38,7 @@ run_test "bypass (out==in)"        "test_bypass.py"
 run_test "determinism (NFR-6)"     "test_determinism.py"
 run_test "Osc (oscillator)"        "test_osc.py"
 run_test "inout (AC-8 block-form)" "test_inout.py"
+run_test "WAV input (AC-10)"       "test_wav.py"
 
 echo ""
 echo "Results: ${pass} passed, ${fail} failed."

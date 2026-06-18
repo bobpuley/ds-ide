@@ -164,6 +164,12 @@ export class EmulatorManager extends EventEmitter {
     this.ipcClient?.send({ type: 'audioDevice', sampleRate, bufferSize });
   }
 
+  // M9: select a WAV file as the input source. An empty path deactivates WAV
+  // input and the runtime reverts to the sine generator.
+  sendWavFile(path: string, loop: boolean): void {
+    this.ipcClient?.send({ type: 'wavFile', path, loop });
+  }
+
   get childPid(): number | undefined {
     return this.childProcess?.pid;
   }
