@@ -5,6 +5,17 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.2.4 — 2026-06-18
+
+**M11 — Full debug** *(AC-12 green — FR-DB-7…FR-DB-10)*
+
+- **DAP stepping (T11.1):** step over, step into, and step out work natively in the VS Code debug toolbar via the existing lldb-dap attach session — no additional extension code required.
+- **Variables / watch / call stack (T11.2):** VS Code Variables, Watch, and Call Stack panels populate automatically from lldb-dap responses when paused at a breakpoint.
+- **Mute-on-breakpoint (T11.3, R15 mitigation):** `MuteOnBreakpointTracker` (a `DebugAdapterTracker`) intercepts DAP `stopped` events and sends `audioMode: simulated` to the emulator, preventing xruns while lldb holds the audio thread. Resumes `audioMode: realtime` on `continued`, `exited`, or `terminated` events. `DaisyDebugAdapterTrackerFactory` registered in the extension for `daisy-debug` sessions.
+- **Tests:** 10 new unit tests for `MuteOnBreakpointTracker` and `DaisyDebugAdapterTrackerFactory`; extension subscription count and mock updated. 209/209 pass. AC-12 green; no regression to AC-1…AC-11.
+
+---
+
 ## 0.2.3 — 2026-06-18
 
 **M10b — Visual controller editor** *(AC-15 green — FR-VE-1…FR-VE-4)*
