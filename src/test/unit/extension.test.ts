@@ -54,7 +54,7 @@ describe('extension', () => {
     expect(typeof deactivate).toBe('function');
   });
 
-  it('activate registers all four commands', () => {
+  it('activate registers all commands', () => {
     const ctx = makeContext();
     activate(ctx);
 
@@ -66,13 +66,15 @@ describe('extension', () => {
     expect(registeredIds).toContain('ds-ide.start');
     expect(registeredIds).toContain('ds-ide.stop');
     expect(registeredIds).toContain('ds-ide.debug');
+    expect(registeredIds).toContain('ds-ide.buildHardware');
+    expect(registeredIds).toContain('ds-ide.flash');
   });
 
   it('activate pushes disposables onto context.subscriptions', () => {
     const ctx = makeContext();
     activate(ctx);
-    // diagnostics + statusBar + descriptor factory + tracker factory + 6 commands + 1 manager/scope dispose
-    expect((ctx.subscriptions as unknown[]).length).toBe(11);
+    // diagnostics + statusBar + descriptor factory + tracker factory + 8 commands + 1 manager/scope dispose
+    expect((ctx.subscriptions as unknown[]).length).toBe(13);
   });
 
   it('deactivate does not throw', () => {
