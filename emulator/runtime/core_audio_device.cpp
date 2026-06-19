@@ -29,7 +29,12 @@ struct CoreAudioDevice::Impl {
     uint32_t  inputChannels{1};
 
     // Input buffer list — allocated after querying hardware format, freed in stop().
+    // Null in output-only mode.
     AudioBufferList* inputBufList{nullptr};
+
+    // Work buffers for output-only mode (avoid per-callback allocation).
+    std::vector<float> silentInput;  // zeroed, sized bufferSize*2
+    std::vector<float> workOut;      // interleaved output, sized bufferSize*2
 
     std::atomic<uint32_t> xruns{0};
     std::atomic<float>    latencyMs{0.f};
@@ -101,6 +106,50 @@ struct CoreAudioDevice::Impl {
             for (size_t i = 0; i < frames; ++i) {
                 outMono[i] = out_interleaved[2 * i];
             }
+        }
+
+        return noErr;
+    }
+
+    // Output-only render callback: no AudioUnitRender call, no live input.
+    // processBlock receives a pre-zeroed input buffer; the caller generates its own input.
+    static OSStatus renderCallbackOutputOnly(void*                       inRefCon,
+                                             AudioUnitRenderActionFlags* /*ioActionFlags*/,
+                                             const AudioTimeStamp*       /*inTimeStamp*/,
+                                             UInt32                      /*inBusNumber*/,
+                                             UInt32                      inNumberFrames,
+                                             AudioBufferList*            ioData) {
+        Impl* self = static_cast<Impl*>(inRefCon);
+        const size_t frames = static_cast<size_t>(inNumberFrames);
+
+        // Grow work buffers if the hardware gives us more frames than expected.
+        if (self->silentInput.size() < frames * 2)
+            self->silentInput.assign(frames * 2, 0.f);
+        if (self->workOut.size() < frames * 2)
+            self->workOut.resize(frames * 2, 0.f);
+
+        uint64_t t_start = mach_absolute_time();
+        self->processBlock(self->silentInput.data(), self->workOut.data(), frames);
+        uint64_t t_end = mach_absolute_time();
+
+        double elapsed_ms = static_cast<double>(t_end - t_start) * s_mach_ns_per_tick / 1e6;
+        double budget_ms  = static_cast<double>(inNumberFrames) /
+                            static_cast<double>(self->sampleRate) * 1000.0;
+        if (elapsed_ms > budget_ms)
+            self->xruns.fetch_add(1, std::memory_order_relaxed);
+
+        // Deinterleave effect output → CoreAudio non-interleaved buffers.
+        if (ioData->mNumberBuffers >= 2) {
+            float* outL = static_cast<float*>(ioData->mBuffers[0].mData);
+            float* outR = static_cast<float*>(ioData->mBuffers[1].mData);
+            for (size_t i = 0; i < frames; ++i) {
+                outL[i] = self->workOut[2 * i];
+                outR[i] = self->workOut[2 * i + 1];
+            }
+        } else if (ioData->mNumberBuffers == 1) {
+            float* outMono = static_cast<float*>(ioData->mBuffers[0].mData);
+            for (size_t i = 0; i < frames; ++i)
+                outMono[i] = self->workOut[2 * i];
         }
 
         return noErr;
@@ -230,6 +279,80 @@ bool CoreAudioDevice::start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn 
     return true;
 }
 
+bool CoreAudioDevice::start_output_only(uint32_t sampleRate, uint32_t bufferSize, ProcessFn processBlock) {
+    if (running_) stop();
+
+    impl_ = new Impl();
+    impl_->sampleRate   = sampleRate;
+    impl_->bufferSize   = bufferSize;
+    impl_->processBlock = std::move(processBlock);
+    impl_->silentInput.assign(static_cast<size_t>(bufferSize) * 2, 0.f);
+    impl_->workOut.resize(static_cast<size_t>(bufferSize) * 2, 0.f);
+
+    AudioComponentDescription desc{};
+    desc.componentType         = kAudioUnitType_Output;
+    desc.componentSubType      = kAudioUnitSubType_HALOutput;
+    desc.componentManufacturer = kAudioUnitManufacturer_Apple;
+    AudioComponent comp = AudioComponentFindNext(nullptr, &desc);
+    if (!comp) { delete impl_; impl_ = nullptr; return false; }
+
+    if (AudioComponentInstanceNew(comp, &impl_->unit) != noErr) {
+        delete impl_; impl_ = nullptr; return false;
+    }
+
+    // Output-only: enable bus 0 (output), disable bus 1 (input — no mic needed).
+    UInt32 one = 1, zero = 0;
+    AudioUnitSetProperty(impl_->unit, kAudioOutputUnitProperty_EnableIO,
+                         kAudioUnitScope_Output, 0, &one,  sizeof(one));
+    AudioUnitSetProperty(impl_->unit, kAudioOutputUnitProperty_EnableIO,
+                         kAudioUnitScope_Input,  1, &zero, sizeof(zero));
+
+    // OUTPUT stream format: non-interleaved stereo float32.
+    AudioStreamBasicDescription outFmt{};
+    outFmt.mSampleRate       = static_cast<Float64>(sampleRate);
+    outFmt.mFormatID         = kAudioFormatLinearPCM;
+    outFmt.mFormatFlags      = kAudioFormatFlagIsFloat | kAudioFormatFlagIsNonInterleaved
+                             | kAudioFormatFlagIsPacked;
+    outFmt.mBytesPerPacket   = sizeof(float);
+    outFmt.mFramesPerPacket  = 1;
+    outFmt.mBytesPerFrame    = sizeof(float);
+    outFmt.mChannelsPerFrame = 2;
+    outFmt.mBitsPerChannel   = 32;
+    AudioUnitSetProperty(impl_->unit, kAudioUnitProperty_StreamFormat,
+                         kAudioUnitScope_Input, 0, &outFmt, sizeof(outFmt));
+
+    // Request the preferred hardware buffer size on the default output device.
+    {
+        AudioDeviceID defaultOutput = kAudioDeviceUnknown;
+        UInt32 sz = sizeof(defaultOutput);
+        AudioObjectPropertyAddress a{kAudioHardwarePropertyDefaultOutputDevice,
+                                     kAudioObjectPropertyScopeGlobal,
+                                     kAudioObjectPropertyElementMain};
+        AudioObjectGetPropertyData(kAudioObjectSystemObject, &a, 0, nullptr, &sz, &defaultOutput);
+        if (defaultOutput != kAudioDeviceUnknown) {
+            UInt32 hwBuf = static_cast<UInt32>(bufferSize);
+            AudioObjectPropertyAddress ba{kAudioDevicePropertyBufferFrameSize,
+                                          kAudioObjectPropertyScopeGlobal,
+                                          kAudioObjectPropertyElementMain};
+            AudioObjectSetPropertyData(defaultOutput, &ba, 0, nullptr, sizeof(hwBuf), &hwBuf);
+        }
+    }
+
+    AURenderCallbackStruct cb{};
+    cb.inputProc       = Impl::renderCallbackOutputOnly;
+    cb.inputProcRefCon = impl_;
+    if (AudioUnitSetProperty(impl_->unit, kAudioUnitProperty_SetRenderCallback,
+                             kAudioUnitScope_Input, 0, &cb, sizeof(cb)) != noErr) {
+        stop(); return false;
+    }
+
+    if (AudioUnitInitialize(impl_->unit) != noErr) { stop(); return false; }
+    if (AudioOutputUnitStart(impl_->unit) != noErr) { stop(); return false; }
+
+    running_ = true;
+    return true;
+}
+
 void CoreAudioDevice::stop() {
     if (impl_ && impl_->unit) {
         AudioOutputUnitStop(impl_->unit);
@@ -268,9 +391,8 @@ namespace daisy_emu {
 CoreAudioDevice::CoreAudioDevice() {}
 CoreAudioDevice::~CoreAudioDevice() { stop(); }
 
-bool CoreAudioDevice::start(uint32_t, uint32_t, ProcessFn) {
-    return false;
-}
+bool CoreAudioDevice::start(uint32_t, uint32_t, ProcessFn) { return false; }
+bool CoreAudioDevice::start_output_only(uint32_t, uint32_t, ProcessFn) { return false; }
 
 void CoreAudioDevice::stop() { running_ = false; }
 
