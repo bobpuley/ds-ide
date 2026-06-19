@@ -5,6 +5,16 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.3.0 — 2026-06-19
+
+**M16 — v3 Polish & Bug Fixes** *(AC-20, AC-21 green — FR-VZ-4, FR-UI-1)*
+
+- **T16-1 — Spectrum axis layout:** introduced LEFT (36 px), BOTTOM (16 px), and TOP (4 px) margins in `drawSpectrum`; dB labels now sit to the left of the plot area (right-aligned in the margin) and freq labels sit below an explicit x-axis baseline; the spectrum curve no longer extends past the baseline (AC-20).
+- **T16-2 — Scope panel border:** added `border: 1px solid #3c3c3c` to the webview `body` so the Scope panel has a visible border on all sides without clipping scope content (AC-21).
+- Added `mockup/scope.html` — standalone browser-renderable mockup for iterating visuals without the VS Code extension.
+
+---
+
 ## 0.2.9 — 2026-06-19
 
 **M15 — Scope UI refresh** *(AC-17 green — FR-AU-7, FR-AU-9, FR-AU-10)*
