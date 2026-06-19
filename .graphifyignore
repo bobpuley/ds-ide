@@ -7,3 +7,5 @@
 .claude/
 graphify-out/
 # docs/ intentionally NOT ignored — project design docs are worth indexing.
+# Demo screenshots in examples/ aren't useful for the knowledge graph.
+examples/**/*.png

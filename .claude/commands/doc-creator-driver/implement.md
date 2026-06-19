@@ -20,6 +20,7 @@ Generate executable code
 Generate unit tests
 
 Do not change requirements or architecture.
+Use Graphify to find any project's and seed's documents.
 
 # Workflow
 

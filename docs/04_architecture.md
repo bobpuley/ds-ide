@@ -77,7 +77,7 @@ no-op; in real-time mode they're CoreAudio read/write.
 | # | Component | Tech | v2 changes |
 |---|-----------|------|-----------|
 | C1 | Extension host | TS/Node | Hardware build commands, DFU flash command, full debug UI wiring, audio source selector |
-| C2 | Controller + scope webview | HTML/TS | Add button/GPIO/LED controls; visual controller editor (M10b); spectrum/FFT view; session recording UI; audio source selector; latency + xrun display |
+| C2 | Controller + scope webview | HTML/TS | Add button/GPIO/LED controls; visual controller editor (M10b); spectrum/FFT view; session recording UI; audio source dropdown; context-sensitive emulator bar (source-dependent controls); master output volume in header; collapsible Effect/Emulator footer sections |
 | C3 | Emulator build (CMake) | CMake + host clang | No change (emulator build unchanged) |
 | C4 | Emulator runtime | C++ executable | Real-time audio clock mode; host audio I/O; two-mode clock (real-time / simulated); mute-on-breakpoint; WAV file reader; session recorder |
 | C5 | Host libDaisy shim | C++ | Add `Switch`/GPIO shim (FR-CT-10); upgrade LED stub; keep ADC shim unchanged |
