@@ -5,6 +5,18 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.2.9 — 2026-06-19
+
+**M15 — Scope UI refresh** *(AC-17 green — FR-AU-7, FR-AU-9, FR-AU-10)*
+
+- **T15.1 — Input source dropdown:** replaced the three radio buttons with a `<select>` dropdown (Sine / Live (mic) / WAV); state preserved across source switches.
+- **T15.2 — Collapsible footer sections:** footer split into *Effect controls* (expanded by default) and *Emulator* (collapsed by default); each header toggles its body and calls `resize()` so the canvas fills available space.
+- **T15.3 — Context-sensitive emulator bar:** all emulator controls merged into a single inline `#emulator-bar`; sine/wav/live/buffer/latency/xrun groups shown only when relevant to the active source; recording controls always visible with a stronger visual divider.
+- **T15.4 — Master output volume:** `Vol` slider in the scope header sends `outputVolume` IPC; emulator applies the scaling factor to `out_buf` in both `run_simulated()` and `run_realtime()` before the CoreAudio write.
+- No regression to AC-1…AC-16. 257/257 tests green.
+
+---
+
 ## 0.2.8 — 2026-06-19
 
 **M12 — Hardware build & flash** *(AC-13 green — FR-HW-1…FR-HW-4)*

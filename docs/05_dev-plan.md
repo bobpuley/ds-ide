@@ -25,6 +25,7 @@ inspect tags → propose semver → update CHANGELOG.md → annotated tag → pu
 | M12 — Hardware build & flash       | [docs/milestones/v2/M12.md](milestones/v2/M12.md)    | 0.2.8          | **released**    |
 | M13 — Spectrum & FFT               | [docs/milestones/v2/M13.md](milestones/v2/M13.md)    | 0.2.6          | **released**    |
 | M14 — Session recording            | [docs/milestones/v2/M14.md](milestones/v2/M14.md)    | 0.2.7          | **released**    |
+| M15 — Scope UI refresh             | [docs/milestones/v2/M15.md](milestones/v2/M15.md)    | 0.2.9          | **released**    |
 
 > M8 is confirmed highest-priority. Milestone ordering M8 → M9 → M10 → M10b → M11 → M12 → M13 → M14
 > is confirmed. ✅ M10 scope reviewed and **locked** (2026-06-18) — see the locked-decisions section
@@ -61,12 +62,13 @@ M10b (visual editor) depends on M10 (yaml schema and controller panel must exist
 
 ## 3. AC coverage map
 
-| AC | Closed in | AC | Closed in |
-|----|-----------|----|----|
-| AC-9 live audio in + out | M8 | AC-13 hardware build + flash | M12 |
-| AC-10 WAV file input | M9 | AC-14 spectrum FFT spike | M13 |
-| AC-11 virtual button + LED | M10 | AC-15 visual editor round-trip | M10b |
-| AC-12 step/variables/call stack | M11 | AC-16 session record + replay | M14 |
+| AC                              | Closed in  | AC                             | Closed in |
+|---------------------------------|------------|--------------------------------|-----------|
+| AC-9 live audio in + out        | M8         | AC-13 hardware build + flash   | M12       |
+| AC-10 WAV file input            | M9         | AC-14 spectrum FFT spike       | M13       |
+| AC-11 virtual button + LED      | M10        | AC-15 visual editor round-trip | M10b      |
+| AC-12 step/variables/call stack | M11        | AC-16 session record + replay  | M14       |
+| AC-17 scope UI refresh          | M15        |                                |           |
 
 ---
 
@@ -99,10 +101,10 @@ Per-milestone goals, tasks, and DoD live in the milestone files linked from the 
 
 ## 6. Open items for v2 planning
 
-| Item | Resolve by |
-|------|-----------|
-| ~~Host audio API decision~~ | ✅ CoreAudio-native for v2; cross-platform deferred to v3+ |
-| ARM toolchain bundle vs detect | Before M12 design |
-| FFT library selection | Before M13 design |
-| Session recording format | Before M14 design |
-| ~~Phasing within v2~~ | ✅ Confirmed: M8→M9→M10→M10b→M11→M12→M13→M14 |
+| Item                           | Resolve by                                                |
+|--------------------------------|-----------------------------------------------------------|
+| ~~Host audio API decision~~    | ✅ CoreAudio-native for v2; cross-platform deferred to v3+ |
+| ARM toolchain bundle vs detect | Before M12 design                                         |
+| FFT library selection          | Before M13 design                                         |
+| Session recording format       | Before M14 design                                         |
+| ~~Phasing within v2~~          | ✅ Confirmed: M8→M9→M10→M10b→M11→M12→M13→M14               |
