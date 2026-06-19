@@ -254,6 +254,17 @@ static void run_simulated(bool use_block,
 
         if (!g_state.transport_running.load()) return true;
 
+        // CoreAudio may deliver more frames than we requested (hardware minimum
+        // clamping). Grow all work buffers on the fly to avoid buffer overflow.
+        if (frames * 2 > in_buf.size()) {
+            in_buf.resize(frames * 2, 0.f);
+            out_buf.resize(frames * 2, 0.f);
+            in_ch0.resize(frames, 0.f);
+            in_ch1.resize(frames, 0.f);
+            out_ch0.resize(frames, 0.f);
+            out_ch1.resize(frames, 0.f);
+        }
+
         // --- Input generation: replay (M14) / WAV (M9) / sine ---
         if (g_state.replay_active.load()) {
             std::vector<ReplayEvent> events;
@@ -363,9 +374,14 @@ static void run_simulated(bool use_block,
         }
     };
 
+    // Never request fewer than 256 frames from CoreAudio in simulated mode.
+    // Very small block sizes (e.g. 4) cause ~12 000 callbacks/s, overwhelming
+    // the kernel scheduler and producing xrun distortion. Effects receive the
+    // full hardware frame count per call, which is correct for emulation.
+    const size_t hw_buf = std::max(block_size, size_t(256));
     bool audio_started = device.start_output_only(
         static_cast<uint32_t>(sample_rate),
-        static_cast<uint32_t>(block_size),
+        static_cast<uint32_t>(hw_buf),
         ca_process);
 
     if (!audio_started) {
@@ -432,6 +448,15 @@ static void run_realtime(bool use_block,
     CoreAudioDevice device;
 
     auto processBlock = [&](const float* ca_in, float* ca_out, size_t frames) {
+        // Guard against hardware delivering more frames than rt_buffer_size.
+        if (frames * 2 > in_buf.size()) {
+            in_buf.resize(frames * 2, 0.f);
+            out_buf.resize(frames * 2, 0.f);
+            local_in_ch0.resize(frames, 0.f);
+            local_in_ch1.resize(frames, 0.f);
+            local_out_ch0.resize(frames, 0.f);
+            local_out_ch1.resize(frames, 0.f);
+        }
         // Copy CoreAudio input to interleaved in_buf
         std::memcpy(in_buf.data(), ca_in, frames * 2 * sizeof(float));
         std::fill(out_buf.begin(), out_buf.begin() + static_cast<ptrdiff_t>(frames * 2), 0.f);
