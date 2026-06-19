@@ -477,6 +477,21 @@ describe('ScopePanel', () => {
     );
   });
 
+  // T16-2 — Scope panel visible border
+  it('webview HTML body CSS includes a visible border on all sides (T16-2)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toMatch(/body\s*\{[^}]*\bborder\b[^}]*1px solid #3c3c3c/);
+  });
+
+  // T16-1 — Spectrum label overlap fix
+  it('drawSpectrum uses overlap-prevention: lastLabelRight and measureText present (T16-1)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('lastLabelRight');
+    expect(webview.html).toContain('measureText');
+  });
+
   it('does not forward spectrum message if panel is not open', () => {
     // No show() call — panel is null
     const spy = vi.fn();
