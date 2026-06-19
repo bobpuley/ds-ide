@@ -2,6 +2,18 @@ import * as vscode from 'vscode';
 import { EmulatorManager } from '../emulator/manager';
 import { IpcMessage } from '../emulator/ipc-client';
 import { ControllerDef, ButtonDef, LedDef, ControllerConfig } from '../controllers/controller-config';
+import { ConventionControl } from '../controllers/controls-convention-parser';
+
+export interface ControlsPlacement {
+  id: string;
+  pos: [number, number];
+}
+
+export interface ControlsConfig {
+  controls: ConventionControl[];
+  placements: ControlsPlacement[];
+  missingBlock: boolean;
+}
 
 const PANEL_ID = 'daisy-scope';
 const PANEL_TITLE = 'Daisy Scope';
@@ -54,6 +66,8 @@ export class ScopePanel {
   private leds: LedDef[] = [];
   private initialButtons: Record<number, boolean> = {};
   private msgDisposable: vscode.Disposable | null = null;
+  private pendingControlsConfig: ControlsConfig | null = null;
+  private lastStatusMsg: IpcMessage | null = null;
 
   constructor(
     private readonly manager: EmulatorManager,
@@ -70,7 +84,7 @@ export class ScopePanel {
   ) {
     manager.on('message', (msg: IpcMessage) => {
       if (msg['type'] === 'scope') this.postScope(msg);
-      if (msg['type'] === 'status') this.postStatus(msg);
+      if (msg['type'] === 'status') { this.lastStatusMsg = msg; this.postStatus(msg); }
       if (msg['type'] === 'event') this.postEvent(msg);
       if (msg['type'] === 'xrun') this.postXrun(msg);
       if (msg['type'] === 'latency') this.postLatency(msg);
@@ -114,6 +128,13 @@ export class ScopePanel {
     this.msgDisposable = this.panel.webview.onDidReceiveMessage((msg: unknown) => {
       if (!msg || typeof msg !== 'object') return;
       const m = msg as Record<string, unknown>;
+      if (m['command'] === 'webviewReady') {
+        if (this.pendingControlsConfig) {
+          this.panel?.webview.postMessage({ command: 'controlsConfig', ...this.pendingControlsConfig });
+        }
+        if (this.lastStatusMsg) this.postStatus(this.lastStatusMsg);
+        return;
+      }
       if (m['command'] === 'pot' && typeof m['channel'] === 'number' && typeof m['value'] === 'number') {
         this.manager.sendPot(m['channel'], m['value']);
         this.onPotChange?.(m['channel'], m['value']);
@@ -230,6 +251,15 @@ export class ScopePanel {
   // Called by the extension after starting/stopping recording or replay.
   notifyRecordingState(recording: boolean, replaying: boolean, fileName?: string): void {
     this.panel?.webview.postMessage({ command: 'recordingState', recording, replaying, fileName });
+  }
+
+  // C9: send parsed convention controls + YAML placements to the Controls Editor.
+  // Stores the config so it can be re-sent when the webview signals it is ready
+  // (race guard: show() regenerates HTML and the next postMessage may arrive before JS init).
+  postControlsConfig(config: ControlsConfig): void {
+    this.pendingControlsConfig = config;
+    this.panel?.webview.postMessage({ command: 'controlsConfig', ...config });
+    if (this.lastStatusMsg) this.postStatus(this.lastStatusMsg);
   }
 
   private html(): string {
@@ -353,6 +383,10 @@ function baseName(p: string): string {
 
 function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function safeJsonEmbed(obj: unknown): string {
+  return JSON.stringify(obj).replace(/<\//g, '<\\/');
 }
 
 function buildHtml(
@@ -483,12 +517,25 @@ function buildHtml(
     .card-field label { font-size: 10px; color: #9a9a9a; min-width: 46px; }
     .card-inp { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 2px 4px; font-family: monospace; font-size: 11px; flex: 1; min-width: 0; }
     .card-sel { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 2px 4px; font-family: monospace; font-size: 11px; flex: 1; }
+    .card-val { color: #b5cea8; font-size: 11px; }
+    /* M17: mode toggle */
+    .mode-group { display: inline-flex; border: 1px solid #555; border-radius: 3px; overflow: hidden; }
+    .mode-btn { background: #3c3c3c; color: #9a9a9a; border: none; border-right: 1px solid #555; padding: 3px 10px; font-family: monospace; font-size: 12px; cursor: pointer; }
+    .mode-btn:last-child { border-right: none; }
+    .mode-btn.mode-active { background: #0e639c; color: #fff; }
+    .mode-btn:not(.mode-active):hover { background: #4a4a4a; color: #d4d4d4; }
+    /* M17: convention diagnostic banner */
+    #convention-banner { display: none; align-items: center; gap: 8px; padding: 5px 12px; background: #3a2f00; border-bottom: 1px solid #7a6500; color: #f4c430; font-size: 11px; flex-shrink: 0; }
+    /* M17: design area replaces editor-main */
+    #design-area { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+    /* M17: run area */
+    #run-area { display: none; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; padding: 4px 0; }
   </style>
 </head>
 <body>
   <div id="tab-bar">
     <button class="tab tab-active" id="tab-scope-btn">Scope</button>
-    <button class="tab" id="tab-editor-btn">Controller Editor</button>
+    <button class="tab" id="tab-editor-btn">Controls Editor</button>
   </div>
   <div id="scope-content">
   <header>
@@ -517,18 +564,6 @@ function buildHtml(
     </ol>
     <div style="margin-top:8px;font-size:11px">Use <code>Deploy and Debug</code> to attach breakpoints.</div>
   </div>
-  <!-- T15.2: collapsible Effect controls section (expanded by default) -->
-  <div class="coll-section" id="effect-section">
-    <div class="coll-header" id="effect-header" aria-expanded="true">
-      <span class="coll-arrow" id="effect-arrow">▾</span>
-      <span>Effect controls</span>
-    </div>
-    <div class="coll-body" id="effect-body">
-      ${controllersHtml}
-      ${buttonsHtml}
-      ${ledsHtml}
-    </div>
-  </div>
   <!-- T15.2: collapsible Emulator section (collapsed by default) -->
   <div class="coll-section" id="emulator-section">
     <div class="coll-header" id="emulator-header" aria-expanded="false">
@@ -542,10 +577,18 @@ function buildHtml(
   </div><!-- #scope-content -->
   <div id="editor-wrap" style="display:none">
     <div id="editor-toolbar">
-      <button id="save-btn">Save controllers.yaml</button>
-      <span id="save-status"></span>
+      <span class="mode-group">
+        <button class="mode-btn mode-active" id="mode-design-btn">Design</button>
+        <button class="mode-btn" id="mode-run-btn">Run</button>
+      </span>
+      <span class="emu-sep" style="margin:0 6px">|</span>
+      <span id="save-wrap" style="display:inline-flex;align-items:center;gap:8px">
+        <button id="save-btn">Save controllers.yaml</button>
+        <span id="save-status"></span>
+      </span>
     </div>
-    <div id="editor-main">
+    <div id="convention-banner">⚠ Code convention not detected — running in yaml-only mode</div>
+    <div id="design-area">
       <div id="palette">
         <div class="palette-title">Palette</div>
         <div class="palette-item" data-kind="pot" draggable="true">Pot</div>
@@ -556,7 +599,13 @@ function buildHtml(
         <div id="canvas-hint">Drag a control from the palette</div>
       </div>
     </div>
+    <div id="run-area" style="display:none">
+      ${controllersHtml}
+      ${buttonsHtml}
+      ${ledsHtml}
+    </div>
   </div><!-- #editor-wrap -->
+  <script id="yaml-init" type="application/json">${safeJsonEmbed({ pots: defs, buttons, leds })}</script>
   <script>
     const vscode = acquireVsCodeApi();
     const canvas = document.getElementById('scope');
@@ -788,7 +837,6 @@ function buildHtml(
         resize();
       });
     }
-    setupCollapsible('effect-header', 'effect-body', 'effect-arrow');
     setupCollapsible('emulator-header', 'emulator-body', 'emulator-arrow');
 
     // Pot slider wiring
@@ -838,6 +886,8 @@ function buildHtml(
         lastIn  = msg.in  || [];
         lastOut = msg.out || [];
         draw();
+      } else if (msg.command === 'controlsConfig') {
+        applyControlsConfig(msg);
       } else if (msg.command === 'status') {
         hasStatus = true;
         showScope();
@@ -846,6 +896,9 @@ function buildHtml(
         if (!msg.running) {
           activeEvents.clear();
           eventsEl.textContent = '';
+          if (editorMode === 'run') switchMode('design');
+        } else {
+          if (editorMode === 'design') switchMode('run');
         }
       } else if (msg.command === 'wavSelected') {
         if (wavNameEl) wavNameEl.textContent = msg.name || 'no file';
@@ -932,6 +985,181 @@ function buildHtml(
       vscode.postMessage({ command: 'replayStart' });
     });
 
+    // ── M17: Controls Editor two-mode logic ──────────────────────────────
+    const _yamlInitEl = document.getElementById('yaml-init');
+    const _yamlInit = JSON.parse(_yamlInitEl ? _yamlInitEl.textContent || '{}' : '{}');
+    let _yamlCfg = { pots: _yamlInit.pots || [], buttons: _yamlInit.buttons || [], leds: _yamlInit.leds || [], errors: [] };
+
+    let conventionControls = [];
+    let conventionPlacements = [];
+    let conventionMissing = true;
+    let editorMode = 'design';
+
+    function applyControlsConfig(msg) {
+      conventionControls = msg.controls || [];
+      conventionPlacements = msg.placements || [];
+      conventionMissing = !!msg.missingBlock;
+      const banner = document.getElementById('convention-banner');
+      if (banner) banner.style.display = conventionMissing ? 'flex' : 'none';
+      const palette = document.getElementById('palette');
+      if (palette) palette.style.display = conventionMissing ? 'flex' : 'none';
+      if (!conventionMissing) {
+        renderConventionCanvas();
+      }
+      if (editorMode === 'run') renderRunArea();
+    }
+
+    function switchMode(mode) {
+      editorMode = mode;
+      const designArea = document.getElementById('design-area');
+      const runArea = document.getElementById('run-area');
+      const modeDesignBtn = document.getElementById('mode-design-btn');
+      const modeRunBtn = document.getElementById('mode-run-btn');
+      const saveWrap = document.getElementById('save-wrap');
+      if (mode === 'run') {
+        if (designArea) designArea.style.display = 'none';
+        if (runArea) runArea.style.display = 'flex';
+        modeDesignBtn && modeDesignBtn.classList.remove('mode-active');
+        modeRunBtn && modeRunBtn.classList.add('mode-active');
+        if (saveWrap) saveWrap.style.display = 'none';
+        renderRunArea();
+      } else {
+        if (designArea) designArea.style.display = 'flex';
+        if (runArea) runArea.style.display = 'none';
+        modeDesignBtn && modeDesignBtn.classList.add('mode-active');
+        modeRunBtn && modeRunBtn.classList.remove('mode-active');
+        if (saveWrap) saveWrap.style.display = 'inline-flex';
+      }
+    }
+
+    function renderConventionCanvas() {
+      const area = document.getElementById('canvas-area');
+      const hint = document.getElementById('canvas-hint');
+      if (!area) return;
+      area.querySelectorAll('.ctrl-card').forEach(c => c.remove());
+      const placementMap = {};
+      for (const p of conventionPlacements) placementMap[p.id] = p.pos;
+      const conventionIds = new Set(conventionControls.map(c => c.id));
+      let ax = 20, ay = 20;
+      function nextPos() { const p = [ax, ay]; ax += 190; if (ax > 580) { ax = 20; ay += 170; } return p; }
+      for (const ctrl of conventionControls) {
+        const pos = placementMap[ctrl.id] || nextPos();
+        area.appendChild(buildConventionCard(ctrl, pos));
+      }
+      for (const pl of conventionPlacements) {
+        if (!conventionIds.has(pl.id)) area.appendChild(buildNotInCodeCard(pl));
+      }
+      if (hint) hint.style.display = (conventionControls.length === 0 && conventionPlacements.length === 0) ? 'flex' : 'none';
+    }
+
+    function buildConventionCard(ctrl, pos) {
+      const kindLabel = ctrl.kind === 'pot' ? 'Pot' : ctrl.kind === 'button' ? 'Button' : 'LED';
+      const card = document.createElement('div');
+      card.className = 'ctrl-card';
+      card.dataset.kind = ctrl.kind;
+      card.dataset.id = ctrl.id;
+      card.style.left = pos[0] + 'px';
+      card.style.top = pos[1] + 'px';
+      card.innerHTML =
+        '<div class="card-header"><span class="card-kind">' + kindLabel + '</span></div>' +
+        '<div class="card-body">' +
+          '<div class="card-field"><label>id</label><span class="card-val">' + escJ(ctrl.id) + '</span></div>' +
+          '<div class="card-field"><label>pin</label><span class="card-val">' + ctrl.pin + '</span></div>' +
+        '</div>';
+      makeDraggable(card, { pos: [pos[0], pos[1]] });
+      return card;
+    }
+
+    function buildNotInCodeCard(pl) {
+      const card = document.createElement('div');
+      card.className = 'ctrl-card not-in-code-card';
+      card.dataset.id = pl.id;
+      card.style.left = pl.pos[0] + 'px';
+      card.style.top = pl.pos[1] + 'px';
+      card.style.opacity = '0.4';
+      card.innerHTML =
+        '<div class="card-header"><span class="card-kind" style="color:#f48771">not in code</span></div>' +
+        '<div class="card-body"><div class="card-field"><label>id</label><span class="card-val">' + escJ(pl.id) + '</span></div></div>';
+      return card;
+    }
+
+    function adcChannelFromPin(pin) {
+      return (pin >= 15 && pin <= 26) ? pin - 15 : 0;
+    }
+
+    function renderRunArea() {
+      const runArea = document.getElementById('run-area');
+      if (!runArea) return;
+      if (conventionMissing) return;  // keep static YAML HTML
+      runArea.innerHTML = '';
+      const pots = conventionControls.filter(c => c.kind === 'pot');
+      const btns = conventionControls.filter(c => c.kind === 'button');
+      const ledItems = conventionControls.filter(c => c.kind === 'led');
+      if (pots.length > 0) {
+        const ctrlDiv = document.createElement('div');
+        ctrlDiv.id = 'controllers';
+        for (const p of pots) {
+          const ch = adcChannelFromPin(p.pin);
+          const div = document.createElement('div');
+          div.className = 'pot';
+          div.dataset.channel = String(ch);
+          div.innerHTML =
+            '<span class="pot-label">' + escJ(p.id) + '</span>' +
+            '<input type="range" class="pot-slider" min="0" max="1" step="0.001" value="0" data-channel="' + ch + '"/>' +
+            '<span class="pot-value">0.000</span>';
+          ctrlDiv.appendChild(div);
+        }
+        runArea.appendChild(ctrlDiv);
+        ctrlDiv.querySelectorAll('.pot-slider').forEach(slider => {
+          slider.addEventListener('input', () => {
+            const channel = parseInt(slider.dataset.channel, 10);
+            const value = parseFloat(slider.value);
+            slider.closest('.pot').querySelector('.pot-value').textContent = value.toFixed(3);
+            vscode.postMessage({ command: 'pot', channel, value });
+          });
+        });
+      }
+      if (btns.length > 0) {
+        const btnDiv = document.createElement('div');
+        btnDiv.id = 'buttons';
+        btnDiv.innerHTML = '<span class="section-label">Buttons:</span>';
+        for (const b of btns) {
+          const btn = document.createElement('button');
+          btn.className = 'vbutton';
+          btn.type = 'button';
+          btn.dataset.pin = String(b.pin);
+          btn.dataset.mode = 'momentary';
+          btn.setAttribute('aria-pressed', 'false');
+          btn.innerHTML = '<span class="vbutton-label">' + escJ(b.id) + '</span><span class="vbutton-pin">pin ' + b.pin + '</span>';
+          btnDiv.appendChild(btn);
+          const press   = () => { setButtonVisual(btn, true);  vscode.postMessage({ command: 'button', gpioPin: b.pin, pressed: true }); };
+          const release = () => { setButtonVisual(btn, false); vscode.postMessage({ command: 'button', gpioPin: b.pin, pressed: false }); };
+          btn.addEventListener('mousedown', press);
+          btn.addEventListener('mouseup', release);
+          btn.addEventListener('mouseleave', () => { if (btn.getAttribute('aria-pressed') === 'true') release(); });
+        }
+        runArea.appendChild(btnDiv);
+      }
+      if (ledItems.length > 0) {
+        const ledDiv = document.createElement('div');
+        ledDiv.id = 'leds';
+        ledDiv.innerHTML = '<span class="section-label">LEDs:</span>';
+        for (const l of ledItems) {
+          const vled = document.createElement('div');
+          vled.className = 'vled';
+          vled.innerHTML = '<span class="vled-dot" data-pin="' + l.pin + '"></span><span class="vled-label">' + escJ(l.id) + '</span>';
+          ledDiv.appendChild(vled);
+        }
+        runArea.appendChild(ledDiv);
+      }
+    }
+
+    document.getElementById('mode-design-btn')?.addEventListener('click', () => switchMode('design'));
+    document.getElementById('mode-run-btn')?.addEventListener('click', () => {
+      // Only allow Run mode when emulator is running (hasStatus = running)
+      if (hasStatus) switchMode('run');
+    });
+
     // ── Controller Editor (M10b) ──────────────────────────────────────────
     let editorControls = [];
     let nextCtrlIdx = 0;
@@ -963,6 +1191,7 @@ function buildHtml(
     document.getElementById('tab-editor-btn').addEventListener('click', () => switchTab('editor'));
 
     function editorLoad(cfg) {
+      _yamlCfg = { pots: cfg.pots || [], buttons: cfg.buttons || [], leds: cfg.leds || [], errors: [] };
       editorControls = [];
       let ax = 20, ay = 20;
       function nextPos() { const p = [ax, ay]; ax += 190; if (ax > 580) { ax = 20; ay += 170; } return p; }
@@ -1079,12 +1308,29 @@ function buildHtml(
       if (hint) hint.style.display = 'none';
     });
 
+    // Signal extension host that JS is ready — allows pending controlsConfig to be flushed
+    vscode.postMessage({ command: 'webviewReady' });
+
     // Save
     document.getElementById('save-btn').addEventListener('click', () => {
-      const pots    = editorControls.filter(c=>c.kind==='pot').map(c=>({ id:c.id, label:c.label, adcChannel:c.adcChannel??0, range:c.range||[0,1], taper:c.taper||'linear', default:c.def??0.5, errors:[], pos:c.pos }));
-      const buttons = editorControls.filter(c=>c.kind==='button').map(c=>({ id:c.id, label:c.label, gpioPin:c.gpioPin??0, mode:c.mode||'momentary', activeLevel:c.activeLevel||'low', pos:c.pos }));
-      const leds    = editorControls.filter(c=>c.kind==='led').map(c=>({ id:c.id, label:c.label, gpioPin:c.gpioPin??0, pos:c.pos }));
-      vscode.postMessage({ command:'editorSave', cfg:{ pots, buttons, leds, errors:[] } });
+      let cfg;
+      if (!conventionMissing) {
+        // Convention mode: update only positions from current DOM card positions
+        const domPos = {};
+        document.querySelectorAll('#canvas-area .ctrl-card[data-id]').forEach(c => {
+          domPos[c.dataset.id] = [parseInt(c.style.left,10)||0, parseInt(c.style.top,10)||0];
+        });
+        const updatedPots    = _yamlCfg.pots.map(p => ({ ...p, pos: domPos[p.id] || p.pos }));
+        const updatedButtons = _yamlCfg.buttons.map(b => ({ ...b, pos: domPos[b.id] || b.pos }));
+        const updatedLeds    = _yamlCfg.leds.map(l => ({ ...l, pos: domPos[l.id] || l.pos }));
+        cfg = { pots: updatedPots, buttons: updatedButtons, leds: updatedLeds, errors: [] };
+      } else {
+        const pots    = editorControls.filter(c=>c.kind==='pot').map(c=>({ id:c.id, label:c.label, adcChannel:c.adcChannel??0, range:c.range||[0,1], taper:c.taper||'linear', default:c.def??0.5, errors:[], pos:c.pos }));
+        const buttons = editorControls.filter(c=>c.kind==='button').map(c=>({ id:c.id, label:c.label, gpioPin:c.gpioPin??0, mode:c.mode||'momentary', activeLevel:c.activeLevel||'low', pos:c.pos }));
+        const leds    = editorControls.filter(c=>c.kind==='led').map(c=>({ id:c.id, label:c.label, gpioPin:c.gpioPin??0, pos:c.pos }));
+        cfg = { pots, buttons, leds, errors: [] };
+      }
+      vscode.postMessage({ command:'editorSave', cfg });
       const st = document.getElementById('save-status');
       st.textContent = 'Saved ✓';
       setTimeout(()=>{ st.textContent=''; }, 2000);

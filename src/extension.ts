@@ -9,6 +9,8 @@ import { deployToEmulator } from './commands/deploy';
 import { startAudio, stopAudio } from './commands/transport';
 import { debugDeploy, DAISY_DEBUG_TYPE } from './commands/debug-deploy';
 import { parseControllerConfig, serializeControllerConfig, ControllerConfig, ControllerDef, ButtonDef, LedDef } from './controllers/controller-config';
+import { parseControlsConvention } from './controllers/controls-convention-parser';
+import { ControlsConfig, ControlsPlacement } from './webview/scope-panel';
 import { PotStore } from './controllers/pot-store';
 import { ButtonStore } from './controllers/button-store';
 import { DaisyDebugAdapterFactory, DaisyDebugAdapterTrackerFactory } from './debug/debug-adapter';
@@ -19,6 +21,38 @@ import * as os from 'os';
 
 const FIDELITY_CAVEAT =
   'Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget.';
+
+function findEffectSource(folder: string): string | undefined {
+  const configured = vscode.workspace.getConfiguration('ds-ide').get<string>('effectSource');
+  if (configured) {
+    const p = path.isAbsolute(configured) ? configured : path.join(folder, configured);
+    if (fs.existsSync(p)) return p;
+  }
+  // Auto-detect: first .cpp adjacent to CMakeLists.txt
+  const cmake = path.join(folder, 'CMakeLists.txt');
+  if (!fs.existsSync(cmake)) return undefined;
+  for (const entry of fs.readdirSync(folder)) {
+    if (entry.endsWith('.cpp')) return path.join(folder, entry);
+  }
+  return undefined;
+}
+
+function buildControlsConfig(folder: string, yamlCfg: ControllerConfig): ControlsConfig {
+  const placements: ControlsPlacement[] = [
+    ...yamlCfg.pots.filter(p => p.pos).map(p => ({ id: p.id, pos: p.pos! })),
+    ...yamlCfg.buttons.filter(b => b.pos).map(b => ({ id: b.id, pos: b.pos! })),
+    ...yamlCfg.leds.filter(l => l.pos).map(l => ({ id: l.id, pos: l.pos! })),
+  ];
+  const effectPath = findEffectSource(folder);
+  if (!effectPath) return { controls: [], placements, missingBlock: true };
+  try {
+    const text = fs.readFileSync(effectPath, 'utf8');
+    const { controls, missingBlock } = parseControlsConvention(text);
+    return { controls, placements, missingBlock };
+  } catch {
+    return { controls: [], placements, missingBlock: true };
+  }
+}
 
 let manager: EmulatorManager | undefined;
 let scopePanel: ScopePanel | undefined;
@@ -191,12 +225,14 @@ export function activate(context: vscode.ExtensionContext): void {
       statusBar.text = '$(loading~spin) Daisy: deploying…';
       statusBar.tooltip = FIDELITY_CAVEAT;
       const cfg = loadControllerConfig();
+      const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
       potStore!.setDefaults(cfg.pots);
       buttonStore!.setDefaults(cfg.buttons);
       scopePanel!.show(
         cfg.pots, potStore!.getSnapshot(), sineState, audioSourceState,
         cfg.buttons, cfg.leds, buttonStore!.getSnapshot(),
       );
+      scopePanel!.postControlsConfig(buildControlsConfig(folder, cfg));
       await deployToEmulator(manager!);
       manager!.sendPotSnapshot(potStore!.getSnapshot());
       manager!.sendButtonSnapshot(buttonStore!.getSnapshot());
@@ -212,7 +248,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('ds-ide.stop', () => stopAudio(manager!)),
     vscode.commands.registerCommand('ds-ide.openControllerEditor', () => {
       const cfg = loadControllerConfig();
+      const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
       scopePanel!.loadEditor(cfg);
+      scopePanel!.postControlsConfig(buildControlsConfig(folder, cfg));
     }),
     vscode.commands.registerCommand('ds-ide.buildHardware', () => {
       const folders = vscode.workspace.workspaceFolders;
