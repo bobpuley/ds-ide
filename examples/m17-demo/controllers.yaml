@@ -1,0 +1,20 @@
+controllers:
+  - id: volumePot
+    label: Volume
+    adc_channel: 0
+    range: [0, 1]
+    taper: linear
+    default: 0.8
+    editor_pos: [20, 20]
+buttons:
+  - id: bypassBtn
+    label: Bypass
+    gpio_pin: 28
+    mode: momentary
+    active_level: low
+    editor_pos: [230, 20]
+leds:
+  - id: statusLed
+    label: Status LED
+    gpio_pin: 23
+    editor_pos: [440, 20]

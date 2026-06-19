@@ -35,6 +35,9 @@ the regression still exists before adding to a milestone.
   view (M13). Expected: all labels legible at default panel size. *(Scheduled: M16, T16-1)*
 - **Bug: Emulator Scope view panel clipped at edges** — content appears cut off; no visible border.
   Expected: clear panel boundary. *(Scheduled: M16, T16-2)*
+- **Bug: Controls Editor — auto-switch to Run mode unreliable (M17)** — expected: Controls Editor
+  switches to Run mode automatically when audio starts. Observed: auto-switch does not always fire;
+  manual mode toggle works correctly. Root cause not fully isolated; needs a dedicated fix round.
 
 ---
 

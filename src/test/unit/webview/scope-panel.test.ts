@@ -590,19 +590,23 @@ describe('ScopePanel', () => {
     expect(webview.html).toContain('value="wav"');
   });
 
-  // T15.2 — Collapsible sections
-  it('webview HTML includes effect-section and emulator-section (T15.2)', () => {
+  // T15.2 — Collapsible sections (emulator) + M17 Controls Editor
+  it('webview HTML includes emulator-section and Controls Editor tab (M17/T15.2)', () => {
     panel.show(DEFS, {});
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('id="effect-section"');
     expect(webview.html).toContain('id="emulator-section"');
+    expect(webview.html).toContain('Controls Editor');
+    expect(webview.html).toContain('id="mode-design-btn"');
+    expect(webview.html).toContain('id="mode-run-btn"');
   });
 
-  it('effect-header is expanded and emulator-header is collapsed by default (T15.2)', () => {
+  it('emulator-header is collapsed by default and Controls Editor has design/run modes (M17/T15.2)', () => {
     panel.show(DEFS, {});
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('id="effect-header" aria-expanded="true"');
     expect(webview.html).toContain('id="emulator-header" aria-expanded="false"');
+    expect(webview.html).toContain('id="design-area"');
+    expect(webview.html).toContain('id="run-area"');
+    expect(webview.html).toContain('id="convention-banner"');
   });
 
   it('emulator-body has collapsed class by default (T15.2)', () => {
