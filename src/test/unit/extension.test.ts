@@ -73,8 +73,8 @@ describe('extension', () => {
   it('activate pushes disposables onto context.subscriptions', () => {
     const ctx = makeContext();
     activate(ctx);
-    // diagnostics + statusBar + descriptor factory + tracker factory + 8 commands + 1 manager/scope dispose
-    expect((ctx.subscriptions as unknown[]).length).toBe(13);
+    // diagnostics + statusBar + descriptor factory + tracker factory + 9 commands + 1 manager/scope dispose
+    expect((ctx.subscriptions as unknown[]).length).toBe(14);
   });
 
   it('deactivate does not throw', () => {
