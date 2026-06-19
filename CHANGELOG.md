@@ -5,6 +5,17 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.3.1 — 2026-06-19
+
+**M16b — Speaker output in simulated mode** *(AC-22, AC-23, AC-24 green)*
+
+- **T16b-1 — Output-only CoreAudio device:** `CoreAudioDevice::start_output_only()` opens the AUHAL output bus without enabling the input bus, so no microphone permission is required.
+- **T16b-2 — CoreAudio-driven simulated loop:** `run_simulated()` now opens an output-only CoreAudio device and processes audio from the render callback; sine and WAV modes are now audible from the system speakers. Silent fallback retained for headless/CI environments.
+- **`examples/m16b-demo/`:** passthrough demo effect for verifying audio output end-to-end.
+- `.gitignore`: tightened `examples/` rule to only ignore build dirs and screenshots.
+
+---
+
 ## 0.3.0 — 2026-06-19
 
 **M16 — v3 Polish & Bug Fixes** *(AC-20, AC-21 green — FR-VZ-4, FR-UI-1)*
