@@ -371,7 +371,7 @@ function buildHtml(
   <title>Daisy Scope</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #1e1e1e; color: #d4d4d4; font-family: monospace; font-size: 12px; display: flex; flex-direction: column; height: 100vh; }
+    body { background: #1e1e1e; color: #d4d4d4; font-family: monospace; font-size: 12px; display: flex; flex-direction: column; height: 100vh; border: 1px solid #3c3c3c; }
     header { padding: 6px 12px; background: #252526; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #3c3c3c; flex-wrap: wrap; flex-shrink: 0; }
     #fidelity-caveat { font-size: 10px; color: #6a6a6a; cursor: default; margin-left: auto; }
     #status-text { flex: 1; }
@@ -602,6 +602,7 @@ function buildHtml(
       drawSpectrum();
     }
 
+    // [SYNC] draw — mirrors mockup/scope.html draw/drawWave/drawSpectrum block
     function draw() {
       const W = canvas.width, H = canvas.height;
       ctx.clearRect(0, 0, W, H);
@@ -620,6 +621,7 @@ function buildHtml(
       drawWave(lastOut, '#ce9178');
     }
 
+    // [SYNC] drawWave
     function drawWave(pts, color) {
       if (!pts || pts.length < 2) return;
       const W = canvas.width, H = canvas.height;
@@ -635,6 +637,7 @@ function buildHtml(
       ctx.stroke();
     }
 
+    // [SYNC] drawSpectrum
     function drawSpectrum() {
       const W = specCanvas.width, H = specCanvas.height;
       specCtx.clearRect(0, 0, W, H);
@@ -652,27 +655,45 @@ function buildHtml(
         lastSpecOut.slice(0, maxBin).reduce((a, v) => Math.max(a, v), 1e-9),
       );
 
-      // Grid lines (dB style: 0, -20, -40, -60 dB)
-      specCtx.strokeStyle = '#2a2a2a';
-      specCtx.lineWidth = 1;
+      // Margins: left for dB labels, bottom for freq labels
+      const LEFT = 36, BOTTOM = 16, TOP = 4;
+      const plotW = W - LEFT;
+      const plotH = H - BOTTOM - TOP;
+      const ampToY = (amp) => TOP + plotH * (1 - amp / peak);
+
+      // Grid lines (dB: 0, -20, -40, -60) + y-axis labels (left of plot)
+      specCtx.font = '9px monospace';
+      specCtx.textAlign = 'right';
+      let lastDbLabelY = -Infinity;
       for (let db = 0; db >= -60; db -= 20) {
-        const lin = Math.pow(10, db / 20) * peak;
-        const y = H - (lin / peak) * (H - 4) - 2;
+        const y = ampToY(Math.pow(10, db / 20) * peak);
+        specCtx.strokeStyle = '#2a2a2a';
+        specCtx.lineWidth = 1;
         specCtx.beginPath();
-        specCtx.moveTo(0, y); specCtx.lineTo(W, y);
+        specCtx.moveTo(LEFT, y); specCtx.lineTo(W, y);
         specCtx.stroke();
-        specCtx.fillStyle = '#777';
-        specCtx.font = '9px monospace';
-        specCtx.fillText(db + 'dB', 2, y - 2);
+        if (y - lastDbLabelY >= 11) {
+          specCtx.fillStyle = '#777';
+          specCtx.fillText(db + 'dB', LEFT - 4, y + 4);
+          lastDbLabelY = y;
+        }
       }
+      specCtx.textAlign = 'left';
+
+      // x-axis baseline
+      specCtx.strokeStyle = '#3c3c3c';
+      specCtx.lineWidth = 1;
+      specCtx.beginPath();
+      specCtx.moveTo(LEFT, TOP + plotH); specCtx.lineTo(W, TOP + plotH);
+      specCtx.stroke();
 
       function drawSpecLine(fft, color) {
         specCtx.strokeStyle = color;
         specCtx.lineWidth = 1.5;
         specCtx.beginPath();
         for (let i = 0; i < maxBin; i++) {
-          const x = (i / (maxBin - 1)) * W;
-          const y = H - (fft[i] / peak) * (H - 4) - 2;
+          const x = LEFT + (i / (maxBin - 1)) * plotW;
+          const y = ampToY(fft[i]);
           if (i === 0) specCtx.moveTo(x, y);
           else         specCtx.lineTo(x, y);
         }
@@ -682,15 +703,20 @@ function buildHtml(
       drawSpecLine(lastSpecIn,  '#4ec9b0');
       drawSpecLine(lastSpecOut, '#ce9178');
 
-      // Frequency axis labels
+      // Frequency axis labels — skip any label that would overlap the previous one
       if (lastBinHz > 0) {
         specCtx.fillStyle = '#999';
         specCtx.font = '10px monospace';
+        specCtx.textAlign = 'left';
         const freqLabels = [1000, 2000, 5000, 10000, 20000];
+        let lastLabelRight = LEFT - 4;
         for (const f of freqLabels) {
           if (f > maxFreq) break;
-          const x = (f / maxFreq) * W;
-          specCtx.fillText(f >= 1000 ? (f / 1000) + 'k' : f, x + 2, H - 2);
+          const x = LEFT + (f / maxFreq) * plotW;
+          const text = f >= 1000 ? (f / 1000) + 'k' : String(f);
+          if (x < lastLabelRight + 4) continue;
+          specCtx.fillText(text, x + 2, H - 4);
+          lastLabelRight = x + 2 + specCtx.measureText(text).width;
         }
       }
     }
