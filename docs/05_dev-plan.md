@@ -1,10 +1,9 @@
 # 05 — Development Plan (v2)
 
-> **v1 complete.** M0–M7 shipped as ds-ide 0.1.0–0.1.7. All ACs (AC-1…AC-8) green.
-> v1 milestone files are in `docs/milestones/v1/M0.md`…`M7.md` (read-only history).
-> Archived plan: `docs/v1/05_dev-plan.md`.
+> **v1 complete** — M0–M7 released (0.1.0–0.1.7), all ACs green. Archived: `docs/v1/`.
+> **v2 complete** — M8–M15 released (0.2.0–0.2.9), all ACs green.
 
-Sprint/milestone plan for **ds-ide v2** (target: 0.2.x). Built on
+Sprint/milestone plan for **ds-ide**. Full milestone history in §0; active milestones are those without an archive note on their version sub-heading. Built on
 [03_requirements.md](03_requirements.md) and [04_architecture.md](04_architecture.md).
 Each milestone is a demonstrable vertical slice closing ≥ 1 AC.
 
@@ -13,23 +12,37 @@ inspect tags → propose semver → update CHANGELOG.md → annotated tag → pu
 
 ---
 
-## 0. v2 Milestone Registry
+## 0. Milestone Registry
 
-| Milestone                          | File                                                 | Target version | Status          |
-|------------------------------------|------------------------------------------------------|----------------|-----------------|
-| M8 — Real-time audio I/O           | [docs/milestones/v2/M8.md](milestones/v2/M8.md)      | 0.2.0          | **released**    |
-| M9 — WAV file input                | [docs/milestones/v2/M9.md](milestones/v2/M9.md)      | 0.2.1          | **released**    |
-| M10 — Virtual buttons, GPIO & LEDs | [docs/milestones/v2/M10.md](milestones/v2/M10.md)    | 0.2.2          | **released**    |
-| M10b — Visual controller editor    | [docs/milestones/v2/M10b.md](milestones/v2/M10b.md)  | 0.2.3          | **released**    |
-| M11 — Full debug                   | [docs/milestones/v2/M11.md](milestones/v2/M11.md)    | 0.2.4          | **released**    |
-| M12 — Hardware build & flash       | [docs/milestones/v2/M12.md](milestones/v2/M12.md)    | 0.2.8          | **released**    |
-| M13 — Spectrum & FFT               | [docs/milestones/v2/M13.md](milestones/v2/M13.md)    | 0.2.6          | **released**    |
-| M14 — Session recording            | [docs/milestones/v2/M14.md](milestones/v2/M14.md)    | 0.2.7          | **released**    |
-| M15 — Scope UI refresh             | [docs/milestones/v2/M15.md](milestones/v2/M15.md)    | 0.2.9          | **released**    |
+### v1 (0.1.0–0.1.7) — archived in `docs/v1/`
 
-> M8 is confirmed highest-priority. Milestone ordering M8 → M9 → M10 → M10b → M11 → M12 → M13 → M14
-> is confirmed. ✅ M10 scope reviewed and **locked** (2026-06-18) — see the locked-decisions section
-> in [milestones/v2/M10.md](milestones/v2/M10.md); ready to implement.
+| Milestone                       | File                                                       | Version | Status       |
+|---------------------------------|------------------------------------------------------------|---------|--------------|
+| M0 — Foundations                | [docs/milestones/v1/M0.md](milestones/v1/M0.md)           | 0.1.0   | **released** |
+| M1 — Headless emulator runtime  | [docs/milestones/v1/M1.md](milestones/v1/M1.md)           | 0.1.1   | **released** |
+| M2 — Extension run loop + scope | [docs/milestones/v1/M2.md](milestones/v1/M2.md)           | 0.1.2   | **released** |
+| M3 — Controllers (pots)         | [docs/milestones/v1/M3.md](milestones/v1/M3.md)           | 0.1.3   | **released** |
+| M4 — Diagnostics & robustness   | [docs/milestones/v1/M4.md](milestones/v1/M4.md)           | 0.1.4   | **released** |
+| M5 — Debug (breakpoints)        | [docs/milestones/v1/M5.md](milestones/v1/M5.md)           | 0.1.5   | **released** |
+| M6 — v1 polish & release        | [docs/milestones/v1/M6.md](milestones/v1/M6.md)           | 0.1.6   | **released** |
+| M7 — Block-form callback (v1.1) | [docs/milestones/v1/M7.md](milestones/v1/M7.md)           | 0.1.7   | **released** |
+
+### v2 (0.2.0–0.2.9)
+
+| Milestone                          | File                                                       | Version | Status       |
+|------------------------------------|------------------------------------------------------------|---------|--------------|
+| M8 — Real-time audio I/O           | [docs/milestones/v2/M8.md](milestones/v2/M8.md)           | 0.2.0   | **released** |
+| M9 — WAV file input                | [docs/milestones/v2/M9.md](milestones/v2/M9.md)           | 0.2.1   | **released** |
+| M10 — Virtual buttons, GPIO & LEDs | [docs/milestones/v2/M10.md](milestones/v2/M10.md)         | 0.2.2   | **released** |
+| M10b — Visual controller editor    | [docs/milestones/v2/M10b.md](milestones/v2/M10b.md)       | 0.2.3   | **released** |
+| M11 — Full debug                   | [docs/milestones/v2/M11.md](milestones/v2/M11.md)         | 0.2.4   | **released** |
+| M12 — Hardware build & flash       | [docs/milestones/v2/M12.md](milestones/v2/M12.md)         | 0.2.8   | **released** |
+| M13 — Spectrum & FFT               | [docs/milestones/v2/M13.md](milestones/v2/M13.md)         | 0.2.6   | **released** |
+| M14 — Session recording            | [docs/milestones/v2/M14.md](milestones/v2/M14.md)         | 0.2.7   | **released** |
+| M15 — Scope UI refresh             | [docs/milestones/v2/M15.md](milestones/v2/M15.md)         | 0.2.9   | **released** |
+
+> v2 complete. All ordering decisions and locked scope notes are preserved in the individual
+> milestone files under `docs/milestones/v2/`.
 
 ---
 
