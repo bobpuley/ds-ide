@@ -172,37 +172,31 @@ v1 targets the bare Daisy Seed with user-wired controls; fixed-board maps were o
 
 ---
 
-## 9. Roadmap / phasing (initial thinking)
+## 9. Roadmap / phasing (resolved)
 
-| Phase | Theme | Key features |
-|-------|-------|--------------|
-| **v2.0** | Live audio | Live host input + speaker output; WAV file input; input source selector |
-| **v2.1** | Full interaction | Virtual buttons/GPIO; `Switch` shim; `controllers.yaml` buttons section |
-| **v2.2** | Full debug | Step over/into/out; variables; watch; call stack |
-| **v2.3** | Hardware path | In-IDE `arm-none-eabi` build + DFU flash; toolchain bundle decision |
-| **v2.4** | Advanced viz | Spectrum/FFT view; session recording; parameter automation |
-| **v2.5** | Board support | Built-in board maps; auto-derived controllers; MIDI |
-
-> ⚠️ ASSUMPTION: phasing above is a starting hypothesis. Live audio (v2.0) is confirmed
-> highest-priority; everything else is subject to user input.
+| Phase | Theme | Key features | Status |
+|-------|-------|--------------|--------|
+| **v2.0** | Live audio | Live host input + speaker output; WAV file input; input source selector | ✅ shipped (M8–M9) |
+| **v2.1** | Full interaction | Virtual buttons/GPIO; `Switch` shim; visual controller editor | ✅ shipped (M10–M10b) |
+| **v2.2** | Full debug | Step over/into/out; variables; watch; call stack | ✅ shipped (M11) |
+| **v2.3** | Hardware path | In-IDE `arm-none-eabi` build + DFU flash | ✅ shipped (M12) |
+| **v2.4** | Advanced viz | Spectrum/FFT view; session recording; scope UI refresh | ✅ shipped (M13–M15) |
+| **v3** | Next features | Parameter automation (FR-VZ-3); QEMU/Renode; remote debug | planned |
+| **vX** | Pre-public-release | Built-in board maps; auto-derived controllers; MIDI; cross-platform audio + debug; ARM toolchain bundle | before public distribution |
 
 ---
 
 ## Open Conflicts
 
-No cross-source conflicts yet (v2 planning is starting fresh). Open questions to resolve:
-
-1. **ARM toolchain bundle vs detect** — ship `arm-none-eabi-gcc` with ds-ide for one-click
-   setup, or require the user to install it? Trade-off: bundle size + maintenance vs
-   install friction.
+1. ~~**ARM toolchain bundle vs detect**~~ — ✅ **Resolved:** detect + hint implemented (M12);
+   bundle deferred to vX (pre-public-release).
 
 2. ~~**Host audio API strategy**~~ — ✅ **Resolved:** CoreAudio-native for v2 (macOS-first, zero new dep);
-   cross-platform (PortAudio/WASAPI/ALSA) deferred to v3+.
+   cross-platform (WASAPI/ALSA/JACK) deferred to vX (pre-public-release).
 
-3. **Live input + speaker output sequencing** — land both together (same host audio device
-   open) or live input first (simpler, no real-time deadline) then speaker output?
+3. ~~**Live input + speaker output sequencing**~~ — ✅ **Resolved:** landed together in M8
+   (same CoreAudio device open).
 
-4. **Real-time clock model migration** — v1's simulated clock (no xruns) vs v2's
-   OS-audio-callback-driven clock (hard deadline once speaker output is live). Does the
-   simulated clock remain as an option (visualization-only mode), or does v2 always use the
-   real-time clock?
+4. ~~**Real-time clock model migration**~~ — ✅ **Resolved:** two modes — real-time
+   (OS-callback, live I/O) and simulated (WAV/sine, no OS device). Mode selected by audio
+   source (FR-AU-7). Simulated mode retained for WAV regression testing.

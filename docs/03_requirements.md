@@ -55,13 +55,17 @@ while stepping through the audio callback, and flash to real hardware without le
   host microphone or line input into the emulator input buffer in real time. **Verify:** AC-9.
 - **FR-AU-6** — ds-ide shall support **WAV file input**: load a WAV file and feed it as the
   input buffer (looping or one-shot). **Verify:** AC-10.
-- **FR-AU-7** — The audio source shall be user-selectable via an **input source selector** in
-  the UI: *sine generator* (v1) / *live host input* / *WAV file*.
+- **FR-AU-7** — The audio source shall be user-selectable via a **dropdown** in the scope
+  header bar: *Sine generator* / *Live (mic)* / *WAV file*. **Verify:** AC-17(a).
 - **FR-AU-8** — ds-ide shall route the emulator's output buffer to the **host audio output
   device** (speaker / line out) in real time. **Verify:** AC-9.
-- **FR-AU-9** — The buffer size for host audio I/O shall be user-configurable (e.g. 64, 128,
-  256, 512 samples). ds-ide shall display the measured round-trip latency and an xrun counter.
-  *(Mitigates R12, R13.)*
+- **FR-AU-9** — The emulator bar shall show only controls relevant to the active input source:
+  Sine → Freq + Amp; Live → Buffer + Latency + Xruns; WAV → Choose file + Loop + Buffer + Xruns.
+  Latency is shown only for Live (round-trip CoreAudio); xruns are shown for Live and WAV
+  (output side). *(Mitigates R12, R13.)* **Verify:** AC-17(c).
+- **FR-AU-10** — A **master output volume** slider shall appear in the scope header, always
+  visible regardless of input source. It scales the emulator output buffer before the CoreAudio
+  write. **Verify:** AC-17(d).
 
 ### 3.2 Virtual buttons, GPIO & LED outputs (`FR-CT-7…FR-CT-14`)
 
@@ -119,14 +123,14 @@ while stepping through the audio callback, and flash to real hardware without le
 - **FR-HW-4** — In-IDE hardware build + flash shall not interfere with the emulator build
   or IPC state (NFR-5 extended).
 
-### 3.5 Visualization (`FR-VZ-1…FR-VZ-3`)
+### 3.5 Visualization (`FR-VZ-1…FR-VZ-2`)
 
 - **FR-VZ-1** — ds-ide shall display a **spectrum / FFT view** of the input and output
   signals alongside the existing waveform scope.
 - **FR-VZ-2** — ds-ide shall support **session recording**: record a run (input, output,
   and pot/button/LED timeline) to a file for later replay and comparison. **Verify:** AC-16.
-- **FR-VZ-3** — ds-ide shall support **parameter automation**: record a pot-movement timeline
-  during a session and replay it for reproducible test sweeps.
+
+> FR-VZ-3 (parameter automation) moved to v3+ — see §6.
 
 ### 3.6 Visual controller editor (`FR-VE-1…FR-VE-4`)
 
@@ -152,7 +156,7 @@ while stepping through the audio callback, and flash to real hardware without le
   (input → effect → output). The target is ≤ 30 ms at the default buffer size (256 samples
   @ 48 kHz ≈ 5 ms one-way); achievability depends on the host audio interface.
 - **NFR-4 (Platform, updated)** — v2 host-audio work targets macOS (CoreAudio) only.
-  Cross-platform host audio (Windows/WASAPI, Linux/ALSA/JACK) is deferred to v3+.
+  Cross-platform host audio (Windows/WASAPI, Linux/ALSA/JACK) is deferred to vX (pre-public-release).
   *(Extends v1 NFR-4; aligns with CoreAudio-native decision in 04 §2.3.)*
 
 ---
@@ -167,25 +171,44 @@ while stepping through the audio callback, and flash to real hardware without le
 
 ---
 
-## 6. Out of scope for v2 (deferred to v3+)
+## 6. Out of scope for v2
 
-- QEMU / Renode high-fidelity mode (v3).
-- MIDI (may move to v2 if the shim is trivial; currently v3).
-- Daisy Patch/Petal per-board examples beyond the control maps (v3).
-- Remote debugging on real hardware (v3).
-- JetBrains plugin (v3+).
+### Deferred to v3+
+
+- QEMU / Renode high-fidelity mode.
+- Remote debugging on real hardware.
+- JetBrains plugin.
+- **FR-VZ-3 — Parameter automation** (record a pot-movement timeline and replay it as
+  automated test sweeps). Session recording (FR-VZ-2/M14) already captures pot state as part
+  of full session replays; the dedicated automation layer is a v3 feature.
+
+### Deferred to vX (pre-public-release)
+
+> vX is a hardening / distribution-readiness phase that runs immediately before the project's
+> first public release. These items are not blocking for developer-use builds but must be
+> resolved before ds-ide is distributed publicly.
+
+- **Built-in control maps** for Daisy Pod, Patch, Petal, Field, Terrarium.
+- **Auto-derived controllers**: parse effect source for `AdcChannelConfig` / GPIO init calls
+  to generate a draft `controllers.yaml`.
+- **MIDI input/output shim** (USB MIDI or virtual MIDI port).
+- **Cross-platform debug**: `gdb` parity for Windows / Linux (v1 shipped lldb/macOS only).
+- **Windows / Linux host audio**: WASAPI/ASIO and ALSA/JACK for live I/O and speaker output
+  (v2 targets macOS/CoreAudio only per NFR-4).
+- **ARM toolchain bundle**: ship `arm-none-eabi-gcc` with the extension for one-click setup
+  (Open #1 resolved: detect+hint implemented in FR-HW-2/M12; bundle deferred to vX).
 
 ---
 
 ## 7. Open items
 
-| Ref | Open question | Current assumption |
-|-----|---------------|--------------------|
-| Open #1 (01) | ARM toolchain bundle vs detect | Detect + hint (FR-HW-2); bundle deferred |
-| ~~Open #2 (01)~~ | ~~Host audio API: PortAudio vs native~~ | ✅ CoreAudio-native for v2; cross-platform deferred to v3+ |
-| Open #3 (01) | Live input + speaker together or sequenced | Together (same device) |
-| Open #4 (01) | Simulated clock kept alongside real-time clock | Keep for WAV/regression mode |
-| R15 (02) | Stepping into audio callback while OS audio live | Mute audio on breakpoint hit |
+| Ref | Open question | Status |
+|-----|---------------|--------|
+| ~~Open #1 (01)~~ | ~~ARM toolchain bundle vs detect~~ | ✅ Detect+hint done (M12); bundle → vX |
+| ~~Open #2 (01)~~ | ~~Host audio API: PortAudio vs native~~ | ✅ CoreAudio-native for v2; cross-platform → vX |
+| ~~Open #3 (01)~~ | ~~Live input + speaker together or sequenced~~ | ✅ Together (M8) |
+| ~~Open #4 (01)~~ | ~~Simulated clock kept alongside real-time clock~~ | ✅ Kept for WAV/regression (M8) |
+| ~~R15 (02)~~ | ~~Stepping into audio callback while OS audio live~~ | ✅ Mute-on-breakpoint implemented (M11) |
 
 ---
 
@@ -210,3 +233,8 @@ while stepping through the audio callback, and flash to real hardware without le
   Reopen the editor and verify the pot is rendered at the saved position. *(FR-VE-3)*
 - **AC-16** — Session recording: record a run (sine input, pot at 50%), replay it — verify
   the output waveform from replay matches the recorded run. *(FR-VZ-2)*
+- **AC-17** — Scope UI refresh: (a) input source selector is a dropdown; (b) Effect controls
+  and Emulator sections are independently collapsible and the canvas resizes correctly in both
+  directions; (c) emulator bar shows only source-relevant controls (Sine: Freq+Amp; Live:
+  Buffer+Latency+Xruns; WAV: Choose+Loop+Buffer+Xruns); (d) Vol slider in the header
+  audibly scales the output level. *(FR-AU-7, FR-AU-9, FR-AU-10)*
