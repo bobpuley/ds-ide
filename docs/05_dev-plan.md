@@ -22,7 +22,7 @@ inspect tags → propose semver → update CHANGELOG.md → annotated tag → pu
 | M10 — Virtual buttons, GPIO & LEDs | [docs/milestones/v2/M10.md](milestones/v2/M10.md)    | 0.2.2          | **released**    |
 | M10b — Visual controller editor    | [docs/milestones/v2/M10b.md](milestones/v2/M10b.md)  | 0.2.3          | **released**    |
 | M11 — Full debug                   | [docs/milestones/v2/M11.md](milestones/v2/M11.md)    | 0.2.4          | **released**    |
-| M12 — Hardware build & flash       | [docs/milestones/v2/M12.md](milestones/v2/M12.md)    | 0.2.5          | **in progress** |
+| M12 — Hardware build & flash       | [docs/milestones/v2/M12.md](milestones/v2/M12.md)    | 0.2.8          | **released**    |
 | M13 — Spectrum & FFT               | [docs/milestones/v2/M13.md](milestones/v2/M13.md)    | 0.2.6          | **released**    |
 | M14 — Session recording            | [docs/milestones/v2/M14.md](milestones/v2/M14.md)    | 0.2.7          | **released**    |
 

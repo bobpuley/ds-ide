@@ -5,6 +5,16 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.2.8 — 2026-06-19
+
+**M12 — Hardware build & flash** *(AC-13 green — FR-HW-1…FR-HW-4)*
+
+- **T12.4 validated on real hardware:** end-to-end build + DFU flash confirmed on macOS Apple Silicon with a physical Daisy Seed. `arm-none-eabi` toolchain detection, `make` invocation, and `dfu-util` flash all work as expected.
+- **dfu-util exit code fix:** `dfu-util` exits with code 74 after a successful flash because the Daisy Seed resets before the post-leave `get_status` poll completes. `runDfuUtil` now treats any flash where `"File downloaded successfully"` was emitted as a success, regardless of exit code.
+- No regression to AC-1…AC-15. 249/249 tests green.
+
+---
+
 ## 0.2.7 — 2026-06-18
 
 **M14 — Session recording** *(AC-16 green — FR-REC-1…FR-REC-3)*
@@ -26,12 +36,11 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 - **Spectrum view (T13.3):** a second canvas below the waveform scope draws the input (teal) and output (orange) magnitude spectra with a linear frequency axis up to 20 kHz, dB amplitude grid, and labeled frequency landmarks (1k, 2k, 5k, 10k, 20k Hz).
 - **Tests:** 4 new TS unit tests (`spectrum` canvas present; `spectrum` IPC forwarded; no crash if panel closed; `drawSpectrum` / `lastSpecIn` present in HTML). 243 total, all green. 1 new Python integration test (AC-14 FFT spike). No regression to AC-1…AC-13.
 
-**M12 — Hardware build & flash** *(partial — T12.4 pending hardware)*
+**M12 — Hardware build & flash** *(T12.1–T12.3 — see 0.2.8 for full AC-13 closure)*
 
 - **Hardware build (T12.1):** `HardwareBuildDriver` (C7) detects the `arm-none-eabi-g++` toolchain via user setting, `PATH`, and known Homebrew paths; spawns `make` in the project root; parses GCC diagnostics into VS Code Problems panel. `Daisy IDE: Build for Hardware` command registered.
 - **Toolchain detection (T12.2):** ordered probe with a clear install-hint notification if no toolchain is found. Covers FR-HW-2 / R16.
 - **DFU flash (T12.3):** `DfuFlashDriver` (C8) detects `dfu-util`; spawns `dfu-util -D <bin>` against a Daisy in bootloader mode; streams progress output to the terminal. `Daisy IDE: Flash to Hardware (DFU)` command registered. Covers FR-HW-3 / R17.
-- **T12.4 (end-to-end with real hardware):** pending physical Daisy Seed verification.
 
 ---
 

@@ -101,9 +101,16 @@ function runDfuUtil(
     const args = ['-a', '0', '-s', DAISY_DFU_ADDRESS, '-D', binPath];
     const proc = spawnFn(dfuUtil, args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
+    let downloadSucceeded = false;
+
     const handleData = (data: Buffer): void => {
       for (const line of data.toString('utf8').split('\n')) {
-        if (line.trim()) onOutput(line);
+        if (line.trim()) {
+          onOutput(line);
+          if (line.includes('File downloaded successfully')) {
+            downloadSucceeded = true;
+          }
+        }
       }
     };
 
@@ -111,7 +118,7 @@ function runDfuUtil(
     proc.stderr?.on('data', handleData);
     proc.on('error', reject);
     proc.on('close', (code) => {
-      if (code === 0) resolve();
+      if (code === 0 || downloadSucceeded) resolve();
       else reject(new Error(`dfu-util exited with code ${code ?? 'null'}`));
     });
   });
