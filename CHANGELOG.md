@@ -5,6 +5,18 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.3.2 — 2026-06-19
+
+**M17 — Controls Editor v3: two-mode panel with ds-ide:controls convention** *(AC-18, AC-22 green)*
+
+- **T17-1 — C9 convention parser** (`src/controllers/controls-convention-parser.ts`): pure TS function that locates the `// ds-ide:controls:begin … // ds-ide:controls:end` block in C++ source and extracts `{id, kind, pin}` annotations; returns `missingBlock: true` when absent. 14 unit tests.
+- **T17-2 — Wire C9 into extension host:** on `deploy` and `openControllerEditor` the effect source is parsed and a `controlsConfig` message (controls + YAML placements + missingBlock flag) is sent to the Controls Editor webview. `webviewReady` handshake + `lastStatusMsg` replay ensure the message arrives after HTML regeneration.
+- **T17-3 — Controls Editor two-mode panel:** renamed from "Controller Editor"; Design mode shows draggable convention-card canvas; Run mode shows interactive sliders, buttons, and LED indicators wired to existing IPC channels; amber banner when convention block is absent. Effect-section collapsible removed (superseded by Run mode).
+- **`examples/m17-demo/`:** reference project demonstrating the full convention block workflow.
+- **Known issue (deferred):** Controls Editor auto-switch to Run mode on audio start is unreliable; manual mode toggle works correctly. Logged in `docs/01_input-ideas.md` for a dedicated fix round.
+
+---
+
 ## 0.3.1 — 2026-06-19
 
 **M16b — Speaker output in simulated mode** *(AC-22, AC-23, AC-24 green)*
