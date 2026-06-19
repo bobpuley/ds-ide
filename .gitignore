@@ -15,4 +15,6 @@ dist/
 graphify-out/*
 !graphify-out/graph.json
 !graphify-out/GRAPH_REPORT.md
-examples/
+# Example build dirs and transient screenshots — but track source files
+examples/**/.ds-ide/
+examples/**/*.png

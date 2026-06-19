@@ -4,13 +4,16 @@
 
 namespace daisy_emu {
 
-// Duplex CoreAudio device for macOS real-time audio I/O.
+// CoreAudio device for macOS audio I/O.
 //
-// Opens the default AUHAL input+output unit. The output render callback pulls
-// live input via AudioUnitRender(bus=1) and passes it through to the user
-// processBlock function, which runs the Daisy effect.
+// Two modes:
+//   start()             — full-duplex AUHAL: pulls live mic input via AudioUnitRender,
+//                         requires microphone permission.
+//   start_output_only() — output-only AUHAL: no input bus, no mic permission needed.
+//                         processBlock receives a zeroed input buffer; the caller
+//                         generates its own audio input (sine, WAV, etc.).
 //
-// On non-Apple platforms this compiles to a no-op stub.
+// On non-Apple platforms both methods compile to no-op stubs.
 //
 // processBlock signature: (const float* in_interleaved, float* out_interleaved, size_t frames)
 // Both buffers are stereo-interleaved (L0,R0,L1,R1,...).
@@ -22,10 +25,14 @@ public:
     CoreAudioDevice();
     ~CoreAudioDevice();
 
-    // Start duplex I/O with the given sample rate and buffer size.
-    // The processBlock function is called from the real-time callback thread.
+    // Start duplex I/O (mic + speakers). Requires microphone permission.
     // Returns true on success.
     bool start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn processBlock);
+
+    // Start output-only (speakers only, no mic). Does not require microphone permission.
+    // processBlock receives a zeroed input buffer; caller generates its own audio input.
+    // Returns true on success.
+    bool start_output_only(uint32_t sampleRate, uint32_t bufferSize, ProcessFn processBlock);
 
     void stop();
 

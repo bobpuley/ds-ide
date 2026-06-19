@@ -241,48 +241,32 @@ static void run_simulated(bool use_block,
     FftState fft;
     double phase = 0.0;
 
-    // WAV playhead (M9): fractional read position and the generation we last saw,
-    // so a freshly-loaded file restarts from the beginning.
+    // WAV playhead (M9): fractional read position and generation counter.
     double   wav_pos      = 0.0;
     uint64_t wav_gen_seen = g_state.wav_generation.load();
 
-    auto block_ns = [&]() -> long long {
-        return static_cast<long long>(
-            static_cast<double>(block_size) / static_cast<double>(sample_rate) * 1e9);
-    };
+    // Process one block of audio: generate input, run effect, emit scope/FFT.
+    // Also writes the computed output into out_buf so the caller can forward
+    // it to an audio device. Returns false when the simulated mode should exit.
+    auto process_one_block = [&](size_t frames) -> bool {
+        if (static_cast<AudioMode>(g_state.audio_mode.load()) != AudioMode::Simulated)
+            return false;
 
-    while (!g_state.shutdown.load()) {
-        // Exit simulated loop if mode has changed to realtime
-        if (static_cast<AudioMode>(g_state.audio_mode.load()) != AudioMode::Simulated) {
-            // Cancel any in-progress replay when switching to realtime
-            if (g_state.replay_active.load()) {
-                g_state.replay_active.store(false);
-                std::lock_guard<std::mutex> lk(g_state.player_mutex);
-                g_state.player.close();
-            }
-            return;
-        }
+        if (!g_state.transport_running.load()) return true;
 
-        if (!g_state.transport_running.load()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
-            continue;
-        }
-
-        // --- Input generation: replay (M14) / WAV file (M9) / sine ---
+        // --- Input generation: replay (M14) / WAV (M9) / sine ---
         if (g_state.replay_active.load()) {
             std::vector<ReplayEvent> events;
             bool got_block;
             {
                 std::lock_guard<std::mutex> lk(g_state.player_mutex);
-                got_block = g_state.player.nextBlock(in_buf.data(), block_size, events);
+                got_block = g_state.player.nextBlock(in_buf.data(), frames, events);
             }
             if (!got_block) {
-                // Replay finished
                 g_state.replay_active.store(false);
                 ipc_send("{\"type\":\"replayDone\"}");
-                continue;
+                return true;
             }
-            // Apply events to emulator state
             for (const auto& ev : events) {
                 if (ev.type == kRecTypePotEvent) {
                     if (ev.channel_or_pin < 12)
@@ -302,15 +286,15 @@ static void run_simulated(bool use_block,
             if (gen != wav_gen_seen) { wav_gen_seen = gen; wav_pos = 0.0; }
             if (wav && !wav->empty()) {
                 wav_fill_stereo_block(*wav, wav_pos, g_state.wav_loop.load(),
-                                      sample_rate, block_size, in_buf.data());
+                                      sample_rate, frames, in_buf.data());
             } else {
                 std::fill(in_buf.begin(),
-                          in_buf.begin() + static_cast<ptrdiff_t>(block_size * 2), 0.f);
+                          in_buf.begin() + static_cast<ptrdiff_t>(frames * 2), 0.f);
             }
         } else {
             const float freq = g_state.sine_freq.load();
             const float amp  = g_state.sine_amp.load();
-            for (size_t i = 0; i < block_size; ++i) {
+            for (size_t i = 0; i < frames; ++i) {
                 float s = amp * static_cast<float>(std::sin(2.0 * M_PI * phase));
                 in_buf[2 * i]     = s;
                 in_buf[2 * i + 1] = s;
@@ -319,50 +303,108 @@ static void run_simulated(bool use_block,
             }
         }
 
-        // Record input block (M14): flush pending events then write block.
+        // Record input block (M14).
         if (g_state.recorder.active()) {
             std::lock_guard<std::mutex> lk(g_state.recorder_mutex);
-            g_state.recorder.writeBlock(in_buf.data(), block_size);
+            g_state.recorder.writeBlock(in_buf.data(), frames);
         }
 
-        std::fill(out_buf.begin(), out_buf.end(), 0.f);
+        std::fill(out_buf.begin(), out_buf.begin() + static_cast<ptrdiff_t>(frames * 2), 0.f);
 
         if (use_block) {
-            for (size_t i = 0; i < block_size; ++i) {
+            for (size_t i = 0; i < frames; ++i) {
                 in_ch0[i] = in_buf[2 * i];
                 in_ch1[i] = in_buf[2 * i + 1];
             }
-            std::fill(out_ch0.begin(), out_ch0.end(), 0.f);
-            std::fill(out_ch1.begin(), out_ch1.end(), 0.f);
+            std::fill(out_ch0.begin(), out_ch0.begin() + static_cast<ptrdiff_t>(frames), 0.f);
+            std::fill(out_ch1.begin(), out_ch1.begin() + static_cast<ptrdiff_t>(frames), 0.f);
 
             const float* in_ptrs[2]  = { in_ch0.data(), in_ch1.data() };
             float*       out_ptrs[2] = { out_ch0.data(), out_ch1.data() };
-            g_state.block_cb(in_ptrs, out_ptrs, block_size);
+            g_state.block_cb(in_ptrs, out_ptrs, frames);
 
-            for (size_t i = 0; i < block_size; ++i) {
+            for (size_t i = 0; i < frames; ++i) {
                 out_buf[2 * i]     = out_ch0[i];
                 out_buf[2 * i + 1] = out_ch1[i];
             }
         } else {
-            g_state.interleaving_cb(in_buf.data(), out_buf.data(), block_size * 2);
+            g_state.interleaving_cb(in_buf.data(), out_buf.data(), frames * 2);
         }
 
-        scan_output_and_notify(out_buf, block_size * 2);
+        scan_output_and_notify(out_buf, frames * 2);
 
         const float vol_s = g_state.output_volume.load();
         if (vol_s != 1.f) {
-            for (size_t i = 0; i < block_size * 2; ++i) out_buf[i] *= vol_s;
+            for (size_t i = 0; i < frames * 2; ++i) out_buf[i] *= vol_s;
         }
 
-        if (scope.accumulate(in_buf, out_buf, block_size)) {
+        if (scope.accumulate(in_buf, out_buf, frames)) {
             ipc_send(build_scope_json(scope.in, scope.out, scope.out_r));
             scope.reset();
         }
 
-        emit_spectrum_if_ready(fft, in_buf, out_buf, block_size, sample_rate);
+        emit_spectrum_if_ready(fft, in_buf, out_buf, frames, sample_rate);
+        return true;
+    };
 
-        std::this_thread::sleep_for(std::chrono::nanoseconds(block_ns()));
+    // Try to open an output-only CoreAudio device so the effect is audible
+    // from speakers without requiring microphone permission.
+    CoreAudioDevice device;
+
+    auto ca_process = [&](const float* /*ca_in*/, float* ca_out, size_t frames) {
+        if (!process_one_block(frames)) {
+            std::fill(ca_out, ca_out + frames * 2, 0.f);
+            return;
+        }
+        if (g_state.transport_running.load()) {
+            std::memcpy(ca_out, out_buf.data(), frames * 2 * sizeof(float));
+        } else {
+            std::fill(ca_out, ca_out + frames * 2, 0.f);
+        }
+    };
+
+    bool audio_started = device.start_output_only(
+        static_cast<uint32_t>(sample_rate),
+        static_cast<uint32_t>(block_size),
+        ca_process);
+
+    if (!audio_started) {
+        // No audio output device available (headless / CI). Fall back to the
+        // original silent software loop — scope/FFT still work over IPC.
+        std::fprintf(stderr, "[daisy-emu] No output device — running silent simulated loop\n");
+
+        auto block_ns = static_cast<long long>(
+            static_cast<double>(block_size) / static_cast<double>(sample_rate) * 1e9);
+
+        while (!g_state.shutdown.load()) {
+            if (!process_one_block(block_size)) break;
+            if (!g_state.transport_running.load()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            } else {
+                std::this_thread::sleep_for(std::chrono::nanoseconds(block_ns));
+            }
+        }
+        return;
     }
+
+    // CoreAudio is driving the loop — wait for mode change or shutdown.
+    {
+        std::unique_lock<std::mutex> lk(g_state.mode_mutex);
+        g_state.mode_cv.wait(lk, [] {
+            return g_state.shutdown.load()
+                || static_cast<AudioMode>(g_state.audio_mode.load()) != AudioMode::Simulated;
+        });
+    }
+
+    // Cancel any in-progress replay when switching away from simulated mode.
+    if (g_state.replay_active.load()) {
+        g_state.replay_active.store(false);
+        std::lock_guard<std::mutex> lk(g_state.player_mutex);
+        g_state.player.close();
+    }
+
+    device.stop();
+    scope.reset();
 }
 
 // ---- Real-time mode loop ----------------------------------------------------

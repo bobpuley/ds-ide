@@ -34,9 +34,10 @@ Full registry in [`docs/v2/05_dev-plan.md`](v2/05_dev-plan.md).
 
 | Milestone                           | File                                              | Version  | Status           |
 |-------------------------------------|---------------------------------------------------|----------|------------------|
-| M16 — v3 polish & bug fixes         | [docs/milestones/v3/M16.md](milestones/v3/M16.md) | 0.3.0    | **released**     |
-| M17 — Controls Editor v3 (two-mode) | [docs/milestones/v3/M17.md](milestones/v3/M17.md) | 0.3.1    | **planned**      |
-| M18 — Wiring Editor                 | [docs/milestones/v3/M18.md](milestones/v3/M18.md) | 0.3.2    | **planned**      |
+| M16 — v3 polish & bug fixes             | [docs/milestones/v3/M16.md](milestones/v3/M16.md)   | 0.3.0    | **released**     |
+| M16b — Speaker output in simulated mode | [docs/milestones/v3/M16b.md](milestones/v3/M16b.md) | 0.3.1    | **in progress**  |
+| M17 — Controls Editor v3 (two-mode)     | [docs/milestones/v3/M17.md](milestones/v3/M17.md)   | 0.3.2    | **planned**      |
+| M18 — Wiring Editor                     | [docs/milestones/v3/M18.md](milestones/v3/M18.md)   | 0.3.3    | **planned**      |
 
 ---
 
