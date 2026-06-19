@@ -5,6 +5,19 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.3.3 — 2026-06-19
+
+**M18 — Wiring Editor: Daisy Seed pinout SVG with click-to-assign** *(AC-19, AC-23 green)*
+
+- New `ds-ide.openWiringEditor` command opens a VS Code webview panel showing the full Daisy Seed 40-pin layout
+- Click any unassigned pin to open a device-selection popup (Pot / Button / LED) with a non-ADC warning badge when appropriate
+- Click an assigned pin to view its device type and id, with a Remove button
+- Wiring writes / removes C++ declarations in the `// ds-ide:controls` block via undoable `WorkspaceEdit`
+- Wiring Editor and Controls Editor stay in sync: assigning or removing a pin updates both panels
+- New module `controls-writer.ts` (pure, no VS Code deps) — `insertIntoSource` / `removeFromSource`
+
+---
+
 ## 0.3.2 — 2026-06-19
 
 **M17 — Controls Editor v3: two-mode panel with ds-ide:controls convention** *(AC-18, AC-22 green)*
