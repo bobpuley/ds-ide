@@ -43,6 +43,12 @@ const workspace = {
   getConfiguration: vi.fn(() => ({
     get: vi.fn(),
   })),
+  openTextDocument: vi.fn(async () => ({
+    getText: vi.fn(() => ''),
+    lineCount: 1,
+    lineAt: vi.fn((n: number) => ({ range: { end: new Position(n, 0) } })),
+  })),
+  applyEdit: vi.fn(async () => true),
 };
 
 const Uri = {
@@ -83,13 +89,23 @@ class DebugAdapterExecutable {
   ) {}
 }
 
+class Position {
+  constructor(public line: number, public character: number) {}
+}
+
 class Range {
   constructor(
-    public startLine: number,
-    public startCharacter: number,
-    public endLine: number,
-    public endCharacter: number,
+    public startLine: number | Position,
+    public startCharacter: number | Position,
+    public endLine?: number,
+    public endCharacter?: number,
   ) {}
+}
+
+class WorkspaceEdit {
+  replace = vi.fn();
+  insert  = vi.fn();
+  delete  = vi.fn();
 }
 
 class Diagnostic {
@@ -103,7 +119,7 @@ class Diagnostic {
 
 export {
   commands, window, workspace, Uri, ViewColumn,
-  DiagnosticSeverity, Range, Diagnostic,
+  DiagnosticSeverity, Position, Range, WorkspaceEdit, Diagnostic,
   StatusBarAlignment, languages,
   debug, DebugAdapterExecutable,
 };

@@ -11,6 +11,8 @@ import { debugDeploy, DAISY_DEBUG_TYPE } from './commands/debug-deploy';
 import { parseControllerConfig, serializeControllerConfig, ControllerConfig, ControllerDef, ButtonDef, LedDef } from './controllers/controller-config';
 import { parseControlsConvention } from './controllers/controls-convention-parser';
 import { ControlsConfig, ControlsPlacement } from './webview/scope-panel';
+import { WiringPanel, WiredPin, DeviceType } from './wiring/wiring-panel';
+import { insertIntoSource, removeFromSource } from './wiring/controls-writer';
 import { PotStore } from './controllers/pot-store';
 import { ButtonStore } from './controllers/button-store';
 import { DaisyDebugAdapterFactory, DaisyDebugAdapterTrackerFactory } from './debug/debug-adapter';
@@ -56,6 +58,7 @@ function buildControlsConfig(folder: string, yamlCfg: ControllerConfig): Control
 
 let manager: EmulatorManager | undefined;
 let scopePanel: ScopePanel | undefined;
+let wiringPanel: WiringPanel | undefined;
 let potStore: PotStore | undefined;
 let buttonStore: ButtonStore | undefined;
 let sineState: SineParams = { ...SINE_DEFAULTS };
@@ -294,13 +297,69 @@ export function activate(context: vscode.ExtensionContext): void {
         },
       );
     }),
-    { dispose: () => { manager?.dispose(); scopePanel?.dispose(); } },
+    vscode.commands.registerCommand('ds-ide.openWiringEditor', async () => {
+      const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+      if (!wiringPanel) {
+        wiringPanel = new WiringPanel(
+          async (wp: WiredPin) => {
+            const effectPath = findEffectSource(folder);
+            if (!effectPath) {
+              void vscode.window.showErrorMessage('ds-ide: no effect source file found — set ds-ide.effectSource');
+              return;
+            }
+            const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
+            const oldText = doc.getText();
+            const newText = insertIntoSource(oldText, wp.id, wp.deviceType as 'pot' | 'button' | 'led', wp.pinNumber);
+            const edit = new vscode.WorkspaceEdit();
+            const end = doc.lineAt(doc.lineCount - 1).range.end;
+            edit.replace(vscode.Uri.file(effectPath), new vscode.Range(new vscode.Position(0, 0), end), newText);
+            await vscode.workspace.applyEdit(edit);
+            const { controls, missingBlock } = parseControlsConvention(newText);
+            const wiredPins: WiredPin[] = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
+            wiringPanel?.postWiredPins(wiredPins);
+            const cfg = loadControllerConfig();
+            scopePanel?.postControlsConfig(buildControlsConfig(folder, cfg));
+          },
+          async (pinNumber: number, id: string) => {
+            const effectPath = findEffectSource(folder);
+            if (!effectPath) {
+              void vscode.window.showErrorMessage('ds-ide: no effect source file found — set ds-ide.effectSource');
+              return;
+            }
+            const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
+            const oldText = doc.getText();
+            const newText = removeFromSource(oldText, id);
+            const edit = new vscode.WorkspaceEdit();
+            const end = doc.lineAt(doc.lineCount - 1).range.end;
+            edit.replace(vscode.Uri.file(effectPath), new vscode.Range(new vscode.Position(0, 0), end), newText);
+            await vscode.workspace.applyEdit(edit);
+            const { controls } = parseControlsConvention(newText);
+            const wiredPins: WiredPin[] = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
+            wiringPanel?.postWiredPins(wiredPins);
+            const cfg = loadControllerConfig();
+            scopePanel?.postControlsConfig(buildControlsConfig(folder, cfg));
+          },
+        );
+      }
+      const effectPath = findEffectSource(folder);
+      let wiredPins: WiredPin[] = [];
+      if (effectPath) {
+        try {
+          const text = fs.readFileSync(effectPath, 'utf8');
+          const { controls } = parseControlsConvention(text);
+          wiredPins = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
+        } catch { /* file unreadable — open editor with empty state */ }
+      }
+      wiringPanel.show(wiredPins);
+    }),
+    { dispose: () => { manager?.dispose(); scopePanel?.dispose(); wiringPanel?.dispose(); } },
   );
 }
 
 export function deactivate(): void {
   manager?.dispose();
   scopePanel?.dispose();
+  wiringPanel?.dispose();
 }
 
 function loadControllerConfig(): ControllerConfig {

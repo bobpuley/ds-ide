@@ -54,6 +54,11 @@
         "command": "ds-ide.flash",
         "title": "Flash to Daisy Seed",
         "category": "Daisy IDE"
+      },
+      {
+        "command": "ds-ide.openWiringEditor",
+        "title": "Open Wiring Editor",
+        "category": "Daisy IDE"
       }
     ],
     "keybindings": [
