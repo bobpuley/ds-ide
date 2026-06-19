@@ -96,7 +96,16 @@ design/run control panel (Controls Editor), and get the first round of post-v2 v
 - **FR-WE-5** — Generated declarations shall follow D15/D16:
   `TypeName varname; // ds-ide: id=<id>, kind=<pot|button|led>, pin=<n>`
   where TypeName is `AdcChannelConfig` (pot), `Switch` (button), or `Led` (led).
+  The device selection popup shall propose a default `id` of `<kind><n>` (e.g. `pot1`,
+  `pot2`, `button1`) where `<n>` is the next integer that does not collide with any `id`
+  already present in the convention block. The developer may edit this field before
+  confirming; the edited value shall be validated for uniqueness and rejected with an error
+  if it already exists. `varname` is always identical to the confirmed `id`.
 - **FR-WE-6** — The Wiring Editor shall **not** modify `controllers.yaml`.
+- **FR-WE-7** — Clicking an already-assigned pin shall open a popup showing the assigned
+  device type and `id`, with a **Remove** button. Confirming shall delete the corresponding
+  annotation line from the `// ds-ide:controls` block (via VS Code WorkspaceEdit, undoable)
+  and reset the pin to unassigned in the SVG diagram. **Verify:** AC-23.
 
 ### 3.3 Bug fixes (`FR-VZ-4`, `FR-UI-1`)
 
@@ -129,6 +138,8 @@ No new NFRs for v3. All v1/v2 NFRs (NFR-1…NFR-12) remain in force. See
 - **Wiring Editor — static pin-capability filtering** (all device types shown with warnings in v3; filtering deferred).
 - **Wiring Editor — full init code generation** (declarations only in v3 per D16).
 - **Wiring Editor — PCB illustration** (schematic SVG in v3 per FR-WE-2).
+- **Wiring Editor — device details panel** (edit id/varname, configure device parameters such as pot range) — deferred to vX; id/varname is only editable at wiring time (first assign) in v3.
+- **Wiring Editor — per-item Unwire button on device card** — deferred to vX; v3 removal is via the assigned-pin popup (FR-WE-7).
 - **Auto-derived controllers (arbitrary code)** — parse arbitrary `AdcChannelConfig` / GPIO init calls (without the ds-ide:controls convention) to draft `controllers.yaml`. *(v3 covers the convention-following case; vX covers arbitrary existing code.)*
 - **Built-in board maps** for Daisy Pod, Patch, Petal, Field, Terrarium.
 - **MIDI input/output shim**.
@@ -161,3 +172,11 @@ No new NFRs for v3. All v1/v2 NFRs (NFR-1…NFR-12) remain in force. See
   labels overlap at default panel size. *(FR-VZ-4)*
 - **AC-21** — Scope panel border: open emulator scope view; verify visible border on all sides and
   no content clipping. *(FR-UI-1)*
+- **AC-23** — Wiring Editor (remove device): open the Wiring Editor with an effect source
+  that has one assigned pin; click the assigned pin — verify a popup appears showing the
+  device type and id. Click Remove — verify: (a) the pin is unassigned in the SVG; (b) the
+  annotation line is absent from the C++ convention block. *(FR-WE-7)*
+- **AC-22** — Controls Editor fallback: open an effect project whose C++ source has **no**
+  `// ds-ide:controls` block; open the Controls Editor and verify: (a) a diagnostic banner
+  reading "Code convention not detected — running in yaml-only mode" is visible; (b) controls
+  defined in `controllers.yaml` appear on the canvas. *(FR-CE-6)*

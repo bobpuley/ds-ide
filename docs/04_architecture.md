@@ -77,6 +77,10 @@ Fallback (missingBlock = true):
   Controls rendered from controllers.yaml only (M10b behaviour)
 ```
 
+**Mode persistence:** mode resets to Design whenever the emulator stops (or is never
+started). Run mode is only reachable while the emulator is running; the panel switches to
+Run automatically on emulator start and back to Design on emulator stop.
+
 **No new IPC messages to the runtime.** Run mode reuses all v2 IPC channels.
 
 ---
@@ -94,10 +98,10 @@ User: ds-ide.openWiringEditor command
   C10 renders SVG pinout; assigned pins shown with control icons
 
 User: click an unassigned pin
-  C10: show device popup (Pot / Button / LED)
+  C10: show device popup (Pot / Button / LED + editable id field)
   If non-ADC pin + Pot: show warning badge (do not block)
 
-User: select device type
+User: select device type + confirm id
   C10 → C1: postMessage wirePin{ pinNumber, deviceType, id, label }
   C1 → controls-writer: insert declaration into ds-ide:controls block
       (create block if absent; insert before // ds-ide:controls:end)
@@ -105,7 +109,52 @@ User: select device type
   C1 → C9: re-parse effect source → updated wiredPins[]
   C1 → C10: postMessage wiredPins[]
   C10: update SVG — pin now assigned, control icon rendered
+  C1 → C2: postMessage controlsConfig{ controls[], placements[], missingBlock }
+  C2 Controls Editor: refreshes canvas with new control (if panel is open)
+
+User: click an assigned pin
+  C10: show assigned-pin popup (device type, id, Remove button)
+
+User: confirm Remove
+  C10 → C1: postMessage unwirePin{ pinNumber }
+  C1 → controls-writer: delete annotation line for that pin from ds-ide:controls block
+      write via VS Code workspace edit (undoable)
+  C1 → C9: re-parse effect source → updated wiredPins[]
+  C1 → C10: postMessage wiredPins[]
+  C10: update SVG — pin now unassigned
+  C1 → C2: postMessage controlsConfig (refreshed, if C2 open)
 ```
+
+**ADC-capable pins (for FR-WE-3 warning logic):**
+The Daisy Seed exposes 12 ADC-capable pins labeled A0–A11. These are also reachable by
+their digital aliases D15–D26 (A0=D15, A1=D16, … A11=D26). Source: `emulator/shim/include/daisy/gpio.h`.
+
+| A-label | D-alias |
+|---------|---------|
+| A0      | D15     |
+| A1      | D16     |
+| A2      | D17     |
+| A3      | D18     |
+| A4      | D19     |
+| A5      | D20     |
+| A6      | D21     |
+| A7      | D22     |
+| A8      | D23     |
+| A9      | D24     |
+| A10     | D25     |
+| A11     | D26     |
+
+The Wiring Editor shows all pins with their canonical label (A-label for analog-capable,
+D-label for digital-only). The warning fires when `kind=pot` and the clicked pin is not in
+the A0–A11 set (i.e., it is a D-only pin: D0–D14, D27–D30).
+
+**`id` and `varname` generation:**
+- Default `id`: `<kind><n>` where `<n>` is the lowest integer ≥ 1 not already used by an
+  existing id in the convention block (e.g. `pot1`, `pot2`, `button1`).
+- The device popup pre-fills the id field with this default; the developer may edit it.
+- Validation (before write): id must be unique within the convention block; reject with an
+  inline error if a collision is detected.
+- `varname` is always identical to the confirmed `id`.
 
 **Effect source file discovery (C1):**
 - Check `ds-ide.effectSource` workspace setting
@@ -154,6 +203,6 @@ No new IPC messages to the emulator runtime. New messages are internal (C1 ↔ C
 
 | Item | Current stance |
 |------|----------------|
-| Effect source auto-detection | First `.cpp` adjacent to `CMakeLists.txt`; fallback to `ds-ide.effectSource` setting. Validate in M18. |
+| Effect source auto-detection | Check `ds-ide.effectSource` workspace setting first; else first `.cpp` adjacent to `CMakeLists.txt`. Validate in M18. |
 | Convention block location in file | Append to end of file if absent (before final `}`). Validate "column 0" safety rule in M18. |
-| Controls Editor mode persistence | Mode (Design/Run) resets to Design on emulator stop; persists within a session. Decide during M17. |
+| Controls Editor mode persistence | **Resolved:** mode always resets to Design when the emulator stops (or was never started). Run mode is only reachable while the emulator is running. No persistence required. |

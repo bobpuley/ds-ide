@@ -67,7 +67,9 @@ the `controlsConfig` message contract being stable from M17.
 | AC | Closed in | Description |
 |----|-----------|-------------|
 | AC-18 | M17 | Controls Editor: code convention → two-mode interactive panel |
+| AC-22 | M17 | Controls Editor fallback: no convention block → diagnostic banner + yaml-only mode |
 | AC-19 | M18 | Wiring Editor: click pin → add device → C++ declaration written |
+| AC-23 | M18 | Wiring Editor: click assigned pin → Remove → pin unassigned; annotation deleted |
 | AC-20 | M16 | Spectrum labels: no overlap at default size |
 | AC-21 | M16 | Scope panel border visible, no content clipping |
 
