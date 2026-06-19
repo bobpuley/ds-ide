@@ -16,6 +16,7 @@ function makeManager() {
     sendAudioDevice: vi.fn(),
     sendButton: vi.fn(),
     sendButtonSnapshot: vi.fn(),
+    sendOutputVolume: vi.fn(),
   }) as unknown as EmulatorManager;
 }
 
@@ -250,7 +251,7 @@ describe('ScopePanel', () => {
   it('webview HTML includes audio source selector with sine/live/wav options', () => {
     panel.show(DEFS, {});
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('audio-source-bar');
+    expect(webview.html).toContain('audio-source-select');
     expect(webview.html).toContain('value="sine"');
     expect(webview.html).toContain('value="live"');
     expect(webview.html).toContain('value="wav"');
@@ -259,13 +260,13 @@ describe('ScopePanel', () => {
   it('webview HTML defaults to sine input source', () => {
     panel.show(DEFS, {}, SINE_DEFAULTS, AUDIO_SOURCE_DEFAULTS);
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('value="sine" checked');
+    expect(webview.html).toContain('value="sine" selected');
   });
 
   it('webview HTML shows live input as checked when audioSource.input is live', () => {
-    panel.show(DEFS, {}, SINE_DEFAULTS, { input: 'live', sampleRate: 48000, bufferSize: 256 });
+    panel.show(DEFS, {}, SINE_DEFAULTS, { input: 'live', sampleRate: 48000, bufferSize: 256, wavLoop: false });
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('value="live" checked');
+    expect(webview.html).toContain('value="live" selected');
   });
 
   it('webview HTML includes buffer size selector with 256 selected by default', () => {
@@ -349,7 +350,7 @@ describe('ScopePanel', () => {
       input: 'wav', sampleRate: 48000, bufferSize: 256, wavLoop: true, wavPath: '/tmp/audio/drums.wav',
     });
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('value="wav" checked');
+    expect(webview.html).toContain('value="wav" selected');
     expect(webview.html).toContain('drums.wav');
     expect(webview.html).toContain('id="wav-loop" checked');
   });
@@ -500,7 +501,7 @@ describe('ScopePanel', () => {
   it('webview HTML includes recording bar elements', () => {
     panel.show(DEFS, {});
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('id="recording-bar"');
+    expect(webview.html).toContain('id="emulator-bar"');
     expect(webview.html).toContain('id="rec-start-btn"');
     expect(webview.html).toContain('id="rec-stop-btn"');
     expect(webview.html).toContain('id="replay-start-btn"');
@@ -562,5 +563,70 @@ describe('ScopePanel', () => {
     expect(created.webview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ command: 'recordingState', recording: true, replaying: false, fileName: 'my-session.dsrec' }),
     );
+  });
+
+  // T15.1 — Input source dropdown
+  it('webview HTML has a select element for audio source (T15.1)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="audio-source-select"');
+    expect(webview.html).toContain('value="sine"');
+    expect(webview.html).toContain('value="live"');
+    expect(webview.html).toContain('value="wav"');
+  });
+
+  // T15.2 — Collapsible sections
+  it('webview HTML includes effect-section and emulator-section (T15.2)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="effect-section"');
+    expect(webview.html).toContain('id="emulator-section"');
+  });
+
+  it('effect-header is expanded and emulator-header is collapsed by default (T15.2)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="effect-header" aria-expanded="true"');
+    expect(webview.html).toContain('id="emulator-header" aria-expanded="false"');
+  });
+
+  it('emulator-body has collapsed class by default (T15.2)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('class="coll-body collapsed" id="emulator-body"');
+  });
+
+  // T15.3 — Context-sensitive emulator bar elements still present
+  it('xrun-display is still present in emulator bar (T15.3)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="xrun-display"');
+  });
+
+  it('latency-display is still present in emulator bar (T15.3)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="latency-display"');
+  });
+
+  // T15.4 — Master output volume slider
+  it('webview HTML includes output-vol slider in vol-group (T15.4)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="vol-group"');
+    expect(webview.html).toContain('id="output-vol"');
+  });
+
+  it('forwards outputVolume webview message to manager.sendOutputVolume (T15.4)', () => {
+    const onOutputVolume = vi.fn();
+    const p = new ScopePanel(manager, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, onOutputVolume);
+    p.show();
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'outputVolume', volume: 0.6 });
+    expect(manager.sendOutputVolume).toHaveBeenCalledWith(0.6);
+    expect(onOutputVolume).toHaveBeenCalledWith(0.6);
   });
 });

@@ -349,6 +349,11 @@ static void run_simulated(bool use_block,
 
         scan_output_and_notify(out_buf, block_size * 2);
 
+        const float vol_s = g_state.output_volume.load();
+        if (vol_s != 1.f) {
+            for (size_t i = 0; i < block_size * 2; ++i) out_buf[i] *= vol_s;
+        }
+
         if (scope.accumulate(in_buf, out_buf, block_size)) {
             ipc_send(build_scope_json(scope.in, scope.out, scope.out_r));
             scope.reset();
@@ -416,6 +421,10 @@ static void run_realtime(bool use_block,
         }
 
         scan_output_and_notify(out_buf, frames * 2);
+        const float vol = g_state.output_volume.load();
+        if (vol != 1.f) {
+            for (size_t i = 0; i < frames * 2; ++i) out_buf[i] *= vol;
+        }
         std::memcpy(ca_out, out_buf.data(), frames * 2 * sizeof(float));
 
         // Scope tap

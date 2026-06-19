@@ -180,6 +180,11 @@ export class EmulatorManager extends EventEmitter {
     this.ipcClient?.send({ type: 'buttonSnapshot', values });
   }
 
+  // M15: master output volume (0.0–1.0) — scales emulator output before CoreAudio write.
+  sendOutputVolume(volume: number): void {
+    this.ipcClient?.send({ type: 'outputVolume', volume });
+  }
+
   // M14: session recording
   sendRecordStart(filePath: string): void {
     this.ipcClient?.send({ type: 'recordStart', path: filePath });

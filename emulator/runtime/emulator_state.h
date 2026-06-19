@@ -51,6 +51,8 @@ struct EmulatorState {
     std::atomic<int>    audio_mode{0};           // AudioMode enum value
     std::atomic<size_t> rt_buffer_size{256};     // target buffer size for CoreAudio (FR-AU-9)
     std::atomic<uint32_t> xrun_count{0};         // incremented by CoreAudio on deadline miss
+    // M15: master output volume (0.0–1.0) applied before CoreAudio write
+    std::atomic<float>  output_volume{1.f};
 
     // v2 (M9): WAV file input. When wav_active is true, the simulated-clock loop
     // feeds wav_data into the input buffer instead of the sine generator.

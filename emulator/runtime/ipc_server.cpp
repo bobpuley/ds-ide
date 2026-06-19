@@ -224,6 +224,15 @@ static void dispatch(const std::string& line) {
             g_state.player.close();
         }
     }
+    else if (type == "outputVolume") {
+        auto vol = json_get(line, "volume");
+        if (!vol.empty()) {
+            float v = std::stof(vol);
+            if (v < 0.f) v = 0.f;
+            if (v > 1.f) v = 1.f;
+            g_state.output_volume.store(v);
+        }
+    }
     else if (type == "wavFile") {
         // {path, loop}: a non-empty path loads & activates WAV input; an empty
         // path deactivates it (the simulated loop reverts to the sine generator).

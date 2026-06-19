@@ -42,6 +42,7 @@ export type EditorSaveHandler = (cfg: ControllerConfig) => void;
 export type RecordStartHandler = () => void;
 export type RecordStopHandler = () => void;
 export type ReplayStartHandler = () => void;
+export type OutputVolumeHandler = (volume: number) => void;
 
 export class ScopePanel {
   private panel: vscode.WebviewPanel | null = null;
@@ -65,6 +66,7 @@ export class ScopePanel {
     private readonly onRecordStart?: RecordStartHandler,
     private readonly onRecordStop?: RecordStopHandler,
     private readonly onReplayStart?: ReplayStartHandler,
+    private readonly onOutputVolume?: OutputVolumeHandler,
   ) {
     manager.on('message', (msg: IpcMessage) => {
       if (msg['type'] === 'scope') this.postScope(msg);
@@ -150,6 +152,10 @@ export class ScopePanel {
       if (m['command'] === 'recordStart') this.onRecordStart?.();
       if (m['command'] === 'recordStop')  this.onRecordStop?.();
       if (m['command'] === 'replayStart') this.onReplayStart?.();
+      if (m['command'] === 'outputVolume' && typeof m['volume'] === 'number') {
+        this.manager.sendOutputVolume(m['volume']);
+        this.onOutputVolume?.(m['volume']);
+      }
     });
 
     this.panel.onDidDispose(() => {
@@ -282,23 +288,8 @@ function buildLedsHtml(leds: LedDef[]): string {
   return `<div id="leds"><span class="section-label">LEDs:</span>${items}\n</div>`;
 }
 
-function buildSineControlsHtml(sine: SineParams): string {
-  return `<div id="sine-controls">
-    <span class="sine-label">Sine input:</span>
-    <label class="sine-field">
-      <span>Freq</span>
-      <input type="number" id="sine-freq" min="20" max="20000" step="1" value="${sine.freq}"/>
-      <span>Hz</span>
-    </label>
-    <label class="sine-field">
-      <span>Amp</span>
-      <input type="range" id="sine-amp" min="0" max="1" step="0.01" value="${sine.amplitude}"/>
-      <span id="sine-amp-val">${sine.amplitude.toFixed(2)}</span>
-    </label>
-  </div>`;
-}
-
-function buildAudioSourceHtml(source: AudioSource): string {
+// T15.1+T15.3: single inline emulator bar — source dropdown + context-sensitive controls + recording
+function buildEmulatorBarHtml(source: AudioSource, sine: SineParams): string {
   const isSine = source.input === 'sine';
   const isLive = source.input === 'live';
   const isWav  = source.input === 'wav';
@@ -307,40 +298,46 @@ function buildAudioSourceHtml(source: AudioSource): string {
     `<option value="${s}" ${s === source.bufferSize ? 'selected' : ''}>${s}</option>`
   ).join('');
   const wavName = source.wavPath ? baseName(source.wavPath) : '';
-  return `<div id="audio-source-bar">
-    <span class="source-label">Input:</span>
-    <label class="source-option">
-      <input type="radio" name="audio-input" value="sine" ${isSine ? 'checked' : ''}/> Sine
-    </label>
-    <label class="source-option">
-      <input type="radio" name="audio-input" value="live" ${isLive ? 'checked' : ''}/> Live (mic)
-    </label>
-    <label class="source-option">
-      <input type="radio" name="audio-input" value="wav" ${isWav ? 'checked' : ''}/> WAV
-    </label>
-    <span class="source-sep">|</span>
-    <label class="source-field">
-      <span>Buffer</span>
-      <select id="buffer-size">${bufOptions}</select>
-      <span>samples</span>
-    </label>
-    <span class="source-sep">|</span>
-    <span id="latency-display" class="latency-text">latency: —</span>
-    <span class="source-sep">|</span>
-    <span id="xrun-display" class="xrun-text">xruns: 0</span>
-  </div>
-  <div id="wav-controls">
-    <span class="wav-label">WAV file:</span>
-    <button id="wav-choose" type="button">Choose WAV…</button>
-    <span id="wav-name" class="wav-name">${wavName ? escHtml(wavName) : 'no file selected'}</span>
-    <label class="wav-loop">
-      <input type="checkbox" id="wav-loop" ${source.wavLoop ? 'checked' : ''}/> Loop
-    </label>
-  </div>`;
-}
-
-function buildRecordingBarHtml(): string {
-  return `<div id="recording-bar">
+  // T15.1: dropdown instead of radios
+  const srcOptions = [
+    `<option value="sine" ${isSine ? 'selected' : ''}>Sine</option>`,
+    `<option value="live" ${isLive ? 'selected' : ''}>Live (mic)</option>`,
+    `<option value="wav" ${isWav  ? 'selected' : ''}>WAV</option>`,
+  ].join('');
+  return `<div id="emulator-bar">
+    <span class="emu-label">Input:</span>
+    <select id="audio-source-select">${srcOptions}</select>
+    <span class="emu-sep">|</span>
+    <!-- Sine controls (shown only when sine selected) -->
+    <span id="sine-group" class="emu-group ${isSine ? '' : 'emu-hidden'}">
+      <label class="emu-field">Freq <input type="number" id="sine-freq" min="20" max="20000" step="1" value="${sine.freq}"/> Hz</label>
+      <label class="emu-field">Amp <input type="range" id="sine-amp" min="0" max="1" step="0.01" value="${sine.amplitude}"/>
+        <span id="sine-amp-val">${sine.amplitude.toFixed(2)}</span></label>
+    </span>
+    <!-- WAV controls (shown only when wav selected) -->
+    <span id="wav-group" class="emu-group ${isWav ? '' : 'emu-hidden'}">
+      <button id="wav-choose" type="button" class="emu-btn">Choose WAV…</button>
+      <span id="wav-name" class="wav-name">${wavName ? escHtml(wavName) : 'no file'}</span>
+      <label class="emu-field"><input type="checkbox" id="wav-loop" ${source.wavLoop ? 'checked' : ''}/> Loop</label>
+    </span>
+    <!-- Buffer (live + wav) -->
+    <span id="buffer-group" class="emu-group ${isLive || isWav ? '' : 'emu-hidden'}">
+      <label class="emu-field">Buffer <select id="buffer-size">${bufOptions}</select> samples</label>
+    </span>
+    <!-- Latency (live only) -->
+    <span id="latency-group" class="emu-group ${isLive ? '' : 'emu-hidden'}">
+      <span id="latency-display" class="latency-text">latency: —</span>
+    </span>
+    <!-- Xruns (live + wav) -->
+    <span id="xrun-group" class="emu-group ${isLive || isWav ? '' : 'emu-hidden'}">
+      <span id="xrun-display" class="xrun-text">xruns: 0</span>
+    </span>
+    <!-- Xruns always visible for sine too (stays at 0 but visible for consistency) -->
+    <span id="xrun-sine-group" class="emu-group ${isSine ? '' : 'emu-hidden'}">
+      <span id="xrun-display-sine" class="xrun-text">xruns: 0</span>
+    </span>
+    <span class="emu-rec-sep">|</span>
+    <!-- Recording controls — always visible -->
     <span class="rec-label">Session:</span>
     <button id="rec-start-btn" class="rec-btn" type="button">&#9679; Record</button>
     <button id="rec-stop-btn"  class="rec-btn" type="button" disabled>&#9632; Stop</button>
@@ -363,11 +360,9 @@ function buildHtml(
   buttons: ButtonDef[] = [], leds: LedDef[] = [], initialButtons: Record<number, boolean> = {},
 ): string {
   const controllersHtml = buildControllersHtml(defs, initialValues);
-  const sineHtml = buildSineControlsHtml(sine);
-  const audioSourceHtml = buildAudioSourceHtml(source);
+  const audioSourceHtml = buildEmulatorBarHtml(source, sine);
   const buttonsHtml = buildButtonsHtml(buttons, initialButtons);
   const ledsHtml = buildLedsHtml(leds);
-  const recordingBarHtml = buildRecordingBarHtml();
   return /* html */`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -377,7 +372,7 @@ function buildHtml(
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #1e1e1e; color: #d4d4d4; font-family: monospace; font-size: 12px; display: flex; flex-direction: column; height: 100vh; }
-    header { padding: 6px 12px; background: #252526; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #3c3c3c; flex-wrap: wrap; }
+    header { padding: 6px 12px; background: #252526; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #3c3c3c; flex-wrap: wrap; flex-shrink: 0; }
     #fidelity-caveat { font-size: 10px; color: #6a6a6a; cursor: default; margin-left: auto; }
     #status-text { flex: 1; }
     .legend { display: flex; gap: 12px; }
@@ -385,51 +380,41 @@ function buildHtml(
     .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
     .dot-in  { background: #4ec9b0; }
     .dot-out { background: #ce9178; }
-    #events { padding: 3px 12px; min-height: 22px; background: #252526; border-bottom: 1px solid #3c3c3c; font-size: 11px; color: #f48771; }
+    /* T15.4: master output volume in header */
+    #vol-group { display: flex; align-items: center; gap: 6px; }
+    #vol-label { color: #9cdcfe; font-size: 11px; }
+    #output-vol { width: 80px; cursor: pointer; accent-color: #4ec9b0; }
+    #vol-val { min-width: 30px; color: #b5cea8; font-size: 11px; }
+    #events { padding: 3px 12px; min-height: 22px; background: #252526; border-bottom: 1px solid #3c3c3c; font-size: 11px; color: #f48771; flex-shrink: 0; }
     canvas { display: block; width: 100%; }
-    #scope { flex: 1; }
+    #scope { flex: 1; min-height: 0; }
     #spectrum { height: 140px; border-top: 1px solid #3c3c3c; background: #1a1a1a; flex-shrink: 0; }
-    #audio-source-bar { padding: 6px 12px; background: #252526; border-top: 1px solid #3c3c3c; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-    .source-label { color: #9cdcfe; }
-    .source-option { display: flex; align-items: center; gap: 4px; cursor: pointer; }
-    .source-option input[type="radio"] { cursor: pointer; accent-color: #4ec9b0; }
-    .source-sep { color: #3c3c3c; user-select: none; }
-    .source-field { display: flex; align-items: center; gap: 6px; }
-    .source-field select { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 2px 4px; font-family: monospace; cursor: pointer; }
+    /* T15.2: collapsible section wrappers */
+    .coll-section { background: #252526; border-top: 1px solid #3c3c3c; flex-shrink: 0; }
+    .coll-header { display: flex; align-items: center; gap: 8px; padding: 5px 12px; cursor: pointer; user-select: none; color: #9cdcfe; font-size: 11px; }
+    .coll-header:hover { background: #2a2a2a; }
+    .coll-arrow { font-size: 10px; transition: transform 0.15s; }
+    .coll-body { overflow: hidden; }
+    .coll-body.collapsed { display: none; }
+    /* T15.3: single inline emulator bar */
+    #emulator-bar { padding: 6px 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .emu-label { color: #9cdcfe; }
+    #audio-source-select { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 2px 6px; font-family: monospace; cursor: pointer; border-radius: 2px; }
+    .emu-sep { color: #3c3c3c; user-select: none; }
+    .emu-rec-sep { color: #555; user-select: none; border-left: 1px solid #555; height: 14px; margin: 0 4px; }
+    .emu-group { display: inline-flex; align-items: center; gap: 6px; }
+    .emu-hidden { display: none !important; }
+    .emu-field { display: inline-flex; align-items: center; gap: 4px; }
+    .emu-field input[type="number"] { width: 64px; background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 2px 4px; font-family: monospace; }
+    .emu-field input[type="range"] { width: 90px; cursor: pointer; }
+    .emu-field select { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 2px 4px; font-family: monospace; cursor: pointer; }
+    .emu-btn { background: #0e639c; color: #fff; border: none; padding: 3px 8px; font-family: monospace; cursor: pointer; border-radius: 2px; }
+    .emu-btn:hover { background: #1177bb; }
     .latency-text { color: #b5cea8; }
     .xrun-text { color: #b5cea8; }
     .xrun-text.xrun-warning { color: #f48771; }
-    #wav-controls { padding: 6px 12px; background: #252526; border-top: 1px solid #3c3c3c; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-    .wav-label { color: #9cdcfe; }
-    #wav-choose { background: #0e639c; color: #fff; border: none; padding: 3px 10px; font-family: monospace; cursor: pointer; border-radius: 2px; }
-    #wav-choose:hover { background: #1177bb; }
-    .wav-name { color: #b5cea8; font-style: italic; }
-    .section-label { color: #9cdcfe; align-self: center; }
-    #buttons { padding: 8px 12px; background: #252526; border-top: 1px solid #3c3c3c; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
-    .vbutton { display: flex; flex-direction: column; align-items: center; gap: 2px; background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; border-radius: 4px; padding: 6px 12px; font-family: monospace; cursor: pointer; user-select: none; }
-    .vbutton:active { background: #4a4a4a; }
-    .vbutton-on { background: #0e639c; border-color: #1177bb; color: #fff; }
-    .vbutton-label { font-size: 12px; }
-    .vbutton-pin { font-size: 9px; color: #9a9a9a; }
-    .vbutton-on .vbutton-pin { color: #cfe8ff; }
-    #leds { padding: 8px 12px; background: #252526; border-top: 1px solid #3c3c3c; display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
-    .vled { display: flex; align-items: center; gap: 6px; }
-    .vled-dot { width: 12px; height: 12px; border-radius: 50%; background: #3c3c3c; border: 1px solid #555; box-shadow: none; }
-    .vled-dot.vled-lit { background: #f04a4a; border-color: #ff6a6a; box-shadow: 0 0 6px 1px #f04a4a; }
-    .vled-label { color: #b5cea8; }
-    .wav-loop { display: flex; align-items: center; gap: 4px; cursor: pointer; }
-    .wav-loop input { cursor: pointer; accent-color: #4ec9b0; }
-    #sine-controls { padding: 6px 12px; background: #252526; border-top: 1px solid #3c3c3c; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-    .sine-label { color: #9cdcfe; }
-    .sine-field { display: flex; align-items: center; gap: 6px; }
-    .sine-field input[type="number"] { width: 68px; background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 2px 4px; font-family: monospace; }
-    .sine-field input[type="range"] { width: 100px; cursor: pointer; }
-    #controllers { padding: 8px 12px; background: #252526; border-top: 1px solid #3c3c3c; display: flex; flex-wrap: wrap; gap: 16px; }
-    .pot { display: flex; align-items: center; gap: 8px; }
-    .pot-label { min-width: 80px; color: #9cdcfe; }
-    .pot-slider { width: 140px; cursor: pointer; }
-    .pot-value { min-width: 40px; text-align: right; color: #b5cea8; }
-    #recording-bar { padding: 6px 12px; background: #252526; border-top: 1px solid #3c3c3c; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
+    .wav-name { color: #b5cea8; font-style: italic; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* Recording buttons inside the emulator bar */
     .rec-label { color: #9cdcfe; }
     .rec-btn { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 3px 10px; font-family: monospace; font-size: 12px; cursor: pointer; border-radius: 2px; }
     .rec-btn:hover { background: #4a4a4a; }
@@ -441,7 +426,26 @@ function buildHtml(
     #replay-start-btn { border-color: #4ec9b0; color: #4ec9b0; }
     #replay-start-btn:hover:not(:disabled) { background: #1a3a35; }
     #replay-start-btn.replaying { background: #1e5a4a; color: #fff; }
-    .rec-filename { color: #b5cea8; font-style: italic; font-size: 11px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rec-filename { color: #b5cea8; font-style: italic; font-size: 11px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* Effect controls section contents */
+    .section-label { color: #9cdcfe; align-self: center; }
+    #buttons { padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    .vbutton { display: flex; flex-direction: column; align-items: center; gap: 2px; background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; border-radius: 4px; padding: 6px 12px; font-family: monospace; cursor: pointer; user-select: none; }
+    .vbutton:active { background: #4a4a4a; }
+    .vbutton-on { background: #0e639c; border-color: #1177bb; color: #fff; }
+    .vbutton-label { font-size: 12px; }
+    .vbutton-pin { font-size: 9px; color: #9a9a9a; }
+    .vbutton-on .vbutton-pin { color: #cfe8ff; }
+    #leds { padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+    .vled { display: flex; align-items: center; gap: 6px; }
+    .vled-dot { width: 12px; height: 12px; border-radius: 50%; background: #3c3c3c; border: 1px solid #555; box-shadow: none; }
+    .vled-dot.vled-lit { background: #f04a4a; border-color: #ff6a6a; box-shadow: 0 0 6px 1px #f04a4a; }
+    .vled-label { color: #b5cea8; }
+    #controllers { padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 16px; }
+    .pot { display: flex; align-items: center; gap: 8px; }
+    .pot-label { min-width: 80px; color: #9cdcfe; }
+    .pot-slider { width: 140px; cursor: pointer; }
+    .pot-value { min-width: 40px; text-align: right; color: #b5cea8; }
     #getting-started { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #6a6a6a; padding: 32px; text-align: center; }
     #getting-started ol { text-align: left; padding-left: 20px; line-height: 2; }
     #getting-started code { background: #3c3c3c; padding: 1px 4px; border-radius: 2px; color: #9cdcfe; }
@@ -493,6 +497,12 @@ function buildHtml(
       <span><span class="dot dot-in"></span>In</span>
       <span><span class="dot dot-out"></span>Out</span>
     </span>
+    <!-- T15.4: master output volume — always visible in header -->
+    <span id="vol-group">
+      <label id="vol-label" for="output-vol">Vol</label>
+      <input type="range" id="output-vol" min="0" max="1" step="0.01" value="1"/>
+      <span id="vol-val">1.00</span>
+    </span>
     <span id="fidelity-caveat" title="Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget">ℹ Approx. Seed</span>
   </header>
   <div id="events"></div>
@@ -507,12 +517,28 @@ function buildHtml(
     </ol>
     <div style="margin-top:8px;font-size:11px">Use <code>Deploy and Debug</code> to attach breakpoints.</div>
   </div>
-  ${audioSourceHtml}
-  ${sineHtml}
-  ${controllersHtml}
-  ${buttonsHtml}
-  ${ledsHtml}
-  ${recordingBarHtml}
+  <!-- T15.2: collapsible Effect controls section (expanded by default) -->
+  <div class="coll-section" id="effect-section">
+    <div class="coll-header" id="effect-header" aria-expanded="true">
+      <span class="coll-arrow" id="effect-arrow">▾</span>
+      <span>Effect controls</span>
+    </div>
+    <div class="coll-body" id="effect-body">
+      ${controllersHtml}
+      ${buttonsHtml}
+      ${ledsHtml}
+    </div>
+  </div>
+  <!-- T15.2: collapsible Emulator section (collapsed by default) -->
+  <div class="coll-section" id="emulator-section">
+    <div class="coll-header" id="emulator-header" aria-expanded="false">
+      <span class="coll-arrow" id="emulator-arrow" style="transform:rotate(-90deg)">▾</span>
+      <span>Emulator</span>
+    </div>
+    <div class="coll-body collapsed" id="emulator-body">
+      ${audioSourceHtml}
+    </div>
+  </div>
   </div><!-- #scope-content -->
   <div id="editor-wrap" style="display:none">
     <div id="editor-toolbar">
@@ -545,10 +571,13 @@ function buildHtml(
     const sineAmpValEl = document.getElementById('sine-amp-val');
     const bufferSizeEl = document.getElementById('buffer-size');
     const latencyEl = document.getElementById('latency-display');
-    const xrunEl = document.getElementById('xrun-display');
+    // T15.3: xrun display lives in source-specific groups; update all of them
+    const xrunEls = () => document.querySelectorAll('[id^="xrun-display"]');
     const wavChooseEl = document.getElementById('wav-choose');
     const wavNameEl = document.getElementById('wav-name');
     const wavLoopEl = document.getElementById('wav-loop');
+    const outputVolEl = document.getElementById('output-vol');
+    const volValEl = document.getElementById('vol-val');
 
     let lastIn = [], lastOut = [];
     let lastSpecIn = [], lastSpecOut = [], lastBinHz = 0;
@@ -674,29 +703,67 @@ function buildHtml(
       }
     }
 
+    // T15.3: show/hide source-specific control groups based on selected source
+    function updateSourceGroups(input) {
+      const isSine = input === 'sine';
+      const isLive = input === 'live';
+      const isWav  = input === 'wav';
+      document.getElementById('sine-group')?.classList.toggle('emu-hidden', !isSine);
+      document.getElementById('wav-group')?.classList.toggle('emu-hidden', !isWav);
+      document.getElementById('buffer-group')?.classList.toggle('emu-hidden', !(isLive || isWav));
+      document.getElementById('latency-group')?.classList.toggle('emu-hidden', !isLive);
+      document.getElementById('xrun-group')?.classList.toggle('emu-hidden', !(isLive || isWav));
+      document.getElementById('xrun-sine-group')?.classList.toggle('emu-hidden', !isSine);
+    }
+
+    // T15.1: dropdown handler
     function sendAudioSource() {
-      const input = document.querySelector('input[name="audio-input"]:checked')?.value || 'sine';
-      const bufferSize = parseInt(bufferSizeEl.value, 10);
+      const srcEl = document.getElementById('audio-source-select');
+      const input = srcEl ? srcEl.value : 'sine';
+      const bufferSize = parseInt(bufferSizeEl?.value || '256', 10);
       const sampleRate = 48000;
       const wavLoop = !!(wavLoopEl && wavLoopEl.checked);
+      updateSourceGroups(input);
       vscode.postMessage({ command: 'audioSource', input, sampleRate, bufferSize, wavLoop });
     }
 
-    sineFreqEl.addEventListener('change', sendSine);
-    sineAmpEl.addEventListener('input', () => {
-      sineAmpValEl.textContent = parseFloat(sineAmpEl.value).toFixed(2);
+    sineFreqEl?.addEventListener('change', sendSine);
+    sineAmpEl?.addEventListener('input', () => {
+      if (sineAmpValEl) sineAmpValEl.textContent = parseFloat(sineAmpEl.value).toFixed(2);
       sendSine();
     });
 
-    // Audio source selector
-    document.querySelectorAll('input[name="audio-input"]').forEach(radio => {
-      radio.addEventListener('change', sendAudioSource);
-    });
-    bufferSizeEl.addEventListener('change', sendAudioSource);
+    // T15.1: dropdown instead of radios
+    document.getElementById('audio-source-select')?.addEventListener('change', sendAudioSource);
+    bufferSizeEl?.addEventListener('change', sendAudioSource);
 
     // WAV controls
     wavChooseEl?.addEventListener('click', () => vscode.postMessage({ command: 'pickWav' }));
     wavLoopEl?.addEventListener('change', sendAudioSource);
+
+    // T15.4: master output volume
+    outputVolEl?.addEventListener('input', () => {
+      const vol = parseFloat(outputVolEl.value);
+      if (volValEl) volValEl.textContent = vol.toFixed(2);
+      vscode.postMessage({ command: 'outputVolume', volume: vol });
+    });
+
+    // T15.2: collapsible section toggle
+    function setupCollapsible(headerId, bodyId, arrowId) {
+      const header = document.getElementById(headerId);
+      const body   = document.getElementById(bodyId);
+      const arrow  = document.getElementById(arrowId);
+      if (!header || !body) return;
+      header.addEventListener('click', () => {
+        const expanded = header.getAttribute('aria-expanded') !== 'false';
+        header.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+        body.classList.toggle('collapsed', expanded);
+        if (arrow) arrow.style.transform = expanded ? 'rotate(-90deg)' : '';
+        resize();
+      });
+    }
+    setupCollapsible('effect-header', 'effect-body', 'effect-arrow');
+    setupCollapsible('emulator-header', 'emulator-body', 'emulator-arrow');
 
     // Pot slider wiring
     document.querySelectorAll('.pot-slider').forEach(slider => {
@@ -755,17 +822,16 @@ function buildHtml(
           eventsEl.textContent = '';
         }
       } else if (msg.command === 'wavSelected') {
-        if (wavNameEl) wavNameEl.textContent = msg.name || 'no file selected';
-        const wavRadio = document.querySelector('input[name="audio-input"][value="wav"]');
-        if (wavRadio) wavRadio.checked = true;
+        if (wavNameEl) wavNameEl.textContent = msg.name || 'no file';
+        // T15.1: set dropdown to wav
+        const srcEl = document.getElementById('audio-source-select');
+        if (srcEl) { srcEl.value = 'wav'; updateSourceGroups('wav'); }
       } else if (msg.command === 'event') {
         if (msg.kind === 'realtime_unavailable') {
           eventsEl.textContent = '⚠ Live input unavailable — check microphone permission. Falling back to sine.';
-          // Uncheck "live", re-check "sine"
-          const sineRadio = document.querySelector('input[name="audio-input"][value="sine"]');
-          const liveRadio = document.querySelector('input[name="audio-input"][value="live"]');
-          if (sineRadio) sineRadio.checked = true;
-          if (liveRadio) liveRadio.checked = false;
+          // T15.1: reset dropdown to sine
+          const srcEl = document.getElementById('audio-source-select');
+          if (srcEl) { srcEl.value = 'sine'; updateSourceGroups('sine'); }
           return;
         }
         if (msg.kind === 'wav_error') {
@@ -776,15 +842,17 @@ function buildHtml(
         eventsEl.textContent = [...activeEvents].map(k => '⚠ ' + k).join('  ');
       } else if (msg.command === 'xrun') {
         xrunCount = msg.count || 0;
-        xrunEl.textContent = 'xruns: ' + xrunCount;
-        xrunEl.className = xrunCount > 0 ? 'xrun-text xrun-warning' : 'xrun-text';
-        // Also update status text xrun count if shown
+        // T15.3: update all xrun display elements
+        xrunEls().forEach(el => {
+          el.textContent = 'xruns: ' + xrunCount;
+          el.className = xrunCount > 0 ? 'xrun-text xrun-warning' : 'xrun-text';
+        });
         if (hasStatus) {
           statusEl.textContent = statusEl.textContent.replace(/xruns: \d+/, 'xruns: ' + xrunCount);
         }
       } else if (msg.command === 'latency') {
         const ms = msg.measuredMs;
-        latencyEl.textContent = 'latency: ' + (ms ? ms.toFixed(1) + ' ms' : '—');
+        if (latencyEl) latencyEl.textContent = 'latency: ' + (ms ? ms.toFixed(1) + ' ms' : '—');
       } else if (msg.command === 'led') {
         document.querySelectorAll('.vled-dot[data-pin="' + msg.gpioPin + '"]').forEach(dot => {
           dot.classList.toggle('vled-lit', !!msg.lit);
