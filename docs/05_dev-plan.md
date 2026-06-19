@@ -1,3 +1,5 @@
+> **v2 complete** — archived to `docs/v2/` on 2026-06-19. This file now seeds v3 planning.
+
 # 05 — Development Plan (v2)
 
 > **v1 complete** — M0–M7 released (0.1.0–0.1.7), all ACs green. Archived: `docs/v1/`.
@@ -27,7 +29,7 @@ inspect tags → propose semver → update CHANGELOG.md → annotated tag → pu
 | M6 — v1 polish & release        | [docs/milestones/v1/M6.md](milestones/v1/M6.md)           | 0.1.6   | **released** |
 | M7 — Block-form callback (v1.1) | [docs/milestones/v1/M7.md](milestones/v1/M7.md)           | 0.1.7   | **released** |
 
-### v2 (0.2.0–0.2.9)
+### v2 (0.2.0–0.2.9) — archived in `docs/v2/`
 
 | Milestone                          | File                                                       | Version | Status       |
 |------------------------------------|------------------------------------------------------------|---------|--------------|

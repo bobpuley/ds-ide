@@ -1,3 +1,5 @@
+> **v2 complete** — archived to `docs/v2/` on 2026-06-19. This file now seeds v3 planning.
+
 # 03 — Requirements (v2)
 
 > **v1 complete.** All v1 requirements (FR-ED, FR-BU, FR-DE, FR-RU, FR-AU, FR-CT, FR-SH, FR-DB,

@@ -27,7 +27,9 @@ The emulator executes Daisy applications as native desktop programs through a co
 
 **v1 shipped** (0.1.0–0.1.7, M0–M7, all ACs green): native simulation; VS Code extension; CMake emulator build; sine-input audio engine; virtual potentiometers; waveform scope; breakpoint debugging. Archived docs: `docs/v1/`. The bundled `daisy-seed-knowledge/` corpus is the API reference; indexed as a graphify knowledge graph — query with `/graphify query "…"` (see `graphify-out/`).
 
-**v2 in progress** (target 0.2.x, M8+): live host audio I/O; virtual buttons/GPIO; full debug (step/variables/call-stack); in-IDE hardware build + DFU flash; spectrum view. See `docs/01_input-ideas.md`–`docs/05_dev-plan.md`.
+**v2 shipped** (0.2.0–0.2.9, M8–M15, all ACs green): live host audio I/O; WAV file input; virtual buttons/GPIO/LEDs; visual controller editor; full debug (step/variables/call-stack); in-IDE hardware build + DFU flash; spectrum/FFT view; session recording; scope UI refresh. Archived docs: `docs/v2/`.
+
+**v3 planning**: see `docs/01_input-ideas.md`–`docs/05_dev-plan.md`.
 
 Runtime: VS Code (Visual Studio Code). Primary OS: macOS / Apple Silicon.
 Audience: developers.
@@ -51,7 +53,7 @@ The `daisy-seed-knowledge/` corpus (libDaisy docs + DaisyExamples) is indexed as
    If green: merge → inspect existing tags → propose next semver tag → update CHANGELOG.md + commit → create annotated tag → push commit and tag.
 
 ## Archived docs protocol
-`docs/v1/` and `docs/raw/v1/` are read-only archives. All current project knowledge should be in `docs/00_`–`docs/05_`.
+`docs/v1/`, `docs/v2/` and `docs/raw/v1/` are read-only archives. All current project knowledge should be in `docs/00_`–`docs/05_`.
 
 - **Do not read archived docs** unless the root docs genuinely lack the information needed.
 - **If you do read an archived doc**, append an entry to `docs/archived-doc-access-log.md` immediately: date, what was needed, which file was consulted, which root doc should have had it, status = open.
@@ -67,6 +69,7 @@ The `daisy-seed-knowledge/` corpus (libDaisy docs + DaisyExamples) is indexed as
 | docs/04_architecture.md          | v2 tech decisions, component extensions        | v2 draft; host audio API TBD                   |
 | docs/05_dev-plan.md              | v2 sprint plan M8–M14                          | v2 draft; M8 highest priority                  |
 | docs/v1/                         | v1 archived docs (01–05, read-only)            | complete; do not edit                          |
+| docs/v2/                         | v2 archived docs (01–05, read-only)            | complete; do not edit                          |
 | docs/raw/v1/                     | v1 raw contributions (read-only)               | complete; do not edit                          |
 
 ## Interaction model

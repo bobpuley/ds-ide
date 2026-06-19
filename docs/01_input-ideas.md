@@ -1,3 +1,5 @@
+> **v2 complete** — archived to `docs/v2/` on 2026-06-19. This file now seeds v3 planning.
+
 # 01 — Input Ideas (v2)
 
 > **v1 complete.** ds-ide 0.1.x (M0–M7) shipped the full v1 scope: native host simulation,

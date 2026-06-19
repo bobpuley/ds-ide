@@ -1,3 +1,5 @@
+> **v2 complete** — archived to `docs/v2/` on 2026-06-19. This file now seeds v3 planning.
+
 # 04 — Architecture (v2)
 
 > **v1 complete.** The v1 architecture (out-of-process runtime C4, VS Code extension C1,

@@ -1,3 +1,5 @@
+> **v2 complete** — archived to `docs/v2/` on 2026-06-19. This file now seeds v3 planning.
+
 # 02 — Assumptions & Risks (v2)
 
 > **v1 complete.** All v1 bets (A1–A8) held. A1–A3 verified against real source; A4–A8
