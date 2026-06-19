@@ -33,7 +33,7 @@ The emulator executes Daisy applications as native desktop programs through a co
 
 Runtime: VS Code (Visual Studio Code). Primary OS: macOS / Apple Silicon.
 Audience: developers.
-Phase: v1 complete; v2 requirements + architecture drafted (docs 01–05), implementation not yet started (M8 pending).
+Phase: v1 complete; v2 complete; v3 planning (docs 01–05 are now v3 docs).
 
 ## Daisy API knowledge — query graphify first
 The `daisy-seed-knowledge/` corpus (libDaisy docs + DaisyExamples) is indexed as a knowledge graph in `graphify-out/`. **Before answering any question about Daisy/libDaisy APIs, hardware behavior, or example patterns — and before reading raw files under `daisy-seed-knowledge/` — run `graphify query "<question>"` (Bash) first.** It returns a budgeted answer and does not load the graph into context.
@@ -62,12 +62,13 @@ The `daisy-seed-knowledge/` corpus (libDaisy docs + DaisyExamples) is indexed as
 ## Document map
 | File                             | Purpose                                        | Status                                         |
 |----------------------------------|------------------------------------------------|------------------------------------------------|
-| docs/00_north-star.md            | Core idea, target UX, MVP definition of done   | drafted (v1 basis; still valid for v2)         |
-| docs/01_input-ideas.md           | v2 feature ideas (deferred from v1 + new)      | v2 draft; 4 open conflicts                     |
-| docs/02_assumptions-and-risks.md | v2 bets and risks; v1 bets confirmed           | v2 draft; A9–A14 new; R12–R18 new             |
-| docs/03_requirements.md          | v2 requirements (FR/NFR/CR/AC)                 | v2 draft; 5 open items                         |
-| docs/04_architecture.md          | v2 tech decisions, component extensions        | v2 draft; host audio API TBD                   |
-| docs/05_dev-plan.md              | v2 sprint plan M8–M14                          | v2 draft; M8 highest priority                  |
+| docs/00_north-star.md            | Core idea, target UX, MVP definition of done   | drafted (v1 basis; still valid for v3)         |
+| docs/01_input-ideas.md           | v3 feature ideas and bug backlog               | v3 draft; no open conflicts                    |
+| docs/02_assumptions-and-risks.md | v3 bets (A15–A16) and risks (R19–R20)         | v3 draft                                       |
+| docs/03_requirements.md          | v3 requirements (FR-CE, FR-WE, FR-VZ-4, FR-UI-1) | v3 draft; no open items                   |
+| docs/04_architecture.md          | v3 architecture (C9, C10); v2 summary + link  | v3 draft                                       |
+| docs/05_dev-plan.md              | v3 sprint plan M16–M18                        | v3 draft; M16 highest priority                 |
+| docs/milestones/v3/              | v3 milestone files (M16, M17, M18)             | planned                                        |
 | docs/v1/                         | v1 archived docs (01–05, read-only)            | complete; do not edit                          |
 | docs/v2/                         | v2 archived docs (01–05, read-only)            | complete; do not edit                          |
 | docs/raw/v1/                     | v1 raw contributions (read-only)               | complete; do not edit                          |

@@ -1,5 +1,5 @@
 ---
-description: Archive a completed version — snapshot docs 01–05, stamp root docs, update CLAUDE.md and the full milestone registry, commit
+description: Archive a completed version — snapshot docs 01–05, stamp root docs, clean them up as next-version seeds, update CLAUDE.md and the full milestone registry, commit
 arguments: version
 ---
 
@@ -59,6 +59,101 @@ to it, e.g.:
 ### v2 (0.2.0–0.2.9) — archived in `docs/v2/`
 ```
 
+## Step 3b — Clean up root docs as next-version seeds
+
+The root docs now contain the just-archived version's full content **plus** the completion banner
+added in Step 2. Rewrite each of docs/01–05 so it is a clean `$nextVersion` seed: the
+completion banners are preserved as context, but the body is replaced with a minimal stub ready
+for the next planning session.
+
+For each file, the target structure after cleanup is:
+
+### `docs/01_input-ideas.md`
+
+```markdown
+# 01 — Input Ideas ($nextVersion)
+
+> **v1 complete** — ... archived in [`docs/v1/`](v1/01_input-ideas.md).
+> (repeat one line per prior completed version, most recent last)
+> **$version complete** — ... archived in [`docs/$version/`]($version/01_input-ideas.md).
+
+*$nextVersion planning not yet started. Use `/doc-creator-driver:intake` or `/doc-creator-driver:start` to begin.*
+```
+
+### `docs/02_assumptions-and-risks.md`
+
+```markdown
+# 02 — Assumptions & Risks ($nextVersion)
+
+> **All prior versions complete** — full bet/risk history in their respective archives.
+> **$version complete** — all $version bets held; risks resolved or managed.
+> Archived: [`docs/$version/02_assumptions-and-risks.md`]($version/02_assumptions-and-risks.md).
+
+*$nextVersion bets and risks to be defined during planning.*
+```
+
+### `docs/03_requirements.md`
+
+```markdown
+# 03 — Requirements ($nextVersion)
+
+> **$version complete** — all $version requirements implemented; ACs green.
+> Archived: [`docs/$version/03_requirements.md`]($version/03_requirements.md).
+
+*$nextVersion requirements not yet defined.*
+```
+
+### `docs/04_architecture.md`
+
+```markdown
+# 04 — Architecture ($nextVersion)
+
+> **$version complete** — full $version architecture in
+> [`docs/$version/04_architecture.md`]($version/04_architecture.md).
+
+*$nextVersion architecture not yet defined.*
+```
+
+### `docs/05_dev-plan.md`
+
+```markdown
+# 05 — Development Plan ($nextVersion)
+
+> **v1 complete** — M0–MN archived in [`docs/v1/`](v1/).
+> (repeat one line per prior completed version)
+> **$version complete** — MN–MM archived in [`docs/$version/`]($version/).
+
+*$nextVersion milestones not yet planned.*
+
+---
+
+## 0. Milestone Registry
+
+### v1 (…) — archived in `docs/v1/`
+
+(one-line summary, link to v1 archive)
+
+(repeat for each prior version)
+
+### $version (…) — archived in `docs/$version/`
+
+(one-line summary, link to $version archive)
+
+### $nextVersion — planned
+
+*(no milestones yet)*
+```
+
+### Rules for the cleanup
+
+- The `#` heading of each doc must be updated from `$version` to `$nextVersion`.
+- All prior completion banners (accumulated from previous archive runs) must be **preserved** — do
+  not remove them. Only the body (non-banner content) is replaced with the stub.
+- Write each doc via the Write tool (full rewrite), not piecemeal edits.
+- Do not invent next-version content — stubs only. Planning sessions fill in the real content.
+- After cleanup, CLAUDE.md document map Purpose/Status cells for docs/01–05 must be updated to
+  reflect `$nextVersion` (e.g. `v3 feature ideas` → `v4 planning seed`).
+
 ## Step 4 — Create the next-version milestone directory
 
 Create `docs/milestones/$nextVersion/` with a `.gitkeep` placeholder so the directory
@@ -87,7 +182,7 @@ In `CLAUDE.md` (project root):
 
 ## Step 6 — Commit
 
-Stage and commit all changes:
+Stage and commit all changes (archive snapshot + cleaned-up root docs + CLAUDE.md + milestone dir):
 
 ```
 git add docs/$version/ docs/milestones/$nextVersion/.gitkeep docs/01_input-ideas.md \
@@ -100,7 +195,6 @@ If `docs/raw/$version/` was created, include it in the staged files.
 
 # What this command does NOT do
 
-- Does not rewrite root docs for the next version — that is a planning session's job.
-- Does not create new milestone files for the next version.
+- Does not create new milestone files for the next version (planning sessions do that via `/intake`).
 - Does not touch source code, tests, or CHANGELOG.
 - Does not push to remote (user's responsibility).

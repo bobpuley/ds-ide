@@ -1,240 +1,159 @@
-> **v2 complete** — archived to `docs/v2/` on 2026-06-19. This file now seeds v3 planning.
+# 04 — Architecture (v3)
 
-# 04 — Architecture (v2)
+> **v1 complete** — v1 architecture (C1–C6, JSON-over-socket IPC) validated in M0–M7.
+> Archived: [`docs/v1/04_architecture.md`](v1/04_architecture.md).
+>
+> **v2 complete** — v2 extended the architecture with real-time audio clock (two modes),
+> CoreAudio device abstraction, GPIO/Switch shim (C5), LED capture, hardware build drivers
+> (C7, C8), visual controller editor, spectrum, session recording, and scope UI refresh.
+> Archived: [`docs/v2/04_architecture.md`](v2/04_architecture.md).
 
-> **v1 complete.** The v1 architecture (out-of-process runtime C4, VS Code extension C1,
-> CMake build C3, host libDaisy shim C5, lldb-dap C6, JSON-over-socket IPC) was implemented
-> and validated across M0–M7. Archived: `docs/v1/04_architecture.md`.
-
-Technical design for **ds-ide v2**, extending the v1 architecture for the requirements in
-[03_requirements.md](03_requirements.md). v1 decisions that are unchanged are referenced,
-not repeated. New sections cover the significant architectural deltas.
+Technical design for **ds-ide v3**, extending the v2 architecture for the requirements in
+[03_requirements.md](03_requirements.md).
 
 ---
 
-## 1. v1 architecture summary (carried forward unchanged)
+## 1. v2 architecture summary (unchanged in v3)
 
 ```
 ┌────────────────────────── VS Code ──────────────────────────┐
 │  Extension host (TypeScript / Node) — C1                     │
-│  Webview panel — C2 (scope + controllers)                    │
+│  Webview panel — C2 (scope + controls + spectrum + editor)   │
 └───────┬───────────────────────────────────┬─────────────────┘
         │ IPC (JSON/socket)                 │ DAP
         ▼                                   ▼
 ┌──────────────── Emulator runtime (native process) ──────────┐
-│  C4: audio engine, scope tap, NaN/clip, IPC server           │
-│  C5: host libDaisy shim (audio cb, ADC GetFloat, stubs)      │
+│  C4: audio engine (real-time / simulated clock), scope tap   │
+│  C5: host libDaisy shim (ADC, Switch/GPIO, LED, audio cb)    │
 │  user effect + DaisySP (compiled unchanged)                   │
 └──────────────────────────────────────────────────────────────┘
-                         ▲ lldb-dap (C6)
+             ▲ lldb-dap (C6)    C7: HW build driver
+                                C8: DFU flash driver
 ```
 
-Components C1–C6, the P1 standalone-executable model, and the JSON-over-socket IPC channel
-are all unchanged in v2. New features layer on top.
+All C1–C8 components, IPC messages, and architectural decisions from v2 carry forward
+unchanged. See [`docs/v2/04_architecture.md`](v2/04_architecture.md) for the full v2
+component table, IPC message table, GPIO shim design, hardware build architecture, and
+open v2 items (all resolved).
 
 ---
 
-## 2. The big delta: real-time audio clock
+## 2. v3 new components
 
-### 2.1 v1 clock model (simulated)
-The v1 audio thread ran a block loop driven by `sleep`-based soft pacing — no OS audio
-device open, no hard deadline, no xruns. This made freeze-on-breakpoint free (the thread
-just stops with lldb; no OS is waiting for a buffer).
-
-### 2.2 v2 clock model (OS-callback-driven)
-Once host speaker output (D11) and live host input (D10) are active, the audio thread must
-be driven by the **OS audio callback** (CoreAudio `AudioUnit`, PortAudio stream, etc.).
-
-Key consequences:
-
-- **Hard real-time deadline.** Missing the callback → xrun → audible glitch. NFR-11.
-- **Clock authority shifts.** The OS callback dictates when each block runs; soft pacing
-  is replaced.
-- **Breakpoint/freeze conflict.** When lldb pauses the audio thread at a breakpoint, the OS
-  callback misses its deadline → xruns → glitches. **Mitigation:** mute/suspend the audio
-  device when a breakpoint is hit; resume on continue/stop. (R15.)
-- **Non-determinism.** OS-callback timing has jitter; reproducibility (NFR-6/R18) is best-
-  effort. Keep the simulated-clock mode available for WAV-file/regression testing.
-
-> **DECISION (v2 clock):** two modes — **real-time mode** (OS-callback, live I/O, host
-> speaker) and **simulated mode** (v1 behaviour, WAV file or sine, no OS device). The
-> extension selects the mode based on the active audio source (FR-AU-7): sine/WAV → simulated;
-> live host input → real-time.
-
-### 2.3 Audio device abstraction
-
-> **DECISION (host audio API):** **CoreAudio-native** for v2 (macOS-first, zero new dependency).
-> Windows/Linux host audio (WASAPI/ALSA or PortAudio) is deferred to v3+ when cross-platform
-> runtime is in scope. This removes a bundled C library from the v2 build and keeps the
-> dependency surface minimal.
-
-The audio device abstraction lives inside C4, behind an interface the block loop calls:
-`read_input_block(buf)` / `write_output_block(buf)`. In simulated mode these are a sine gen /
-no-op; in real-time mode they're CoreAudio read/write.
+| # | Component | Tech | Purpose |
+|---|-----------|------|---------|
+| **C9** | Controls convention parser | TS module (C1) | Parse C++ source for `// ds-ide:controls:begin/end` block; extract `{id, kind, pin}` per annotated line. Pure function — no I/O. |
+| **C10** | Wiring Editor panel | TS + HTML webview | Separate VS Code panel. Shows Daisy Seed pinout SVG. Handles click-to-assign. Triggers C++ file writes via C1. No emulator IPC. |
 
 ---
 
-## 3. Updated component table
+## 3. Controls Editor two-mode design (C2 + C9)
 
-| # | Component | Tech | v2 changes |
-|---|-----------|------|-----------|
-| C1 | Extension host | TS/Node | Hardware build commands, DFU flash command, full debug UI wiring, audio source selector |
-| C2 | Controller + scope webview | HTML/TS | Add button/GPIO/LED controls; visual controller editor (M10b); spectrum/FFT view; session recording UI; audio source dropdown; context-sensitive emulator bar (source-dependent controls); master output volume in header; collapsible Effect/Emulator footer sections |
-| C3 | Emulator build (CMake) | CMake + host clang | No change (emulator build unchanged) |
-| C4 | Emulator runtime | C++ executable | Real-time audio clock mode; host audio I/O; two-mode clock (real-time / simulated); mute-on-breakpoint; WAV file reader; session recorder |
-| C5 | Host libDaisy shim | C++ | Add `Switch`/GPIO shim (FR-CT-10); upgrade LED stub; keep ADC shim unchanged |
-| C6 | Debug adapter | lldb-dap | Wire step/variables/watch/call-stack DAP commands through to the extension UI (FR-DB-7…10) |
-| **C7** | **Hardware build driver** | TS + child_process | New: invoke `arm-none-eabi-g++` / `make`, parse diagnostics; detect toolchain (FR-HW-1/2) |
-| **C8** | **DFU flash driver** | TS + child_process | New: invoke `dfu-util`, parse output, surface progress/errors (FR-HW-3) |
+The v3 Controls Editor merges the v2 "Controller Editor" tab and "Effect controls" section into
+a single panel with Design and Run modes (D18).
+
+```
+On open / project load:
+  C1 → C9: parse effect source
+    → convention block found: controls[] extracted
+    → block absent: controls[] = [], missingBlock = true
+  C1 reads controllers.yaml → placements[] (editor_pos values)
+  C1 → C2: postMessage controlsConfig{ controls[], placements[], missingBlock }
+  C2 Controls Editor renders canvas (Design mode by default)
+
+Design mode:
+  User drags controls → C2 updates positions in memory
+  Save → C2 → C1 → write updated controllers.yaml (positions only)
+  C++ source NOT modified in Design mode
+
+Run mode (emulator running):
+  C2 Controls Editor IS the live control panel
+  Pot sliders → IPC `pot` (unchanged v2 channel)
+  Button clicks → IPC `button` (unchanged v2 channel)
+  LED state → IPC `led` events (unchanged v2 channel)
+
+Fallback (missingBlock = true):
+  C2 shows diagnostic banner
+  Controls rendered from controllers.yaml only (M10b behaviour)
+```
+
+**No new IPC messages to the runtime.** Run mode reuses all v2 IPC channels.
 
 ---
 
-## 4. GPIO / `Switch` shim design (C5 extension)
+## 4. Wiring Editor design (C10)
 
-The pattern mirrors the v1 ADC shim (proven in M1–M3):
-
-```
-Virtual button press (C2) → webview msg → extension (C1) →
-IPC `button{gpioPin, pressed}` → runtime atomic button[pin] →
-shim Switch::Debounce() reads button[pin] → effect sees Pressed()/RisingEdge()
-```
-
-- `Switch::Debounce()` is called by the effect from `loop()` or the audio callback. **Locked
-  (M10 review):** `Debounce()` simply *samples* the IPC-backed atomic button state for its pin at
-  each call — no dedicated debounce thread. Edge detection is relative to the previous `Debounce()`
-  call, which is exactly the hardware contract, so the effect's own call rate governs timing
-  (resolves R14; validate against `Button`, a 1 kHz `loop()`).
-- Debounce semantics: a "press" sets `rising_edge_ = true` for one Debounce call, then
-  clears; `pressed_` stays true while the button is held. This matches the real `Switch` impl.
-
-### 4.1 LED output shim (C5 extension, M10)
-
-LED output mirrors the button path in reverse — the effect writes, the shim emits IPC:
+The Wiring Editor is a separate VS Code webview panel (not C2). It is design-time only and
+sends no messages to the emulator runtime.
 
 ```
-effect SetLed(bool) / Led::Update()  →  C5 captures lit state  →
-IPC led{gpioPin, lit}  →  C2 LED indicator (lit/unlit)
+User: ds-ide.openWiringEditor command
+  C1 spawns C10 webview panel
+  C1 → C9: parse effect source → wiredPins[] (existing assignments)
+  C1 → C10: postMessage wiredPins[]
+  C10 renders SVG pinout; assigned pins shown with control icons
+
+User: click an unassigned pin
+  C10: show device popup (Pot / Button / LED)
+  If non-ADC pin + Pot: show warning badge (do not block)
+
+User: select device type
+  C10 → C1: postMessage wirePin{ pinNumber, deviceType, id, label }
+  C1 → controls-writer: insert declaration into ds-ide:controls block
+      (create block if absent; insert before // ds-ide:controls:end)
+      write via VS Code workspace edit (undoable)
+  C1 → C9: re-parse effect source → updated wiredPins[]
+  C1 → C10: postMessage wiredPins[]
+  C10: update SVG — pin now assigned, control icon rendered
 ```
 
-- **Two capture paths, both keyed to a declared `gpio_pin`:**
-  - `DaisySeed::SetLed(bool)` → the declared **onboard** LED (`gpio_pin 23`, emulator convention).
-    Emits immediately. Matches the canonical `Button` example (`hw.SetLed(button.Pressed())`).
-  - `Led::Init(pin, invert)` + `Led::Set(brightness)` + `Led::Update()` → the declared LED on
-    `pin`. libDaisy stages on `Set` and writes on `Update`, so the shim captures on **`Update()`**
-    with `lit = (brightness > 0) XOR invert`.
-- Only LEDs declared in the `leds:` section produce an indicator; writes to undeclared pins are
-  ignored (no-op, as on hardware without a connected LED).
+**Effect source file discovery (C1):**
+- Check `ds-ide.effectSource` workspace setting
+- Else: first `.cpp` found adjacent to `CMakeLists.txt` in the project root
+- If not found: surface an error in the Wiring Editor panel
+
+**Write safety:** C1 validates that `// ds-ide:controls:begin` and `// ds-ide:controls:end`
+markers are at column 0 before writing. Write is a VS Code `WorkspaceEdit` — fully undoable.
 
 ---
 
-## 5. IPC additions (v2)
+## 5. C9 convention parser design
 
-Extending the v1 message table (04v1 §5) with new message types:
+```
+Input:  C++ source text (string)
+Output: { controls: Array<{id, kind, pin}>, missingBlock: boolean, errors: string[] }
+
+Algorithm:
+  1. Scan for line matching /^\/\/ ds-ide:controls:begin\s*$/
+  2. Scan for line matching /^\/\/ ds-ide:controls:end\s*$/
+  3. If either marker missing → return { controls: [], missingBlock: true }
+  4. For each line between markers:
+       match /\/\/ ds-ide:\s*id=(\S+),\s*kind=(pot|button|led),\s*pin=(\d+)/
+       if match: add { id, kind, pin } to controls[]
+       else: add error "unrecognised annotation on line N"
+  5. Return { controls, missingBlock: false, errors }
+```
+
+Pure function — no filesystem access. Caller provides the text string.
+
+---
+
+## 6. New internal messages (v3)
+
+No new IPC messages to the emulator runtime. New messages are internal (C1 ↔ C2, C1 ↔ C10):
 
 | Direction | Message | Payload |
 |-----------|---------|---------|
-| ext → runtime | `audioMode` | `simulated` \| `realtime` |
-| ext → runtime | `audioDevice` | deviceId, sampleRate, bufferSize |
-| ext → runtime | `wavFile` | path, loop (bool) |
-| ext → runtime | `button` | gpioPin, pressed (bool) |
-| ext → runtime | `buttonSnapshot` | full button state array |
-| runtime → ext | `xrun` | count, timestamp |
-| runtime → ext | `latency` | measuredRoundTripMs |
-| runtime → ext | `spectrum` | in_fft[], out_fft[], binHz |
-| runtime → ext | `led` | gpioPin, lit (bool) |
-
-All v1 messages (`pot`, `potSnapshot`, `transport`, `sine`, `config`, `scope`, `status`,
-`event`) are unchanged — backward compatible.
+| C1 → C2 | `controlsConfig` | `controls[]` (id, kind, pin), `placements[]` (id, pos), `missingBlock` |
+| C10 → C1 | `wirePin` | `pinNumber`, `deviceType`, `id`, `label` |
+| C1 → C10 | `wiredPins` | `pins[]` (pinNumber, deviceType, id, label) |
 
 ---
 
-## 6. Hardware build & flash architecture (C7, C8)
-
-The hardware build follows the same child-process pattern as the emulator build (C3/C1),
-but invokes the project's own `Makefile` rather than the ds-ide-managed CMake.
-
-```
-C7 (TS): toolchain detect → arm-none-eabi-g++ path →
-         spawn `make` in project root → parse output →
-         apply diagnostics (FR-ED-3 / FR-HW-1) → emit success/failure
-```
-
-```
-C8 (TS): dfu-util detect → device in bootloader mode (user action) →
-         spawn `dfu-util -D <elf>` → stream progress % →
-         report success or error message (FR-HW-3)
-```
-
-Toolchain detection order (FR-HW-2): user setting → `arm-none-eabi-gcc` on `PATH` →
-known Homebrew path (`/opt/homebrew/bin/`) → ARM developer package path → show install hint.
-
----
-
-## 7. Full debug wiring (C6 extension)
-
-v1 C6 already connects to lldb-dap. v2 wires the remaining DAP capabilities:
-
-| v2 feature | DAP request | Extension change |
-|-----------|-------------|-----------------|
-| Step over | `next` | Add "Step Over" button / keybind; dispatch via debug session |
-| Step into | `stepIn` | Same |
-| Step out | `stepOut` | Same |
-| Variables | `variables` (per `stackFrame`) | Show in VS Code Variables panel (native, no webview needed) |
-| Watch | `evaluate` | VS Code Watch panel (native) |
-| Call stack | `stackTrace` | VS Code Call Stack panel (native) |
-
-VS Code natively supports all these panels once the debug adapter returns correct responses
-— minimal extension code needed.
-
-**Mute-on-breakpoint (R15):** when a `stopped` DAP event arrives (breakpoint hit), C6 sends
-an `audioMode: simulated` IPC message to C4 (which pauses the OS callback). When `continued`
-or `terminated` arrives, C6 sends `audioMode: realtime` to resume. This keeps the OS callback
-from starving during a long inspection.
-
----
-
-## 8. Visual controller editor (C2, M10b)
-
-The editor lives entirely inside C2 (a new tab in the existing webview panel). The runtime
-is not involved — the editor only reads and writes `controllers.yaml` via C1.
-
-```
-Open editor
-  → C1 reads controllers.yaml from disk
-  → C1 sends file contents to C2 via webview message
-  → C2 parses yaml, renders controls on canvas
-
-User edits canvas (drag, wire pin, rename)
-  → C2 serializes canvas state to yaml
-  → C2 sends yaml to C1 via webview message
-  → C1 writes controllers.yaml to disk
-```
-
-**No new IPC messages to the runtime.** The runtime reads `controllers.yaml` at deploy time
-(existing behaviour); the editor just provides a visual way to author that file.
-
-**Canvas model:** each control on the canvas carries:
-- type (`pot` | `button` | `led`)
-- label
-- pin assignment (ADC channel for pots; GPIO pin for buttons/LEDs)
-- position (x, y) — stored in yaml as an optional `editor_pos:` field, ignored by the runtime
-
-**Controllers palette:** a sidebar listing available control types. Drag-to-canvas instantiates
-a new control with default pin assignment; the user then adjusts via inline property fields.
-
-**Relationship to M10:** the editor depends on M10's yaml schema (`buttons:`, `leds:` sections)
-and the controller panel being established. It adds no new shim or IPC work — purely a C2/C1
-file-editing feature.
-
----
-
-## 9. Open architectural items (v2)
+## 7. Open architectural items (v3)
 
 | Item | Current stance |
 |------|----------------|
-| ~~Host audio API~~ | ✅ CoreAudio-native for v2; cross-platform deferred to v3+ |
-| Mute-on-breakpoint implementation detail | IPC `audioMode` switch; verify no race with lldb halt |
-| ~~`Switch::Debounce()` call-rate from loop()~~ | ✅ M10 review: sample atomic at each `Debounce()` call; no dedicated thread (§4) |
-| ~~LED output capture path~~ | ✅ M10 review: `SetLed`→onboard `gpio_pin 23`; `Led::Update()`→declared pin (§4.1) |
-| Session recording format | Simple binary (timestamps + samples + pot/button/LED events); design at M-recording |
-| Spectrum FFT library | FFTW (GPL — bad) / pocketfft (MIT) / kiss_fft (BSD); decide before M-spectrum |
+| Effect source auto-detection | First `.cpp` adjacent to `CMakeLists.txt`; fallback to `ds-ide.effectSource` setting. Validate in M18. |
+| Convention block location in file | Append to end of file if absent (before final `}`). Validate "column 0" safety rule in M18. |
+| Controls Editor mode persistence | Mode (Design/Run) resets to Design on emulator stop; persists within a session. Decide during M17. |
