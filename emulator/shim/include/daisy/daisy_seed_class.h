@@ -30,6 +30,9 @@ public:
     // Return the configured sample rate in Hz.
     float AudioSampleRate();
 
+    // Return the audio callback rate in Hz (sample rate / block size).
+    float AudioCallbackRate();
+
     // Return a pin descriptor for a Daisy Seed pin number.
     // Pin numbers 0-31 map to the physical header; the emulator ignores
     // port/pin values for GPIO peripherals (stub, FR-SH-5) but passes them

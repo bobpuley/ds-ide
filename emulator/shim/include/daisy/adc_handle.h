@@ -17,8 +17,14 @@ public:
 
 class AdcHandle {
 public:
-    // Initialise the ADC with an array of channel configs.
+    // Initialise the ADC with an array of channel configs (pointer form).
     void Init(AdcChannelConfig* cfg, uint8_t num_channels);
+
+    // Variadic form: hardware.adc.Init(cfg1, cfg2, ..., count) — used by
+    // generated init blocks (D23). The emulator ignores all parameters;
+    // pot values are driven by IPC messages.
+    template<typename... Args>
+    void Init(Args...) { /* emulator: ignores, values come from IPC */ }
 
     // Begin continuous conversion.
     void Start();

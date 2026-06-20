@@ -33,15 +33,20 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
 
     view.onDidChangeVisibility(() => {
       if (view.visible) {
-        view.webview.html = buildHtml(this.wiredPins);
+        // Re-hydrate the webview with current state. postMessage is preferred
+        // when retainContextWhenHidden keeps the JS alive; rebuilding HTML
+        // covers the case where the context was discarded.
+        void view.webview.postMessage({ command: 'wiredPins', pins: this.wiredPins });
       }
     });
   }
 
   postWiredPins(pins: WiredPin[]): void {
     this.wiredPins = pins;
-    if (this.view?.visible) {
-      this.view.webview.html = buildHtml(this.wiredPins);
+    if (this.view) {
+      // Send a live update message; the JS receives it and calls applyWiredPins
+      // without a full page reload — avoids visible state timing issues.
+      void this.view.webview.postMessage({ command: 'wiredPins', pins });
     }
   }
 }

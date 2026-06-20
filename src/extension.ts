@@ -13,7 +13,7 @@ import { parseControllerConfig, serializeControllerConfig, ControllerConfig } fr
 import { parseControlsConvention } from './controllers/controls-convention-parser';
 import { ControlsConfig, ControlsPlacement } from './webview/scope-panel';
 import { WiredPin, DeviceType } from './wiring/wiring-panel';
-import { insertIntoSource, removeFromSource } from './wiring/controls-writer';
+import { insertIntoSource, removeFromSource, insertInitIntoSource, removeInitFromSource } from './wiring/controls-writer';
 import { PotStore } from './controllers/pot-store';
 import { ButtonStore } from './controllers/button-store';
 import { DaisyDebugAdapterFactory, DaisyDebugAdapterTrackerFactory } from './debug/debug-adapter';
@@ -117,7 +117,10 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
       const oldText = doc.getText();
-      const newText = insertIntoSource(oldText, wp.id, wp.deviceType as 'pot' | 'button' | 'led', wp.pinNumber);
+      const afterDecl = insertIntoSource(oldText, wp.id, wp.deviceType as 'pot' | 'button' | 'led', wp.pinNumber);
+      const { controls: controlsAfterDecl } = parseControlsConvention(afterDecl);
+      const allPots = controlsAfterDecl.filter(c => c.kind === 'pot');
+      const newText = insertInitIntoSource(afterDecl, wp.id, wp.deviceType as 'pot' | 'button' | 'led', wp.pinNumber, allPots);
       const edit = new vscode.WorkspaceEdit();
       const end = doc.lineAt(doc.lineCount - 1).range.end;
       edit.replace(vscode.Uri.file(effectPath), new vscode.Range(new vscode.Position(0, 0), end), newText);
@@ -137,7 +140,10 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
       const oldText = doc.getText();
-      const newText = removeFromSource(oldText, id);
+      const afterDecl = removeFromSource(oldText, id);
+      const { controls: controlsAfterDecl } = parseControlsConvention(afterDecl);
+      const allPots = controlsAfterDecl.filter(c => c.kind === 'pot');
+      const newText = removeInitFromSource(afterDecl, id, allPots);
       const edit = new vscode.WorkspaceEdit();
       const end = doc.lineAt(doc.lineCount - 1).range.end;
       edit.replace(vscode.Uri.file(effectPath), new vscode.Range(new vscode.Position(0, 0), end), newText);

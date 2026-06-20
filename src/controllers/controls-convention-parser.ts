@@ -10,10 +10,14 @@ export interface ConventionParseResult {
   controls: ConventionControl[];
   missingBlock: boolean;
   errors: string[];
+  initLines: string[];
+  missingInitBlock: boolean;
 }
 
 const BEGIN_MARKER = /^\/\/ ds-ide:controls:begin\s*$/;
 const END_MARKER = /^\/\/ ds-ide:controls:end\s*$/;
+const INIT_BEGIN_MARKER = /^\/\/ ds-ide:controls:init:begin\s*$/;
+const INIT_END_MARKER = /^\/\/ ds-ide:controls:init:end\s*$/;
 const ANNOTATION = /\/\/ ds-ide:\s*id=(\S+),\s*kind=(pot|button|led),\s*pin=(\d+)/;
 
 export function parseControlsConvention(source: string): ConventionParseResult {
@@ -21,15 +25,22 @@ export function parseControlsConvention(source: string): ConventionParseResult {
 
   let beginLine = -1;
   let endLine = -1;
+  let initBeginLine = -1;
+  let initEndLine = -1;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!.replace(/\r$/, '');
     if (BEGIN_MARKER.test(line)) beginLine = i;
     if (END_MARKER.test(line)) endLine = i;
+    if (INIT_BEGIN_MARKER.test(line)) initBeginLine = i;
+    if (INIT_END_MARKER.test(line)) initEndLine = i;
   }
 
-  if (beginLine === -1 || endLine === -1 || endLine <= beginLine) {
-    return { controls: [], missingBlock: true, errors: [] };
+  const missingBlock = beginLine === -1 || endLine === -1 || endLine <= beginLine;
+  const missingInitBlock = initBeginLine === -1 || initEndLine === -1 || initEndLine <= initBeginLine;
+
+  if (missingBlock) {
+    return { controls: [], missingBlock: true, errors: [], initLines: [], missingInitBlock };
   }
 
   const controls: ConventionControl[] = [];
@@ -47,5 +58,12 @@ export function parseControlsConvention(source: string): ConventionParseResult {
     }
   }
 
-  return { controls, missingBlock: false, errors };
+  const initLines: string[] = [];
+  if (!missingInitBlock) {
+    for (let i = initBeginLine + 1; i < initEndLine; i++) {
+      initLines.push(lines[i]!.replace(/\r$/, ''));
+    }
+  }
+
+  return { controls, missingBlock: false, errors, initLines, missingInitBlock };
 }
