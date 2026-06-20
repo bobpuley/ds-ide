@@ -224,6 +224,31 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('ds-ide.build', () =>
       buildForEmulator(manager!, context.extensionPath, diagnostics),
     ),
+    vscode.commands.registerCommand('ds-ide.buildAndDeploy', async () => {
+      const ok = await buildForEmulator(manager!, context.extensionPath, diagnostics);
+      if (!ok) return;
+      statusBar.text = '$(loading~spin) Daisy: deploying…';
+      statusBar.tooltip = FIDELITY_CAVEAT;
+      const cfg = loadControllerConfig();
+      const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+      potStore!.setDefaults(cfg.pots);
+      buttonStore!.setDefaults(cfg.buttons);
+      scopePanel!.show(
+        cfg.pots, potStore!.getSnapshot(), sineState, audioSourceState,
+        cfg.buttons, cfg.leds, buttonStore!.getSnapshot(),
+      );
+      scopePanel!.postControlsConfig(buildControlsConfig(folder, cfg));
+      await deployToEmulator(manager!);
+      manager!.sendPotSnapshot(potStore!.getSnapshot());
+      manager!.sendButtonSnapshot(buttonStore!.getSnapshot());
+      manager!.sendSine(sineState.freq, sineState.amplitude);
+      const mode = audioSourceState.input === 'live' ? 'realtime' : 'simulated';
+      manager!.sendAudioMode(mode);
+      manager!.sendAudioDevice(audioSourceState.sampleRate, audioSourceState.bufferSize);
+      if (audioSourceState.input === 'wav' && audioSourceState.wavPath) {
+        manager!.sendWavFile(audioSourceState.wavPath, audioSourceState.wavLoop);
+      }
+    }),
     vscode.commands.registerCommand('ds-ide.deploy', async () => {
       statusBar.text = '$(loading~spin) Daisy: deploying…';
       statusBar.tooltip = FIDELITY_CAVEAT;

@@ -62,6 +62,7 @@ describe('extension', () => {
     const registeredIds = calls.map((c: unknown[]) => c[0] as string);
 
     expect(registeredIds).toContain('ds-ide.build');
+    expect(registeredIds).toContain('ds-ide.buildAndDeploy');
     expect(registeredIds).toContain('ds-ide.deploy');
     expect(registeredIds).toContain('ds-ide.start');
     expect(registeredIds).toContain('ds-ide.stop');
@@ -73,8 +74,8 @@ describe('extension', () => {
   it('activate pushes disposables onto context.subscriptions', () => {
     const ctx = makeContext();
     activate(ctx);
-    // diagnostics + statusBar + descriptor factory + tracker factory + 9 commands + 1 manager/scope dispose
-    expect((ctx.subscriptions as unknown[]).length).toBe(14);
+    // diagnostics + statusBar + descriptor factory + tracker factory + 10 commands + 1 manager/scope dispose
+    expect((ctx.subscriptions as unknown[]).length).toBe(15);
   });
 
   it('deactivate does not throw', () => {

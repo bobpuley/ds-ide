@@ -105,6 +105,23 @@ describe('buildHtml', () => {
     // The dangerous string should be escaped
     expect(dangerous).not.toContain('</script><script>');
   });
+
+  // T19-4 — ID label repositioning (AC-29)
+  it('assigned-id label uses connector-zone x (126 or 434), not pin circle cx (T19-4)', () => {
+    expect(html).toContain('labelX');
+    expect(html).toContain('126');
+    expect(html).toContain('434');
+  });
+
+  it('assigned-id label y is cy-7, not cy+22 (T19-4)', () => {
+    expect(html).toContain('cy - 7');
+    expect(html).not.toContain('cy + 22');
+  });
+
+  // T19-5 — USB port indicator (AC-30)
+  it('contains usb-port polygon shape (T19-5)', () => {
+    expect(html).toContain('usb-port');
+  });
 });
 
 // ── WiringPanel show / dispose / postWiredPins ───────────────────────────────

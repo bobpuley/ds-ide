@@ -59,6 +59,11 @@
         "command": "ds-ide.openWiringEditor",
         "title": "Open Wiring Editor",
         "category": "Daisy IDE"
+      },
+      {
+        "command": "ds-ide.buildAndDeploy",
+        "title": "Build & Deploy to Emulator",
+        "category": "Daisy IDE"
       }
     ],
     "keybindings": [
