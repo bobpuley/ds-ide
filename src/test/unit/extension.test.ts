@@ -75,7 +75,7 @@ describe('extension', () => {
     const ctx = makeContext();
     activate(ctx);
     // diagnostics + statusBar + daisy-debug descriptor factory + tracker factory + ds-ide descriptor factory + run config provider + 2 webview view providers + 10 commands + 1 manager/scope dispose
-    expect((ctx.subscriptions as unknown[]).length).toBe(19);
+    expect((ctx.subscriptions as unknown[]).length).toBe(20);
   });
 
   it('deactivate does not throw', () => {

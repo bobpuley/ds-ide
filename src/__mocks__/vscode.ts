@@ -39,6 +39,7 @@ const window = {
   registerWebviewViewProvider: vi.fn(() => ({ dispose: vi.fn() })),
   showOpenDialog: vi.fn(),
   showSaveDialog: vi.fn(),
+  showInputBox: vi.fn(),
 };
 
 const workspace = {
@@ -52,6 +53,11 @@ const workspace = {
     lineAt: vi.fn((n: number) => ({ range: { end: new Position(n, 0) } })),
   })),
   applyEdit: vi.fn(async () => true),
+  fs: {
+    writeFile: vi.fn(async () => undefined),
+    createDirectory: vi.fn(async () => undefined),
+    stat: vi.fn(async () => { throw Object.assign(new Error('ENOENT'), { code: 'FileNotFound' }); }),
+  },
 };
 
 const Uri = {
