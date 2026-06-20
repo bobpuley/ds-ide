@@ -51,6 +51,13 @@ Full registry in [`docs/v2/05_dev-plan.md`](v2/05_dev-plan.md).
 | M21 — VS Code Run command integration        | [docs/milestones/v4/M21.md](milestones/v4/M21.md)  | 0.4.2    | **planned**     |
 | M22 — Secondary sidebar panels               | [docs/milestones/v4/M22.md](milestones/v4/M22.md)  | 0.4.3    | **planned**     |
 
+### v5 (0.5.x) — planning
+
+| Milestone                                    | File                                               | Version  | Status          |
+|----------------------------------------------|----------------------------------------------------|----------|-----------------|
+| M23 — Effect Project Wizard                  | [docs/milestones/v5/M23.md](milestones/v5/M23.md)  | 0.5.0    | **planned**     |
+| M24 — Init block code generation             | [docs/milestones/v5/M24.md](milestones/v5/M24.md)  | 0.5.1    | **planned**     |
+
 ---
 
 ## 1. Approach
@@ -61,6 +68,8 @@ Same walking-skeleton-first principle as v1/v2/v3:
 - M21 adds `DebugConfigurationProvider` (C1-only, additive) — no IPC or emulator changes.
 - M22 extracts Controls Editor from C2 into C11 and converts Wiring Editor to `WebviewView` —
   structural C1/C2 change; must preserve Scope and Spectrum.
+- M23 adds the effect project wizard (C1-only, new command + template strings) — no architecture change.
+- M24 extends C9 parser and controls-writer for init block generation — requires A21 validation before T24-3.
 
 ---
 
@@ -80,6 +89,10 @@ v2 (0.2.9) ──► M16 polish ──► M17 Controls v3 ──► M18 Wiring E
 **v4 critical path:** M21 has no blockers (additive, C1 only). M22 depends on M21 being
 complete (to avoid rebasing C1 structural changes). M22 T22-1 (Controls Editor extraction)
 must land before T22-2 (Wiring Editor conversion) to reduce merge risk.
+
+**v5 critical path:** M23 (wizard) has no blockers — C1-only, additive. M24 (init block)
+depends on M22 being shipped (Wiring Editor must be stable in C11 before extending its write
+behavior). M24 T24-3 should verify ADC grouping assumption (A21) before writing init code.
 
 ---
 
@@ -105,6 +118,8 @@ must land before T22-2 (Wiring Editor conversion) to reduce merge risk.
 | AC-33     | M21         | Ctrl+F5 Start Without Debugging: stop → build → deploy; no lldb attached *(FR-CM-4)* |
 | AC-34     | M22         | Controls Editor: persistent view in right secondary sidebar; state restored on sidebar show *(FR-CE-8)* |
 | AC-35     | M22         | Wiring Editor: persistent view in right secondary sidebar; `Open Wiring Editor` reveals/focuses it *(FR-WE-10)* |
+| AC-36     | M23         | Effect Project Wizard: scaffolds `.cpp`/`CMakeLists.txt`/`controllers.yaml`/`README.md`; folder opens in VS Code *(FR-WZ-1)* |
+| AC-37     | M24         | Init block generation: Wiring Editor writes init calls alongside declarations; remove deletes init line *(FR-CG-1)* |
 
 ---
 
@@ -135,4 +150,5 @@ Each milestone closes when:
 - **R22 (knob visual complexity):** Prototype with CSS first; if insufficient, evaluate SVG-per-knob. Canvas renderer is last resort. (02_assumptions-and-risks §5)
 - **R23 (C2 split regression):** Extracting Controls Editor from C2 may regress Scope/Spectrum rendering. M22 T22-1 must include a full regression pass of AC-20, AC-21, AC-27, AC-28, AC-31.
 - **R24 (`WebviewView` lifecycle):** Context may be lost when sidebar is hidden. Mitigated by `retainContextWhenHidden: true` + re-hydration on `onDidChangeVisibility`. Test with sidebar toggling during a running emulator session.
+- **R25 (ADC grouping in init block):** The `hardware.adc.Init(cfgs[], n)` aggregate call groups all pot configs. If channel order matters or multiple ADC buses are needed, init generation becomes non-trivial. Validate A21 before T24-3; design the grouping logic first.
 - **M20 pot interaction model blocker:** ✅ resolved — vertical drag (2026-06-20). T20-2 is now unblocked.

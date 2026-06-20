@@ -52,6 +52,14 @@ All v1–v3 bets remain valid. See respective archives for full detail. Key ones
 
 ---
 
-## 4. Open items
+## 5. v5 bets (preview — will be elaborated when v4 ships)
 
-*(none — A18 confirmed 2026-06-20; A19–A20 confirmed 2026-06-20)*
+| ID | We are betting that… | Why we believe it | Impact if wrong |
+|----|----------------------|-------------------|-----------------|
+| **A21** | **ADC init calls can be regenerated as a templated block** — the Wiring Editor can write and maintain the `hardware.adc.Init(cfgs[], n)` aggregate call (which groups all ADC channels) as a managed block, not just per-device lines. | The ADC init pattern is uniform across all Daisy Seed examples: one `AdcChannelConfig` per pot, one `adc.Init(&cfgs, n)` call. The number and order of configs is derivable from the convention block. | 🟠 If grouping semantics diverge (e.g. channel order matters, or multiple ADC buses), the Wiring Editor will need to understand ADC topology before writing the block. Design in M24. |
+
+---
+
+## 6. Open items
+
+*(none — A18 confirmed 2026-06-20; A19–A21 confirmed or scoped 2026-06-20)*

@@ -56,6 +56,8 @@ D18 two-mode design), polish the Wiring Editor SVG, and streamline the command s
 | **D19** | **Controls Editor single-mode handle UX** — replaces D18. The Controls Editor is a single always-visible panel; no explicit mode toggle. Each control has a drag handle. Dragging the handle rearranges the layout and is available at all times (emulator running or stopped). Interacting with the control body (pot slider, button click, LED state) sends live data to the emulator and is available only while the emulator is running; the control body is grayed-out when the emulator is stopped. (A18) |
 | **D20** | **VS Code Run command integration via `DebugConfigurationProvider`** — ds-ide registers a `DebugConfigurationProvider` for a custom `ds-ide` debug type. F5 (Start Debugging): stop running emulator if active → build for emulator → deploy → attach lldb-dap. Ctrl+F5 (Start Without Debugging): same sequence without attaching lldb. A `launch.json` snippet is provided so developers can opt in. (A19) |
 | **D21** | **Controls Editor and Wiring Editor as secondary sidebar `WebviewView`s** — both panels are registered as persistent `WebviewView`s in a ds-ide `viewsContainer` targeting the VS Code secondary sidebar (right panel). C2 is split: Scope and Spectrum remain in C2 (`WebviewPanel`); Controls Editor becomes C11 (`WebviewView`). C10 (Wiring Editor) is converted from `WebviewPanel` to `WebviewView` in the same C11 container. (A20) |
+| **D22** *(v5)* | **`ds-ide: Create New Effect Project` wizard command** — a VS Code command that prompts for project name + destination folder (via folder picker), scaffolds four files (`.cpp` stub with `// ds-ide:controls` block + `AudioCallback` skeleton + inline comments; `CMakeLists.txt` configured for the emulator build; `controllers.yaml` empty; `README.md`), then opens the new folder in VS Code. |
+| **D23** *(v5)* | **Init block code generation** — the Wiring Editor will write and maintain a `// ds-ide:controls:init:begin` … `// ds-ide:controls:init:end` block alongside the declaration block. When a control is added, a matching init call is inserted; when removed, its init line is deleted. Init call templates per type: pot → `varname.InitSingle(daisy::seed::A<n>)` + aggregate `hardware.adc.Init()`; button → `varname.Init(daisy::seed::D<n>, hardware.AudioCallbackRate())`; led → `varname.Init(daisy::seed::D<n>, false)`. (A21) |
 
 ---
 
@@ -200,6 +202,36 @@ D18 two-mode design), polish the Wiring Editor SVG, and streamline the command s
 
 *(See §3.2 above — FR-WE-8 and FR-WE-9 are listed there for completeness alongside FR-WE-1…FR-WE-7.)*
 
+### 3.5 v5 requirements (preview — to be elaborated when v4 ships)
+
+> These requirements are decided but not yet fully specified. They will be detailed in fresh v5
+> docs after v4 is archived. Stubs are recorded here to avoid losing the decisions.
+
+#### Effect Project Wizard (`FR-WZ-1`)
+
+- **FR-WZ-1** *(v5, new)* — ds-ide shall provide a command `ds-ide: Create New Effect Project`
+  that: (a) prompts for a project name (non-empty, valid C++ identifier); (b) opens a folder
+  picker for the destination directory; (c) scaffolds four files in a new `<name>/` subfolder:
+  `<name>.cpp` (with `// ds-ide:controls:begin/end` block, `AudioCallback` skeleton, and inline
+  comments explaining the convention), `CMakeLists.txt` (pre-configured for the emulator build),
+  `controllers.yaml` (empty), and `README.md`; (d) opens the scaffolded folder in VS Code.
+  (D22)
+  **Verify:** AC-36.
+
+#### Init Block Code Generation (`FR-CG-1`)
+
+- **FR-CG-1** *(v5, new)* — When the Wiring Editor adds or removes a control, ds-ide shall also
+  manage a `// ds-ide:controls:init:begin` … `// ds-ide:controls:init:end` block in the effect
+  source. Adding a control inserts the matching init call; removing a control deletes its init
+  line. Init call templates per type:
+  - pot (`AdcChannelConfig`): `<varname>.InitSingle(daisy::seed::A<analogPin>)` + maintained
+    aggregate `hardware.adc.Init(<cfgs[]>, <n>)` reflecting all current pot controls.
+  - button (`Switch`): `<varname>.Init(daisy::seed::D<pin>, hardware.AudioCallbackRate())`
+  - led (`Led`): `<varname>.Init(daisy::seed::D<pin>, false)`
+  The init block shall be located after the declaration block in the effect source. Writes are
+  VS Code `WorkspaceEdit` (undoable). (D23, A21)
+  **Verify:** AC-37.
+
 ---
 
 ## 4. Non-functional requirements
@@ -243,8 +275,10 @@ No new NFRs for v4. All v1/v2/v3 NFRs (NFR-1…NFR-12) remain in force. See
   sidebar `WebviewView`s (D21, FR-CE-8, FR-WE-10, M22).
 - ~~VS Code Run → Start Debugging / Start Without Debugging integration~~ — **decided**:
   `DebugConfigurationProvider` for `ds-ide` type (D20, FR-CM-3, FR-CM-4, M21).
-- Implementation template / "Create new effect" wizard. *(Open)*
-- Controls convention init block (`// ds-ide:controls:init:begin/end`). *(Open)*
+- ~~Implementation template / "Create new effect" wizard~~ — **decided**: wizard command (D22,
+  FR-WZ-1, M23). *(Scheduled: v5.0)*
+- ~~Controls convention init block~~ — **decided**: generate init block alongside declarations
+  (D23, FR-CG-1, M24). *(Scheduled: v5.1)*
 - Plugin extension points / declarative control definition. *(Deferred: vX)*
 
 ---
@@ -255,6 +289,8 @@ No new NFRs for v4. All v1/v2/v3 NFRs (NFR-1…NFR-12) remain in force. See
 - **FR-SC-2 xruns investigation** — ✅ resolved: same metric in both locations (confirmed 2026-06-20). Keep header only; remove Emulator-section xrun elements. AC-31 written.
 - **VS Code Run integration (D20)** — ✅ resolved: `DebugConfigurationProvider` for `ds-ide` type. FR-CM-3/4, AC-32/33 written. *(2026-06-20)*
 - **Secondary sidebar panels (D21)** — ✅ resolved: Controls Editor (C11) and Wiring Editor (C10→C11) as `WebviewView`s. FR-CE-8, FR-WE-10, AC-34/35 written. *(2026-06-20)*
+- **Effect Project Wizard (D22)** — ✅ resolved: wizard command scaffolds 4 files. FR-WZ-1, AC-36 written. *(v5.0, M23, 2026-06-20)*
+- **Init block code generation (D23)** — ✅ resolved: Wiring Editor manages init block. FR-CG-1, AC-37 written. *(v5.1, M24, 2026-06-20)*
 
 ---
 
@@ -320,3 +356,14 @@ No new NFRs for v4. All v1/v2/v3 NFRs (NFR-1…NFR-12) remain in force. See
 - **AC-35** — Wiring Editor in secondary sidebar: verify the Wiring Editor appears as a
   persistent view in the right secondary sidebar. Run `ds-ide: Open Wiring Editor`; verify the
   command reveals/focuses the view rather than opening a new floating panel. *(FR-WE-10)*
+
+### v5 ACs (preview)
+
+- **AC-36** — Effect Project Wizard: run `ds-ide: Create New Effect Project`; enter a project
+  name and pick a folder; verify: (a) `<name>.cpp`, `CMakeLists.txt`, `controllers.yaml`, and
+  `README.md` are created; (b) `.cpp` contains a `// ds-ide:controls:begin/end` block and an
+  `AudioCallback` skeleton; (c) the folder opens in VS Code. *(FR-WZ-1)*
+- **AC-37** — Init block generation: open the Wiring Editor, assign a pot to an ADC pin and a
+  button to a digital pin; verify: (a) `.cpp` contains both the declaration block (FR-WE-4/D15)
+  and a `// ds-ide:controls:init:begin/end` block with matching init calls; (b) removing the pot
+  in the Wiring Editor deletes its init line. *(FR-CG-1)*

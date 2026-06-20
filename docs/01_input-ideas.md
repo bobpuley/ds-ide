@@ -116,12 +116,15 @@ Convert Controls Editor and Wiring Editor from floating `WebviewPanel`s to persi
   type. F5 = stop+build+deploy+attach; Ctrl+F5 = stop+build+deploy, no debug. (D20, FR-CM-3,
   FR-CM-4). *(Scheduled: M21)*
 
-- **Implementation template / "Create new effect" wizard** — starter template with `// ds-ide:controls`
-  convention comments, or a wizard command that scaffolds a new effect project? *(Open)*
+- ~~**Implementation template / "Create new effect" wizard**~~ — **Decided (2026-06-20): wizard
+  command.** `ds-ide: Create New Effect Project` prompts for project name + folder, scaffolds
+  `.cpp` stub, `CMakeLists.txt`, `controllers.yaml`, and `README.md`, then opens the folder in
+  VS Code. (D22, FR-WZ-1). *(Scheduled: M23, v5.0)*
 
-- **Extend controls convention to initialization block** — add `// ds-ide:controls:init:begin`
-  and `// ds-ide:controls:init:end` markers to also generate/manage `.InitSingle()` / `.Init()`
-  calls. Natural follow-on to D16 (declarations only in v3). *(Open)*
+- ~~**Extend controls convention to initialization block**~~ — **Decided (2026-06-20): generate
+  init block.** Add `// ds-ide:controls:init:begin/end` markers; Wiring Editor writes matching
+  init calls (`.InitSingle()`, `.Init()`) alongside declarations. (D23, FR-CG-1). *(Scheduled:
+  M24, v5.1)*
 
 - **Plugin extension points: declarative control definition** — a mechanism by which third parties
   or the user can define new control types that the Controls and Wiring Editors understand. Large,
@@ -136,7 +139,8 @@ Convert Controls Editor and Wiring Editor from floating `WebviewPanel`s to persi
 | **v1** | Foundation | Native simulation; VS Code extension; pots; scope; breakpoints | ✅ complete (M0–M7) |
 | **v2** | Realism | Live audio I/O; WAV; buttons/GPIO/LEDs; visual editor; full debug; HW build; spectrum; recording; scope UI | ✅ complete (M8–M15) |
 | **v3** | Editor intelligence | Controls Editor v3 (two-mode, code inference); Wiring Editor (SVG pinout, C++ gen); spectrum/scope polish | ✅ complete (M16–M18) |
-| **v4** | UX refinement | Controls Editor single-mode handle UX; Wiring Editor polish; command cleanup; visual controls improvement | 🔵 planning |
+| **v4** | UX refinement | Controls Editor single-mode handle UX; Wiring Editor polish; command cleanup; Run integration; secondary sidebar panels | 🔵 planning (M19–M22) |
+| **v5** | Developer experience | New effect wizard; init block code generation | 🔵 planning (M23–M24) |
 | **vX** | Pre-public release | Built-in board maps; auto-derived controllers (arbitrary code); MIDI; cross-platform audio+debug; ARM toolchain bundle | planned |
 
 ---
@@ -200,15 +204,13 @@ Ideas and issues identified after shipping v3 (M16–M18). These feed v4 plannin
   debug type. F5 = stop+build+deploy+attach lldb; Ctrl+F5 = stop+build+deploy. See §4f, D20,
   FR-CM-3, FR-CM-4. *(Scheduled: M21)*
 
-- **Implementation template / "Create new effect" wizard** — should ds-ide ship a starter
-  template with detailed comments explaining the `// ds-ide:controls` convention? Or a wizard
-  command that scaffolds a new effect project? *Trade-off: template is simpler; wizard is more
-  guided.* *(Open)*
+- ~~**Implementation template / "Create new effect" wizard**~~ — **Decided (2026-06-20): wizard
+  command.** `ds-ide: Create New Effect Project` scaffolds `.cpp`, `CMakeLists.txt`,
+  `controllers.yaml`, `README.md`. See §4 (wizard feature), D22, FR-WZ-1. *(Scheduled: M23, v5.0)*
 
-- **Extend controls convention to initialization block** — add `// ds-ide:controls:init:begin`
-  and `// ds-ide:controls:init:end` markers so the IDE can also generate/manage the
-  initialization calls (`knob1_cfg.InitSingle(...)`, etc.) and not just the declarations.
-  *This is a natural follow-on to D16 (declarations only in v3).* *(Open)*
+- ~~**Extend controls convention to initialization block**~~ — **Decided (2026-06-20): generate
+  init block.** `// ds-ide:controls:init:begin/end` markers; Wiring Editor writes init calls
+  alongside declarations. See D23, FR-CG-1. *(Scheduled: M24, v5.1)*
 
 - **Plugin extension points: declarative control definition** — a broader mechanism by which
   third parties (or the user) can define new control types that the Controls and Wiring Editors

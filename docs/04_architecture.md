@@ -327,3 +327,5 @@ controls view so grayed-out state is maintained.
 | xruns counter: same or different data in header vs. Emulator section | **Resolved (2026-06-20):** same metric. Keep header `#status-text` only; remove `#xrun-group` / `#xrun-sine-group` from Emulator section body. AC-31 written. |
 | VS Code Run commands (F5/Ctrl+F5) | **Resolved (2026-06-20):** `DebugConfigurationProvider` for `ds-ide` type (§7). D20, FR-CM-3/4. |
 | Secondary sidebar panels | **Resolved (2026-06-20):** C11 `viewsContainer` with two `WebviewView`s (§8). D21, FR-CE-8, FR-WE-10. |
+| Effect Project Wizard (v5) | C1-only addition: new command, embedded template strings. No new components. Architecture to be elaborated in v5 docs. D22. |
+| Init block code generation (v5) | C9 parser extended to parse `// ds-ide:controls:init:begin/end`. Controls-writer extended to generate per-type init calls + ADC aggregate call. Wiring Editor (C10/C11) triggers init writes. Architecture + ADC grouping design to be elaborated in v5 docs. D23, A21. |
