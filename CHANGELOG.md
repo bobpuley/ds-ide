@@ -5,6 +5,20 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.4.1 — 2026-06-20
+
+**M20 — Controls Editor single-mode handle UX** *(AC-24, AC-25 green; AC-18 retired)*
+
+- Controls Editor redesigned from two-mode (Design / Run toggle) to single-mode handle UX (D19): each control card has a **drag handle ⠿** always available for rearrangement, and a **live body** (pot knob, button, LED) gated on emulator audio state (AC-24)
+- Control bodies are grayed-out (`opacity: 0.35`, `pointer-events: none`) when audio is stopped, and become fully interactive when audio is running — no explicit mode switch required
+- CE body state activates optimistically on **Start Audio** click and deactivates on **Stop Audio** click (mirrors T19-2 button behaviour); corrected by emulator `status` message
+- Pot controls rendered as **rotary SVG knobs** (52×52 px, 270° range, teal `#4ec9b0` arc + dot indicator) replacing the previous slider; **vertical drag** (up = increase, down = decrease) at 100 px per unit (AC-25)
+- Knob L&F matches Wiring Editor palette (dark background, teal accent, monospace value readout)
+- `switchTab('editor')` re-applies current emulator state when the Controls Editor tab is opened
+- AC-18 (D18 two-mode panel) explicitly retired; replaced by AC-24
+
+---
+
 ## 0.4.0 — 2026-06-20
 
 **M19 — UX polish & command improvements** *(AC-26…AC-31 green)*
