@@ -220,5 +220,5 @@ No new IPC messages to the emulator runtime. New messages are internal (C1 ↔ C
 | Effect source auto-detection | Check `ds-ide.effectSource` workspace setting first; else first `.cpp` adjacent to `CMakeLists.txt`. **Resolved in M18.** |
 | Convention block location in file | Append to end of file if absent (before final `}`). "Column 0" safety rule validated in M18. **Resolved.** |
 | Controls Editor mode persistence | **Resolved/superseded by D19:** no mode toggle exists. Handle drag is always active; body interaction is gated on `emulatorState`. |
-| Pot interaction model (FR-CE-7) | Mouse wheel vs. vertical drag — **open.** Must be decided before M20 implementation. |
-| xruns counter: same or different data in header vs. Emulator section | **Open.** Requires reading C2 implementation to determine if one counter or two. Drives FR-SC-2 AC wording. |
+| Pot interaction model (FR-CE-7) | **Resolved:** vertical drag (click-drag up = increase, down = decrease). Decided 2026-06-20. |
+| xruns counter: same or different data in header vs. Emulator section | **Resolved (2026-06-20):** same metric. Keep header `#status-text` only; remove `#xrun-group` / `#xrun-sine-group` from Emulator section body. AC-31 written. |

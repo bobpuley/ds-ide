@@ -35,31 +35,11 @@ All v1–v3 bets remain valid. See respective archives for full detail. Key ones
 | ID | We are betting that… | Why we believe it | Impact if wrong |
 |----|----------------------|-------------------|-----------------|
 | **A17** | **Single-mode handle UX is learnable without an explicit mode label** — developers will discover that dragging the handle rearranges and interacting with the body sends live data, without a tutorial. | Common drag-handle patterns (Notion, Figma blocks) establish this mental model. The handle icon itself signals "move me". | 🟡 If discoverability is poor, add a tooltip or one-time onboarding hint. Does not change the architecture. |
-| **A18** | **Controls remain usably visible (grayed-out) and rearrangeable when the emulator is not running** — handle drag is always active; body interaction is gated on emulator state. Developer confirmed (2026-06-20). | Standard disabled-state pattern; layout editing is independent of runtime state. | 🟡 If grayed-out body is visually confusing, add a status indicator in the panel header. |
-
----
-
-## 3. v4 risks
-
-| ID | Risk | Likelihood | Impact | Mitigation |
-|----|------|-----------|--------|------------|
-| **R21** | **AC-18 retirement creates a coverage gap** — AC-18 (two-mode panel, D18) was green at M17 ship but the feature it tests is replaced by D19. If AC-18 is left "green" against dead code, a broken redesign could ship undetected. | Medium | 🟠 | Explicitly retire AC-18 and replace with AC-24 (handle UX) before M20 work begins. Mark the old test file as retired. |
-| **R22** | **Knob visual improvement requires a canvas renderer** — if the target hardware-knob look cannot be achieved with CSS alone, a canvas-based renderer adds significant complexity. | Low–Med | 🟠 | Prototype with CSS first (conic-gradient + rotation transform). If insufficient, evaluate SVG-per-knob before canvas. |
-
----
-
----
-
-## 4. v4 bets
-
-| ID | We are betting that… | Why we believe it | Impact if wrong |
-|----|----------------------|-------------------|-----------------|
-| **A17** | **Single-mode handle UX is learnable without an explicit mode label** — developers will discover that dragging the handle rearranges and interacting with the body sends live data, without a tutorial. | Common drag-handle patterns (Notion, Figma blocks) establish this mental model. The handle icon itself signals "move me". | 🟡 If discoverability is poor, add a tooltip or one-time onboarding hint. Does not change the architecture. |
 | **A18** | **Controls are always visible; handle drag is always active; body interaction is gated on emulator state** — in the single-mode Controls Editor, dragging a control's handle to rearrange is available at all times (emulator stopped or running). Interacting with the control body (pot slider, button, LED) is disabled (grayed-out) when the emulator is not running. | Developer confirmed this split explicitly. Consistent with standard UI affordance: layout editing is independent of runtime state. | 🟡 If grayed-out body state is visually ambiguous, add a tooltip or status indicator explaining why interaction is unavailable. |
 
 ---
 
-## 5. v4 risks
+## 3. v4 risks
 
 | ID | Risk | Likelihood | Impact | Mitigation |
 |----|------|-----------|--------|------------|
@@ -68,6 +48,6 @@ All v1–v3 bets remain valid. See respective archives for full detail. Key ones
 
 ---
 
-## 6. Open items
+## 4. Open items
 
 *(none — A18 confirmed by developer 2026-06-20)*

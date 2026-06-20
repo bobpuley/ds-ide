@@ -89,6 +89,7 @@ decision (FR-CE-7) before T20-2 can be implemented.
 | AC-28 | M19 | Recording buttons: "()" and "[]" labels |
 | AC-29 | M19 | Wiring Editor: ID labels legible, no overlap with control icon or pin circle |
 | AC-30 | M19 | Wiring Editor: micro USB port visible on Daisy Seed SVG |
+| AC-31 | M19 (T19-6) | xruns counter: visible only in header status line; removed from Emulator section body *(FR-SC-2)* |
 
 ---
 
@@ -117,4 +118,4 @@ Each milestone closes when:
 
 - **R21 (AC-18 retirement):** AC-18 must be explicitly retired and AC-24 written before M20 work begins. Leaving AC-18 "green" against dead code would mask a broken redesign.
 - **R22 (knob visual complexity):** Prototype with CSS first; if insufficient, evaluate SVG-per-knob. Canvas renderer is last resort. (02_assumptions-and-risks §5)
-- **M20 pot interaction model blocker:** FR-CE-7 and AC-25 cannot be spec'd until wheel vs. drag is decided. T20-2 must be deferred until that decision is made.
+- **M20 pot interaction model blocker:** ✅ resolved — vertical drag (2026-06-20). T20-2 is now unblocked.

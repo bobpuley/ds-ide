@@ -91,9 +91,8 @@ D18 two-mode design), polish the Wiring Editor SVG, and streamline the command s
   yaml-only mode") and fall back to reading `controllers.yaml` directly (current M10b behaviour).
 - **FR-CE-7** *(v4, new)* — Pot controls in the Controls Editor shall be visually styled to
   resemble a hardware rotary knob. The overall look and feel shall be visually consistent with
-  the Wiring Editor panel.
-  > ⚠️ OPEN: pot interaction model (mouse wheel vs. vertical drag) not yet decided — resolve
-  > before implementation of FR-CE-7.
+  the Wiring Editor panel. The interaction model is **vertical drag**: click and drag up to
+  increase the value, drag down to decrease it. (Decided 2026-06-20.)
 
 ### 3.2 Wiring Editor (`FR-WE-1…FR-WE-9`)
 
@@ -166,12 +165,11 @@ D18 two-mode design), polish the Wiring Editor SVG, and streamline the command s
   "[] Stop" → "[]". The "> Replay file…" button label is unchanged. Icon glyphs carry the
   meaning; no additional tooltip change required.
   **Verify:** AC-28.
-- **FR-SC-2** — The Scope view shall display the **xruns** counter in exactly one location.
-  If the header and the Emulator section currently show two separate counters representing the
-  same metric, one shall be removed. If they represent different metrics, the labels shall be
-  disambiguated (e.g. "audio xruns" vs. "IPC xruns"). Requires investigation before implementation.
-  > ⚠️ OPEN: whether header and Emulator section show the same or different xruns data must be
-  > confirmed by reading the current C2 implementation before writing this AC.
+- **FR-SC-2** — The Scope view shall display the **xruns** counter in exactly one location:
+  the header status line (`#status-text`). The separate xrun-display elements in the Emulator
+  section body (`#xrun-group`, `#xrun-sine-group`) shall be removed. Both currently show the
+  same audio xrun metric (confirmed by reading C2 implementation, 2026-06-20).
+  **Verify:** AC-31.
 
 #### Wiring Editor visual (`FR-WE-8…FR-WE-9`)
 
@@ -226,10 +224,8 @@ No new NFRs for v4. All v1/v2/v3 NFRs (NFR-1…NFR-12) remain in force. See
 
 ## 7. Open items
 
-- **FR-CE-7 pot interaction model** — mouse wheel vs. vertical drag not yet decided. Must be
-  resolved before M20 implementation begins.
-- **FR-SC-2 xruns investigation** — C2 implementation must be read to confirm whether the
-  header and Emulator section show the same or different xruns data before writing AC.
+- **FR-CE-7 pot interaction model** — ✅ resolved: vertical drag (2026-06-20).
+- **FR-SC-2 xruns investigation** — ✅ resolved: same metric in both locations (confirmed 2026-06-20). Keep header only; remove Emulator-section xrun elements. AC-31 written.
 
 ---
 
@@ -264,7 +260,7 @@ No new NFRs for v4. All v1/v2/v3 NFRs (NFR-1…NFR-12) remain in force. See
   slider updates pot value, button click updates button state. *(FR-CE-1, FR-CE-4, FR-CE-5, D19)*
 - **AC-25** — Controls Editor knob visual: open Controls Editor with a pot; verify it renders as
   a rotary knob visually resembling a hardware pot, consistent with the Wiring Editor look and
-  feel. *(FR-CE-7)* *(Blocked until pot interaction model is decided)*
+  feel; vertical drag (up = increase, down = decrease) changes the value. *(FR-CE-7)*
 - **AC-26** — Build & Deploy command: invoke `ds-ide: Build & Deploy to Emulator`; verify build
   runs, then deploy runs, and the emulator starts. Invoke again with a syntax error in the
   source; verify deploy does not run and an error appears in the Output panel. *(FR-CM-1)*
@@ -277,3 +273,6 @@ No new NFRs for v4. All v1/v2/v3 NFRs (NFR-1…NFR-12) remain in force. See
   verify the ID label is legible and does not overlap the control icon or pin circle. *(FR-WE-8)*
 - **AC-30** — Wiring Editor USB port: open the Wiring Editor; verify a micro USB port shape
   is visible at the correct end of the Daisy Seed SVG diagram. *(FR-WE-9)*
+- **AC-31** — xruns single location: with the emulator running, verify that the xruns count
+  appears in the Scope header status line and does NOT appear as a separate display element in
+  the Emulator section body. *(FR-SC-2)*
