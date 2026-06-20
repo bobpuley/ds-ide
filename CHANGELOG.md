@@ -5,6 +5,18 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.4.3 — 2026-06-20
+
+**M22 — Secondary Sidebar Panels** *(AC-34, AC-35 green)*
+
+- Controls Editor moved from the floating Daisy Scope `WebviewPanel` into a persistent `WebviewView` in the new **DS-IDE** Activity Bar sidebar (always visible, no command needed)
+- Wiring Editor converted from a floating `WebviewPanel` to a persistent `WebviewView` in the same sidebar; `ds-ide: Open Wiring Editor` now reveals/focuses the view rather than creating a new floating panel
+- Both views use `retainContextWhenHidden: true` so state is preserved across sidebar hide/show cycles
+- Fixed running-state inference: the manager now synthesises a `status:{running:true}` event from the first scope/spectrum message after `running:false`, so the Controls Editor bodies and Scope panel header correctly update to "▶ Running" (the emulator protocol sends audio data without an explicit acknowledgment)
+- Fixed convention-mode save: "Save controllers.yaml" now synthesises yaml entries from the detected source-code controls when `controllers.yaml` is absent or empty, rather than writing empty arrays
+
+---
+
 ## 0.4.2 — 2026-06-20
 
 **M21 — VS Code Run Command Integration** *(AC-32, AC-33 green)*
