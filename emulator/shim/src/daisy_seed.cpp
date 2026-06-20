@@ -18,6 +18,11 @@ float DaisySeed::AudioSampleRate() {
     return daisy_emu::g_state.sample_rate.load();
 }
 
+float DaisySeed::AudioCallbackRate() {
+    const auto bs = daisy_emu::g_state.block_size.load();
+    return daisy_emu::g_state.sample_rate.load() / static_cast<float>(bs > 0 ? bs : 1);
+}
+
 dsy_gpio_pin DaisySeed::GetPin(uint8_t pin_num) {
     dsy_gpio_pin p{};
     p.pin = pin_num;

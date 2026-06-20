@@ -73,29 +73,28 @@ describe('WiringViewProvider', () => {
     expect(onUnwirePin).not.toHaveBeenCalled();
   });
 
-  it('postWiredPins re-renders html when view is visible', () => {
+  it('postWiredPins sends postMessage with pins to live-update the webview', () => {
     const view = makeView(true);
     provider.resolveWebviewView(view as never);
-    const initialHtml = view.webview.html;
-    provider.postWiredPins([{ pinNumber: 15, deviceType: 'pot', id: 'cutoff' }]);
-    expect(view.webview.html).not.toBe('');
-    // HTML is re-generated with the new pins list — content changes
-    expect(view.webview.html).not.toBe(initialHtml);
+    const pins = [{ pinNumber: 15, deviceType: 'pot' as const, id: 'cutoff' }];
+    provider.postWiredPins(pins);
+    expect(view.webview.postMessage).toHaveBeenCalledWith({ command: 'wiredPins', pins });
   });
 
-  it('postWiredPins stores pins but does not re-render when view is hidden', () => {
+  it('postWiredPins sends postMessage even when view is not yet visible', () => {
     const view = makeView(false);
     provider.resolveWebviewView(view as never);
-    provider.postWiredPins([{ pinNumber: 15, deviceType: 'pot', id: 'cutoff' }]);
-    // html is only updated on visibility change or next render
-    expect(view.webview.html).toBeDefined();
+    const pins = [{ pinNumber: 15, deviceType: 'pot' as const, id: 'cutoff' }];
+    provider.postWiredPins(pins);
+    expect(view.webview.postMessage).toHaveBeenCalledWith({ command: 'wiredPins', pins });
   });
 
-  it('re-renders wired pins on visibility change to visible', () => {
+  it('sends postMessage to re-hydrate wired pins on visibility change to visible', () => {
     const view = makeView(false);
     provider.resolveWebviewView(view as never);
-    provider.postWiredPins([{ pinNumber: 16, deviceType: 'button', id: 'bypass' }]);
+    const pins = [{ pinNumber: 16, deviceType: 'button' as const, id: 'bypass' }];
+    provider.postWiredPins(pins);
     view._setVisible(true);
-    expect(view.webview.html).toContain('Daisy Seed Wiring');
+    expect(view.webview.postMessage).toHaveBeenLastCalledWith({ command: 'wiredPins', pins });
   });
 });

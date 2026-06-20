@@ -123,4 +123,93 @@ describe('parseControlsConvention', () => {
     expect(result.missingBlock).toBe(false);
     expect(result.controls).toHaveLength(1);
   });
+
+  it('returns missingInitBlock true and empty initLines when init block absent', () => {
+    const result = parseControlsConvention(src('AdcChannelConfig pot1; // ds-ide: id=pot1, kind=pot, pin=15\n'));
+    expect(result.missingInitBlock).toBe(true);
+    expect(result.initLines).toEqual([]);
+  });
+});
+
+// ── init block parsing ────────────────────────────────────────────────────────
+
+const srcWithInit = (declBody: string, initBody: string) =>
+  `// ds-ide:controls:begin\n${declBody}// ds-ide:controls:end\n` +
+  `// ds-ide:controls:init:begin\n${initBody}// ds-ide:controls:init:end\n`;
+
+describe('parseControlsConvention — init block', () => {
+  it('returns missingInitBlock false and initLines when init block is present', () => {
+    const result = parseControlsConvention(
+      srcWithInit(
+        'AdcChannelConfig pot1; // ds-ide: id=pot1, kind=pot, pin=15\n',
+        '  pot1.InitSingle(daisy::seed::A0);\n  hardware.adc.Init(pot1, 1);\n',
+      ),
+    );
+    expect(result.missingInitBlock).toBe(false);
+    expect(result.initLines).toEqual([
+      '  pot1.InitSingle(daisy::seed::A0);',
+      '  hardware.adc.Init(pot1, 1);',
+    ]);
+  });
+
+  it('returns missingInitBlock true when only begin init marker is present', () => {
+    const result = parseControlsConvention(
+      src('') + '// ds-ide:controls:init:begin\n',
+    );
+    expect(result.missingInitBlock).toBe(true);
+  });
+
+  it('returns missingInitBlock true when init end appears before begin', () => {
+    const result = parseControlsConvention(
+      src('') + '// ds-ide:controls:init:end\n// ds-ide:controls:init:begin\n',
+    );
+    expect(result.missingInitBlock).toBe(true);
+  });
+
+  it('returns empty initLines for empty init block', () => {
+    const result = parseControlsConvention(srcWithInit('', ''));
+    expect(result.missingInitBlock).toBe(false);
+    expect(result.initLines).toEqual([]);
+  });
+
+  it('parses multiple init lines in order', () => {
+    const result = parseControlsConvention(
+      srcWithInit(
+        'AdcChannelConfig pot1; // ds-ide: id=pot1, kind=pot, pin=15\n' +
+        'Switch button1; // ds-ide: id=button1, kind=button, pin=28\n',
+        '  pot1.InitSingle(daisy::seed::A0);\n' +
+        '  button1.Init(daisy::seed::D28, hardware.AudioCallbackRate());\n' +
+        '  hardware.adc.Init(pot1, 1);\n',
+      ),
+    );
+    expect(result.initLines).toEqual([
+      '  pot1.InitSingle(daisy::seed::A0);',
+      '  button1.Init(daisy::seed::D28, hardware.AudioCallbackRate());',
+      '  hardware.adc.Init(pot1, 1);',
+    ]);
+  });
+
+  it('still parses declaration block correctly when init block is also present', () => {
+    const result = parseControlsConvention(
+      srcWithInit(
+        'AdcChannelConfig pot1; // ds-ide: id=pot1, kind=pot, pin=15\n',
+        '  pot1.InitSingle(daisy::seed::A0);\n  hardware.adc.Init(pot1, 1);\n',
+      ),
+    );
+    expect(result.controls).toEqual([{ id: 'pot1', kind: 'pot', pin: 15 }]);
+    expect(result.missingBlock).toBe(false);
+  });
+
+  it('handles CRLF in init block', () => {
+    const crlfSrc =
+      '// ds-ide:controls:begin\r\n' +
+      'AdcChannelConfig pot1; // ds-ide: id=pot1, kind=pot, pin=15\r\n' +
+      '// ds-ide:controls:end\r\n' +
+      '// ds-ide:controls:init:begin\r\n' +
+      '  pot1.InitSingle(daisy::seed::A0);\r\n' +
+      '// ds-ide:controls:init:end\r\n';
+    const result = parseControlsConvention(crlfSrc);
+    expect(result.missingInitBlock).toBe(false);
+    expect(result.initLines).toEqual(['  pot1.InitSingle(daisy::seed::A0);']);
+  });
 });
