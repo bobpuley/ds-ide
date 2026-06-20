@@ -47,7 +47,7 @@ Full registry in [`docs/v2/05_dev-plan.md`](v2/05_dev-plan.md).
 | Milestone                                    | File                                              | Version  | Status          |
 |----------------------------------------------|---------------------------------------------------|----------|-----------------|
 | M19 — UX polish & command improvements       | [docs/milestones/v4/M19.md](milestones/v4/M19.md)   | 0.4.0    | **released**    |
-| M20 — Controls Editor single-mode handle UX  | [docs/milestones/v4/M20.md](milestones/v4/M20.md)   | 0.4.1    | **in progress** |
+| M20 — Controls Editor single-mode handle UX  | [docs/milestones/v4/M20.md](milestones/v4/M20.md)   | 0.4.1    | **released**    |
 
 ---
 
