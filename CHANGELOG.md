@@ -5,6 +5,21 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.4.0 — 2026-06-20
+
+**M19 — UX polish & command improvements** *(AC-26…AC-31 green)*
+
+- New `ds-ide.buildAndDeploy` command executes build-for-emulator then deploy sequentially; deploy is skipped on build failure (AC-26)
+- Scope view header now has **Start Audio ▶** and **Stop Audio ■** toolbar buttons; state reflects emulator running/stopped; buttons update optimistically on click (AC-27)
+- Session recording button labels simplified to glyph-only `●` / `■` (removed "Record" / "Stop" text) (AC-28)
+- Wiring Editor assigned-pin ID labels repositioned to the connector-zone midpoint (x=126 left, x=434 right, y=cy−7) — no longer overlapping the pin circle (AC-29)
+- Micro USB port trapezoid indicator added to the top of the Daisy Seed SVG diagram for board-orientation reference (AC-30)
+- Duplicate xrun-display elements removed from the Emulator section body; xruns counter shown only in the Scope header status line (AC-31)
+- `buildForEmulator` now returns `Promise<boolean>` for correct chaining
+- TypeScript: early-return paths in `build.ts` now return `false` instead of `undefined`
+
+---
+
 ## 0.3.3 — 2026-06-19
 
 **M18 — Wiring Editor: Daisy Seed pinout SVG with click-to-assign** *(AC-19, AC-23 green)*
