@@ -216,7 +216,23 @@ export class EmulatorManager extends EventEmitter {
     this.intentionalDisconnect = false;  // new live connection — reset flag
     const client = this.ipcClientFactory();
     this.ipcClient = client;
-    client.on('message', (msg: IpcMessage) => this.emit('message', msg));
+    // Synthesize status:{running:true} when scope data arrives after status:{running:false}.
+    // The emulator sends running:false on connect but never sends running:true explicitly —
+    // it simply starts sending scope/spectrum data when audio is active.
+    let lastKnownRunning: boolean | undefined = undefined;
+    let lastStatusMsg: IpcMessage | null = null;
+    client.on('message', (msg: IpcMessage) => {
+      if (msg['type'] === 'status') {
+        lastKnownRunning = !!msg['running'];
+        lastStatusMsg = msg;
+      } else if (msg['type'] === 'scope' || msg['type'] === 'spectrum') {
+        if (lastKnownRunning === false) {
+          lastKnownRunning = true;
+          this.emit('message', { ...(lastStatusMsg ?? {}), type: 'status', running: true });
+        }
+      }
+      this.emit('message', msg);
+    });
     client.on('error', (err: Error) => this.emit('error', err));
     client.on('disconnect', () => {
       if (!this.intentionalDisconnect) this.emit('disconnect');

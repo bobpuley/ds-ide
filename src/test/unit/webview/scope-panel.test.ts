@@ -3,53 +3,35 @@ import { EventEmitter } from 'events';
 import * as vscode from 'vscode';
 import { ScopePanel, SINE_DEFAULTS, AUDIO_SOURCE_DEFAULTS } from '../../../webview/scope-panel';
 import { EmulatorManager } from '../../../emulator/manager';
-import type { ControllerDef } from '../../../controllers/controller-config';
 
 function makeManager() {
   const em = new EventEmitter();
   return Object.assign(em, {
-    sendPot: vi.fn(),
     sendPotSnapshot: vi.fn(),
     sendTransport: vi.fn(),
     sendSine: vi.fn(),
     sendAudioMode: vi.fn(),
     sendAudioDevice: vi.fn(),
-    sendButton: vi.fn(),
     sendButtonSnapshot: vi.fn(),
     sendOutputVolume: vi.fn(),
   }) as unknown as EmulatorManager;
 }
 
-const DEFS: ControllerDef[] = [
-  { id: 'pitch', label: 'Pitch', adcChannel: 0, range: [0, 1], taper: 'linear', default: 0.5 },
-  { id: 'volume', label: 'Volume', adcChannel: 1, range: [0, 1], taper: 'linear', default: 0.8 },
-];
-
-const BUTTONS = [
-  { id: 'bypass', label: 'Bypass', gpioPin: 28, mode: 'toggle' as const, activeLevel: 'low' as const },
-  { id: 'tap', label: 'Tap', gpioPin: 25, mode: 'momentary' as const, activeLevel: 'low' as const },
-];
-const LEDS = [{ id: 'status', label: 'Status', gpioPin: 23 }];
-
 describe('ScopePanel', () => {
   let manager: EmulatorManager;
-  let potChangeSpy: ReturnType<typeof vi.fn>;
   let sineChangeSpy: ReturnType<typeof vi.fn>;
   let audioSourceChangeSpy: ReturnType<typeof vi.fn>;
   let pickWavSpy: ReturnType<typeof vi.fn>;
-  let buttonChangeSpy: ReturnType<typeof vi.fn>;
   let panel: ScopePanel;
   let webviewMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
     manager = makeManager();
-    potChangeSpy = vi.fn();
     sineChangeSpy = vi.fn();
     audioSourceChangeSpy = vi.fn();
     pickWavSpy = vi.fn();
-    buttonChangeSpy = vi.fn();
-    panel = new ScopePanel(manager, potChangeSpy, sineChangeSpy, audioSourceChangeSpy, pickWavSpy, buttonChangeSpy);
+    panel = new ScopePanel(manager, sineChangeSpy, audioSourceChangeSpy, pickWavSpy);
     webviewMock = vscode.window.createWebviewPanel as ReturnType<typeof vi.fn>;
   });
 
@@ -64,72 +46,50 @@ describe('ScopePanel', () => {
   });
 
   it('show() sets webview HTML', () => {
-    panel.show(DEFS, { 0: 0.5 });
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(created.webview.html).toContain('Daisy Scope');
   });
 
-  it('show() embeds pot defs in yaml-init JSON (D19)', () => {
-    panel.show(DEFS, {});
-    const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(created.webview.html).toContain('"id":"pitch"');
-    expect(created.webview.html).toContain('"id":"volume"');
-  });
-
-  it('show() does not render static controller slider HTML in the page (D19)', () => {
-    panel.show([], {});
-    const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(created.webview.html).not.toContain('id="controllers"');
-  });
-
   it('registers onDidReceiveMessage on the webview', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
     };
     expect(created.webview.onDidReceiveMessage).toHaveBeenCalled();
   });
 
-  it('forwards pot message from webview to manager.sendPot()', () => {
-    panel.show(DEFS, {});
+  it('ignores unknown messages from webview', () => {
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
     };
-    // Extract the handler registered with onDidReceiveMessage
-    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (
-      msg: unknown,
-    ) => void;
-    handler({ command: 'pot', channel: 0, value: 0.7 });
-    expect(manager.sendPot).toHaveBeenCalledWith(0, 0.7);
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    expect(() => handler({ command: 'unknown' })).not.toThrow();
   });
 
-  it('calls onPotChange callback when pot message received', () => {
-    panel.show(DEFS, {});
+  it('forwards sine message from webview to manager.sendSine()', () => {
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
     };
-    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (
-      msg: unknown,
-    ) => void;
-    handler({ command: 'pot', channel: 1, value: 0.4 });
-    expect(potChangeSpy).toHaveBeenCalledWith(1, 0.4);
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'sine', freq: 880, amplitude: 0.3 });
+    expect(manager.sendSine).toHaveBeenCalledWith(880, 0.3);
   });
 
-  it('ignores non-pot messages from webview', () => {
-    panel.show(DEFS, {});
+  it('calls onSineChange callback when sine message received', () => {
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
     };
-    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (
-      msg: unknown,
-    ) => void;
-    handler({ command: 'unknown' });
-    expect(manager.sendPot).not.toHaveBeenCalled();
-    expect(potChangeSpy).not.toHaveBeenCalled();
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'sine', freq: 220, amplitude: 0.8 });
+    expect(sineChangeSpy).toHaveBeenCalledWith(220, 0.8);
   });
 
   it('forwards scope messages from manager to webview', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { postMessage: ReturnType<typeof vi.fn> };
     };
@@ -144,37 +104,50 @@ describe('ScopePanel', () => {
   });
 
   it('dispose() cleans up the panel', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as { dispose: ReturnType<typeof vi.fn> };
     panel.dispose();
     expect(created.dispose).toHaveBeenCalled();
   });
 
   it('reveal() is called when show() is called on an already-open panel', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as { reveal: ReturnType<typeof vi.fn> };
-    panel.show(DEFS, {});
-    // Only one panel should be created
+    panel.show();
     expect(webviewMock).toHaveBeenCalledTimes(1);
     expect(created.reveal).toHaveBeenCalled();
   });
 
   it('includes fidelity caveat notice in webview HTML (T4.5)', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(created.webview.html).toContain('fidelity-caveat');
     expect(created.webview.html).toContain('Approx. Seed');
   });
 
   it('webview HTML uses sticky event accumulation (T4.3)', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(created.webview.html).toContain('activeEvents');
   });
 
+  it('webview HTML does NOT contain duplicate xrun-display elements in emulator bar (T19-6)', () => {
+    panel.show();
+    const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(created.webview.html).not.toContain('id="xrun-group"');
+    expect(created.webview.html).not.toContain('xrun-display');
+  });
+
+  it('webview HTML shows getting-started instructions before first status', () => {
+    panel.show();
+    const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(created.webview.html).toContain('getting-started');
+    expect(created.webview.html).toContain('Build for Emulator');
+  });
+
   // T6.1 — Sine controls
   it('webview HTML contains sine frequency and amplitude controls', () => {
-    panel.show(DEFS, {}, { freq: 440, amplitude: 0.5 });
+    panel.show({ freq: 440, amplitude: 0.5 });
     const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(created.webview.html).toContain('id="sine-freq"');
     expect(created.webview.html).toContain('id="sine-amp"');
@@ -182,57 +155,28 @@ describe('ScopePanel', () => {
   });
 
   it('webview HTML embeds initial sine amplitude', () => {
-    panel.show(DEFS, {}, { freq: 880, amplitude: 0.75 });
+    panel.show({ freq: 880, amplitude: 0.75 });
     const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(created.webview.html).toContain('value="880"');
     expect(created.webview.html).toContain('value="0.75"');
   });
 
   it('uses SINE_DEFAULTS when no sineParams provided', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(created.webview.html).toContain(`value="${SINE_DEFAULTS.freq}"`);
   });
 
-  it('forwards sine message from webview to manager.sendSine()', () => {
-    panel.show(DEFS, {});
-    const created = webviewMock.mock.results[0]?.value as {
-      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
-    };
-    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
-    handler({ command: 'sine', freq: 880, amplitude: 0.3 });
-    expect(manager.sendSine).toHaveBeenCalledWith(880, 0.3);
-  });
-
-  it('calls onSineChange callback when sine message received', () => {
-    panel.show(DEFS, {});
-    const created = webviewMock.mock.results[0]?.value as {
-      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
-    };
-    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
-    handler({ command: 'sine', freq: 220, amplitude: 0.8 });
-    expect(sineChangeSpy).toHaveBeenCalledWith(220, 0.8);
-  });
-
   // T6.2 / T19-6 — xruns counter in header only (AC-31)
-  it('webview HTML does NOT contain duplicate xrun-display elements in emulator bar (T19-6)', () => {
-    panel.show(DEFS, {});
+  it('webview HTML does NOT contain xrun-group element (xrun in header status only)', () => {
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(created.webview.html).not.toContain('id="xrun-group"');
-    expect(created.webview.html).not.toContain('xrun-display');
-  });
-
-  // T6.3 — getting-started state
-  it('webview HTML shows getting-started instructions before first status', () => {
-    panel.show(DEFS, {});
-    const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(created.webview.html).toContain('getting-started');
-    expect(created.webview.html).toContain('Build for Emulator');
   });
 
   // T8.6 / T8.7 — audio source selector
   it('webview HTML includes audio source selector with sine/live/wav options', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('audio-source-select');
     expect(webview.html).toContain('value="sine"');
@@ -241,33 +185,33 @@ describe('ScopePanel', () => {
   });
 
   it('webview HTML defaults to sine input source', () => {
-    panel.show(DEFS, {}, SINE_DEFAULTS, AUDIO_SOURCE_DEFAULTS);
+    panel.show(SINE_DEFAULTS, AUDIO_SOURCE_DEFAULTS);
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('value="sine" selected');
   });
 
   it('webview HTML shows live input as checked when audioSource.input is live', () => {
-    panel.show(DEFS, {}, SINE_DEFAULTS, { input: 'live', sampleRate: 48000, bufferSize: 256, wavLoop: false });
+    panel.show(SINE_DEFAULTS, { input: 'live', sampleRate: 48000, bufferSize: 256, wavLoop: false });
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('value="live" selected');
   });
 
   it('webview HTML includes buffer size selector with 256 selected by default', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('id="buffer-size"');
     expect(webview.html).toContain('<option value="256" selected>256</option>');
   });
 
   it('webview HTML includes latency display element', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('id="latency-display"');
     expect(webview.html).toContain('latency: —');
   });
 
   it('calls onAudioSourceChange when audioSource message received from webview', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
     };
@@ -279,7 +223,7 @@ describe('ScopePanel', () => {
   });
 
   it('ignores audioSource message with missing fields', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
     };
@@ -290,7 +234,7 @@ describe('ScopePanel', () => {
 
   // T8.7 — xrun and latency message forwarding
   it('forwards xrun message from manager to webview', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { postMessage: ReturnType<typeof vi.fn> };
     };
@@ -301,7 +245,7 @@ describe('ScopePanel', () => {
   });
 
   it('forwards latency message from manager to webview', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { postMessage: ReturnType<typeof vi.fn> };
     };
@@ -313,7 +257,7 @@ describe('ScopePanel', () => {
 
   // T9.4 — WAV file input UI
   it('webview HTML enables the WAV radio (no longer disabled)', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('value="wav"');
     expect(webview.html).not.toContain('value="wav" checked disabled');
@@ -321,7 +265,7 @@ describe('ScopePanel', () => {
   });
 
   it('webview HTML includes WAV file controls (choose button + loop toggle)', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('id="wav-choose"');
     expect(webview.html).toContain('id="wav-loop"');
@@ -329,7 +273,7 @@ describe('ScopePanel', () => {
   });
 
   it('webview HTML reflects the chosen WAV file name and loop state', () => {
-    panel.show(DEFS, {}, SINE_DEFAULTS, {
+    panel.show(SINE_DEFAULTS, {
       input: 'wav', sampleRate: 48000, bufferSize: 256, wavLoop: true, wavPath: '/tmp/audio/drums.wav',
     });
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
@@ -339,7 +283,7 @@ describe('ScopePanel', () => {
   });
 
   it('forwards pickWav command from webview to onPickWav', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
     };
@@ -349,7 +293,7 @@ describe('ScopePanel', () => {
   });
 
   it('includes wavLoop in the audioSource change payload', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
     };
@@ -361,7 +305,7 @@ describe('ScopePanel', () => {
   });
 
   it('notifyWavSelected posts the chosen file name to the webview', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { postMessage: ReturnType<typeof vi.fn> };
     };
@@ -371,50 +315,8 @@ describe('ScopePanel', () => {
     );
   });
 
-  // T10.4 — button rendering + forwarding
-  it('embeds button defs in yaml-init JSON (D19)', () => {
-    panel.show(DEFS, {}, SINE_DEFAULTS, AUDIO_SOURCE_DEFAULTS, BUTTONS, LEDS);
-    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('"id":"bypass"');
-    expect(webview.html).toContain('"id":"tap"');
-  });
-
-  it('does not render static button HTML in the page (D19)', () => {
-    panel.show(DEFS, {});
-    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).not.toContain('id="buttons"');
-  });
-
-  it('forwards a button press to manager.sendButton and onButtonChange', () => {
-    panel.show(DEFS, {}, SINE_DEFAULTS, AUDIO_SOURCE_DEFAULTS, BUTTONS, LEDS);
-    const created = webviewMock.mock.results[0]?.value as {
-      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
-    };
-    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
-    handler({ command: 'button', gpioPin: 28, pressed: true });
-    expect(manager.sendButton).toHaveBeenCalledWith(28, true);
-    expect(buttonChangeSpy).toHaveBeenCalledWith(28, true);
-  });
-
-  it('ignores malformed button messages', () => {
-    panel.show(DEFS, {}, SINE_DEFAULTS, AUDIO_SOURCE_DEFAULTS, BUTTONS, LEDS);
-    const created = webviewMock.mock.results[0]?.value as {
-      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
-    };
-    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
-    handler({ command: 'button', gpioPin: 28 }); // missing pressed
-    expect(manager.sendButton).not.toHaveBeenCalled();
-  });
-
-  // T10.5 — LED forwarding (D19: LED state is driven by IPC, not static HTML)
-  it('embeds LED defs in yaml-init JSON (D19)', () => {
-    panel.show(DEFS, {}, SINE_DEFAULTS, AUDIO_SOURCE_DEFAULTS, BUTTONS, LEDS);
-    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('"id":"status"');
-  });
-
   it('forwards a led message from manager to the webview', () => {
-    panel.show(DEFS, {}, SINE_DEFAULTS, AUDIO_SOURCE_DEFAULTS, BUTTONS, LEDS);
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { postMessage: ReturnType<typeof vi.fn> };
     };
@@ -426,13 +328,13 @@ describe('ScopePanel', () => {
 
   // T13.3 — Spectrum view
   it('webview HTML includes a spectrum canvas element', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('id="spectrum"');
   });
 
   it('forwards spectrum message from manager to webview', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { postMessage: ReturnType<typeof vi.fn> };
     };
@@ -448,33 +350,29 @@ describe('ScopePanel', () => {
 
   // T16-2 — Scope panel visible border
   it('webview HTML body CSS includes a visible border on all sides (T16-2)', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toMatch(/body\s*\{[^}]*\bborder\b[^}]*1px solid #3c3c3c/);
   });
 
   // T16-1 — Spectrum label overlap fix
   it('drawSpectrum uses overlap-prevention: lastLabelRight and measureText present (T16-1)', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('lastLabelRight');
     expect(webview.html).toContain('measureText');
   });
 
   it('does not forward spectrum message if panel is not open', () => {
-    // No show() call — panel is null
-    const spy = vi.fn();
-    // spectrum message emitted before panel is shown — should not throw
     expect(() =>
       (manager as unknown as EventEmitter).emit('message', {
         type: 'spectrum', in_fft: [0.1], out_fft: [0.1], binHz: 46.875,
       }),
     ).not.toThrow();
-    expect(spy).not.toHaveBeenCalled();
   });
 
   it('webview HTML includes drawSpectrum function', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('drawSpectrum');
     expect(webview.html).toContain('lastSpecIn');
@@ -483,7 +381,7 @@ describe('ScopePanel', () => {
 
   // T14.4 — Recording bar
   it('webview HTML includes recording bar elements', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('id="emulator-bar"');
     expect(webview.html).toContain('id="rec-start-btn"');
@@ -493,7 +391,7 @@ describe('ScopePanel', () => {
 
   it('forwards recordStart command from webview to onRecordStart', () => {
     const onRecordStart = vi.fn();
-    const p = new ScopePanel(manager, undefined, undefined, undefined, undefined, undefined, undefined, onRecordStart);
+    const p = new ScopePanel(manager, undefined, undefined, undefined, onRecordStart);
     p.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
@@ -505,7 +403,7 @@ describe('ScopePanel', () => {
 
   it('forwards recordStop command from webview to onRecordStop', () => {
     const onRecordStop = vi.fn();
-    const p = new ScopePanel(manager, undefined, undefined, undefined, undefined, undefined, undefined, undefined, onRecordStop);
+    const p = new ScopePanel(manager, undefined, undefined, undefined, undefined, onRecordStop);
     p.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
@@ -517,7 +415,7 @@ describe('ScopePanel', () => {
 
   it('forwards replayStart command from webview to onReplayStart', () => {
     const onReplayStart = vi.fn();
-    const p = new ScopePanel(manager, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, onReplayStart);
+    const p = new ScopePanel(manager, undefined, undefined, undefined, undefined, undefined, onReplayStart);
     p.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
@@ -528,7 +426,7 @@ describe('ScopePanel', () => {
   });
 
   it('forwards replayDone from manager to webview', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { postMessage: ReturnType<typeof vi.fn> };
     };
@@ -539,7 +437,7 @@ describe('ScopePanel', () => {
   });
 
   it('notifyRecordingState posts recordingState to webview', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { postMessage: ReturnType<typeof vi.fn> };
     };
@@ -551,7 +449,7 @@ describe('ScopePanel', () => {
 
   // T15.1 — Input source dropdown
   it('webview HTML has a select element for audio source (T15.1)', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('id="audio-source-select"');
     expect(webview.html).toContain('value="sine"');
@@ -559,52 +457,42 @@ describe('ScopePanel', () => {
     expect(webview.html).toContain('value="wav"');
   });
 
-  // T15.2 / D19 — Collapsible sections (emulator) + Controls Editor single-mode
-  it('webview HTML includes emulator-section and Controls Editor tab (T15.2)', () => {
-    panel.show(DEFS, {});
+  // T15.2 — Collapsible emulator section (Controls Editor is now in sidebar — no CE tab in scope)
+  it('webview HTML includes emulator-section collapsible but no Controls Editor tab (T15.2 / M22)', () => {
+    panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('id="emulator-section"');
-    expect(webview.html).toContain('Controls Editor');
+    expect(webview.html).not.toContain('Controls Editor');
   });
 
-  it('Controls Editor has no mode toggle buttons (D19)', () => {
-    panel.show(DEFS, {});
-    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).not.toContain('id="mode-design-btn"');
-    expect(webview.html).not.toContain('id="mode-run-btn"');
-    expect(webview.html).not.toContain('id="run-area"');
-  });
-
-  it('emulator-header is collapsed by default and Controls Editor shows single canvas (D19)', () => {
-    panel.show(DEFS, {});
+  it('emulator-header is collapsed by default (T15.2)', () => {
+    panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('id="emulator-header" aria-expanded="false"');
-    expect(webview.html).toContain('id="design-area"');
-    expect(webview.html).toContain('id="convention-banner"');
   });
 
   it('emulator-body has collapsed class by default (T15.2)', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('class="coll-body collapsed" id="emulator-body"');
   });
 
   // T15.3 / T19-6 — emulator bar still has latency element; xrun-display removed
   it('latency-display is still present in emulator bar (T15.3)', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('id="latency-display"');
   });
 
   it('xrun-group is absent from emulator bar (T19-6, AC-31)', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).not.toContain('id="xrun-group"');
   });
 
   // T15.4 — Master output volume slider
   it('webview HTML includes output-vol slider in vol-group (T15.4)', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('id="vol-group"');
     expect(webview.html).toContain('id="output-vol"');
@@ -612,7 +500,7 @@ describe('ScopePanel', () => {
 
   it('forwards outputVolume webview message to manager.sendOutputVolume (T15.4)', () => {
     const onOutputVolume = vi.fn();
-    const p = new ScopePanel(manager, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, onOutputVolume);
+    const p = new ScopePanel(manager, undefined, undefined, undefined, undefined, undefined, undefined, onOutputVolume);
     p.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
@@ -625,7 +513,7 @@ describe('ScopePanel', () => {
 
   // T19-3 — Simplified recording button labels (AC-28)
   it('rec-start-btn label is glyph-only — no text suffix after the glyph (T19-3)', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('>&#9679;</button>');
     expect(webview.html).not.toContain('&#9679; Record');
@@ -633,14 +521,14 @@ describe('ScopePanel', () => {
 
   // T19-2 — Start/Stop Audio toolbar buttons (AC-27)
   it('webview HTML includes Start Audio and Stop Audio buttons in header (T19-2)', () => {
-    panel.show(DEFS, {});
+    panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('id="btn-audio-start"');
     expect(webview.html).toContain('id="btn-audio-stop"');
   });
 
-  it('startAudio message calls manager.sendTransport start (T19-2)', () => {
-    panel.show(DEFS, {});
+  it('startAudio message calls startAudio transport (T19-2)', () => {
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
     };
@@ -649,121 +537,13 @@ describe('ScopePanel', () => {
     expect(manager.sendTransport).toHaveBeenCalledWith('start');
   });
 
-  it('stopAudio message calls manager.sendTransport stop (T19-2)', () => {
-    panel.show(DEFS, {});
+  it('stopAudio message calls stopAudio transport (T19-2)', () => {
+    panel.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
     };
     const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
     handler({ command: 'stopAudio' });
     expect(manager.sendTransport).toHaveBeenCalledWith('stop');
-  });
-
-  // ── T20-1: AC-24 — Controls Editor single-mode handle UX (D19) ───────────
-
-  it('Controls Editor toolbar contains ce-emu-status indicator (AC-24)', () => {
-    panel.show(DEFS, {});
-    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('id="ce-emu-status"');
-    expect(webview.html).toContain('ce-emu-stopped');
-  });
-
-  it('webview HTML contains ctrl-handle CSS class for drag handles (AC-24)', () => {
-    panel.show(DEFS, {});
-    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('ctrl-handle');
-  });
-
-  it('webview HTML contains body-disabled CSS class definition (AC-24)', () => {
-    panel.show(DEFS, {});
-    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('body-disabled');
-  });
-
-  it('webview JS contains updateCeEmulatorState function (AC-24)', () => {
-    panel.show(DEFS, {});
-    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('updateCeEmulatorState');
-    expect(webview.html).toContain('ceEmulatorRunning');
-  });
-
-  it('webview JS contains buildConventionCard with ctrl-handle, ctrl-body, and knob (AC-24)', () => {
-    panel.show(DEFS, {});
-    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('ctrl-handle');
-    expect(webview.html).toContain('ctrl-body');
-    expect(webview.html).toContain('knob-wrap');
-    expect(webview.html).toContain('btn-ce');
-  });
-
-  it('webview JS contains makeDraggable that supports ctrl-handle (AC-24)', () => {
-    panel.show(DEFS, {});
-    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('.ctrl-handle');
-  });
-
-  // ── T20-2: AC-25 — Pot rotary knob visual (D19) ───────────────────────
-
-  it('webview JS contains buildKnobSvg function (AC-25)', () => {
-    panel.show(DEFS, {});
-    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('buildKnobSvg');
-  });
-
-  it('webview JS contains updateKnobPaths function (AC-25)', () => {
-    panel.show(DEFS, {});
-    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('updateKnobPaths');
-  });
-
-  it('webview JS uses knob-wrap with data-channel and SVG for pot CE cards (AC-25)', () => {
-    panel.show(DEFS, {});
-    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('knob-wrap');
-    expect(webview.html).toContain('knob-svg');
-    expect(webview.html).toContain('knob-dot');
-  });
-
-  it('knob uses vertical drag: drag-up = increase value (ns-resize cursor) (AC-25)', () => {
-    panel.show(DEFS, {});
-    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('ns-resize');
-    expect(webview.html).toContain('kStartY - e.clientY');
-  });
-
-  it('knob SVG uses teal (#4ec9b0) accent matching Wiring Editor L&F (AC-25)', () => {
-    panel.show(DEFS, {});
-    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('#4ec9b0');
-    expect(webview.html).toContain('knob-value-path');
-  });
-
-  it('Start Audio button click optimistically activates CE bodies (AC-24)', () => {
-    panel.show(DEFS, {});
-    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    // btnAudioStart click handler must call updateCeEmulatorState(true)
-    const startBlock = webview.html.indexOf("command: 'startAudio'");
-    expect(startBlock).toBeGreaterThan(-1);
-    const snippet = webview.html.slice(startBlock, startBlock + 200);
-    expect(snippet).toContain('updateCeEmulatorState(true)');
-  });
-
-  it('Stop Audio button click optimistically deactivates CE bodies (AC-24)', () => {
-    panel.show(DEFS, {});
-    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    const stopBlock = webview.html.indexOf("command: 'stopAudio'");
-    expect(stopBlock).toBeGreaterThan(-1);
-    const snippet = webview.html.slice(stopBlock, stopBlock + 200);
-    expect(snippet).toContain('updateCeEmulatorState(false)');
-  });
-
-  it('switchTab editor re-applies CE emulator state on tab open (AC-24)', () => {
-    panel.show(DEFS, {});
-    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    // switchTab('editor') block must call updateCeEmulatorState(ceEmulatorRunning)
-    const tabBlock = webview.html.indexOf("tab === 'editor'");
-    expect(tabBlock).toBeGreaterThan(-1);
-    const snippet = webview.html.slice(tabBlock, tabBlock + 300);
-    expect(snippet).toContain('updateCeEmulatorState(ceEmulatorRunning)');
   });
 });

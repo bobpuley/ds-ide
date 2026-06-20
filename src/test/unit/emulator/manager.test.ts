@@ -323,6 +323,82 @@ describe('EmulatorManager', () => {
     });
   });
 
+  describe('running state inference from scope data', () => {
+    async function deployedManager() {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+    }
+
+    it('synthesizes status:{running:true} when scope arrives after status:{running:false}', async () => {
+      await deployedManager();
+      const messages: unknown[] = [];
+      manager.on('message', (msg) => messages.push(msg));
+
+      ipcClientStub.emit('message', { type: 'status', running: false, sampleRate: 48000, blockSize: 256 });
+      ipcClientStub.emit('message', { type: 'scope', in: [], out: [] });
+
+      const statusMsgs = messages.filter((m) => (m as Record<string,unknown>)['type'] === 'status');
+      expect(statusMsgs).toEqual([
+        { type: 'status', running: false, sampleRate: 48000, blockSize: 256 },
+        { type: 'status', running: true, sampleRate: 48000, blockSize: 256 },
+      ]);
+    });
+
+    it('does NOT synthesize again on subsequent scope messages', async () => {
+      await deployedManager();
+      const messages: unknown[] = [];
+      manager.on('message', (msg) => messages.push(msg));
+
+      ipcClientStub.emit('message', { type: 'status', running: false, sampleRate: 48000, blockSize: 256 });
+      ipcClientStub.emit('message', { type: 'scope', in: [], out: [] });
+      ipcClientStub.emit('message', { type: 'scope', in: [], out: [] });
+
+      const statusMsgs = messages.filter((m) => (m as Record<string,unknown>)['type'] === 'status');
+      expect(statusMsgs).toHaveLength(2); // only: running:false + synthesized running:true
+    });
+
+    it('does NOT synthesize if scope arrives before any status', async () => {
+      await deployedManager();
+      const messages: unknown[] = [];
+      manager.on('message', (msg) => messages.push(msg));
+
+      ipcClientStub.emit('message', { type: 'scope', in: [], out: [] });
+
+      const statusMsgs = messages.filter((m) => (m as Record<string,unknown>)['type'] === 'status');
+      expect(statusMsgs).toHaveLength(0);
+    });
+
+    it('synthesizes on spectrum as well as scope', async () => {
+      await deployedManager();
+      const messages: unknown[] = [];
+      manager.on('message', (msg) => messages.push(msg));
+
+      ipcClientStub.emit('message', { type: 'status', running: false, sampleRate: 48000, blockSize: 256 });
+      ipcClientStub.emit('message', { type: 'spectrum', in_fft: [], out_fft: [], binHz: 0 });
+
+      const statusMsgs = messages.filter((m) => (m as Record<string,unknown>)['type'] === 'status');
+      expect(statusMsgs[1]).toMatchObject({ type: 'status', running: true });
+    });
+
+    it('resets inference after status:{running:false} so next scope triggers again', async () => {
+      await deployedManager();
+      const messages: unknown[] = [];
+      manager.on('message', (msg) => messages.push(msg));
+
+      ipcClientStub.emit('message', { type: 'status', running: false, sampleRate: 48000, blockSize: 256 });
+      ipcClientStub.emit('message', { type: 'scope', in: [], out: [] }); // synthesizes running:true
+      ipcClientStub.emit('message', { type: 'status', running: false, sampleRate: 48000, blockSize: 256 }); // stopped again
+      ipcClientStub.emit('message', { type: 'scope', in: [], out: [] }); // should synthesize running:true again
+
+      const statusMsgs = messages.filter((m) => (m as Record<string,unknown>)['type'] === 'status');
+      expect(statusMsgs).toHaveLength(4);
+      expect(statusMsgs[3]).toMatchObject({ type: 'status', running: true });
+    });
+  });
+
   describe('sendTransport()', () => {
     it('sends correct JSON for start', async () => {
       await manager.build(
