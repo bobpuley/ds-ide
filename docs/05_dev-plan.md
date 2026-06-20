@@ -30,7 +30,7 @@ controller editor · M11 Full debug · M12 Hardware build & flash · M13 Spectru
 M14 Session recording · M15 Scope UI refresh.
 Full registry in [`docs/v2/05_dev-plan.md`](v2/05_dev-plan.md).
 
-### v3 (0.3.x) — active planning
+### v3 (0.3.0–0.3.3) — archived in `docs/v3/`
 
 | Milestone                           | File                                              | Version  | Status          |
 |-------------------------------------|---------------------------------------------------|----------|-----------------|
