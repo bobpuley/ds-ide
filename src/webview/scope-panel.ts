@@ -949,8 +949,16 @@ function buildHtml(
     });
 
     // ── Audio transport buttons (T19-2) ─────────────────────────────────
-    btnAudioStart?.addEventListener('click', () => vscode.postMessage({ command: 'startAudio' }));
-    btnAudioStop?.addEventListener('click',  () => vscode.postMessage({ command: 'stopAudio' }));
+    btnAudioStart?.addEventListener('click', () => {
+      vscode.postMessage({ command: 'startAudio' });
+      if (btnAudioStart) btnAudioStart.disabled = true;
+      if (btnAudioStop)  btnAudioStop.disabled  = false;
+    });
+    btnAudioStop?.addEventListener('click', () => {
+      vscode.postMessage({ command: 'stopAudio' });
+      if (btnAudioStart) btnAudioStart.disabled = false;
+      if (btnAudioStop)  btnAudioStop.disabled  = true;
+    });
 
     // ── Recording bar (M14) ──────────────────────────────────────────────
     const recStartBtn   = document.getElementById('rec-start-btn');
