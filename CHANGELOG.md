@@ -5,6 +5,22 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.5.1 — 2026-06-20
+
+**M24 — Init Block Code Generation** *(AC-37 green)*
+
+- Wiring Editor now writes and maintains a `// ds-ide:controls:init:begin` … `// ds-ide:controls:init:end` block alongside the declaration block in the effect source
+- Adding a pot inserts `<varname>.InitSingle(daisy::seed::A<n>)` and regenerates the aggregate `hardware.adc.Init(<cfgs>, <count>)` call; pot configs are listed in insertion order to preserve ADC channel mapping
+- Adding a button inserts `<varname>.Init(daisy::seed::D<pin>, hardware.AudioCallbackRate())`
+- Adding an LED inserts `<varname>.Init(daisy::seed::D<pin>, false)`
+- Removing any device deletes its init line; removing a pot regenerates `hardware.adc.Init()` or removes it when no pots remain
+- Init block is created if absent (inserted after `// ds-ide:controls:end`); existing block is never duplicated
+- All writes are VS Code `WorkspaceEdit` (fully undoable)
+- Wiring Editor SVG updates live via `postMessage` after each pin assignment/removal (fix for sidebar `WebviewView` visibility timing)
+- Emulator shim extended: `daisy::seed::D0`–`D30` pin constants added; `DaisySeed::AudioCallbackRate()` added; `AdcHandle::Init` variadic overload added for generated `hardware.adc.Init(cfg1, cfg2, n)` pattern
+
+---
+
 ## 0.5.0 — 2026-06-20
 
 **M23 — Effect Project Wizard** *(AC-36 green)*
