@@ -5,6 +5,19 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.4.2 — 2026-06-20
+
+**M21 — VS Code Run Command Integration** *(AC-32, AC-33 green)*
+
+- Pressing **F5** with a `ds-ide` launch configuration now triggers the full build→deploy→attach flow: the emulator is stopped (if running), the effect is built, deployed, and `lldb-dap` attaches — Debug toolbar appears
+- Pressing **Ctrl+F5** (Start Without Debugging) triggers build→deploy without attaching lldb; emulator runs freely, no Debug toolbar
+- Build failure surfaces in the Output panel and aborts deploy/attach (no broken session)
+- Default `launch.json` snippet (`DS-IDE: Build, Deploy & Debug`) is offered automatically when adding a debug configuration for the `ds-ide` type
+- Implemented via `DaisyRunConfigurationProvider` (new `src/debug/run-config-provider.ts`) + `DsIdeDebugAdapterDescriptorFactory` providing an inline terminating adapter so VS Code's descriptor pre-check passes
+- Added explicit `onDebugResolve:ds-ide` activation event to ensure the extension is active before VS Code attempts the descriptor check on first F5 press
+
+---
+
 ## 0.4.1 — 2026-06-20
 
 **M20 — Controls Editor single-mode handle UX** *(AC-24, AC-25 green; AC-18 retired)*
