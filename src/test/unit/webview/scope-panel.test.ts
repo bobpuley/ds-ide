@@ -231,12 +231,12 @@ describe('ScopePanel', () => {
     expect(sineChangeSpy).toHaveBeenCalledWith(220, 0.8);
   });
 
-  // T6.2 — xrun display (v2: shown as 0 in audio-source bar, updated dynamically)
-  it('webview HTML includes xrun display element', () => {
+  // T6.2 / T19-6 — xruns counter in header only (AC-31)
+  it('webview HTML does NOT contain duplicate xrun-display elements in emulator bar (T19-6)', () => {
     panel.show(DEFS, {});
     const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(created.webview.html).toContain('xrun-display');
-    expect(created.webview.html).toContain('xruns: 0');
+    expect(created.webview.html).not.toContain('id="xrun-group"');
+    expect(created.webview.html).not.toContain('xrun-display');
   });
 
   // T6.3 — getting-started state
@@ -615,17 +615,17 @@ describe('ScopePanel', () => {
     expect(webview.html).toContain('class="coll-body collapsed" id="emulator-body"');
   });
 
-  // T15.3 — Context-sensitive emulator bar elements still present
-  it('xrun-display is still present in emulator bar (T15.3)', () => {
-    panel.show(DEFS, {});
-    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('id="xrun-display"');
-  });
-
+  // T15.3 / T19-6 — emulator bar still has latency element; xrun-display removed
   it('latency-display is still present in emulator bar (T15.3)', () => {
     panel.show(DEFS, {});
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('id="latency-display"');
+  });
+
+  it('xrun-group is absent from emulator bar (T19-6, AC-31)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).not.toContain('id="xrun-group"');
   });
 
   // T15.4 — Master output volume slider
@@ -647,5 +647,41 @@ describe('ScopePanel', () => {
     handler({ command: 'outputVolume', volume: 0.6 });
     expect(manager.sendOutputVolume).toHaveBeenCalledWith(0.6);
     expect(onOutputVolume).toHaveBeenCalledWith(0.6);
+  });
+
+  // T19-3 — Simplified recording button labels (AC-28)
+  it('rec-start-btn label is glyph-only — no text suffix after the glyph (T19-3)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('>&#9679;</button>');
+    expect(webview.html).not.toContain('&#9679; Record');
+  });
+
+  // T19-2 — Start/Stop Audio toolbar buttons (AC-27)
+  it('webview HTML includes Start Audio and Stop Audio buttons in header (T19-2)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="btn-audio-start"');
+    expect(webview.html).toContain('id="btn-audio-stop"');
+  });
+
+  it('startAudio message calls manager.sendTransport start (T19-2)', () => {
+    panel.show(DEFS, {});
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'startAudio' });
+    expect(manager.sendTransport).toHaveBeenCalledWith('start');
+  });
+
+  it('stopAudio message calls manager.sendTransport stop (T19-2)', () => {
+    panel.show(DEFS, {});
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'stopAudio' });
+    expect(manager.sendTransport).toHaveBeenCalledWith('stop');
   });
 });

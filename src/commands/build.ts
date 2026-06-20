@@ -13,7 +13,7 @@ export async function buildForEmulator(
   const folders = vscode.workspace.workspaceFolders;
   if (!folders || folders.length === 0) {
     void vscode.window.showErrorMessage('ds-ide: no workspace folder open');
-    return;
+    return false;
   }
   const projectRoot = folders[0]!.uri.fsPath;
 
@@ -22,7 +22,7 @@ export async function buildForEmulator(
     void vscode.window.showErrorMessage(
       'ds-ide: no effect .cpp found at workspace root. Add one or configure EFFECT_SRC.',
     );
-    return;
+    return false;
   }
 
   const daisySpDir = detectDaisySP(projectRoot);

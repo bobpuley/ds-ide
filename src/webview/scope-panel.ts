@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { EmulatorManager } from '../emulator/manager';
 import { IpcMessage } from '../emulator/ipc-client';
+import { startAudio, stopAudio } from '../commands/transport';
 import { ControllerDef, ButtonDef, LedDef, ControllerConfig } from '../controllers/controller-config';
 import { ConventionControl } from '../controllers/controls-convention-parser';
 
@@ -170,6 +171,8 @@ export class ScopePanel {
         const cfg = m['cfg'] as ControllerConfig | undefined;
         if (cfg) this.onEditorSave?.(cfg);
       }
+      if (m['command'] === 'startAudio') startAudio(this.manager);
+      if (m['command'] === 'stopAudio')  stopAudio(this.manager);
       if (m['command'] === 'recordStart') this.onRecordStart?.();
       if (m['command'] === 'recordStop')  this.onRecordStop?.();
       if (m['command'] === 'replayStart') this.onReplayStart?.();
@@ -358,19 +361,11 @@ function buildEmulatorBarHtml(source: AudioSource, sine: SineParams): string {
     <span id="latency-group" class="emu-group ${isLive ? '' : 'emu-hidden'}">
       <span id="latency-display" class="latency-text">latency: —</span>
     </span>
-    <!-- Xruns (live + wav) -->
-    <span id="xrun-group" class="emu-group ${isLive || isWav ? '' : 'emu-hidden'}">
-      <span id="xrun-display" class="xrun-text">xruns: 0</span>
-    </span>
-    <!-- Xruns always visible for sine too (stays at 0 but visible for consistency) -->
-    <span id="xrun-sine-group" class="emu-group ${isSine ? '' : 'emu-hidden'}">
-      <span id="xrun-display-sine" class="xrun-text">xruns: 0</span>
-    </span>
     <span class="emu-rec-sep">|</span>
     <!-- Recording controls — always visible -->
     <span class="rec-label">Session:</span>
-    <button id="rec-start-btn" class="rec-btn" type="button">&#9679; Record</button>
-    <button id="rec-stop-btn"  class="rec-btn" type="button" disabled>&#9632; Stop</button>
+    <button id="rec-start-btn" class="rec-btn" type="button">&#9679;</button>
+    <button id="rec-stop-btn"  class="rec-btn" type="button" disabled>&#9632;</button>
     <button id="replay-start-btn" class="rec-btn" type="button">&#9654; Replay file&hellip;</button>
     <span id="rec-filename" class="rec-filename"></span>
   </div>`;
@@ -445,8 +440,6 @@ function buildHtml(
     .emu-btn { background: #0e639c; color: #fff; border: none; padding: 3px 8px; font-family: monospace; cursor: pointer; border-radius: 2px; }
     .emu-btn:hover { background: #1177bb; }
     .latency-text { color: #b5cea8; }
-    .xrun-text { color: #b5cea8; }
-    .xrun-text.xrun-warning { color: #f48771; }
     .wav-name { color: #b5cea8; font-style: italic; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     /* Recording buttons inside the emulator bar */
     .rec-label { color: #9cdcfe; }
@@ -480,6 +473,12 @@ function buildHtml(
     .pot-label { min-width: 80px; color: #9cdcfe; }
     .pot-slider { width: 140px; cursor: pointer; }
     .pot-value { min-width: 40px; text-align: right; color: #b5cea8; }
+    .audio-btn { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 3px 8px; font-family: monospace; font-size: 13px; cursor: pointer; border-radius: 2px; }
+    .audio-btn:disabled { opacity: 0.35; cursor: default; }
+    #btn-audio-start { border-color: #4a7a4a; color: #4ec9b0; }
+    #btn-audio-start:not(:disabled):hover { background: #1a3a1a; }
+    #btn-audio-stop  { border-color: #7a3a3a; color: #f48771; }
+    #btn-audio-stop:not(:disabled):hover  { background: #3a1a1a; }
     #getting-started { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #6a6a6a; padding: 32px; text-align: center; }
     #getting-started ol { text-align: left; padding-left: 20px; line-height: 2; }
     #getting-started code { background: #3c3c3c; padding: 1px 4px; border-radius: 2px; color: #9cdcfe; }
@@ -550,6 +549,8 @@ function buildHtml(
       <input type="range" id="output-vol" min="0" max="1" step="0.01" value="1"/>
       <span id="vol-val">1.00</span>
     </span>
+    <button class="audio-btn" id="btn-audio-start" title="Start Audio" disabled>&#9654;</button>
+    <button class="audio-btn" id="btn-audio-stop"  title="Stop Audio"  disabled>&#9632;</button>
     <span id="fidelity-caveat" title="Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget">ℹ Approx. Seed</span>
   </header>
   <div id="events"></div>
@@ -612,7 +613,9 @@ function buildHtml(
     const ctx = canvas.getContext('2d');
     const specCanvas = document.getElementById('spectrum');
     const specCtx = specCanvas.getContext('2d');
-    const statusEl = document.getElementById('status-text');
+    const statusEl   = document.getElementById('status-text');
+    const btnAudioStart = document.getElementById('btn-audio-start');
+    const btnAudioStop  = document.getElementById('btn-audio-stop');
     const eventsEl = document.getElementById('events');
     const gettingStarted = document.getElementById('getting-started');
     const sineFreqEl = document.getElementById('sine-freq');
@@ -620,8 +623,6 @@ function buildHtml(
     const sineAmpValEl = document.getElementById('sine-amp-val');
     const bufferSizeEl = document.getElementById('buffer-size');
     const latencyEl = document.getElementById('latency-display');
-    // T15.3: xrun display lives in source-specific groups; update all of them
-    const xrunEls = () => document.querySelectorAll('[id^="xrun-display"]');
     const wavChooseEl = document.getElementById('wav-choose');
     const wavNameEl = document.getElementById('wav-name');
     const wavLoopEl = document.getElementById('wav-loop');
@@ -787,8 +788,6 @@ function buildHtml(
       document.getElementById('wav-group')?.classList.toggle('emu-hidden', !isWav);
       document.getElementById('buffer-group')?.classList.toggle('emu-hidden', !(isLive || isWav));
       document.getElementById('latency-group')?.classList.toggle('emu-hidden', !isLive);
-      document.getElementById('xrun-group')?.classList.toggle('emu-hidden', !(isLive || isWav));
-      document.getElementById('xrun-sine-group')?.classList.toggle('emu-hidden', !isSine);
     }
 
     // T15.1: dropdown handler
@@ -893,6 +892,8 @@ function buildHtml(
         showScope();
         const r = msg.running ? '▶ Running' : '■ Stopped';
         statusEl.textContent = r + '  |  ' + msg.sampleRate + ' Hz  |  block ' + msg.blockSize + '  |  xruns: ' + xrunCount;
+        if (btnAudioStart) btnAudioStart.disabled = !!msg.running;
+        if (btnAudioStop)  btnAudioStop.disabled  = !msg.running;
         if (!msg.running) {
           activeEvents.clear();
           eventsEl.textContent = '';
@@ -921,11 +922,6 @@ function buildHtml(
         eventsEl.textContent = [...activeEvents].map(k => '⚠ ' + k).join('  ');
       } else if (msg.command === 'xrun') {
         xrunCount = msg.count || 0;
-        // T15.3: update all xrun display elements
-        xrunEls().forEach(el => {
-          el.textContent = 'xruns: ' + xrunCount;
-          el.className = xrunCount > 0 ? 'xrun-text xrun-warning' : 'xrun-text';
-        });
         if (hasStatus) {
           statusEl.textContent = statusEl.textContent.replace(/xruns: \d+/, 'xruns: ' + xrunCount);
         }
@@ -951,6 +947,10 @@ function buildHtml(
         editorLoad(msg.cfg || {});
       }
     });
+
+    // ── Audio transport buttons (T19-2) ─────────────────────────────────
+    btnAudioStart?.addEventListener('click', () => vscode.postMessage({ command: 'startAudio' }));
+    btnAudioStop?.addEventListener('click',  () => vscode.postMessage({ command: 'stopAudio' }));
 
     // ── Recording bar (M14) ──────────────────────────────────────────────
     const recStartBtn   = document.getElementById('rec-start-btn');
