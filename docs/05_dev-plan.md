@@ -1,12 +1,15 @@
-# 05 — Development Plan (v3)
+# 05 — Development Plan (v4)
 
 > **v1 complete** — M0–M7 released (0.1.0–0.1.7), all ACs green.
 > Archived: [`docs/v1/`](v1/).
 >
 > **v2 complete** — M8–M15 released (0.2.0–0.2.9), all ACs green.
 > Archived: [`docs/v2/`](v2/).
+>
+> **v3 complete** — M16–M18 released (0.3.0–0.3.3), all ACs green.
+> Archived: [`docs/v3/`](v3/).
 
-Sprint/milestone plan for **ds-ide v3**. Built on
+Sprint/milestone plan for **ds-ide v4**. Built on
 [03_requirements.md](03_requirements.md) and [04_architecture.md](04_architecture.md).
 Each milestone is a demonstrable vertical slice closing ≥ 1 AC.
 
@@ -39,27 +42,33 @@ Full registry in [`docs/v2/05_dev-plan.md`](v2/05_dev-plan.md).
 | M17 — Controls Editor v3 (two-mode)     | [docs/milestones/v3/M17.md](milestones/v3/M17.md)   | 0.3.2    | **released**    |
 | M18 — Wiring Editor                     | [docs/milestones/v3/M18.md](milestones/v3/M18.md)   | 0.3.3    | **released**    |
 
+### v4 (0.4.x) — active planning
+
+| Milestone                                    | File                                              | Version  | Status       |
+|----------------------------------------------|---------------------------------------------------|----------|--------------|
+| M19 — UX polish & command improvements       | [docs/milestones/v4/M19.md](milestones/v4/M19.md)   | 0.4.0    | **planned**  |
+| M20 — Controls Editor single-mode handle UX  | [docs/milestones/v4/M20.md](milestones/v4/M20.md)   | 0.4.1    | **planned**  |
+
 ---
 
 ## 1. Approach
 
-Same walking-skeleton-first principle as v1/v2:
-- M16 is purely additive UI fixes — zero risk, validates the codebase is healthy post-v2.
-- M17 introduces C9 (convention parser), the shared foundation that M18 depends on.
-- M18 builds C10 (Wiring Editor) on top of C9.
+Same walking-skeleton-first principle as v1/v2/v3:
+- M19 is purely additive UX fixes and new commands — zero architecture risk.
+- M20 replaces the D18 two-mode panel with D19 (single-mode handle UX); C2-only change, no new components.
 
 ---
 
 ## 2. Dependency graph
 
 ```
-v2 (0.2.9, stable) ──► M16 bugs & polish ──► M17 Controls Editor v3 ──► M18 Wiring Editor
-                         (C2 CSS/JS only)        (C9 convention parser        (C10 panel,
-                                                  + C2 two-mode panel)         C++ writer)
+v2 (0.2.9) ──► M16 polish ──► M17 Controls v3 ──► M18 Wiring Editor ──► M19 UX polish ──► M20 CE handle UX
+               (CSS/JS)        (C9 + two-mode)      (C10, C++ writer)     (commands,          (D19, knob
+                                                                            scope, WE SVG)       visuals)
 ```
 
-**Critical path:** C9 (T17-1). Both M17 and M18 depend on it; M18 additionally depends on
-the `controlsConfig` message contract being stable from M17.
+**v4 critical path:** M19 has no blockers. M20 is blocked on the pot interaction model
+decision (FR-CE-7) before T20-2 can be implemented.
 
 ---
 
@@ -67,12 +76,19 @@ the `controlsConfig` message contract being stable from M17.
 
 | AC | Closed in | Description |
 |----|-----------|-------------|
-| AC-18 | M17 | Controls Editor: code convention → two-mode interactive panel |
+| ~~AC-18~~ | ~~M17~~ | *Retired — superseded by AC-24 (D18 → D19)* |
 | AC-22 | M17 | Controls Editor fallback: no convention block → diagnostic banner + yaml-only mode |
 | AC-19 | M18 | Wiring Editor: click pin → add device → C++ declaration written |
 | AC-23 | M18 | Wiring Editor: click assigned pin → Remove → pin unassigned; annotation deleted |
 | AC-20 | M16 | Spectrum labels: no overlap at default size |
 | AC-21 | M16 | Scope panel border visible, no content clipping |
+| AC-24 | M20 | Controls Editor: handle drag rearranges (always); body interaction gated on emulator state |
+| AC-25 | M20 | Controls Editor: pot renders as rotary knob, L&F matches Wiring Editor |
+| AC-26 | M19 | Build & Deploy to Emulator: sequential command; blocks deploy on build failure |
+| AC-27 | M19 | Scope header: Start/Stop Audio toolbar buttons reflect emulator state |
+| AC-28 | M19 | Recording buttons: "()" and "[]" labels |
+| AC-29 | M19 | Wiring Editor: ID labels legible, no overlap with control icon or pin circle |
+| AC-30 | M19 | Wiring Editor: micro USB port visible on Daisy Seed SVG |
 
 ---
 
@@ -83,7 +99,7 @@ Each milestone closes when:
 
 1. Code + automated tests for the milestone's tasks pass.
 2. The milestone's mapped AC(s) demonstrably pass (§3).
-3. No regression to prior milestones' ACs (AC-1…AC-17).
+3. No regression to prior milestones' ACs (AC-1…AC-17, AC-19…AC-23).
 4. Human test feedback collected (project rule 7).
 5. If green: merge → inspect tags → propose semver → CHANGELOG.md → annotated tag → push.
 
@@ -91,9 +107,14 @@ Each milestone closes when:
 
 ## 5. Risk notes
 
-- **R19 (convention non-compliance):** M17 must validate the fallback path (missingBlock = true)
-  as part of T17-3 — the Controls Editor must behave correctly when no convention block is present.
-- **R20 (code generation style):** M18 must document the generated type names in the extension
-  README/wiki alongside the implementation.
-- **Effect source discovery:** M18 T18-4 must validate the auto-detection heuristic against at
-  least two real project structures before shipping.
+### v3 risks (all resolved)
+
+- **R19 (convention non-compliance):** Validated in M17 (T17-3). ✅
+- **R20 (code generation style):** Documented in M18. ✅
+- **Effect source discovery:** Validated in M18 (T18-4). ✅
+
+### v4 risks
+
+- **R21 (AC-18 retirement):** AC-18 must be explicitly retired and AC-24 written before M20 work begins. Leaving AC-18 "green" against dead code would mask a broken redesign.
+- **R22 (knob visual complexity):** Prototype with CSS first; if insufficient, evaluate SVG-per-knob. Canvas renderer is last resort. (02_assumptions-and-risks §5)
+- **M20 pot interaction model blocker:** FR-CE-7 and AC-25 cannot be spec'd until wheel vs. drag is decided. T20-2 must be deferred until that decision is made.

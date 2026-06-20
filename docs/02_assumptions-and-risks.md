@@ -1,53 +1,73 @@
-# 02 — Assumptions & Risks (v3)
+# 02 — Assumptions & Risks (v4)
 
-> **v1 complete** — all v1 bets (A1–A8) held. Archived: [`docs/v1/02_assumptions-and-risks.md`](v1/02_assumptions-and-risks.md).
+> **All prior versions complete** — full bet/risk history in their respective archives.
+>
+> **v1 complete** — all v1 bets (A1–A8) held. Archived: [`docs/v1/`](v1/02_assumptions-and-risks.md).
 >
 > **v2 complete** — all v2 bets (A9–A14) held; all risks (R12–R18) resolved or managed.
-> Archived: [`docs/v2/02_assumptions-and-risks.md`](v2/02_assumptions-and-risks.md).
+> Archived: [`docs/v2/`](v2/02_assumptions-and-risks.md).
+>
+> **v3 complete** — all v3 bets (A15–A16) held; risks R19–R20 resolved.
+> Archived: [`docs/v3/02_assumptions-and-risks.md`](v3/02_assumptions-and-risks.md).
 
-What ds-ide **v3 is betting on**, and where those bets could be wrong. Derived from the v3
-feature set in [01_input-ideas.md](01_input-ideas.md).
+What ds-ide **v4 is betting on**, and where those bets could be wrong.
 
 Legend — **Impact if wrong**: 🔴 high · 🟠 medium · 🟡 low.
 
 ---
 
-## 1. Carried-forward bets (still hold in v3)
+## 1. Carried-forward bets (still hold in v4)
 
-The following v1/v2 bets remain valid and are not re-litigated:
+All v1–v3 bets remain valid. See respective archives for full detail. Key ones:
 
 | ID | Bet (summary) | Source |
 |----|---------------|--------|
 | A1 | Daisy effects are host-portable C++ | v1, confirmed |
 | A2 | Host libDaisy shim has bounded surface | v1+v2, extended to Switch/GPIO |
-| A3 | DaisySP runs natively unchanged | v1, confirmed |
-| A4 | VS Code extension model is sufficient | v1+v2, confirmed |
-| A6 | macOS-first with portable APIs | carried forward |
-| A9 | Real-time host audio achievable in out-of-process runtime | v2, confirmed in M8 |
-| A11 | Switch/GPIO shim feasible (mirrors ADC shim) | v2, confirmed in M10 |
-| A12 | Full debug comes nearly for free from lldb-dap | v2, confirmed in M11 |
-| A13 | arm-none-eabi-g++ and dfu-util run on macOS Apple Silicon | v2, confirmed in M12 |
+| A4 | VS Code extension model is sufficient | v1+v2+v3, confirmed |
+| A15 | Effect code follows a parseable `// ds-ide:controls` convention | v3, confirmed in M17 |
+| A16 | Writing declaration lines into the controls block is safe | v3, confirmed in M18 |
 
 ---
 
-## 2. v3 bets
+## 2. v4 bets
 
 | ID | We are betting that… | Why we believe it | Impact if wrong |
 |----|----------------------|-------------------|-----------------|
-| **A15** | **Effect code follows a parseable init convention**: the `// ds-ide:controls:begin` block can be located and parsed with a line-by-line regex — no full C++ AST needed. | The convention is a structured comment-delimited section; the annotation format (`// ds-ide: id=…`) is machine-readable by design. We control the format. | 🟡 If the block is present but malformed, the parser returns errors and falls back to yaml-only mode — degraded but not broken. |
-| **A16** | **Writing a new declaration line into the controls block is safe**: C1 can insert one line before `// ds-ide:controls:end` without corrupting surrounding code. | The block is delimiter-bounded; we insert only between markers. The operation is reversible via VS Code undo. | 🟠 If the file has unusual encoding or the block markers are inside a `#if 0` / string literal, the insert may corrupt the file. Mitigation: validate markers are at column 0 before writing. |
+| **A17** | **Single-mode handle UX is learnable without an explicit mode label** — developers will discover that dragging the handle rearranges and interacting with the body sends live data, without a tutorial. | Common drag-handle patterns (Notion, Figma blocks) establish this mental model. The handle icon itself signals "move me". | 🟡 If discoverability is poor, add a tooltip or one-time onboarding hint. Does not change the architecture. |
+| **A18** | **Controls remain usably visible (grayed-out) and rearrangeable when the emulator is not running** — handle drag is always active; body interaction is gated on emulator state. Developer confirmed (2026-06-20). | Standard disabled-state pattern; layout editing is independent of runtime state. | 🟡 If grayed-out body is visually confusing, add a status indicator in the panel header. |
 
 ---
 
-## 3. v3 risks
+## 3. v4 risks
 
 | ID | Risk | Likelihood | Impact | Mitigation |
 |----|------|-----------|--------|------------|
-| **R19** | **Convention non-compliance** — effects without a `// ds-ide:controls` block cannot be parsed; the Controls Editor falls back to yaml-only mode and silently diverges from the source. | Medium (existing projects) | 🟠 | Surface clear diagnostic: "Code convention not detected — yaml-only mode." Provide docs on adopting the convention; Wiring Editor creates the block on first use. |
-| **R20** | **Code generation style mismatch** — generated declaration type names (`AdcChannelConfig`, `Switch`, `Led`) may differ from what the developer already uses (e.g. they may use `AnalogControl`, a different wrapper). | Low–Med | 🟡 | Document the expected type names for each device kind. The generated line is editable; only the `// ds-ide:` annotation is load-bearing for the parser. |
+| **R21** | **AC-18 retirement creates a coverage gap** — AC-18 (two-mode panel, D18) was green at M17 ship but the feature it tests is replaced by D19. If AC-18 is left "green" against dead code, a broken redesign could ship undetected. | Medium | 🟠 | Explicitly retire AC-18 and replace with AC-24 (handle UX) before M20 work begins. Mark the old test file as retired. |
+| **R22** | **Knob visual improvement requires a canvas renderer** — if the target hardware-knob look cannot be achieved with CSS alone, a canvas-based renderer adds significant complexity. | Low–Med | 🟠 | Prototype with CSS first (conic-gradient + rotation transform). If insufficient, evaluate SVG-per-knob before canvas. |
 
 ---
 
-## 4. Open items
+---
 
-*(none at v3 kick-off)*
+## 4. v4 bets
+
+| ID | We are betting that… | Why we believe it | Impact if wrong |
+|----|----------------------|-------------------|-----------------|
+| **A17** | **Single-mode handle UX is learnable without an explicit mode label** — developers will discover that dragging the handle rearranges and interacting with the body sends live data, without a tutorial. | Common drag-handle patterns (Notion, Figma blocks) establish this mental model. The handle icon itself signals "move me". | 🟡 If discoverability is poor, add a tooltip or one-time onboarding hint. Does not change the architecture. |
+| **A18** | **Controls are always visible; handle drag is always active; body interaction is gated on emulator state** — in the single-mode Controls Editor, dragging a control's handle to rearrange is available at all times (emulator stopped or running). Interacting with the control body (pot slider, button, LED) is disabled (grayed-out) when the emulator is not running. | Developer confirmed this split explicitly. Consistent with standard UI affordance: layout editing is independent of runtime state. | 🟡 If grayed-out body state is visually ambiguous, add a tooltip or status indicator explaining why interaction is unavailable. |
+
+---
+
+## 5. v4 risks
+
+| ID | Risk | Likelihood | Impact | Mitigation |
+|----|------|-----------|--------|------------|
+| **R21** | **Controls Editor single-mode redesign breaks AC-18** — replacing the two-mode panel (D18) means the existing AC-18 acceptance criteria (tests Design mode / Run mode explicitly) must be rewritten. If skipped, the old AC remains green against dead code. | Medium | 🟠 | Explicitly retire AC-18 and write new AC-24 for the handle-based UX as the first v4 task. |
+| **R22** | **Knob visual improvement requires a custom WebGL/Canvas renderer** — if the target look (realistic hardware knob) cannot be achieved with CSS alone, a canvas-based renderer adds significant complexity. | Low–Med | 🟠 | Prototype with CSS first (e.g. conic-gradient + rotation transform). If visual fidelity is insufficient, evaluate a lightweight SVG-per-knob approach before canvas. |
+
+---
+
+## 6. Open items
+
+*(none — A18 confirmed by developer 2026-06-20)*

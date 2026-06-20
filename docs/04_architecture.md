@@ -1,4 +1,4 @@
-# 04 — Architecture (v3)
+# 04 — Architecture (v4)
 
 > **v1 complete** — v1 architecture (C1–C6, JSON-over-socket IPC) validated in M0–M7.
 > Archived: [`docs/v1/04_architecture.md`](v1/04_architecture.md).
@@ -7,13 +7,17 @@
 > CoreAudio device abstraction, GPIO/Switch shim (C5), LED capture, hardware build drivers
 > (C7, C8), visual controller editor, spectrum, session recording, and scope UI refresh.
 > Archived: [`docs/v2/04_architecture.md`](v2/04_architecture.md).
+>
+> **v3 complete** — v3 added C9 (controls convention parser) and C10 (Wiring Editor panel).
+> D18 two-mode Controls Editor shipped in M17; superseded by D19 (v4).
+> Archived: [`docs/v3/04_architecture.md`](v3/04_architecture.md).
 
-Technical design for **ds-ide v3**, extending the v2 architecture for the requirements in
+Technical design for **ds-ide v4**, extending the v3 architecture for the requirements in
 [03_requirements.md](03_requirements.md).
 
 ---
 
-## 1. v2 architecture summary (unchanged in v3)
+## 1. v2 architecture summary (unchanged in v3/v4)
 
 ```
 ┌────────────────────────── VS Code ──────────────────────────┐
@@ -47,41 +51,51 @@ open v2 items (all resolved).
 
 ---
 
-## 3. Controls Editor two-mode design (C2 + C9)
+## 3. Controls Editor design (C2 + C9)
 
-The v3 Controls Editor merges the v2 "Controller Editor" tab and "Effect controls" section into
-a single panel with Design and Run modes (D18).
+### v3 design (D18, shipped M17 — superseded)
+
+The v3 Controls Editor unified the old split panel into a single C2 panel with explicit Design
+and Run modes. Retired by D19 (v4). The C9 parser, `controlsConfig` message contract, and all
+IPC channels are unchanged.
+
+### v4 design (D19, single-mode handle UX)
+
+No new components. C9, C1, C2 wiring, and IPC channels are identical to v3.
+The change is entirely within C2's rendering and interaction model.
 
 ```
-On open / project load:
+On open / project load (unchanged from v3):
   C1 → C9: parse effect source
     → convention block found: controls[] extracted
     → block absent: controls[] = [], missingBlock = true
   C1 reads controllers.yaml → placements[] (editor_pos values)
   C1 → C2: postMessage controlsConfig{ controls[], placements[], missingBlock }
-  C2 Controls Editor renders canvas (Design mode by default)
+  C2 Controls Editor renders canvas — single mode, always visible
 
-Design mode:
-  User drags controls → C2 updates positions in memory
+Rearranging (always available, emulator stopped or running):
+  User drags a control via its drag handle
+  C2 updates position in memory
   Save → C2 → C1 → write updated controllers.yaml (positions only)
-  C++ source NOT modified in Design mode
+  C++ source NOT modified
 
-Run mode (emulator running):
-  C2 Controls Editor IS the live control panel
-  Pot sliders → IPC `pot` (unchanged v2 channel)
-  Button clicks → IPC `button` (unchanged v2 channel)
+Live interaction (emulator running):
+  Control bodies become interactive (pot slider, button, LED)
+  Pot drag → IPC `pot` (unchanged v2 channel)
+  Button click → IPC `button` (unchanged v2 channel)
   LED state → IPC `led` events (unchanged v2 channel)
+
+Emulator stopped:
+  Control bodies are rendered but grayed-out; interactions disabled
+  Drag-handle rearrangement remains fully functional
 
 Fallback (missingBlock = true):
   C2 shows diagnostic banner
-  Controls rendered from controllers.yaml only (M10b behaviour)
+  Controls rendered from controllers.yaml only (unchanged from v3)
 ```
 
-**Mode persistence:** mode resets to Design whenever the emulator stops (or is never
-started). Run mode is only reachable while the emulator is running; the panel switches to
-Run automatically on emulator start and back to Design on emulator stop.
-
-**No new IPC messages to the runtime.** Run mode reuses all v2 IPC channels.
+**No new IPC messages.** All v2 IPC channels reused. C2 tracks emulator running state via the
+existing `emulatorState` message from C1 (v2 contract, unchanged).
 
 ---
 
@@ -199,10 +213,12 @@ No new IPC messages to the emulator runtime. New messages are internal (C1 ↔ C
 
 ---
 
-## 7. Open architectural items (v3)
+## 7. Open architectural items
 
 | Item | Current stance |
 |------|----------------|
-| Effect source auto-detection | Check `ds-ide.effectSource` workspace setting first; else first `.cpp` adjacent to `CMakeLists.txt`. Validate in M18. |
-| Convention block location in file | Append to end of file if absent (before final `}`). Validate "column 0" safety rule in M18. |
-| Controls Editor mode persistence | **Resolved:** mode always resets to Design when the emulator stops (or was never started). Run mode is only reachable while the emulator is running. No persistence required. |
+| Effect source auto-detection | Check `ds-ide.effectSource` workspace setting first; else first `.cpp` adjacent to `CMakeLists.txt`. **Resolved in M18.** |
+| Convention block location in file | Append to end of file if absent (before final `}`). "Column 0" safety rule validated in M18. **Resolved.** |
+| Controls Editor mode persistence | **Resolved/superseded by D19:** no mode toggle exists. Handle drag is always active; body interaction is gated on `emulatorState`. |
+| Pot interaction model (FR-CE-7) | Mouse wheel vs. vertical drag — **open.** Must be decided before M20 implementation. |
+| xruns counter: same or different data in header vs. Emulator section | **Open.** Requires reading C2 implementation to determine if one counter or two. Drives FR-SC-2 AC wording. |
