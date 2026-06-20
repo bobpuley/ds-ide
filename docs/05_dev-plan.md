@@ -55,7 +55,7 @@ Full registry in [`docs/v2/05_dev-plan.md`](v2/05_dev-plan.md).
 
 | Milestone                                    | File                                               | Version  | Status          |
 |----------------------------------------------|----------------------------------------------------|----------|-----------------|
-| M23 — Effect Project Wizard                  | [docs/milestones/v5/M23.md](milestones/v5/M23.md)  | 0.5.0    | **planned**     |
+| M23 — Effect Project Wizard                  | [docs/milestones/v5/M23.md](milestones/v5/M23.md)  | 0.5.0    | **in progress** |
 | M24 — Init block code generation             | [docs/milestones/v5/M24.md](milestones/v5/M24.md)  | 0.5.1    | **planned**     |
 
 ---

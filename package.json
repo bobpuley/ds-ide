@@ -67,6 +67,11 @@
         "command": "ds-ide.buildAndDeploy",
         "title": "Build & Deploy to Emulator",
         "category": "Daisy IDE"
+      },
+      {
+        "command": "ds-ide.createNewEffectProject",
+        "title": "Create New Effect Project",
+        "category": "Daisy IDE"
       }
     ],
     "keybindings": [

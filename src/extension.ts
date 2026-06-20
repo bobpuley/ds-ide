@@ -22,6 +22,7 @@ import { flashToHardware } from './commands/dfu-flash';
 import { SineParams, SINE_DEFAULTS, AudioSource, AUDIO_SOURCE_DEFAULTS } from './webview/scope-panel';
 import { ControlsViewProvider, CONTROLS_VIEW_ID } from './sidebar/controls-view-provider';
 import { WiringViewProvider, WIRING_VIEW_ID } from './sidebar/wiring-view-provider';
+import { createEffectProject } from './commands/create-effect-project';
 import * as os from 'os';
 
 const FIDELITY_CAVEAT =
@@ -365,6 +366,7 @@ export function activate(context: vscode.ExtensionContext): void {
         },
       );
     }),
+    vscode.commands.registerCommand('ds-ide.createNewEffectProject', createEffectProject),
     vscode.commands.registerCommand('ds-ide.openWiringEditor', async () => {
       const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
       const effectPath = findEffectSource(folder);
