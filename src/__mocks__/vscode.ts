@@ -36,6 +36,9 @@ const window = {
     hide: vi.fn(),
     dispose: vi.fn(),
   })),
+  registerWebviewViewProvider: vi.fn(() => ({ dispose: vi.fn() })),
+  showOpenDialog: vi.fn(),
+  showSaveDialog: vi.fn(),
 };
 
 const workspace = {

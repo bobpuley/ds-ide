@@ -91,6 +91,29 @@
         "mac": "cmd+shift+alt+s"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ds-ide-sidebar",
+          "title": "DS-IDE",
+          "icon": "media/ds-ide-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "ds-ide-sidebar": [
+        {
+          "type": "webview",
+          "id": "ds-ide.controlsEditor",
+          "name": "Controls"
+        },
+        {
+          "type": "webview",
+          "id": "ds-ide.wiringEditor",
+          "name": "Wiring"
+        }
+      ]
+    },
     "debuggers": [
       {
         "type": "daisy-debug",
