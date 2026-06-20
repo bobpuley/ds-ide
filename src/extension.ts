@@ -8,6 +8,7 @@ import { buildForEmulator } from './commands/build';
 import { deployToEmulator } from './commands/deploy';
 import { startAudio, stopAudio } from './commands/transport';
 import { debugDeploy, DAISY_DEBUG_TYPE } from './commands/debug-deploy';
+import { DaisyRunConfigurationProvider, DsIdeDebugAdapterDescriptorFactory, DS_IDE_DEBUG_TYPE } from './debug/run-config-provider';
 import { parseControllerConfig, serializeControllerConfig, ControllerConfig, ControllerDef, ButtonDef, LedDef } from './controllers/controller-config';
 import { parseControlsConvention } from './controllers/controls-convention-parser';
 import { ControlsConfig, ControlsPlacement } from './webview/scope-panel';
@@ -216,39 +217,49 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   });
 
+  async function performBuildAndDeploy(): Promise<boolean> {
+    const ok = await buildForEmulator(manager!, context.extensionPath, diagnostics);
+    if (!ok) return false;
+    statusBar.text = '$(loading~spin) Daisy: deploying…';
+    statusBar.tooltip = FIDELITY_CAVEAT;
+    const cfg = loadControllerConfig();
+    const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+    potStore!.setDefaults(cfg.pots);
+    buttonStore!.setDefaults(cfg.buttons);
+    scopePanel!.show(
+      cfg.pots, potStore!.getSnapshot(), sineState, audioSourceState,
+      cfg.buttons, cfg.leds, buttonStore!.getSnapshot(),
+    );
+    scopePanel!.postControlsConfig(buildControlsConfig(folder, cfg));
+    await deployToEmulator(manager!);
+    manager!.sendPotSnapshot(potStore!.getSnapshot());
+    manager!.sendButtonSnapshot(buttonStore!.getSnapshot());
+    manager!.sendSine(sineState.freq, sineState.amplitude);
+    const mode = audioSourceState.input === 'live' ? 'realtime' : 'simulated';
+    manager!.sendAudioMode(mode);
+    manager!.sendAudioDevice(audioSourceState.sampleRate, audioSourceState.bufferSize);
+    if (audioSourceState.input === 'wav' && audioSourceState.wavPath) {
+      manager!.sendWavFile(audioSourceState.wavPath, audioSourceState.wavLoop);
+    }
+    return true;
+  }
+
+  const runConfigProvider = new DaisyRunConfigurationProvider(
+    performBuildAndDeploy,
+    () => manager?.childPid,
+  );
+
   context.subscriptions.push(
     diagnostics,
     statusBar,
     vscode.debug.registerDebugAdapterDescriptorFactory(DAISY_DEBUG_TYPE, debugAdapterFactory),
     vscode.debug.registerDebugAdapterTrackerFactory(DAISY_DEBUG_TYPE, debugTrackerFactory),
+    vscode.debug.registerDebugAdapterDescriptorFactory(DS_IDE_DEBUG_TYPE, new DsIdeDebugAdapterDescriptorFactory()),
+    vscode.debug.registerDebugConfigurationProvider(DS_IDE_DEBUG_TYPE, runConfigProvider),
     vscode.commands.registerCommand('ds-ide.build', () =>
       buildForEmulator(manager!, context.extensionPath, diagnostics),
     ),
-    vscode.commands.registerCommand('ds-ide.buildAndDeploy', async () => {
-      const ok = await buildForEmulator(manager!, context.extensionPath, diagnostics);
-      if (!ok) return;
-      statusBar.text = '$(loading~spin) Daisy: deploying…';
-      statusBar.tooltip = FIDELITY_CAVEAT;
-      const cfg = loadControllerConfig();
-      const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-      potStore!.setDefaults(cfg.pots);
-      buttonStore!.setDefaults(cfg.buttons);
-      scopePanel!.show(
-        cfg.pots, potStore!.getSnapshot(), sineState, audioSourceState,
-        cfg.buttons, cfg.leds, buttonStore!.getSnapshot(),
-      );
-      scopePanel!.postControlsConfig(buildControlsConfig(folder, cfg));
-      await deployToEmulator(manager!);
-      manager!.sendPotSnapshot(potStore!.getSnapshot());
-      manager!.sendButtonSnapshot(buttonStore!.getSnapshot());
-      manager!.sendSine(sineState.freq, sineState.amplitude);
-      const mode = audioSourceState.input === 'live' ? 'realtime' : 'simulated';
-      manager!.sendAudioMode(mode);
-      manager!.sendAudioDevice(audioSourceState.sampleRate, audioSourceState.bufferSize);
-      if (audioSourceState.input === 'wav' && audioSourceState.wavPath) {
-        manager!.sendWavFile(audioSourceState.wavPath, audioSourceState.wavLoop);
-      }
-    }),
+    vscode.commands.registerCommand('ds-ide.buildAndDeploy', performBuildAndDeploy),
     vscode.commands.registerCommand('ds-ide.deploy', async () => {
       statusBar.text = '$(loading~spin) Daisy: deploying…';
       statusBar.tooltip = FIDELITY_CAVEAT;
