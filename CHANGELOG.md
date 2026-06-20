@@ -5,6 +5,18 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.5.0 — 2026-06-20
+
+**M23 — Effect Project Wizard** *(AC-36 green)*
+
+- New command `ds-ide: Create New Effect Project` scaffolds a ready-to-use ds-ide effect project from scratch
+- Prompts for a project name (validated as a valid C++ identifier) and a destination folder
+- Writes four files: `<name>.cpp` (with `// ds-ide:controls:begin/end` block and `AudioCallback` skeleton), `CMakeLists.txt` (emulator build placeholder), `controllers.yaml` (empty controls list), and `README.md` (getting-started instructions)
+- Opens the newly created folder in VS Code automatically
+- Invalid names (empty, starting with a digit, containing spaces) are rejected inline before any files are written
+
+---
+
 ## 0.4.3 — 2026-06-20
 
 **M22 — Secondary Sidebar Panels** *(AC-34, AC-35 green)*
