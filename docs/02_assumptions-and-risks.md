@@ -36,6 +36,8 @@ All v1–v3 bets remain valid. See respective archives for full detail. Key ones
 |----|----------------------|-------------------|-----------------|
 | **A17** | **Single-mode handle UX is learnable without an explicit mode label** — developers will discover that dragging the handle rearranges and interacting with the body sends live data, without a tutorial. | Common drag-handle patterns (Notion, Figma blocks) establish this mental model. The handle icon itself signals "move me". | 🟡 If discoverability is poor, add a tooltip or one-time onboarding hint. Does not change the architecture. |
 | **A18** | **Controls are always visible; handle drag is always active; body interaction is gated on emulator state** — in the single-mode Controls Editor, dragging a control's handle to rearrange is available at all times (emulator stopped or running). Interacting with the control body (pot slider, button, LED) is disabled (grayed-out) when the emulator is not running. | Developer confirmed this split explicitly. Consistent with standard UI affordance: layout editing is independent of runtime state. | 🟡 If grayed-out body state is visually ambiguous, add a tooltip or status indicator explaining why interaction is unavailable. |
+| **A19** | **`DebugConfigurationProvider` API is sufficient for F5/Ctrl+F5 integration** — VS Code's debug provider API (extension point `debugConfigurationProvider`) lets ds-ide intercept Start Debugging / Start Without Debugging, run its build+deploy sequence, then hand off to lldb-dap without user-authored `launch.json`. | This API is stable since VS Code 1.20, used by many language extensions. ds-ide already has lldb-dap (D13/C6); adding a configuration provider is additive. | 🟠 If VS Code imposes ordering constraints that conflict with the build step, fall back to a two-step approach: a pre-launch task + a standard attach config. |
+| **A20** | **`WebviewView` (secondary sidebar) is a usable host for the Controls Editor and Wiring Editor** — the secondary sidebar provides sufficient width and height for the canvas-based UIs; scroll and resize work without layout regressions. | Secondary sidebar `WebviewView` API is stable since VS Code 1.74. Both panels are already responsive CSS/canvas designs. | 🟠 If the sidebar is too narrow for the canvas, add a minimum-width indicator and allow the developer to widen the sidebar. Controls Editor may need a compact layout mode. |
 
 ---
 
@@ -45,9 +47,11 @@ All v1–v3 bets remain valid. See respective archives for full detail. Key ones
 |----|------|-----------|--------|------------|
 | **R21** | **Controls Editor single-mode redesign breaks AC-18** — replacing the two-mode panel (D18) means the existing AC-18 acceptance criteria (tests Design mode / Run mode explicitly) must be rewritten. If skipped, the old AC remains green against dead code. | Medium | 🟠 | Explicitly retire AC-18 and write new AC-24 for the handle-based UX as the first v4 task. |
 | **R22** | **Knob visual improvement requires a custom WebGL/Canvas renderer** — if the target look (realistic hardware knob) cannot be achieved with CSS alone, a canvas-based renderer adds significant complexity. | Low–Med | 🟠 | Prototype with CSS first (e.g. conic-gradient + rotation transform). If visual fidelity is insufficient, evaluate a lightweight SVG-per-knob approach before canvas. |
+| **R23** | **Splitting C2 (extracting Controls Editor to C11) regresses Scope / Spectrum rendering** — C2 currently bundles Scope, Controls, and Spectrum in one WebviewPanel. Extracting Controls Editor requires decomposing message routing and shared state without breaking the existing panels. | Medium | 🟠 | Tackle C2 split as a dedicated milestone (M22 T22-1) with full regression testing of Scope and Spectrum before delivering the Controls Editor WebviewView to developers. |
+| **R24** | **`WebviewView` lifecycle differs from `WebviewPanel`** — `WebviewView` is not retained when the secondary sidebar is hidden by default; state may need to be re-sent on `onDidChangeVisibility`. | Low–Med | 🟡 | Enable `retainContextWhenHidden` option on the `WebviewView`, or re-send `controlsConfig` / `wiredPins` messages on visibility restore. |
 
 ---
 
 ## 4. Open items
 
-*(none — A18 confirmed by developer 2026-06-20)*
+*(none — A18 confirmed 2026-06-20; A19–A20 confirmed 2026-06-20)*

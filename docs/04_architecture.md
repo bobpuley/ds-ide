@@ -17,28 +17,32 @@ Technical design for **ds-ide v4**, extending the v3 architecture for the requir
 
 ---
 
-## 1. v2 architecture summary (unchanged in v3/v4)
+## 1. v2 architecture summary (v4 update: C2 split, C11 added)
 
 ```
-┌────────────────────────── VS Code ──────────────────────────┐
-│  Extension host (TypeScript / Node) — C1                     │
-│  Webview panel — C2 (scope + controls + spectrum + editor)   │
-└───────┬───────────────────────────────────┬─────────────────┘
-        │ IPC (JSON/socket)                 │ DAP
-        ▼                                   ▼
-┌──────────────── Emulator runtime (native process) ──────────┐
-│  C4: audio engine (real-time / simulated clock), scope tap   │
-│  C5: host libDaisy shim (ADC, Switch/GPIO, LED, audio cb)    │
-│  user effect + DaisySP (compiled unchanged)                   │
-└──────────────────────────────────────────────────────────────┘
-             ▲ lldb-dap (C6)    C7: HW build driver
-                                C8: DFU flash driver
+┌───────────────────────────────── VS Code ──────────────────────────────────┐
+│  Extension host (TypeScript / Node) — C1                                    │
+│  Webview panel — C2 (scope + spectrum)         [Controls Editor extracted]  │
+│  Secondary sidebar — C11 (Controls Editor WebviewView + Wiring Editor WebviewView) │
+└───────┬────────────────────────────────────────┬────────────────────────────┘
+        │ IPC (JSON/socket)                      │ DAP (lldb-dap, C6)
+        ▼                                        ▼
+┌──────────────────── Emulator runtime (native process) ──────────────────────┐
+│  C4: audio engine (real-time / simulated clock), scope tap                   │
+│  C5: host libDaisy shim (ADC, Switch/GPIO, LED, audio cb)                    │
+│  user effect + DaisySP (compiled unchanged)                                   │
+└──────────────────────────────────────────────────────────────────────────────┘
+             C7: HW build driver    C8: DFU flash driver
 ```
+
+**v4 structural change:** C2 is split. Controls Editor is extracted from C2 into C11 (secondary
+sidebar `WebviewView`). C2 retains Scope and Spectrum only. C10 (Wiring Editor) is converted
+from a `WebviewPanel` to a `WebviewView` in C11. See §8 (C11 design) below.
 
 All C1–C8 components, IPC messages, and architectural decisions from v2 carry forward
-unchanged. See [`docs/v2/04_architecture.md`](v2/04_architecture.md) for the full v2
-component table, IPC message table, GPIO shim design, hardware build architecture, and
-open v2 items (all resolved).
+unchanged except as noted above. See [`docs/v2/04_architecture.md`](v2/04_architecture.md)
+for the full v2 component table, IPC message table, GPIO shim design, hardware build
+architecture, and open v2 items (all resolved).
 
 ---
 
@@ -47,7 +51,13 @@ open v2 items (all resolved).
 | # | Component | Tech | Purpose |
 |---|-----------|------|---------|
 | **C9** | Controls convention parser | TS module (C1) | Parse C++ source for `// ds-ide:controls:begin/end` block; extract `{id, kind, pin}` per annotated line. Pure function — no I/O. |
-| **C10** | Wiring Editor panel | TS + HTML webview | Separate VS Code panel. Shows Daisy Seed pinout SVG. Handles click-to-assign. Triggers C++ file writes via C1. No emulator IPC. |
+| **C10** | Wiring Editor panel | TS + HTML webview | ~~Separate VS Code `WebviewPanel`~~ — **v4: converted to `WebviewView` in C11** (D21). Shows Daisy Seed pinout SVG. Handles click-to-assign. Triggers C++ file writes via C1. No emulator IPC. |
+
+## 2b. v4 new components
+
+| # | Component | Tech | Purpose |
+|---|-----------|------|---------|
+| **C11** | DS-IDE secondary sidebar container | VS Code `viewsContainer` + 2× `WebviewView` | Hosts Controls Editor (`WebviewView`) and Wiring Editor (`WebviewView`) as persistent views in the VS Code secondary sidebar (right panel). Registered via `contributes.viewsContainers` and `contributes.views` in `package.json`. C1 holds the `WebviewViewProvider` implementations for both views. (D21) |
 
 ---
 
@@ -213,7 +223,100 @@ No new IPC messages to the emulator runtime. New messages are internal (C1 ↔ C
 
 ---
 
-## 7. Open architectural items
+## 7. VS Code Run command integration (C1 + DebugConfigurationProvider)
+
+ds-ide registers a `DebugConfigurationProvider` for a `ds-ide` debug type in C1. (D20, A19)
+
+```
+// package.json contribution point
+"contributes.debuggers": [{ "type": "ds-ide", "label": "DS-IDE" }]
+"contributes.debugConfigurationProvider": registered programmatically in C1 activate()
+
+Default launch.json snippet (ds-ide provides initialConfigurations):
+{
+  "type": "ds-ide",
+  "request": "launch",
+  "name": "DS-IDE: Build, Deploy & Debug"
+}
+
+F5 (Start Debugging) flow:
+  VS Code → C1 DebugConfigurationProvider.resolveDebugConfiguration()
+    → stop running emulator (if active) via existing stop IPC
+    → execute "Build for Emulator" (FR-CM-1 build step)
+    → if build fails: reject with error in Output panel; abort
+    → execute "Deploy to Emulator" (FR-CM-1 deploy step)
+    → start lldb-dap session (C6): attach to emulator process
+    → return resolved config to VS Code; Debug toolbar appears
+
+Ctrl+F5 (Start Without Debugging) flow:
+  VS Code passes noDebug=true to resolveDebugConfiguration()
+    → same stop → build → deploy sequence
+    → skip lldb attach; emulator runs freely
+    → return; no Debug toolbar
+```
+
+No new IPC messages to the emulator runtime. The existing build, deploy, and stop commands
+are reused as internal functions called by the provider.
+
+---
+
+## 8. Secondary sidebar panels — C11 design (D21, A20)
+
+C11 is a VS Code `viewsContainer` registered in `contributes.viewsContainers.activitybar`
+(or secondary panel location), hosting two `WebviewView` registrations:
+
+```
+// package.json contribution points
+"contributes.viewsContainers": {
+  "activitybar": [{ "id": "ds-ide-sidebar", "title": "DS-IDE", "icon": "..." }]
+}
+"contributes.views": {
+  "ds-ide-sidebar": [
+    { "type": "webview", "id": "ds-ide.controlsEditor", "name": "Controls" },
+    { "type": "webview", "id": "ds-ide.wiringEditor",   "name": "Wiring" }
+  ]
+}
+```
+
+**WebviewViewProvider pattern (same for both views):**
+
+```
+C1 activate():
+  vscode.window.registerWebviewViewProvider("ds-ide.controlsEditor", controlsViewProvider)
+  vscode.window.registerWebviewViewProvider("ds-ide.wiringEditor",   wiringViewProvider)
+
+controlsViewProvider.resolveWebviewView(view):
+  view.webview.options = { enableScripts: true }
+  view.webview.html = getControlsEditorHtml()
+  → wire onDidReceiveMessage (same handlers as current C2 controls section)
+  view.onDidChangeVisibility(() => {
+    if (view.visible) C1 re-sends controlsConfig to view.webview
+  })
+
+wiringViewProvider.resolveWebviewView(view):
+  view.webview.html = getWiringEditorHtml()
+  → wire onDidReceiveMessage (same handlers as current C10)
+  view.onDidChangeVisibility(() => {
+    if (view.visible) C1 re-sends wiredPins to view.webview
+  })
+```
+
+**State re-hydration on visibility restore** (mitigates R24):
+Both views re-send their current config when `onDidChangeVisibility` fires with `visible=true`.
+`retainContextWhenHidden: true` is set to avoid blank state flicker on sidebar show/hide.
+
+**C2 changes:**
+Controls Editor HTML/JS is extracted from C2's webview bundle. C2 retains only the Scope and
+Spectrum sections. The `controlsConfig` message is now routed to `controlsViewProvider.webview`
+instead of the C2 panel webview. The `emulatorState` message is broadcast to both C2 and C11
+controls view so grayed-out state is maintained.
+
+**No new IPC messages to emulator runtime.** Internal C1↔C11 messages reuse the existing
+`controlsConfig`, `wiredPins`, `wirePin`, `unwirePin`, `emulatorState` contracts.
+
+---
+
+## 9. Open architectural items
 
 | Item | Current stance |
 |------|----------------|
@@ -222,3 +325,5 @@ No new IPC messages to the emulator runtime. New messages are internal (C1 ↔ C
 | Controls Editor mode persistence | **Resolved/superseded by D19:** no mode toggle exists. Handle drag is always active; body interaction is gated on `emulatorState`. |
 | Pot interaction model (FR-CE-7) | **Resolved:** vertical drag (click-drag up = increase, down = decrease). Decided 2026-06-20. |
 | xruns counter: same or different data in header vs. Emulator section | **Resolved (2026-06-20):** same metric. Keep header `#status-text` only; remove `#xrun-group` / `#xrun-sine-group` from Emulator section body. AC-31 written. |
+| VS Code Run commands (F5/Ctrl+F5) | **Resolved (2026-06-20):** `DebugConfigurationProvider` for `ds-ide` type (§7). D20, FR-CM-3/4. |
+| Secondary sidebar panels | **Resolved (2026-06-20):** C11 `viewsContainer` with two `WebviewView`s (§8). D21, FR-CE-8, FR-WE-10. |

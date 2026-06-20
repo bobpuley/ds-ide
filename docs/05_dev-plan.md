@@ -35,19 +35,21 @@ Full registry in [`docs/v2/05_dev-plan.md`](v2/05_dev-plan.md).
 
 ### v3 (0.3.0–0.3.3) — archived in `docs/v3/`
 
-| Milestone                           | File                                              | Version  | Status          |
-|-------------------------------------|---------------------------------------------------|----------|-----------------|
-| M16 — v3 polish & bug fixes             | [docs/milestones/v3/M16.md](milestones/v3/M16.md)   | 0.3.0    | **released**    |
-| M16b — Speaker output in simulated mode | [docs/milestones/v3/M16b.md](milestones/v3/M16b.md) | 0.3.1    | **released**    |
-| M17 — Controls Editor v3 (two-mode)     | [docs/milestones/v3/M17.md](milestones/v3/M17.md)   | 0.3.2    | **released**    |
-| M18 — Wiring Editor                     | [docs/milestones/v3/M18.md](milestones/v3/M18.md)   | 0.3.3    | **released**    |
+| Milestone                               | File                                                | Version   | Status          |
+|-----------------------------------------|-----------------------------------------------------|-----------|-----------------|
+| M16 — v3 polish & bug fixes             | [docs/milestones/v3/M16.md](milestones/v3/M16.md)   | 0.3.0     | **released**    |
+| M16b — Speaker output in simulated mode | [docs/milestones/v3/M16b.md](milestones/v3/M16b.md) | 0.3.1     | **released**    |
+| M17 — Controls Editor v3 (two-mode)     | [docs/milestones/v3/M17.md](milestones/v3/M17.md)   | 0.3.2     | **released**    |
+| M18 — Wiring Editor                     | [docs/milestones/v3/M18.md](milestones/v3/M18.md)   | 0.3.3     | **released**    |
 
 ### v4 (0.4.x) — active planning
 
-| Milestone                                    | File                                              | Version  | Status          |
-|----------------------------------------------|---------------------------------------------------|----------|-----------------|
-| M19 — UX polish & command improvements       | [docs/milestones/v4/M19.md](milestones/v4/M19.md)   | 0.4.0    | **released**    |
-| M20 — Controls Editor single-mode handle UX  | [docs/milestones/v4/M20.md](milestones/v4/M20.md)   | 0.4.1    | **released**    |
+| Milestone                                    | File                                               | Version  | Status          |
+|----------------------------------------------|----------------------------------------------------|----------|-----------------|
+| M19 — UX polish & command improvements       | [docs/milestones/v4/M19.md](milestones/v4/M19.md)  | 0.4.0    | **released**    |
+| M20 — Controls Editor single-mode handle UX  | [docs/milestones/v4/M20.md](milestones/v4/M20.md)  | 0.4.1    | **released**    |
+| M21 — VS Code Run command integration        | [docs/milestones/v4/M21.md](milestones/v4/M21.md)  | 0.4.2    | **planned**     |
+| M22 — Secondary sidebar panels               | [docs/milestones/v4/M22.md](milestones/v4/M22.md)  | 0.4.3    | **planned**     |
 
 ---
 
@@ -56,6 +58,9 @@ Full registry in [`docs/v2/05_dev-plan.md`](v2/05_dev-plan.md).
 Same walking-skeleton-first principle as v1/v2/v3:
 - M19 is purely additive UX fixes and new commands — zero architecture risk.
 - M20 replaces the D18 two-mode panel with D19 (single-mode handle UX); C2-only change, no new components.
+- M21 adds `DebugConfigurationProvider` (C1-only, additive) — no IPC or emulator changes.
+- M22 extracts Controls Editor from C2 into C11 and converts Wiring Editor to `WebviewView` —
+  structural C1/C2 change; must preserve Scope and Spectrum.
 
 ---
 
@@ -65,31 +70,41 @@ Same walking-skeleton-first principle as v1/v2/v3:
 v2 (0.2.9) ──► M16 polish ──► M17 Controls v3 ──► M18 Wiring Editor ──► M19 UX polish ──► M20 CE handle UX
                (CSS/JS)        (C9 + two-mode)      (C10, C++ writer)     (commands,          (D19, knob
                                                                             scope, WE SVG)       visuals)
+                                                                                                     │
+                                                                                          ┌──────────┘
+                                                                                          ▼
+                                                                                    M21 Run cmds ──► M22 Sidebar panels
+                                                                                    (DebugProvider)   (C11, C2 split)
 ```
 
-**v4 critical path:** M19 has no blockers. M20 is blocked on the pot interaction model
-decision (FR-CE-7) before T20-2 can be implemented.
+**v4 critical path:** M21 has no blockers (additive, C1 only). M22 depends on M21 being
+complete (to avoid rebasing C1 structural changes). M22 T22-1 (Controls Editor extraction)
+must land before T22-2 (Wiring Editor conversion) to reduce merge risk.
 
 ---
 
 ## 3. AC coverage map
 
-| AC | Closed in | Description |
-|----|-----------|-------------|
-| ~~AC-18~~ | ~~M17~~ | *Retired — superseded by AC-24 (D18 → D19)* |
-| AC-22 | M17 | Controls Editor fallback: no convention block → diagnostic banner + yaml-only mode |
-| AC-19 | M18 | Wiring Editor: click pin → add device → C++ declaration written |
-| AC-23 | M18 | Wiring Editor: click assigned pin → Remove → pin unassigned; annotation deleted |
-| AC-20 | M16 | Spectrum labels: no overlap at default size |
-| AC-21 | M16 | Scope panel border visible, no content clipping |
-| AC-24 | M20 | Controls Editor: handle drag rearranges (always); body interaction gated on emulator state |
-| AC-25 | M20 | Controls Editor: pot renders as rotary knob, L&F matches Wiring Editor |
-| AC-26 | M19 | Build & Deploy to Emulator: sequential command; blocks deploy on build failure |
-| AC-27 | M19 | Scope header: Start/Stop Audio toolbar buttons reflect emulator state |
-| AC-28 | M19 | Recording buttons: "()" and "[]" labels |
-| AC-29 | M19 | Wiring Editor: ID labels legible, no overlap with control icon or pin circle |
-| AC-30 | M19 | Wiring Editor: micro USB port visible on Daisy Seed SVG |
-| AC-31 | M19 (T19-6) | xruns counter: visible only in header status line; removed from Emulator section body *(FR-SC-2)* |
+| AC        | Closed in   | Description                                                                                       |
+|-----------|-------------|---------------------------------------------------------------------------------------------------|
+| ~~AC-18~~ | ~~M17~~     | *Retired — superseded by AC-24 (D18 → D19)*                                                       |
+| AC-22     | M17         | Controls Editor fallback: no convention block → diagnostic banner + yaml-only mode                |
+| AC-19     | M18         | Wiring Editor: click pin → add device → C++ declaration written                                   |
+| AC-23     | M18         | Wiring Editor: click assigned pin → Remove → pin unassigned; annotation deleted                   |
+| AC-20     | M16         | Spectrum labels: no overlap at default size                                                       |
+| AC-21     | M16         | Scope panel border visible, no content clipping                                                   |
+| AC-24     | M20         | Controls Editor: handle drag rearranges (always); body interaction gated on emulator state        |
+| AC-25     | M20         | Controls Editor: pot renders as rotary knob, L&F matches Wiring Editor                            |
+| AC-26     | M19         | Build & Deploy to Emulator: sequential command; blocks deploy on build failure                    |
+| AC-27     | M19         | Scope header: Start/Stop Audio toolbar buttons reflect emulator state                             |
+| AC-28     | M19         | Recording buttons: "()" and "[]" labels                                                           |
+| AC-29     | M19         | Wiring Editor: ID labels legible, no overlap with control icon or pin circle                      |
+| AC-30     | M19         | Wiring Editor: micro USB port visible on Daisy Seed SVG                                           |
+| AC-31     | M19 (T19-6) | xruns counter: visible only in header status line; removed from Emulator section body *(FR-SC-2)* |
+| AC-32     | M21         | F5 Start Debugging: stop → build → deploy → attach lldb; build failure blocks deploy *(FR-CM-3)* |
+| AC-33     | M21         | Ctrl+F5 Start Without Debugging: stop → build → deploy; no lldb attached *(FR-CM-4)* |
+| AC-34     | M22         | Controls Editor: persistent view in right secondary sidebar; state restored on sidebar show *(FR-CE-8)* |
+| AC-35     | M22         | Wiring Editor: persistent view in right secondary sidebar; `Open Wiring Editor` reveals/focuses it *(FR-WE-10)* |
 
 ---
 
@@ -118,4 +133,6 @@ Each milestone closes when:
 
 - **R21 (AC-18 retirement):** AC-18 must be explicitly retired and AC-24 written before M20 work begins. Leaving AC-18 "green" against dead code would mask a broken redesign.
 - **R22 (knob visual complexity):** Prototype with CSS first; if insufficient, evaluate SVG-per-knob. Canvas renderer is last resort. (02_assumptions-and-risks §5)
+- **R23 (C2 split regression):** Extracting Controls Editor from C2 may regress Scope/Spectrum rendering. M22 T22-1 must include a full regression pass of AC-20, AC-21, AC-27, AC-28, AC-31.
+- **R24 (`WebviewView` lifecycle):** Context may be lost when sidebar is hidden. Mitigated by `retainContextWhenHidden: true` + re-hydration on `onDidChangeVisibility`. Test with sidebar toggling during a running emulator session.
 - **M20 pot interaction model blocker:** ✅ resolved — vertical drag (2026-06-20). T20-2 is now unblocked.

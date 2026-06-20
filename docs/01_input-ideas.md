@@ -83,27 +83,49 @@ Replace the v3 two-mode Design/Run panel (D18) with a unified single-mode panel 
 - **Evaluate adding a user-visible label per control** — separate from `id`/`varname`; purely
   visual in the SVG diagram. Decision deferred: needs design exploration.
 
+### 4f. VS Code Run command integration
+
+Hook `F5` (Start Debugging) and `Ctrl+F5` (Start Without Debugging) into ds-ide via a
+`DebugConfigurationProvider` for a custom `ds-ide` debug type. (D20, confirmed 2026-06-20)
+- **F5**: stop any running emulator → build → deploy → attach lldb (full debug cycle in one key).
+- **Ctrl+F5**: stop → build → deploy, no debugger attached (equivalent to FR-CM-1 but triggered
+  via VS Code's native run mechanism).
+- A `launch.json` template/snippet shall be provided so developers opt in without manual config.
+*(Scheduled: M21, T21-1)*
+
+### 4g. Secondary sidebar panels
+
+Convert Controls Editor and Wiring Editor from floating `WebviewPanel`s to persistent
+`WebviewView`s registered in a ds-ide container in the VS Code secondary sidebar (right panel).
+(D21, confirmed 2026-06-20)
+- **Controls Editor** (C11): extracted from C2; always accessible in the right sidebar.
+- **Wiring Editor** (C11): C10 converted from `WebviewPanel` to `WebviewView` in the same container.
+- C2 retains Scope and Spectrum.
+*(Scheduled: M22, T22-1, T22-2)*
+
 ---
 
 ## 5. v4 open questions (need decisions before design)
 
-- **Controls / Wiring Editor as panes of the effect source editor** — embed as side-by-side panes
-  next to the `.cpp` source in the VS Code editor group? *Trade-off: convenience vs. VS Code API
-  constraints for custom editor panels.*
+- ~~**Controls / Wiring Editor as panes of the effect source editor**~~ — **Decided (2026-06-20):**
+  both panels move to the VS Code **secondary sidebar** as persistent `WebviewView`s in a ds-ide
+  container (D21, FR-CE-8, FR-WE-10). *(Scheduled: M22)*
 
-- **VS Code "Run → Start Debugging" / "Run → Start Without Debugging" in ds-ide context** —
-  currently unclear whether ds-ide hooks into these built-ins. Needs investigation.
+- ~~**VS Code "Run → Start Debugging" / "Run → Start Without Debugging" in ds-ide context**~~ —
+  **Decided (2026-06-20):** ds-ide registers a `DebugConfigurationProvider` for a `ds-ide` debug
+  type. F5 = stop+build+deploy+attach; Ctrl+F5 = stop+build+deploy, no debug. (D20, FR-CM-3,
+  FR-CM-4). *(Scheduled: M21)*
 
 - **Implementation template / "Create new effect" wizard** — starter template with `// ds-ide:controls`
-  convention comments, or a wizard command that scaffolds a new effect project?
+  convention comments, or a wizard command that scaffolds a new effect project? *(Open)*
 
 - **Extend controls convention to initialization block** — add `// ds-ide:controls:init:begin`
   and `// ds-ide:controls:init:end` markers to also generate/manage `.InitSingle()` / `.Init()`
-  calls. Natural follow-on to D16 (declarations only in v3).
+  calls. Natural follow-on to D16 (declarations only in v3). *(Open)*
 
 - **Plugin extension points: declarative control definition** — a mechanism by which third parties
   or the user can define new control types that the Controls and Wiring Editors understand. Large,
-  exploratory — not yet scoped.
+  exploratory — not yet scoped. *(Deferred: vX)*
 
 ---
 
@@ -169,28 +191,28 @@ Ideas and issues identified after shipping v3 (M16–M18). These feed v4 plannin
 
 ### 6c. Open questions (need decisions before design)
 
-- **Controls / Wiring Editor as panes of the effect source editor** — is it useful/feasible to
-  embed the Controls Editor and/or the Wiring Editor as side-by-side panes next to the `.cpp`
-  source file in the VS Code editor group? *Trade-off: convenience vs. VS Code API constraints
-  for custom editor panels.*
+- ~~**Controls / Wiring Editor as panes of the effect source editor**~~ — **Decided (2026-06-20):**
+  both editors become persistent `WebviewView`s in the VS Code secondary sidebar (right panel).
+  See §4g, D21, FR-CE-8, FR-WE-10. *(Scheduled: M22)*
 
-- **VS Code "Run → Start Debugging" and "Run → Start Without Debugging" — what do they mean in
-  ds-ide context?** These are VS Code built-ins. Does ds-ide hook into them, and if so, how?
-  Currently unclear. Needs investigation.
+- ~~**VS Code "Run → Start Debugging" and "Run → Start Without Debugging" — what do they mean in
+  ds-ide context?**~~ — **Decided (2026-06-20):** `DebugConfigurationProvider` for a `ds-ide`
+  debug type. F5 = stop+build+deploy+attach lldb; Ctrl+F5 = stop+build+deploy. See §4f, D20,
+  FR-CM-3, FR-CM-4. *(Scheduled: M21)*
 
 - **Implementation template / "Create new effect" wizard** — should ds-ide ship a starter
   template with detailed comments explaining the `// ds-ide:controls` convention? Or a wizard
   command that scaffolds a new effect project? *Trade-off: template is simpler; wizard is more
-  guided.*
+  guided.* *(Open)*
 
 - **Extend controls convention to initialization block** — add `// ds-ide:controls:init:begin`
   and `// ds-ide:controls:init:end` markers so the IDE can also generate/manage the
   initialization calls (`knob1_cfg.InitSingle(...)`, etc.) and not just the declarations.
-  *This is a natural follow-on to D16 (declarations only in v3).*
+  *This is a natural follow-on to D16 (declarations only in v3).* *(Open)*
 
 - **Plugin extension points: declarative control definition** — a broader mechanism by which
   third parties (or the user) can define new control types that the Controls and Wiring Editors
-  understand, including code template integration. *Large, exploratory — not yet scoped.*
+  understand, including code template integration. *Large, exploratory — not yet scoped.* *(Deferred: vX)*
 
 ---
 

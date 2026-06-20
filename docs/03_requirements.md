@@ -54,6 +54,8 @@ D18 two-mode design), polish the Wiring Editor SVG, and streamline the command s
 | Ref | Decision |
 |-----|----------|
 | **D19** | **Controls Editor single-mode handle UX** — replaces D18. The Controls Editor is a single always-visible panel; no explicit mode toggle. Each control has a drag handle. Dragging the handle rearranges the layout and is available at all times (emulator running or stopped). Interacting with the control body (pot slider, button click, LED state) sends live data to the emulator and is available only while the emulator is running; the control body is grayed-out when the emulator is stopped. (A18) |
+| **D20** | **VS Code Run command integration via `DebugConfigurationProvider`** — ds-ide registers a `DebugConfigurationProvider` for a custom `ds-ide` debug type. F5 (Start Debugging): stop running emulator if active → build for emulator → deploy → attach lldb-dap. Ctrl+F5 (Start Without Debugging): same sequence without attaching lldb. A `launch.json` snippet is provided so developers can opt in. (A19) |
+| **D21** | **Controls Editor and Wiring Editor as secondary sidebar `WebviewView`s** — both panels are registered as persistent `WebviewView`s in a ds-ide `viewsContainer` targeting the VS Code secondary sidebar (right panel). C2 is split: Scope and Spectrum remain in C2 (`WebviewPanel`); Controls Editor becomes C11 (`WebviewView`). C10 (Wiring Editor) is converted from `WebviewPanel` to `WebviewView` in the same C11 container. (A20) |
 
 ---
 
@@ -93,6 +95,11 @@ D18 two-mode design), polish the Wiring Editor SVG, and streamline the command s
   resemble a hardware rotary knob. The overall look and feel shall be visually consistent with
   the Wiring Editor panel. The interaction model is **vertical drag**: click and drag up to
   increase the value, drag down to decrease it. (Decided 2026-06-20.)
+- **FR-CE-8** *(v4, new)* — The Controls Editor shall be a persistent `WebviewView` registered
+  in the ds-ide secondary sidebar container (C11). It shall be accessible at all times from the
+  right panel without running a command. On visibility restore (sidebar shown after being hidden),
+  C1 shall re-send the `controlsConfig` message so the view reflects current state. (D21, A20)
+  **Verify:** AC-34.
 
 ### 3.2 Wiring Editor (`FR-WE-1…FR-WE-9`)
 
@@ -134,6 +141,12 @@ D18 two-mode design), polish the Wiring Editor SVG, and streamline the command s
   of board orientation: a micro USB port shape drawn at the correct end of the board. No other
   component illustrations required in v4.
   **Verify:** AC-30.
+- **FR-WE-10** *(v4, new)* — The Wiring Editor shall be a persistent `WebviewView` in the
+  ds-ide secondary sidebar container (C11), replacing the current `WebviewPanel`. The command
+  `ds-ide: Open Wiring Editor` shall reveal and focus the Wiring Editor view (not open a new
+  panel). On visibility restore, C1 shall re-send `wiredPins` so the SVG diagram reflects the
+  current state. (D21, A20)
+  **Verify:** AC-35.
 
 ### 3.3 Bug fixes (`FR-VZ-4`, `FR-UI-1`) — shipped in v3
 
@@ -147,7 +160,7 @@ D18 two-mode design), polish the Wiring Editor SVG, and streamline the command s
 > **IDs start at FR-CM, FR-SC, FR-WE-8+.** Controls Editor visual/UX already covered by
 > FR-CE-1, FR-CE-4, FR-CE-5 (revised for D19 above) and FR-CE-7.
 
-#### Commands (`FR-CM-1…FR-CM-2`)
+#### Commands (`FR-CM-1…FR-CM-4`)
 
 - **FR-CM-1** — ds-ide shall provide a command `ds-ide: Build & Deploy to Emulator` that
   executes build-for-emulator and deploy-to-emulator sequentially as a single action. The
@@ -158,6 +171,18 @@ D18 two-mode design), polish the Wiring Editor SVG, and streamline the command s
   toolbar buttons, in addition to (not replacing) the existing palette commands. The buttons
   shall reflect the current emulator state (Start disabled when running; Stop disabled when stopped).
   **Verify:** AC-27.
+- **FR-CM-3** *(v4, new)* — ds-ide shall register a `DebugConfigurationProvider` for a `ds-ide`
+  debug type. When the developer presses **F5** (Start Debugging) with a `ds-ide` launch
+  configuration active: (a) stop any running emulator; (b) build for emulator; (c) deploy
+  (blocked on build failure, error shown in Output panel); (d) attach lldb-dap to the emulator
+  process. ds-ide shall provide a default `launch.json` snippet so developers can opt in without
+  manual config. (D20, A19)
+  **Verify:** AC-32.
+- **FR-CM-4** *(v4, new)* — When the developer presses **Ctrl+F5** (Start Without Debugging)
+  with a `ds-ide` launch configuration active: (a) stop any running emulator; (b) build for
+  emulator; (c) deploy (blocked on build failure, error shown in Output panel). No lldb attached;
+  the emulator runs freely. (D20, A19)
+  **Verify:** AC-33.
 
 #### Scope UX (`FR-SC-1…FR-SC-2`)
 
@@ -214,11 +239,13 @@ No new NFRs for v4. All v1/v2/v3 NFRs (NFR-1…NFR-12) remain in force. See
 
 ### Deferred from v4 open questions
 
-- Controls / Wiring Editor embedded as panes of the source editor.
-- VS Code Run → Start Debugging / Start Without Debugging integration.
-- Implementation template / "Create new effect" wizard.
-- Controls convention init block (`// ds-ide:controls:init:begin/end`).
-- Plugin extension points / declarative control definition.
+- ~~Controls / Wiring Editor embedded as panes of the source editor~~ — **decided**: secondary
+  sidebar `WebviewView`s (D21, FR-CE-8, FR-WE-10, M22).
+- ~~VS Code Run → Start Debugging / Start Without Debugging integration~~ — **decided**:
+  `DebugConfigurationProvider` for `ds-ide` type (D20, FR-CM-3, FR-CM-4, M21).
+- Implementation template / "Create new effect" wizard. *(Open)*
+- Controls convention init block (`// ds-ide:controls:init:begin/end`). *(Open)*
+- Plugin extension points / declarative control definition. *(Deferred: vX)*
 
 ---
 
@@ -226,6 +253,8 @@ No new NFRs for v4. All v1/v2/v3 NFRs (NFR-1…NFR-12) remain in force. See
 
 - **FR-CE-7 pot interaction model** — ✅ resolved: vertical drag (2026-06-20).
 - **FR-SC-2 xruns investigation** — ✅ resolved: same metric in both locations (confirmed 2026-06-20). Keep header only; remove Emulator-section xrun elements. AC-31 written.
+- **VS Code Run integration (D20)** — ✅ resolved: `DebugConfigurationProvider` for `ds-ide` type. FR-CM-3/4, AC-32/33 written. *(2026-06-20)*
+- **Secondary sidebar panels (D21)** — ✅ resolved: Controls Editor (C11) and Wiring Editor (C10→C11) as `WebviewView`s. FR-CE-8, FR-WE-10, AC-34/35 written. *(2026-06-20)*
 
 ---
 
@@ -276,3 +305,18 @@ No new NFRs for v4. All v1/v2/v3 NFRs (NFR-1…NFR-12) remain in force. See
 - **AC-31** — xruns single location: with the emulator running, verify that the xruns count
   appears in the Scope header status line and does NOT appear as a separate display element in
   the Emulator section body. *(FR-SC-2)*
+- **AC-32** — F5 Start Debugging: with a `ds-ide` launch configuration in `launch.json` and an
+  effect source open, press F5. Verify: (a) if the emulator was already running, it is stopped
+  first; (b) the build runs; (c) the deploy runs; (d) lldb-dap attaches and the Debug toolbar
+  appears. Repeat with a syntax error in the source: verify the deploy does not run and an error
+  appears in the Output panel. *(FR-CM-3)*
+- **AC-33** — Ctrl+F5 Start Without Debugging: press Ctrl+F5 with the `ds-ide` config active.
+  Verify: (a) if the emulator was running, it is stopped; (b) build runs; (c) deploy runs;
+  (d) emulator is running but no Debug toolbar appears (lldb not attached). *(FR-CM-4)*
+- **AC-34** — Controls Editor in secondary sidebar: open a ds-ide project; verify the Controls
+  Editor appears as a persistent view in the right secondary sidebar without running a command.
+  Hide the secondary sidebar and re-show it; verify Controls Editor still displays correct state.
+  *(FR-CE-8)*
+- **AC-35** — Wiring Editor in secondary sidebar: verify the Wiring Editor appears as a
+  persistent view in the right secondary sidebar. Run `ds-ide: Open Wiring Editor`; verify the
+  command reveals/focuses the view rather than opening a new floating panel. *(FR-WE-10)*
