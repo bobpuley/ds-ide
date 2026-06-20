@@ -74,8 +74,8 @@ describe('extension', () => {
   it('activate pushes disposables onto context.subscriptions', () => {
     const ctx = makeContext();
     activate(ctx);
-    // diagnostics + statusBar + descriptor factory + tracker factory + 10 commands + 1 manager/scope dispose
-    expect((ctx.subscriptions as unknown[]).length).toBe(15);
+    // diagnostics + statusBar + daisy-debug descriptor factory + tracker factory + ds-ide descriptor factory + run config provider + 10 commands + 1 manager/scope dispose
+    expect((ctx.subscriptions as unknown[]).length).toBe(17);
   });
 
   it('deactivate does not throw', () => {
@@ -128,6 +128,23 @@ describe('extension', () => {
       'daisy-debug',
       expect.anything(),
     );
+  });
+
+  it('registers a debug configuration provider for ds-ide (FR-CM-3/4)', () => {
+    const ctx = makeContext();
+    activate(ctx);
+    expect(vscode.debug.registerDebugConfigurationProvider).toHaveBeenCalledWith(
+      'ds-ide',
+      expect.anything(),
+    );
+  });
+
+  it('registers a debug adapter descriptor factory for ds-ide (pre-check requirement)', () => {
+    const ctx = makeContext();
+    activate(ctx);
+    const calls = (vscode.debug.registerDebugAdapterDescriptorFactory as ReturnType<typeof vi.fn>).mock.calls;
+    const types = calls.map((c: unknown[]) => c[0] as string);
+    expect(types).toContain('ds-ide');
   });
 
   it('registers a debug adapter tracker factory for daisy-debug (mute-on-breakpoint)', () => {

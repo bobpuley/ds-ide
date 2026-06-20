@@ -48,7 +48,7 @@ Full registry in [`docs/v2/05_dev-plan.md`](v2/05_dev-plan.md).
 |----------------------------------------------|----------------------------------------------------|----------|-----------------|
 | M19 — UX polish & command improvements       | [docs/milestones/v4/M19.md](milestones/v4/M19.md)  | 0.4.0    | **released**    |
 | M20 — Controls Editor single-mode handle UX  | [docs/milestones/v4/M20.md](milestones/v4/M20.md)  | 0.4.1    | **released**    |
-| M21 — VS Code Run command integration        | [docs/milestones/v4/M21.md](milestones/v4/M21.md)  | 0.4.2    | **planned**     |
+| M21 — VS Code Run command integration        | [docs/milestones/v4/M21.md](milestones/v4/M21.md)  | 0.4.2    | **released**    |
 | M22 — Secondary sidebar panels               | [docs/milestones/v4/M22.md](milestones/v4/M22.md)  | 0.4.3    | **planned**     |
 
 ### v5 (0.5.x) — planning

@@ -11,7 +11,10 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onDebugResolve:ds-ide",
+    "onDebugAdapterProtocolTracker:ds-ide"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
@@ -102,6 +105,23 @@
                 "description": "PID of the effect_emu process to attach to"
               }
             }
+          }
+        }
+      },
+      {
+        "type": "ds-ide",
+        "label": "DS-IDE",
+        "languages": ["c", "cpp"],
+        "initialConfigurations": [
+          {
+            "type": "ds-ide",
+            "request": "launch",
+            "name": "DS-IDE: Build, Deploy & Debug"
+          }
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "properties": {}
           }
         }
       }

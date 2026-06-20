@@ -76,6 +76,7 @@ const DiagnosticSeverity = { Error: 0, Warning: 1, Information: 2, Hint: 3 } as 
 const debug = {
   registerDebugAdapterDescriptorFactory: vi.fn(() => ({ dispose: vi.fn() })),
   registerDebugAdapterTrackerFactory: vi.fn(() => ({ dispose: vi.fn() })),
+  registerDebugConfigurationProvider: vi.fn(() => ({ dispose: vi.fn() })),
   onDidStartDebugSession: vi.fn(() => ({ dispose: vi.fn() })),
   onDidTerminateDebugSession: vi.fn(() => ({ dispose: vi.fn() })),
   startDebugging: vi.fn(() => Promise.resolve(true)),
@@ -87,6 +88,24 @@ class DebugAdapterExecutable {
     public readonly args: string[] = [],
     public readonly options?: Record<string, unknown>,
   ) {}
+}
+
+class DebugAdapterInlineImplementation {
+  constructor(public readonly implementation: unknown) {}
+}
+
+class EventEmitter<T = unknown> {
+  private _handlers: ((e: T) => unknown)[] = [];
+  event = (listener: (e: T) => unknown): { dispose: () => void } => {
+    this._handlers.push(listener);
+    return { dispose: () => { this._handlers = this._handlers.filter(h => h !== listener); } };
+  };
+  fire(event: T): void {
+    this._handlers.forEach(h => h(event));
+  }
+  dispose(): void {
+    this._handlers = [];
+  }
 }
 
 class Position {
@@ -121,5 +140,5 @@ export {
   commands, window, workspace, Uri, ViewColumn,
   DiagnosticSeverity, Position, Range, WorkspaceEdit, Diagnostic,
   StatusBarAlignment, languages,
-  debug, DebugAdapterExecutable,
+  debug, DebugAdapterExecutable, DebugAdapterInlineImplementation, EventEmitter,
 };
