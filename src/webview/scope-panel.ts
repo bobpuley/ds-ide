@@ -388,10 +388,7 @@ function buildHtml(
   defs: ControllerDef[], initialValues: Record<number, number>, sine: SineParams, source: AudioSource,
   buttons: ButtonDef[] = [], leds: LedDef[] = [], initialButtons: Record<number, boolean> = {},
 ): string {
-  const controllersHtml = buildControllersHtml(defs, initialValues);
   const audioSourceHtml = buildEmulatorBarHtml(source, sine);
-  const buttonsHtml = buildButtonsHtml(buttons, initialButtons);
-  const ledsHtml = buildLedsHtml(leds);
   return /* html */`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -507,7 +504,7 @@ function buildHtml(
     .ctrl-card[data-kind="pot"]    { border-top: 3px solid #4ec9b0; }
     .ctrl-card[data-kind="button"] { border-top: 3px solid #569cd6; }
     .ctrl-card[data-kind="led"]    { border-top: 3px solid #f04a4a; }
-    .card-header { padding: 4px 6px 4px 8px; display: flex; align-items: center; justify-content: space-between; cursor: move; background: rgba(255,255,255,0.03); }
+    .card-header { padding: 4px 6px 4px 8px; display: flex; align-items: center; justify-content: space-between; cursor: grab; background: rgba(255,255,255,0.03); }
     .card-kind { font-size: 9px; color: #6a6a6a; text-transform: uppercase; letter-spacing: 0.5px; }
     .card-del { background: none; border: none; color: #555; cursor: pointer; font-size: 15px; padding: 0 2px; line-height: 1; }
     .card-del:hover { color: #f04a4a; }
@@ -517,18 +514,26 @@ function buildHtml(
     .card-inp { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 2px 4px; font-family: monospace; font-size: 11px; flex: 1; min-width: 0; }
     .card-sel { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 2px 4px; font-family: monospace; font-size: 11px; flex: 1; }
     .card-val { color: #b5cea8; font-size: 11px; }
-    /* M17: mode toggle */
-    .mode-group { display: inline-flex; border: 1px solid #555; border-radius: 3px; overflow: hidden; }
-    .mode-btn { background: #3c3c3c; color: #9a9a9a; border: none; border-right: 1px solid #555; padding: 3px 10px; font-family: monospace; font-size: 12px; cursor: pointer; }
-    .mode-btn:last-child { border-right: none; }
-    .mode-btn.mode-active { background: #0e639c; color: #fff; }
-    .mode-btn:not(.mode-active):hover { background: #4a4a4a; color: #d4d4d4; }
+    /* D19: handle-based UX — no mode toggle */
+    .ctrl-handle { display: flex; align-items: center; gap: 6px; padding: 4px 6px 4px 8px; cursor: grab; background: rgba(255,255,255,0.03); border-bottom: 1px solid #3c3c3c; user-select: none; }
+    .ctrl-handle:active { cursor: grabbing; }
+    .handle-glyph { color: #555; font-size: 13px; }
+    .card-id-label { flex: 1; color: #d4d4d4; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .card-pin-label { color: #6a6a6a; font-size: 10px; }
+    .ctrl-body { padding: 6px 8px 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .body-disabled { opacity: 0.35; pointer-events: none; }
+    #ce-emu-status { font-size: 11px; }
+    .ce-emu-running { color: #4ec9b0; }
+    .ce-emu-stopped { color: #9a9a9a; }
+    .knob-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: ns-resize; user-select: none; padding: 2px 4px; }
+    .knob-svg { display: block; }
+    .knob-value { color: #b5cea8; font-size: 10px; font-family: monospace; min-width: 36px; text-align: center; }
+    .btn-ce { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; border-radius: 4px; padding: 4px 10px; font-family: monospace; font-size: 11px; cursor: pointer; }
+    .btn-ce[aria-pressed="true"] { background: #0e639c; border-color: #1177bb; color: #fff; }
     /* M17: convention diagnostic banner */
     #convention-banner { display: none; align-items: center; gap: 8px; padding: 5px 12px; background: #3a2f00; border-bottom: 1px solid #7a6500; color: #f4c430; font-size: 11px; flex-shrink: 0; }
-    /* M17: design area replaces editor-main */
+    /* D19: design area (single-mode canvas) */
     #design-area { display: flex; flex: 1; min-height: 0; overflow: hidden; }
-    /* M17: run area */
-    #run-area { display: none; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; padding: 4px 0; }
   </style>
 </head>
 <body>
@@ -578,10 +583,7 @@ function buildHtml(
   </div><!-- #scope-content -->
   <div id="editor-wrap" style="display:none">
     <div id="editor-toolbar">
-      <span class="mode-group">
-        <button class="mode-btn mode-active" id="mode-design-btn">Design</button>
-        <button class="mode-btn" id="mode-run-btn">Run</button>
-      </span>
+      <span id="ce-emu-status" class="ce-emu-stopped">&#9632; Stopped</span>
       <span class="emu-sep" style="margin:0 6px">|</span>
       <span id="save-wrap" style="display:inline-flex;align-items:center;gap:8px">
         <button id="save-btn">Save controllers.yaml</button>
@@ -599,11 +601,6 @@ function buildHtml(
       <div id="canvas-area">
         <div id="canvas-hint">Drag a control from the palette</div>
       </div>
-    </div>
-    <div id="run-area" style="display:none">
-      ${controllersHtml}
-      ${buttonsHtml}
-      ${ledsHtml}
     </div>
   </div><!-- #editor-wrap -->
   <script id="yaml-init" type="application/json">${safeJsonEmbed({ pots: defs, buttons, leds })}</script>
@@ -891,16 +888,14 @@ function buildHtml(
         hasStatus = true;
         showScope();
         const r = msg.running ? '▶ Running' : '■ Stopped';
-        statusEl.textContent = r + '  |  ' + msg.sampleRate + ' Hz  |  block ' + msg.blockSize + '  |  xruns: ' + xrunCount;
+        if (statusEl) statusEl.textContent = r + '  |  ' + msg.sampleRate + ' Hz  |  block ' + msg.blockSize + '  |  xruns: ' + xrunCount;
         if (btnAudioStart) btnAudioStart.disabled = !!msg.running;
         if (btnAudioStop)  btnAudioStop.disabled  = !msg.running;
         if (!msg.running) {
           activeEvents.clear();
           eventsEl.textContent = '';
-          if (editorMode === 'run') switchMode('design');
-        } else {
-          if (editorMode === 'design') switchMode('run');
         }
+        updateCeEmulatorState(!!msg.running);
       } else if (msg.command === 'wavSelected') {
         if (wavNameEl) wavNameEl.textContent = msg.name || 'no file';
         // T15.1: set dropdown to wav
@@ -953,11 +948,13 @@ function buildHtml(
       vscode.postMessage({ command: 'startAudio' });
       if (btnAudioStart) btnAudioStart.disabled = true;
       if (btnAudioStop)  btnAudioStop.disabled  = false;
+      updateCeEmulatorState(true);
     });
     btnAudioStop?.addEventListener('click', () => {
       vscode.postMessage({ command: 'stopAudio' });
       if (btnAudioStart) btnAudioStart.disabled = false;
       if (btnAudioStop)  btnAudioStop.disabled  = true;
+      updateCeEmulatorState(false);
     });
 
     // ── Recording bar (M14) ──────────────────────────────────────────────
@@ -993,7 +990,7 @@ function buildHtml(
       vscode.postMessage({ command: 'replayStart' });
     });
 
-    // ── M17: Controls Editor two-mode logic ──────────────────────────────
+    // ── M17: Controls Editor convention logic (D19: single-mode handle UX) ─
     const _yamlInitEl = document.getElementById('yaml-init');
     const _yamlInit = JSON.parse(_yamlInitEl ? _yamlInitEl.textContent || '{}' : '{}');
     let _yamlCfg = { pots: _yamlInit.pots || [], buttons: _yamlInit.buttons || [], leds: _yamlInit.leds || [], errors: [] };
@@ -1001,7 +998,7 @@ function buildHtml(
     let conventionControls = [];
     let conventionPlacements = [];
     let conventionMissing = true;
-    let editorMode = 'design';
+    let ceEmulatorRunning = false;
 
     function applyControlsConfig(msg) {
       conventionControls = msg.controls || [];
@@ -1014,30 +1011,18 @@ function buildHtml(
       if (!conventionMissing) {
         renderConventionCanvas();
       }
-      if (editorMode === 'run') renderRunArea();
     }
 
-    function switchMode(mode) {
-      editorMode = mode;
-      const designArea = document.getElementById('design-area');
-      const runArea = document.getElementById('run-area');
-      const modeDesignBtn = document.getElementById('mode-design-btn');
-      const modeRunBtn = document.getElementById('mode-run-btn');
-      const saveWrap = document.getElementById('save-wrap');
-      if (mode === 'run') {
-        if (designArea) designArea.style.display = 'none';
-        if (runArea) runArea.style.display = 'flex';
-        modeDesignBtn && modeDesignBtn.classList.remove('mode-active');
-        modeRunBtn && modeRunBtn.classList.add('mode-active');
-        if (saveWrap) saveWrap.style.display = 'none';
-        renderRunArea();
-      } else {
-        if (designArea) designArea.style.display = 'flex';
-        if (runArea) runArea.style.display = 'none';
-        modeDesignBtn && modeDesignBtn.classList.add('mode-active');
-        modeRunBtn && modeRunBtn.classList.remove('mode-active');
-        if (saveWrap) saveWrap.style.display = 'inline-flex';
+    function updateCeEmulatorState(running) {
+      ceEmulatorRunning = running;
+      const ceStatusEl = document.getElementById('ce-emu-status');
+      if (ceStatusEl) {
+        ceStatusEl.textContent = running ? '▶ Running' : '■ Stopped';
+        ceStatusEl.className = running ? 'ce-emu-running' : 'ce-emu-stopped';
       }
+      document.querySelectorAll('#canvas-area .ctrl-body').forEach(body => {
+        body.classList.toggle('body-disabled', !running);
+      });
     }
 
     function renderConventionCanvas() {
@@ -1058,6 +1043,66 @@ function buildHtml(
         if (!conventionIds.has(pl.id)) area.appendChild(buildNotInCodeCard(pl));
       }
       if (hint) hint.style.display = (conventionControls.length === 0 && conventionPlacements.length === 0) ? 'flex' : 'none';
+      updateCeEmulatorState(ceEmulatorRunning);
+    }
+
+    // ── T20-2: Rotary knob helpers ────────────────────────────────────────
+    function buildKnobSvg(value) {
+      const sz = 52, cx = 26, cy = 26, trackR = 20, dotR2 = 14;
+      const startDeg = -225, rangeDeg = 270;
+      const toRad = d => d * Math.PI / 180;
+      const cv = Math.max(0, Math.min(1, value));
+      const fmt = n => n.toFixed(2);
+      const svgAng = toRad(startDeg + cv * rangeDeg);
+      const x0 = cx + trackR * Math.cos(toRad(startDeg));
+      const y0 = cy + trackR * Math.sin(toRad(startDeg));
+      const x1 = cx + trackR * Math.cos(toRad(startDeg + rangeDeg));
+      const y1 = cy + trackR * Math.sin(toRad(startDeg + rangeDeg));
+      const xa = cx + trackR * Math.cos(svgAng);
+      const ya = cy + trackR * Math.sin(svgAng);
+      const dx = cx + dotR2 * Math.cos(svgAng);
+      const dy = cy + dotR2 * Math.sin(svgAng);
+      const span = cv * rangeDeg;
+      const la = span > 180 ? 1 : 0;
+      const trackPath = 'M ' + fmt(x0) + ' ' + fmt(y0) + ' A ' + trackR + ' ' + trackR + ' 0 1 1 ' + fmt(x1) + ' ' + fmt(y1);
+      const valPath = span > 0.1 ? 'M ' + fmt(x0) + ' ' + fmt(y0) + ' A ' + trackR + ' ' + trackR + ' 0 ' + la + ' 1 ' + fmt(xa) + ' ' + fmt(ya) : 'M 0 0';
+      return '<svg class="knob-svg" viewBox="0 0 ' + sz + ' ' + sz + '" width="' + sz + '" height="' + sz + '">' +
+        '<circle cx="' + cx + '" cy="' + cy + '" r="18" fill="#1e1e1e" stroke="#3c3c3c" stroke-width="1.5"/>' +
+        '<path d="' + trackPath + '" fill="none" stroke="#3c3c3c" stroke-width="3" stroke-linecap="round"/>' +
+        '<path class="knob-value-path" d="' + valPath + '" fill="none" stroke="#4ec9b0" stroke-width="3" stroke-linecap="round"' + (span <= 0.1 ? ' style="display:none"' : '') + '/>' +
+        '<circle class="knob-dot" cx="' + fmt(dx) + '" cy="' + fmt(dy) + '" r="2.5" fill="#4ec9b0"/>' +
+        '</svg>';
+    }
+
+    function updateKnobPaths(knobWrap, value) {
+      const cv = Math.max(0, Math.min(1, value));
+      const cx = 26, cy = 26, trackR = 20, dotR2 = 14;
+      const startDeg = -225, rangeDeg = 270;
+      const toRad = d => d * Math.PI / 180;
+      const svgAng = toRad(startDeg + cv * rangeDeg);
+      const x0 = cx + trackR * Math.cos(toRad(startDeg));
+      const y0 = cy + trackR * Math.sin(toRad(startDeg));
+      const xa = cx + trackR * Math.cos(svgAng);
+      const ya = cy + trackR * Math.sin(svgAng);
+      const dx = cx + dotR2 * Math.cos(svgAng);
+      const dy = cy + dotR2 * Math.sin(svgAng);
+      const span = cv * rangeDeg;
+      const la = span > 180 ? 1 : 0;
+      const fmt = n => n.toFixed(2);
+      const vp = knobWrap.querySelector('.knob-value-path');
+      if (vp) {
+        if (span > 0.1) {
+          vp.setAttribute('d', 'M ' + fmt(x0) + ' ' + fmt(y0) + ' A ' + trackR + ' ' + trackR + ' 0 ' + la + ' 1 ' + fmt(xa) + ' ' + fmt(ya));
+          vp.style.display = '';
+        } else {
+          vp.style.display = 'none';
+        }
+      }
+      const dot = knobWrap.querySelector('.knob-dot');
+      if (dot) { dot.setAttribute('cx', fmt(dx)); dot.setAttribute('cy', fmt(dy)); }
+      const valEl = knobWrap.querySelector('.knob-value');
+      if (valEl) valEl.textContent = cv.toFixed(3);
+      return cv;
     }
 
     function buildConventionCard(ctrl, pos) {
@@ -1068,12 +1113,65 @@ function buildHtml(
       card.dataset.id = ctrl.id;
       card.style.left = pos[0] + 'px';
       card.style.top = pos[1] + 'px';
+
+      let bodyInnerHtml = '';
+      let adcCh = 0;
+      if (ctrl.kind === 'pot') {
+        adcCh = adcChannelFromPin(ctrl.pin);
+        bodyInnerHtml =
+          '<div class="knob-wrap" data-channel="' + adcCh + '" data-value="0">' +
+            buildKnobSvg(0) +
+            '<span class="knob-value">0.000</span>' +
+          '</div>';
+      } else if (ctrl.kind === 'button') {
+        bodyInnerHtml =
+          '<button class="btn-ce" type="button" data-pin="' + ctrl.pin + '" aria-pressed="false">' + escJ(ctrl.id) + '</button>';
+      } else {
+        bodyInnerHtml =
+          '<span class="vled-dot" data-pin="' + ctrl.pin + '"></span>' +
+          '<span class="vled-label">' + escJ(ctrl.id) + '</span>';
+      }
+
       card.innerHTML =
-        '<div class="card-header"><span class="card-kind">' + kindLabel + '</span></div>' +
-        '<div class="card-body">' +
-          '<div class="card-field"><label>id</label><span class="card-val">' + escJ(ctrl.id) + '</span></div>' +
-          '<div class="card-field"><label>pin</label><span class="card-val">' + ctrl.pin + '</span></div>' +
+        '<div class="ctrl-handle">' +
+          '<span class="handle-glyph">&#x283F;</span>' +
+          '<span class="card-kind">' + kindLabel + '</span>' +
+          '<span class="card-id-label">' + escJ(ctrl.id) + '</span>' +
+          '<span class="card-pin-label">pin ' + ctrl.pin + '</span>' +
+        '</div>' +
+        '<div class="ctrl-body' + (ceEmulatorRunning ? '' : ' body-disabled') + '">' +
+          bodyInnerHtml +
         '</div>';
+
+      if (ctrl.kind === 'pot') {
+        const knobWrap = card.querySelector('.knob-wrap');
+        let kDrag = false, kStartY = 0, kStartVal = 0;
+        knobWrap.addEventListener('mousedown', e => {
+          kDrag = true;
+          kStartY = e.clientY;
+          kStartVal = parseFloat(knobWrap.dataset.value || '0');
+          e.preventDefault();
+        });
+        const onKnobMove = e => {
+          if (!kDrag) return;
+          const delta = (kStartY - e.clientY) / 100;
+          const newVal = updateKnobPaths(knobWrap, kStartVal + delta);
+          knobWrap.dataset.value = String(newVal);
+          vscode.postMessage({ command: 'pot', channel: adcCh, value: newVal });
+        };
+        const onKnobUp = () => { kDrag = false; };
+        document.addEventListener('mousemove', onKnobMove);
+        document.addEventListener('mouseup', onKnobUp);
+      } else if (ctrl.kind === 'button') {
+        const btn     = card.querySelector('.btn-ce');
+        const gpioPin = ctrl.pin;
+        const press   = () => { btn.setAttribute('aria-pressed', 'true');  vscode.postMessage({ command: 'button', gpioPin, pressed: true }); };
+        const release = () => { btn.setAttribute('aria-pressed', 'false'); vscode.postMessage({ command: 'button', gpioPin, pressed: false }); };
+        btn.addEventListener('mousedown', press);
+        btn.addEventListener('mouseup',   release);
+        btn.addEventListener('mouseleave', () => { if (btn.getAttribute('aria-pressed') === 'true') release(); });
+      }
+
       makeDraggable(card, { pos: [pos[0], pos[1]] });
       return card;
     }
@@ -1095,78 +1193,6 @@ function buildHtml(
       return (pin >= 15 && pin <= 26) ? pin - 15 : 0;
     }
 
-    function renderRunArea() {
-      const runArea = document.getElementById('run-area');
-      if (!runArea) return;
-      if (conventionMissing) return;  // keep static YAML HTML
-      runArea.innerHTML = '';
-      const pots = conventionControls.filter(c => c.kind === 'pot');
-      const btns = conventionControls.filter(c => c.kind === 'button');
-      const ledItems = conventionControls.filter(c => c.kind === 'led');
-      if (pots.length > 0) {
-        const ctrlDiv = document.createElement('div');
-        ctrlDiv.id = 'controllers';
-        for (const p of pots) {
-          const ch = adcChannelFromPin(p.pin);
-          const div = document.createElement('div');
-          div.className = 'pot';
-          div.dataset.channel = String(ch);
-          div.innerHTML =
-            '<span class="pot-label">' + escJ(p.id) + '</span>' +
-            '<input type="range" class="pot-slider" min="0" max="1" step="0.001" value="0" data-channel="' + ch + '"/>' +
-            '<span class="pot-value">0.000</span>';
-          ctrlDiv.appendChild(div);
-        }
-        runArea.appendChild(ctrlDiv);
-        ctrlDiv.querySelectorAll('.pot-slider').forEach(slider => {
-          slider.addEventListener('input', () => {
-            const channel = parseInt(slider.dataset.channel, 10);
-            const value = parseFloat(slider.value);
-            slider.closest('.pot').querySelector('.pot-value').textContent = value.toFixed(3);
-            vscode.postMessage({ command: 'pot', channel, value });
-          });
-        });
-      }
-      if (btns.length > 0) {
-        const btnDiv = document.createElement('div');
-        btnDiv.id = 'buttons';
-        btnDiv.innerHTML = '<span class="section-label">Buttons:</span>';
-        for (const b of btns) {
-          const btn = document.createElement('button');
-          btn.className = 'vbutton';
-          btn.type = 'button';
-          btn.dataset.pin = String(b.pin);
-          btn.dataset.mode = 'momentary';
-          btn.setAttribute('aria-pressed', 'false');
-          btn.innerHTML = '<span class="vbutton-label">' + escJ(b.id) + '</span><span class="vbutton-pin">pin ' + b.pin + '</span>';
-          btnDiv.appendChild(btn);
-          const press   = () => { setButtonVisual(btn, true);  vscode.postMessage({ command: 'button', gpioPin: b.pin, pressed: true }); };
-          const release = () => { setButtonVisual(btn, false); vscode.postMessage({ command: 'button', gpioPin: b.pin, pressed: false }); };
-          btn.addEventListener('mousedown', press);
-          btn.addEventListener('mouseup', release);
-          btn.addEventListener('mouseleave', () => { if (btn.getAttribute('aria-pressed') === 'true') release(); });
-        }
-        runArea.appendChild(btnDiv);
-      }
-      if (ledItems.length > 0) {
-        const ledDiv = document.createElement('div');
-        ledDiv.id = 'leds';
-        ledDiv.innerHTML = '<span class="section-label">LEDs:</span>';
-        for (const l of ledItems) {
-          const vled = document.createElement('div');
-          vled.className = 'vled';
-          vled.innerHTML = '<span class="vled-dot" data-pin="' + l.pin + '"></span><span class="vled-label">' + escJ(l.id) + '</span>';
-          ledDiv.appendChild(vled);
-        }
-        runArea.appendChild(ledDiv);
-      }
-    }
-
-    document.getElementById('mode-design-btn')?.addEventListener('click', () => switchMode('design'));
-    document.getElementById('mode-run-btn')?.addEventListener('click', () => {
-      // Only allow Run mode when emulator is running (hasStatus = running)
-      if (hasStatus) switchMode('run');
-    });
 
     // ── Controller Editor (M10b) ──────────────────────────────────────────
     let editorControls = [];
@@ -1186,6 +1212,7 @@ function buildHtml(
         editorEl.style.display = 'flex';
         sBtn.classList.remove('tab-active');
         eBtn.classList.add('tab-active');
+        updateCeEmulatorState(ceEmulatorRunning);
       } else {
         scopeEl.style.display  = 'flex';
         editorEl.style.display = 'none';
@@ -1269,7 +1296,8 @@ function buildHtml(
     }
 
     function makeDraggable(card, ctrl) {
-      const header = card.querySelector('.card-header');
+      const header = card.querySelector('.ctrl-handle') || card.querySelector('.card-header');
+      if (!header) return;
       let drag = false, sx, sy, sl, st;
       header.addEventListener('mousedown', e => {
         if (e.target.closest('.card-del')) return;

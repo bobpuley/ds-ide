@@ -69,31 +69,14 @@ describe('ScopePanel', () => {
     expect(created.webview.html).toContain('Daisy Scope');
   });
 
-  it('show() embeds pot slider HTML for each def', () => {
+  it('show() embeds pot defs in yaml-init JSON (D19)', () => {
     panel.show(DEFS, {});
     const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(created.webview.html).toContain('data-channel="0"');
-    expect(created.webview.html).toContain('data-channel="1"');
-    expect(created.webview.html).toContain('Pitch');
-    expect(created.webview.html).toContain('Volume');
+    expect(created.webview.html).toContain('"id":"pitch"');
+    expect(created.webview.html).toContain('"id":"volume"');
   });
 
-  it('show() uses initialValues to set slider values', () => {
-    panel.show(DEFS, { 0: 0.25, 1: 0.75 });
-    const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(created.webview.html).toContain('value="0.25"');
-    expect(created.webview.html).toContain('value="0.75"');
-  });
-
-  it('show() falls back to def.default when no initial value provided', () => {
-    panel.show(DEFS, {});
-    const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    // DEFS[0].default = 0.5, DEFS[1].default = 0.8
-    expect(created.webview.html).toContain('value="0.5"');
-    expect(created.webview.html).toContain('value="0.8"');
-  });
-
-  it('show() does not render controller HTML when defs is empty', () => {
+  it('show() does not render static controller slider HTML in the page (D19)', () => {
     panel.show([], {});
     const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(created.webview.html).not.toContain('id="controllers"');
@@ -389,29 +372,17 @@ describe('ScopePanel', () => {
   });
 
   // T10.4 — button rendering + forwarding
-  it('renders a button element per declared button', () => {
+  it('embeds button defs in yaml-init JSON (D19)', () => {
     panel.show(DEFS, {}, SINE_DEFAULTS, AUDIO_SOURCE_DEFAULTS, BUTTONS, LEDS);
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('id="buttons"');
-    expect(webview.html).toContain('data-pin="28"');
-    expect(webview.html).toContain('data-mode="toggle"');
-    expect(webview.html).toContain('data-pin="25"');
-    expect(webview.html).toContain('data-mode="momentary"');
-    expect(webview.html).toContain('Bypass');
-    expect(webview.html).toContain('Tap');
+    expect(webview.html).toContain('"id":"bypass"');
+    expect(webview.html).toContain('"id":"tap"');
   });
 
-  it('does not render the buttons section when there are no buttons', () => {
+  it('does not render static button HTML in the page (D19)', () => {
     panel.show(DEFS, {});
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).not.toContain('id="buttons"');
-  });
-
-  it('reflects initial button state as pressed', () => {
-    panel.show(DEFS, {}, SINE_DEFAULTS, AUDIO_SOURCE_DEFAULTS, BUTTONS, LEDS, { 28: true });
-    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    // the pin-28 (bypass) button carries the on class + aria-pressed
-    expect(webview.html).toMatch(/data-pin="28"[\s\S]*?aria-pressed="true"/);
   });
 
   it('forwards a button press to manager.sendButton and onButtonChange', () => {
@@ -435,13 +406,11 @@ describe('ScopePanel', () => {
     expect(manager.sendButton).not.toHaveBeenCalled();
   });
 
-  // T10.5 — LED rendering + forwarding
-  it('renders an LED indicator per declared LED', () => {
+  // T10.5 — LED forwarding (D19: LED state is driven by IPC, not static HTML)
+  it('embeds LED defs in yaml-init JSON (D19)', () => {
     panel.show(DEFS, {}, SINE_DEFAULTS, AUDIO_SOURCE_DEFAULTS, BUTTONS, LEDS);
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('id="leds"');
-    expect(webview.html).toContain('vled-dot');
-    expect(webview.html).toContain('Status');
+    expect(webview.html).toContain('"id":"status"');
   });
 
   it('forwards a led message from manager to the webview', () => {
@@ -590,22 +559,27 @@ describe('ScopePanel', () => {
     expect(webview.html).toContain('value="wav"');
   });
 
-  // T15.2 — Collapsible sections (emulator) + M17 Controls Editor
-  it('webview HTML includes emulator-section and Controls Editor tab (M17/T15.2)', () => {
+  // T15.2 / D19 — Collapsible sections (emulator) + Controls Editor single-mode
+  it('webview HTML includes emulator-section and Controls Editor tab (T15.2)', () => {
     panel.show(DEFS, {});
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('id="emulator-section"');
     expect(webview.html).toContain('Controls Editor');
-    expect(webview.html).toContain('id="mode-design-btn"');
-    expect(webview.html).toContain('id="mode-run-btn"');
   });
 
-  it('emulator-header is collapsed by default and Controls Editor has design/run modes (M17/T15.2)', () => {
+  it('Controls Editor has no mode toggle buttons (D19)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).not.toContain('id="mode-design-btn"');
+    expect(webview.html).not.toContain('id="mode-run-btn"');
+    expect(webview.html).not.toContain('id="run-area"');
+  });
+
+  it('emulator-header is collapsed by default and Controls Editor shows single canvas (D19)', () => {
     panel.show(DEFS, {});
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('id="emulator-header" aria-expanded="false"');
     expect(webview.html).toContain('id="design-area"');
-    expect(webview.html).toContain('id="run-area"');
     expect(webview.html).toContain('id="convention-banner"');
   });
 
@@ -683,5 +657,113 @@ describe('ScopePanel', () => {
     const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
     handler({ command: 'stopAudio' });
     expect(manager.sendTransport).toHaveBeenCalledWith('stop');
+  });
+
+  // ── T20-1: AC-24 — Controls Editor single-mode handle UX (D19) ───────────
+
+  it('Controls Editor toolbar contains ce-emu-status indicator (AC-24)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="ce-emu-status"');
+    expect(webview.html).toContain('ce-emu-stopped');
+  });
+
+  it('webview HTML contains ctrl-handle CSS class for drag handles (AC-24)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('ctrl-handle');
+  });
+
+  it('webview HTML contains body-disabled CSS class definition (AC-24)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('body-disabled');
+  });
+
+  it('webview JS contains updateCeEmulatorState function (AC-24)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('updateCeEmulatorState');
+    expect(webview.html).toContain('ceEmulatorRunning');
+  });
+
+  it('webview JS contains buildConventionCard with ctrl-handle, ctrl-body, and knob (AC-24)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('ctrl-handle');
+    expect(webview.html).toContain('ctrl-body');
+    expect(webview.html).toContain('knob-wrap');
+    expect(webview.html).toContain('btn-ce');
+  });
+
+  it('webview JS contains makeDraggable that supports ctrl-handle (AC-24)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('.ctrl-handle');
+  });
+
+  // ── T20-2: AC-25 — Pot rotary knob visual (D19) ───────────────────────
+
+  it('webview JS contains buildKnobSvg function (AC-25)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('buildKnobSvg');
+  });
+
+  it('webview JS contains updateKnobPaths function (AC-25)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('updateKnobPaths');
+  });
+
+  it('webview JS uses knob-wrap with data-channel and SVG for pot CE cards (AC-25)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('knob-wrap');
+    expect(webview.html).toContain('knob-svg');
+    expect(webview.html).toContain('knob-dot');
+  });
+
+  it('knob uses vertical drag: drag-up = increase value (ns-resize cursor) (AC-25)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('ns-resize');
+    expect(webview.html).toContain('kStartY - e.clientY');
+  });
+
+  it('knob SVG uses teal (#4ec9b0) accent matching Wiring Editor L&F (AC-25)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('#4ec9b0');
+    expect(webview.html).toContain('knob-value-path');
+  });
+
+  it('Start Audio button click optimistically activates CE bodies (AC-24)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    // btnAudioStart click handler must call updateCeEmulatorState(true)
+    const startBlock = webview.html.indexOf("command: 'startAudio'");
+    expect(startBlock).toBeGreaterThan(-1);
+    const snippet = webview.html.slice(startBlock, startBlock + 200);
+    expect(snippet).toContain('updateCeEmulatorState(true)');
+  });
+
+  it('Stop Audio button click optimistically deactivates CE bodies (AC-24)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    const stopBlock = webview.html.indexOf("command: 'stopAudio'");
+    expect(stopBlock).toBeGreaterThan(-1);
+    const snippet = webview.html.slice(stopBlock, stopBlock + 200);
+    expect(snippet).toContain('updateCeEmulatorState(false)');
+  });
+
+  it('switchTab editor re-applies CE emulator state on tab open (AC-24)', () => {
+    panel.show(DEFS, {});
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    // switchTab('editor') block must call updateCeEmulatorState(ceEmulatorRunning)
+    const tabBlock = webview.html.indexOf("tab === 'editor'");
+    expect(tabBlock).toBeGreaterThan(-1);
+    const snippet = webview.html.slice(tabBlock, tabBlock + 300);
+    expect(snippet).toContain('updateCeEmulatorState(ceEmulatorRunning)');
   });
 });
