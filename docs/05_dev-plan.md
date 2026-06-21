@@ -53,4 +53,6 @@ Full registry in [`docs/v5/05_dev-plan.md`](v5/05_dev-plan.md).
 
 ### v6 — planned
 
-*(no milestones yet)*
+| Milestone | Title | Semver | Status | File |
+|-----------|-------|--------|--------|------|
+| M25 | Emulator Runtime Safety & Code Quality | 0.6.0 | **planned** | [`docs/milestones/v6/M25_emulator-safety.md`](milestones/v6/M25_emulator-safety.md) |
