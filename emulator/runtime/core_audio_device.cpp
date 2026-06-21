@@ -17,7 +17,11 @@ static double s_mach_ns_per_tick = 0.0;
 static void init_mach_timebase() {
     if (s_mach_ns_per_tick != 0.0) return;
     mach_timebase_info_data_t info;
-    mach_timebase_info(&info);
+    kern_return_t kr = mach_timebase_info(&info);
+    if (kr != KERN_SUCCESS || info.denom == 0) {
+        s_mach_ns_per_tick = 1.0;  // fallback: treat ticks as nanoseconds
+        return;
+    }
     s_mach_ns_per_tick = static_cast<double>(info.numer) / static_cast<double>(info.denom);
 }
 
@@ -31,6 +35,11 @@ struct CoreAudioDevice::Impl {
     // Input buffer list — allocated after querying hardware format, freed in stop().
     // Null in output-only mode.
     AudioBufferList* inputBufList{nullptr};
+
+    // Pre-allocated render callback buffers (AC-38): sized in start(), reused each
+    // callback to avoid per-invocation heap allocation on the real-time thread.
+    std::vector<float> in_interleaved;   // stereo-interleaved input, sized bufferSize*2
+    std::vector<float> out_interleaved;  // stereo-interleaved output, sized bufferSize*2
 
     // Work buffers for output-only mode (avoid per-callback allocation).
     std::vector<float> silentInput;  // zeroed, sized bufferSize*2
@@ -60,29 +69,38 @@ struct CoreAudioDevice::Impl {
                         inNumberFrames, self->inputBufList);
 
         // Build stereo-interleaved input buffer from hardware input (handles mono→stereo).
+        // Use pre-allocated member buffers — no heap allocation on the RT thread (AC-38).
         const size_t frames = static_cast<size_t>(inNumberFrames);
-        std::vector<float> in_interleaved(frames * 2, 0.f);
-        std::vector<float> out_interleaved(frames * 2, 0.f);
+        if (self->in_interleaved.size() < frames * 2)
+            self->in_interleaved.assign(frames * 2, 0.f);
+        else
+            std::fill(self->in_interleaved.begin(),
+                      self->in_interleaved.begin() + static_cast<ptrdiff_t>(frames * 2), 0.f);
+        if (self->out_interleaved.size() < frames * 2)
+            self->out_interleaved.assign(frames * 2, 0.f);
+        else
+            std::fill(self->out_interleaved.begin(),
+                      self->out_interleaved.begin() + static_cast<ptrdiff_t>(frames * 2), 0.f);
 
         if (self->inputChannels >= 2 && self->inputBufList->mNumberBuffers >= 2) {
             const float* inL = static_cast<const float*>(self->inputBufList->mBuffers[0].mData);
             const float* inR = static_cast<const float*>(self->inputBufList->mBuffers[1].mData);
             for (size_t i = 0; i < frames; ++i) {
-                in_interleaved[2 * i]     = inL[i];
-                in_interleaved[2 * i + 1] = inR[i];
+                self->in_interleaved[2 * i]     = inL[i];
+                self->in_interleaved[2 * i + 1] = inR[i];
             }
         } else if (self->inputBufList->mNumberBuffers >= 1) {
             // Mono input — duplicate to both channels
             const float* inMono = static_cast<const float*>(self->inputBufList->mBuffers[0].mData);
             for (size_t i = 0; i < frames; ++i) {
-                in_interleaved[2 * i]     = inMono[i];
-                in_interleaved[2 * i + 1] = inMono[i];
+                self->in_interleaved[2 * i]     = inMono[i];
+                self->in_interleaved[2 * i + 1] = inMono[i];
             }
         }
 
         // Run the effect.
         uint64_t t_start = mach_absolute_time();
-        self->processBlock(in_interleaved.data(), out_interleaved.data(), frames);
+        self->processBlock(self->in_interleaved.data(), self->out_interleaved.data(), frames);
         uint64_t t_end = mach_absolute_time();
 
         double elapsed_ms = static_cast<double>(t_end - t_start) * s_mach_ns_per_tick / 1e6;
@@ -98,13 +116,13 @@ struct CoreAudioDevice::Impl {
             float* outL = static_cast<float*>(ioData->mBuffers[0].mData);
             float* outR = static_cast<float*>(ioData->mBuffers[1].mData);
             for (size_t i = 0; i < frames; ++i) {
-                outL[i] = out_interleaved[2 * i];
-                outR[i] = out_interleaved[2 * i + 1];
+                outL[i] = self->out_interleaved[2 * i];
+                outR[i] = self->out_interleaved[2 * i + 1];
             }
         } else if (ioData->mNumberBuffers == 1) {
             float* outMono = static_cast<float*>(ioData->mBuffers[0].mData);
             for (size_t i = 0; i < frames; ++i) {
-                outMono[i] = out_interleaved[2 * i];
+                outMono[i] = self->out_interleaved[2 * i];
             }
         }
 
@@ -161,8 +179,7 @@ CoreAudioDevice::CoreAudioDevice() {
 }
 
 CoreAudioDevice::~CoreAudioDevice() {
-    stop();
-    delete impl_;
+    stop();  // stop() already calls delete impl_ and sets impl_ = nullptr (AC-50)
 }
 
 bool CoreAudioDevice::start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn processBlock) {
@@ -172,6 +189,9 @@ bool CoreAudioDevice::start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn 
     impl_->sampleRate   = sampleRate;
     impl_->bufferSize   = bufferSize;
     impl_->processBlock = std::move(processBlock);
+    // Pre-size interleaved render buffers to avoid RT-thread allocation (AC-38).
+    impl_->in_interleaved.assign(static_cast<size_t>(bufferSize) * 2, 0.f);
+    impl_->out_interleaved.assign(static_cast<size_t>(bufferSize) * 2, 0.f);
 
     // Find the AUHAL component.
     AudioComponentDescription desc{};
@@ -255,12 +275,16 @@ bool CoreAudioDevice::start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn 
     uint32_t nBufs = impl_->inputChannels;
     impl_->inputBufList = static_cast<AudioBufferList*>(
         std::malloc(sizeof(AudioBufferList) + (nBufs - 1) * sizeof(AudioBuffer)));
-    impl_->inputBufList->mNumberBuffers = nBufs;
+    if (!impl_->inputBufList) { stop(); return false; }  // AC-41: null check
+    impl_->inputBufList->mNumberBuffers = 0;
     for (uint32_t ch = 0; ch < nBufs; ++ch) {
+        void* buf = std::malloc(dataBytes);
+        if (!buf) { stop(); return false; }  // AC-41: null check — stop() frees already-allocated buffers
+        std::memset(buf, 0, dataBytes);
         impl_->inputBufList->mBuffers[ch].mNumberChannels = 1;
         impl_->inputBufList->mBuffers[ch].mDataByteSize   = static_cast<UInt32>(dataBytes);
-        impl_->inputBufList->mBuffers[ch].mData           = std::malloc(dataBytes);
-        std::memset(impl_->inputBufList->mBuffers[ch].mData, 0, dataBytes);
+        impl_->inputBufList->mBuffers[ch].mData           = buf;
+        impl_->inputBufList->mNumberBuffers = ch + 1;  // track how many are valid for stop()
     }
 
     // Set the output render callback.
@@ -355,6 +379,9 @@ bool CoreAudioDevice::start_output_only(uint32_t sampleRate, uint32_t bufferSize
 
 void CoreAudioDevice::stop() {
     if (impl_ && impl_->unit) {
+        // AudioOutputUnitStop drains any in-flight render callbacks before returning
+        // (documented Apple guarantee), so impl_ member buffers captured by reference
+        // in the callback are safe to free immediately after this call (AC-51).
         AudioOutputUnitStop(impl_->unit);
         AudioUnitUninitialize(impl_->unit);
         AudioComponentInstanceDispose(impl_->unit);

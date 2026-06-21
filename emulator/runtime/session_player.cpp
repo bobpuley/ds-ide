@@ -19,7 +19,7 @@ bool SessionPlayer::readBytes(void* dst, size_t n) {
 void SessionPlayer::countBlocks(long data_start_offset) {
     total_blocks_ = 0;
     long pos = ::lseek(fd_, 0, SEEK_CUR);
-    ::lseek(fd_, data_start_offset, SEEK_SET);
+    if (pos < 0 || ::lseek(fd_, data_start_offset, SEEK_SET) < 0) return;  // AC-47
 
     uint8_t type;
     while (::read(fd_, &type, 1) == 1) {
@@ -61,14 +61,15 @@ bool SessionPlayer::open(const std::string& path,
                     | (static_cast<uint32_t>(header[14]) << 16)
                     | (static_cast<uint32_t>(header[15]) << 24);
 
-    if (out_block_size == 0) { close(); return false; }
+    if (out_block_size == 0 || out_block_size > 65536) { close(); return false; }  // AC-47
     block_size_  = out_block_size;
     done_        = false;
     blocks_read_ = 0;
 
     long data_start = ::lseek(fd_, 0, SEEK_CUR);
+    if (data_start < 0) { close(); return false; }  // AC-47
     countBlocks(data_start);
-    ::lseek(fd_, data_start, SEEK_SET);  // reset to data start
+    if (::lseek(fd_, data_start, SEEK_SET) < 0) { close(); return false; }  // AC-47
 
     return true;
 }
@@ -103,10 +104,11 @@ bool SessionPlayer::nextBlock(float* buf, size_t frames,
             if (!readBytes(buf, to_read * 2 * sizeof(float))) {
                 done_ = true; return false;
             }
-            // If recorded block was larger, skip the remainder
+            // If recorded block was larger, skip the remainder (AC-47: check lseek return).
             if (block_size_ > static_cast<uint32_t>(frames)) {
                 size_t skip = (block_size_ - static_cast<uint32_t>(frames)) * 2 * sizeof(float);
-                ::lseek(fd_, static_cast<off_t>(skip), SEEK_CUR);
+                off_t pos = ::lseek(fd_, static_cast<off_t>(skip), SEEK_CUR);
+                if (pos < 0) { done_ = true; return false; }  // AC-47: lseek error
             }
             ++blocks_read_;
             return true;

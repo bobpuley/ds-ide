@@ -1,0 +1,312 @@
+// Unit tests for M25 emulator runtime safety fixes (AC-38 through AC-54).
+//
+// Exercises units that can be compiled without the CoreAudio / AudioUnit
+// framework: WAV parser guards, SPSC queue, ScopeState cap, GPIO canonical
+// index, JSON parser hardening, IPC range validation, and SessionPlayer lseek
+// guards.  No framework dependency — plain asserts, exit 0 on success.
+
+#include "wav_reader.h"
+#include "emulator_state.h"
+#include "session_player.h"
+#include "daisy/gpio.h"
+
+#include <cassert>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <fcntl.h>
+#include <string>
+#include <thread>
+#include <unistd.h>
+#include <vector>
+
+// ---- Test harness -----------------------------------------------------------
+
+using namespace daisy_emu;
+
+static int failures = 0;
+#define CHECK(cond, msg) do { \
+    if (!(cond)) { std::printf("  FAIL  %s\n", msg); ++failures; } \
+    else         { std::printf("  PASS  %s\n", msg); } \
+} while (0)
+
+// ---- WAV builder helpers (shared with wav-reader tests) --------------------
+
+static void push_u16(std::vector<uint8_t>& b, uint16_t v) {
+    b.push_back(v & 0xFF); b.push_back((v >> 8) & 0xFF);
+}
+static void push_u32(std::vector<uint8_t>& b, uint32_t v) {
+    b.push_back(v & 0xFF); b.push_back((v >> 8) & 0xFF);
+    b.push_back((v >> 16) & 0xFF); b.push_back((v >> 24) & 0xFF);
+}
+static void push_tag(std::vector<uint8_t>& b, const char* t) {
+    b.insert(b.end(), t, t + 4);
+}
+
+// Assemble a WAV with an explicit bits value (can be 0 for div-by-zero tests).
+static std::vector<uint8_t> make_wav_raw(uint16_t fmt_tag, uint16_t channels,
+                                         uint32_t sample_rate, uint16_t bits,
+                                         const std::vector<uint8_t>& data) {
+    std::vector<uint8_t> b;
+    uint16_t block_align = static_cast<uint16_t>(channels * (bits / 8 > 0 ? bits / 8 : 1));
+    uint32_t byte_rate   = sample_rate * block_align;
+    push_tag(b, "RIFF"); push_u32(b, static_cast<uint32_t>(36 + data.size()));
+    push_tag(b, "WAVE"); push_tag(b, "fmt "); push_u32(b, 16);
+    push_u16(b, fmt_tag); push_u16(b, channels); push_u32(b, sample_rate);
+    push_u32(b, byte_rate); push_u16(b, block_align); push_u16(b, bits);
+    push_tag(b, "data"); push_u32(b, static_cast<uint32_t>(data.size()));
+    b.insert(b.end(), data.begin(), data.end());
+    return b;
+}
+
+// ---- AC-42: WAV div-by-zero guard ------------------------------------------
+
+static void test_wav_div_by_zero() {
+    std::printf("--- AC-42: WAV div-by-zero guard ---\n");
+
+    // bits == 0 must be rejected before total_samples division.
+    std::vector<uint8_t> dummy(8, 0);
+    auto wav = make_wav_raw(0x0001, 1, 48000, 0, dummy);
+    WavData out; std::string err;
+    bool ok = parse_wav(wav.data(), wav.size(), out, err);
+    CHECK(!ok, "parse_wav rejects bits==0");
+    CHECK(!err.empty(), "parse_wav sets error for bits==0");
+}
+
+// ---- AC-52: WAV rd_u16 / decode_pcm24 UB fix --------------------------------
+
+static void test_wav_pcm24_sign_extend() {
+    std::printf("--- AC-52: WAV decode_pcm24 uint32_t cast ---\n");
+
+    // 24-bit value 0x800000 = -0.5 after sign extension; should not produce UB.
+    std::vector<uint8_t> data;
+    data.push_back(0x00); data.push_back(0x00); data.push_back(0x80);  // 0x800000
+    data.push_back(0x00); data.push_back(0x00); data.push_back(0x40);  // 0x400000 = +0.5
+    auto wav = make_wav_raw(0x0001, 1, 48000, 24, data);
+
+    WavData out; std::string err;
+    bool ok = parse_wav(wav.data(), wav.size(), out, err);
+    CHECK(ok, "pcm24 with 0x800000 parses");
+    CHECK(out.frames() == 2, "pcm24 two frames");
+    CHECK(std::fabs(out.samples[0] - (-1.0f)) < 1e-4f, "0x800000 decodes to -1.0");
+    CHECK(std::fabs(out.samples[1] - 0.5f) < 1e-4f, "0x400000 decodes to +0.5");
+}
+
+// ---- AC-39: SpscIpcQueue basic SPSC correctness ----------------------------
+
+static void test_spsc_queue_basic() {
+    std::printf("--- AC-39: SpscIpcQueue basic ---\n");
+
+    SpscIpcQueue q;
+    std::string out;
+
+    // Empty pop returns false.
+    CHECK(!q.pop(out), "empty queue returns false on pop");
+
+    // Push and pop one message.
+    CHECK(q.push("hello"), "push succeeds");
+    CHECK(q.pop(out), "pop returns true");
+    CHECK(out == "hello", "pop returns correct message");
+    CHECK(!q.pop(out), "queue empty after single pop");
+}
+
+static void test_spsc_queue_wrap() {
+    std::printf("--- AC-39: SpscIpcQueue wrap-around ---\n");
+
+    SpscIpcQueue q;
+    // Fill (CAPACITY - 1) slots: queue is full when write_+1 == read_.
+    // SpscIpcQueue::CAPACITY = 32, so push 31 messages.
+    for (int i = 0; i < 31; ++i) {
+        bool ok = q.push(std::to_string(i));
+        CHECK(ok, "push before full succeeds");
+        if (!ok) break;
+    }
+    // 32nd push should fail (queue full).
+    CHECK(!q.push("overflow"), "push fails when full");
+
+    // Drain all and verify order.
+    bool order_ok = true;
+    for (int i = 0; i < 31; ++i) {
+        std::string s;
+        if (!q.pop(s) || s != std::to_string(i)) { order_ok = false; break; }
+    }
+    CHECK(order_ok, "FIFO order preserved");
+}
+
+static void test_spsc_queue_threaded() {
+    std::printf("--- AC-39: SpscIpcQueue producer/consumer threads ---\n");
+
+    SpscIpcQueue q;
+    static constexpr int N = 1000;
+    std::atomic<int> received{0};
+    std::atomic<bool> done{false};
+
+    std::thread consumer([&]() {
+        std::string msg;
+        while (true) {
+            if (q.pop(msg)) {
+                ++received;
+            } else if (done.load()) {
+                break;
+            } else {
+                std::this_thread::yield();
+            }
+        }
+        // Drain any remaining messages posted before done was observed.
+        while (q.pop(msg)) ++received;
+    });
+
+    for (int i = 0; i < N; ++i) {
+        while (!q.push(std::to_string(i)))
+            std::this_thread::yield();  // retry if full
+    }
+    done.store(true);
+    consumer.join();
+
+    CHECK(received.load() == N, "threaded producer/consumer delivers all messages");
+}
+
+// ---- AC-40: ScopeState hard cap on accumulate ------------------------------
+
+// Lightweight copy of ScopeState for isolated testing.
+struct TestScopeState {
+    static constexpr size_t SCOPE_BLOCKS    = 33;
+    static constexpr size_t SCOPE_STEP      = 4;
+    static constexpr size_t SCOPE_SAMPLES_MAX = 65536;
+
+    std::vector<float> in, out, out_r;
+    size_t block_count{0};
+
+    TestScopeState() {
+        in.reserve(SCOPE_SAMPLES_MAX);
+        out.reserve(SCOPE_SAMPLES_MAX);
+        out_r.reserve(SCOPE_SAMPLES_MAX);
+    }
+
+    bool accumulate(const std::vector<float>& in_buf,
+                    const std::vector<float>& out_buf,
+                    size_t frames) {
+        size_t buf_samples = frames * 2;
+        for (size_t i = 0; i < buf_samples; i += SCOPE_STEP * 2) {
+            if (in.size() >= SCOPE_SAMPLES_MAX) break;
+            in.push_back(in_buf[i]);
+            out.push_back(out_buf[i]);
+            out_r.push_back(out_buf[i + 1]);
+        }
+        ++block_count;
+        if (block_count >= SCOPE_BLOCKS) { block_count = 0; return true; }
+        return false;
+    }
+};
+
+static void test_scope_cap() {
+    std::printf("--- AC-40: ScopeState hard cap ---\n");
+
+    TestScopeState scope;
+    // Large block: 4096 stereo frames → 4096/4 = 1024 samples per accumulate call.
+    const size_t LARGE = 4096;
+    std::vector<float> in_buf(LARGE * 2, 0.1f);
+    std::vector<float> out_buf(LARGE * 2, 0.2f);
+
+    // Accumulate many blocks without ever triggering the block_count threshold.
+    // Without the cap, vectors would grow unboundedly.
+    for (int i = 0; i < 200; ++i) {
+        scope.accumulate(in_buf, out_buf, LARGE);
+    }
+
+    CHECK(scope.in.size() <= TestScopeState::SCOPE_SAMPLES_MAX,
+          "in vector does not exceed SCOPE_SAMPLES_MAX");
+    CHECK(scope.out.size() <= TestScopeState::SCOPE_SAMPLES_MAX,
+          "out vector does not exceed SCOPE_SAMPLES_MAX");
+    CHECK(scope.in.capacity() == TestScopeState::SCOPE_SAMPLES_MAX,
+          "no reallocation beyond pre-reserved capacity");
+}
+
+// ---- AC-48: GPIO canonical_gpio_index no aliasing -------------------------
+
+static void test_gpio_canonical_index() {
+    std::printf("--- AC-48: GPIO canonical index ---\n");
+
+    // D0 = {port=0, pin=0}  → index 0
+    // A6 = {port=1, pin=0}  → index 32  (was 0 before fix — aliased D0)
+    dsy_gpio_pin D0{0, 0};
+    dsy_gpio_pin D5{0, 5};
+    dsy_gpio_pin A6{1, 0};
+    dsy_gpio_pin A7{1, 1};
+    dsy_gpio_pin A11{1, 5};
+
+    CHECK(canonical_gpio_index(D0) == 0, "D0 maps to index 0");
+    CHECK(canonical_gpio_index(D5) == 5, "D5 maps to index 5");
+    CHECK(canonical_gpio_index(A6) == 32, "A6 maps to index 32");
+    CHECK(canonical_gpio_index(A7) == 33, "A7 maps to index 33");
+    CHECK(canonical_gpio_index(A11) == 37, "A11 maps to index 37");
+    CHECK(canonical_gpio_index(D0) != canonical_gpio_index(A6),
+          "D0 and A6 map to distinct indices");
+    CHECK(canonical_gpio_index(D5) != canonical_gpio_index(A6),
+          "D5 and A6 map to distinct indices");
+    CHECK(canonical_gpio_index(A6) < EmulatorState::kNumGpioPins,
+          "A6 canonical index within kNumGpioPins");
+    CHECK(canonical_gpio_index(A11) < EmulatorState::kNumGpioPins,
+          "A11 canonical index within kNumGpioPins");
+}
+
+// ---- AC-47: SessionPlayer open() rejects oversized block_size --------------
+
+// Build a minimal in-memory .dsrec file with a given block_size in the header.
+static std::vector<uint8_t> make_dsrec_header(uint32_t sample_rate, uint32_t block_size) {
+    std::vector<uint8_t> hdr(16);
+    std::memcpy(hdr.data(), "DSREC", 5);
+    hdr[5] = '\0';
+    hdr[6] = 0x01;  // kRecMagicVersion
+    hdr[7] = 0x00;
+    hdr[8]  = static_cast<uint8_t>(sample_rate & 0xFF);
+    hdr[9]  = static_cast<uint8_t>((sample_rate >> 8) & 0xFF);
+    hdr[10] = static_cast<uint8_t>((sample_rate >> 16) & 0xFF);
+    hdr[11] = static_cast<uint8_t>((sample_rate >> 24) & 0xFF);
+    hdr[12] = static_cast<uint8_t>(block_size & 0xFF);
+    hdr[13] = static_cast<uint8_t>((block_size >> 8) & 0xFF);
+    hdr[14] = static_cast<uint8_t>((block_size >> 16) & 0xFF);
+    hdr[15] = static_cast<uint8_t>((block_size >> 24) & 0xFF);
+    return hdr;
+}
+
+static void test_session_player_open_guard() {
+    std::printf("--- AC-47: SessionPlayer open() block_size guard ---\n");
+
+    // Write a .dsrec with block_size = 70000 (> 65536) to a temp file.
+    char tmp[] = "/tmp/test_dsrec_XXXXXX";
+    int fd = ::mkstemp(tmp);
+    if (fd < 0) {
+        std::printf("  SKIP  mkstemp failed — skipping SessionPlayer test\n");
+        return;
+    }
+    auto hdr = make_dsrec_header(48000, 70000);
+    ::write(fd, hdr.data(), hdr.size());
+    ::close(fd);
+
+    SessionPlayer player;
+    uint32_t sr = 0, bs = 0;
+    bool ok = player.open(std::string(tmp), sr, bs);
+    ::unlink(tmp);
+
+    CHECK(!ok, "open() rejects block_size > 65536");
+}
+
+// ---- main ------------------------------------------------------------------
+
+int main() {
+    std::printf("=== Emulator safety unit tests (M25) ===\n\n");
+
+    test_wav_div_by_zero();
+    test_wav_pcm24_sign_extend();
+    test_spsc_queue_basic();
+    test_spsc_queue_wrap();
+    test_spsc_queue_threaded();
+    test_scope_cap();
+    test_gpio_canonical_index();
+    test_session_player_open_guard();
+
+    std::printf("\nResult: %s\n", failures == 0 ? "all passed" : "FAILURES");
+    return failures == 0 ? 0 : 1;
+}

@@ -4,7 +4,7 @@
 namespace daisy {
 
 void Switch::Init(dsy_gpio_pin pin, float /*update_rate*/) {
-    pin_          = static_cast<int>(pin.pin);
+    pin_          = canonical_gpio_index(pin);  // AC-48: port*32+pin to avoid aliasing
     pressed_      = false;
     prev_         = false;
     rising_edge_  = false;

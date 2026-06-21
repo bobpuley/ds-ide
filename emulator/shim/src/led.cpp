@@ -23,7 +23,7 @@ void emit_led_change(int pin, bool lit) {
 }
 
 void Led::Init(dsy_gpio_pin pin, bool invert) {
-    pin_        = static_cast<int>(pin.pin);
+    pin_        = canonical_gpio_index(pin);  // AC-48: port*32+pin to avoid aliasing
     invert_     = invert;
     brightness_ = 0.f;
 }

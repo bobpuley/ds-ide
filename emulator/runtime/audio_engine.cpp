@@ -25,9 +25,10 @@ namespace daisy_emu {
 
 // ---- Helpers ----------------------------------------------------------------
 
+// Post msg to the SPSC queue; drained to the IPC socket by the non-RT drain
+// thread started in run_audio_engine() (AC-39). Safe to call from RT thread.
 static void ipc_send(const std::string& msg) {
-    std::lock_guard<std::mutex> lk(g_state.send_mutex);
-    if (g_state.send_ipc) g_state.send_ipc(msg);
+    g_state.ipc_queue.push(msg);
 }
 
 // ---- Inline radix-2 FFT (Cooley-Tukey, power-of-2 N) -----------------------
@@ -194,25 +195,36 @@ static void scan_output_and_notify(const std::vector<float>& out_buf, size_t n) 
 // ---- Scope state (shared across modes, reset on mode switch) ----------------
 
 struct ScopeState {
-    static constexpr size_t SCOPE_BLOCKS = 33;
-    static constexpr size_t SCOPE_STEP   = 4;
+    static constexpr size_t SCOPE_BLOCKS   = 33;
+    static constexpr size_t SCOPE_STEP     = 4;
+    // Hard cap on accumulated samples per channel — no RT heap reallocation beyond
+    // this point for any block size (AC-40). At SCOPE_STEP=4 and 4096 frames/block,
+    // 33 blocks produce 33*(4096/4)=33792 samples; cap at 64k to give headroom.
+    static constexpr size_t SCOPE_SAMPLES_MAX = 65536;
 
     std::vector<float> in, out, out_r;
     size_t block_count{0};
 
-    ScopeState() { in.reserve(512); out.reserve(512); out_r.reserve(512); }
+    ScopeState() {
+        in.reserve(SCOPE_SAMPLES_MAX);
+        out.reserve(SCOPE_SAMPLES_MAX);
+        out_r.reserve(SCOPE_SAMPLES_MAX);
+    }
 
     void reset() {
         in.clear(); out.clear(); out_r.clear(); block_count = 0;
     }
 
     // Accumulate one block of interleaved stereo data (in_buf, out_buf each size frames*2).
-    // Returns true and clears state when a full scope frame is ready (caller must emit).
+    // Enforces SCOPE_SAMPLES_MAX so push_back never triggers reallocation on the RT
+    // thread once the vectors have been reserved (AC-40).
+    // Returns true and resets state when a full scope frame is ready (caller must emit).
     bool accumulate(const std::vector<float>& in_buf,
                     const std::vector<float>& out_buf,
                     size_t frames) {
         size_t buf_samples = frames * 2;
         for (size_t i = 0; i < buf_samples; i += SCOPE_STEP * 2) {
+            if (in.size() >= SCOPE_SAMPLES_MAX) break;  // hard cap — no realloc (AC-40)
             in.push_back(in_buf[i]);
             out.push_back(out_buf[i]);
             out_r.push_back(out_buf[i + 1]);
@@ -393,11 +405,18 @@ static void run_simulated(bool use_block,
             static_cast<double>(block_size) / static_cast<double>(sample_rate) * 1e9);
 
         while (!g_state.shutdown.load()) {
+            auto t0 = std::chrono::steady_clock::now();
             if (!process_one_block(block_size)) break;
             if (!g_state.transport_running.load()) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(5));
             } else {
-                std::this_thread::sleep_for(std::chrono::nanoseconds(block_ns));
+                // Subtract elapsed execution time so WAV playback rate tracks wall
+                // clock within ±5% under sustained CPU load (AC-54).
+                auto elapsed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::steady_clock::now() - t0).count();
+                long long sleep_ns = block_ns - elapsed_ns;
+                if (sleep_ns > 0)
+                    std::this_thread::sleep_for(std::chrono::nanoseconds(sleep_ns));
             }
         }
         return;
@@ -575,6 +594,26 @@ void run_audio_engine() {
     std::vector<float> in_ch0(max_size), in_ch1(max_size);
     std::vector<float> out_ch0(max_size), out_ch1(max_size);
 
+    // Drain thread: forwards messages from the SPSC queue to the IPC socket (AC-39).
+    // Runs for the lifetime of the audio engine; the mutex and ::send() stay off
+    // the real-time thread.
+    std::thread drain_thread([&]() {
+        std::string msg;
+        while (!g_state.shutdown.load()) {
+            if (g_state.ipc_queue.pop(msg)) {
+                std::lock_guard<std::mutex> lk(g_state.send_mutex);
+                if (g_state.send_ipc) g_state.send_ipc(msg);
+            } else {
+                std::this_thread::sleep_for(std::chrono::microseconds(500));
+            }
+        }
+        // Flush any remaining messages after shutdown
+        while (g_state.ipc_queue.pop(msg)) {
+            std::lock_guard<std::mutex> lk(g_state.send_mutex);
+            if (g_state.send_ipc) g_state.send_ipc(msg);
+        }
+    });
+
     // Outer dispatch loop: check mode and run the appropriate inner loop.
     // Each inner loop returns when mode changes or shutdown is set.
     while (!g_state.shutdown.load()) {
@@ -587,6 +626,8 @@ void run_audio_engine() {
             run_realtime(use_block, sample_rate, in_ch0, in_ch1, out_ch0, out_ch1);
         }
     }
+
+    drain_thread.join();
 }
 
 }  // namespace daisy_emu

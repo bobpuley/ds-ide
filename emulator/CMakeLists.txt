@@ -4,6 +4,30 @@ project(daisy_emu CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# ---- Opt-in sanitizer configurations (AC-49) ---------------------------------
+# Enable with: cmake -DASAN=ON  (AddressSanitizer + UndefinedBehaviorSanitizer)
+#              cmake -DTSAN=ON  (ThreadSanitizer)
+# The two are mutually exclusive — GCC/Clang do not support combining them.
+
+option(ASAN "Build with AddressSanitizer + UBSanitizer" OFF)
+option(TSAN "Build with ThreadSanitizer" OFF)
+
+if(ASAN AND TSAN)
+    message(FATAL_ERROR "ASAN and TSAN are mutually exclusive — enable only one at a time.")
+endif()
+
+if(ASAN)
+    message(STATUS "Sanitizers: AddressSanitizer + UBSanitizer enabled")
+    add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address,undefined)
+endif()
+
+if(TSAN)
+    message(STATUS "Sanitizers: ThreadSanitizer enabled")
+    add_compile_options(-fsanitize=thread -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=thread)
+endif()
+
 # ---- Caller-supplied variables -----------------------------------------------
 
 # Path to the effect source file (required)

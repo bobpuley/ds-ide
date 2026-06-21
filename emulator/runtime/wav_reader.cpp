@@ -9,7 +9,9 @@ namespace daisy_emu {
 // ---- Little-endian readers --------------------------------------------------
 
 static uint16_t rd_u16(const uint8_t* p) {
-    return static_cast<uint16_t>(p[0] | (p[1] << 8));
+    // Cast to uint32_t before shifting to avoid integer-promotion UB (AC-52).
+    return static_cast<uint16_t>(static_cast<uint32_t>(p[0])
+                                | (static_cast<uint32_t>(p[1]) << 8));
 }
 
 static uint32_t rd_u32(const uint8_t* p) {
@@ -30,7 +32,11 @@ static float decode_pcm16(const uint8_t* p) {
 }
 
 static float decode_pcm24(const uint8_t* p) {
-    int32_t v = static_cast<int32_t>(p[0] | (p[1] << 8) | (p[2] << 16));
+    // Cast to uint32_t before shifting to avoid integer-promotion UB (AC-52).
+    uint32_t u = static_cast<uint32_t>(p[0])
+               | (static_cast<uint32_t>(p[1]) << 8)
+               | (static_cast<uint32_t>(p[2]) << 16);
+    int32_t v = static_cast<int32_t>(u);
     if (v & 0x800000) v |= ~0xFFFFFF;  // sign-extend 24→32
     return static_cast<float>(v) / 8388608.f;
 }
@@ -101,8 +107,11 @@ bool parse_wav(const uint8_t* data, size_t size, WavData& out, std::string& err)
     if (sample_rate == 0)     { err = "zero sample rate"; return false; }
 
     // Select a decoder for the declared format + bit depth.
-    float (*decode)(const uint8_t*) = nullptr;
+    // Guard division by zero before computing total_samples (AC-42).
+    if (bits == 0) { err = "zero bits per sample"; return false; }
     uint32_t bytes_per_sample = bits / 8;
+    if (bytes_per_sample == 0) { err = "computed bytes_per_sample is zero"; return false; }
+    float (*decode)(const uint8_t*) = nullptr;
     if (fmt_tag == WAVE_FORMAT_PCM) {
         switch (bits) {
             case 8:  decode = decode_pcm8;  break;
