@@ -494,6 +494,40 @@ describe('EmulatorManager', () => {
     });
   });
 
+  describe('deploy() concurrency guard (FR-EQ-2)', () => {
+    it('a second concurrent deploy() call does not spawn a second effect_emu process', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      // Call deploy twice concurrently (no await between them).
+      const p1 = manager.deploy(() => undefined);
+      const p2 = manager.deploy(() => undefined);
+      await Promise.all([p1, p2]);
+
+      // cmake ×2, then effect_emu ×1 (second call was early-returned)
+      const effectEmuCalls = (spawnMock.mock.calls as [string][]).filter(
+        c => typeof c[0] === 'string' && c[0].includes('effect_emu'),
+      );
+      expect(effectEmuCalls).toHaveLength(1);
+    });
+
+    it('deploy() is callable again after first deploy completes', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      await manager.deploy(() => undefined);
+
+      const effectEmuCalls = (spawnMock.mock.calls as [string][]).filter(
+        c => typeof c[0] === 'string' && c[0].includes('effect_emu'),
+      );
+      // Two sequential deploys: both should succeed
+      expect(effectEmuCalls).toHaveLength(2);
+    });
+  });
+
   describe('disconnect event suppression', () => {
     it('does NOT emit disconnect during intentional kill (redeploy)', async () => {
       await manager.build(

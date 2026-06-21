@@ -137,6 +137,29 @@ describe('ScopePanel', () => {
     expect(created.dispose).toHaveBeenCalled();
   });
 
+  it('dispose() removes the manager message listener to prevent leak (FR-EQ-7)', () => {
+    // 12 create+dispose cycles on the same manager must not accumulate listeners
+    const warnings: string[] = [];
+    const warnSpy = vi.spyOn(process, 'emit').mockImplementation((...args: unknown[]) => {
+      if (args[0] === 'warning') {
+        const w = args[1] as { name?: string };
+        if (w?.name === 'MaxListenersExceededWarning') warnings.push(String(w));
+      }
+      return true;
+    });
+
+    const localManager = makeManager();
+    for (let i = 0; i < 12; i++) {
+      const p = new ScopePanel(localManager);
+      p.dispose();
+    }
+
+    warnSpy.mockRestore();
+    expect(warnings).toHaveLength(0);
+    // After all dispose() calls the manager should have no 'message' listeners left
+    expect(localManager.listenerCount('message')).toBe(0);
+  });
+
   it('reveal() is called when show() is called on an already-open panel', () => {
     panel.show();
     const created = webviewMock.mock.results[0]?.value as { reveal: ReturnType<typeof vi.fn> };

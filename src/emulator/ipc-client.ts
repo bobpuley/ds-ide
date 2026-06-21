@@ -52,6 +52,11 @@ export class IpcClient extends EventEmitter implements IIpcClient {
 
   private onData(data: Buffer): void {
     this.partial += data.toString('utf8');
+    if (this.partial.length > 1 << 20) {
+      this.partial = '';
+      this.emit('error', new Error('IPC receive buffer overflow: message exceeds 1 MB'));
+      return;
+    }
     let nl: number;
     while ((nl = this.partial.indexOf('\n')) !== -1) {
       const line = this.partial.slice(0, nl).trim();
