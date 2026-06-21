@@ -53,6 +53,7 @@ const workspace = {
     lineAt: vi.fn((n: number) => ({ range: { end: new Position(n, 0) } })),
   })),
   applyEdit: vi.fn(async () => true),
+  onDidSaveTextDocument: vi.fn((_cb: (doc: { uri: { fsPath: string } }) => void) => ({ dispose: vi.fn() })),
   fs: {
     writeFile: vi.fn(async () => undefined),
     createDirectory: vi.fn(async () => undefined),

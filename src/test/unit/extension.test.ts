@@ -1,6 +1,20 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
 import * as vscode from 'vscode';
+import path from 'path';
+
+vi.mock('fs', () => ({
+  default: {
+    readFileSync: vi.fn(() => { throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' }); }),
+    writeFileSync: vi.fn(),
+    existsSync: vi.fn(() => false),
+    readdirSync: vi.fn(() => []),
+  },
+  readFileSync: vi.fn(() => { throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' }); }),
+  writeFileSync: vi.fn(),
+  existsSync: vi.fn(() => false),
+  readdirSync: vi.fn(() => []),
+}));
 
 // Track manager instances so tests can emit events on them.
 const managerInstances: EventEmitter[] = [];
@@ -74,8 +88,8 @@ describe('extension', () => {
   it('activate pushes disposables onto context.subscriptions', () => {
     const ctx = makeContext();
     activate(ctx);
-    // diagnostics + statusBar + daisy-debug descriptor factory + tracker factory + ds-ide descriptor factory + run config provider + 2 webview view providers + 10 commands + 1 manager/scope dispose
-    expect((ctx.subscriptions as unknown[]).length).toBe(20);
+    // diagnostics + statusBar + daisy-debug descriptor factory + tracker factory + ds-ide descriptor factory + run config provider + 2 webview view providers + onDidSaveTextDocument + 10 commands + 1 manager/scope dispose
+    expect((ctx.subscriptions as unknown[]).length).toBe(21);
   });
 
   it('deactivate does not throw', () => {
@@ -156,6 +170,12 @@ describe('extension', () => {
     );
   });
 
+  it('registers onDidSaveTextDocument on activate (FR-CE-9, FR-WE-11)', () => {
+    const ctx = makeContext();
+    activate(ctx);
+    expect(vscode.workspace.onDidSaveTextDocument).toHaveBeenCalled();
+  });
+
   it('updates status bar text when a daisy-debug session starts', () => {
     const ctx = makeContext();
     activate(ctx);
@@ -177,5 +197,87 @@ describe('extension', () => {
       { text: string };
     terminateCb?.({ type: 'daisy-debug' });
     expect(statusBar?.text).toContain('stopped');
+  });
+});
+
+// ── FR-CE-9 / FR-WE-11: initialize views on project open + refresh on save ──
+
+describe('extension view initialization (FR-CE-9, FR-WE-11)', () => {
+  let fsMock: Record<string, ReturnType<typeof vi.fn>>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    managerInstances.length = 0;
+    fsMock = (await import('fs')) as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    (fsMock['existsSync'] as ReturnType<typeof vi.fn>).mockImplementation((p: unknown) => {
+      const fp = String(p);
+      return fp.endsWith('CMakeLists.txt') || fp.endsWith('.cpp');
+    });
+    (fsMock['readdirSync'] as ReturnType<typeof vi.fn>).mockReturnValue(['effect.cpp']);
+    (fsMock['readFileSync'] as ReturnType<typeof vi.fn>).mockImplementation((p: unknown) => {
+      const fp = String(p);
+      if (fp.endsWith('.cpp')) return '// ds-ide:controls\n// ds-ide:pot vol 15\n';
+      if (fp.endsWith('controllers.yaml')) return 'pots: []\nbuttons: []\nleds: []\n';
+      throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+    });
+    (vscode.workspace as unknown as Record<string, unknown>).workspaceFolders = [
+      { uri: { fsPath: '/proj' } },
+    ];
+  });
+
+  afterEach(() => {
+    (vscode.workspace as unknown as Record<string, unknown>).workspaceFolders = undefined;
+  });
+
+  it('registers onDidSaveTextDocument watcher on activate (FR-CE-9, FR-WE-11)', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    expect(vscode.workspace.onDidSaveTextDocument).toHaveBeenCalledTimes(1);
+  });
+
+  it('onDidSaveTextDocument cb registered is a function (FR-CE-9, FR-WE-11)', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    const saveCb = (vscode.workspace.onDidSaveTextDocument as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
+    expect(typeof saveCb).toBe('function');
+  });
+
+  it('save cb reads effect source when .cpp file is saved (FR-CE-9, FR-WE-11)', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    const saveCb = (vscode.workspace.onDidSaveTextDocument as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
+      ((doc: { uri: { fsPath: string } }) => void);
+    (fsMock['readFileSync'] as ReturnType<typeof vi.fn>).mockClear();
+    saveCb({ uri: { fsPath: path.join('/proj', 'effect.cpp') } });
+    expect(fsMock['readFileSync']).toHaveBeenCalledWith(
+      expect.stringMatching(/\.cpp$/), expect.anything(),
+    );
+  });
+
+  it('save cb does not read files when unrelated file is saved (FR-CE-9, FR-WE-11)', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    const saveCb = (vscode.workspace.onDidSaveTextDocument as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
+      ((doc: { uri: { fsPath: string } }) => void);
+    (fsMock['readFileSync'] as ReturnType<typeof vi.fn>).mockClear();
+    saveCb({ uri: { fsPath: '/other/unrelated.txt' } });
+    expect(fsMock['readFileSync']).not.toHaveBeenCalled();
+  });
+
+  it('save cb reads controllers.yaml when yaml file is saved (FR-CE-9)', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    const saveCb = (vscode.workspace.onDidSaveTextDocument as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
+      ((doc: { uri: { fsPath: string } }) => void);
+    (fsMock['readFileSync'] as ReturnType<typeof vi.fn>).mockClear();
+    saveCb({ uri: { fsPath: path.join('/proj', 'controllers.yaml') } });
+    expect(fsMock['readFileSync']).toHaveBeenCalledWith(
+      expect.stringMatching(/controllers\.yaml$/), expect.anything(),
+    );
   });
 });

@@ -20,23 +20,52 @@ describe('PIN_DEFS', () => {
     }
   });
 
-  it('marks D15–D26 as ADC-capable', () => {
+  it('marks D15–D25 (A0–A10) and D28 (A11) as ADC-capable (per Seed_pinout.csv)', () => {
     const adcPins = PIN_DEFS.filter(d => d.adc).map(d => d.pin);
-    for (let p = 15; p <= 26; p++) {
-      expect(adcPins).toContain(p);
-    }
+    for (let p = 15; p <= 25; p++) expect(adcPins).toContain(p);
+    expect(adcPins).toContain(28);
   });
 
-  it('does not mark D0–D14 or D27–D30 as ADC-capable', () => {
+  it('does not mark D0–D14, D26, D27, D29, D30 as ADC-capable (per Seed_pinout.csv)', () => {
     const nonAdcDigital = PIN_DEFS.filter(d => d.pin !== null && !d.adc).map(d => d.pin as number);
     for (let p = 0; p <= 14; p++) expect(nonAdcDigital).toContain(p);
-    for (let p = 27; p <= 30; p++) expect(nonAdcDigital).toContain(p);
+    expect(nonAdcDigital).toContain(26);
+    expect(nonAdcDigital).toContain(27);
+    expect(nonAdcDigital).toContain(29);
+    expect(nonAdcDigital).toContain(30);
   });
 
   it('ADC pins have an aLabel', () => {
     PIN_DEFS.filter(d => d.adc).forEach(d => {
       expect(d.aLabel).toBeTruthy();
     });
+  });
+
+  it('left-side row 0 is D0 and row 1 is D1 (AC-57 — USB end at top)', () => {
+    const left = PIN_DEFS.filter(d => d.side === 'L').sort((a, b) => a.row - b.row);
+    expect(left[0].label).toBe('D0');
+    expect(left[0].pin).toBe(0);
+    expect(left[1].label).toBe('D1');
+    expect(left[1].pin).toBe(1);
+  });
+
+  it('right-side row 0 is GND, row 1 is VIN, row 2 is 3V3D, row 3 is D30 (AC-57)', () => {
+    const right = PIN_DEFS.filter(d => d.side === 'R').sort((a, b) => a.row - b.row);
+    expect(right[0].label).toBe('GND');
+    expect(right[0].pin).toBeNull();
+    expect(right[1].label).toBe('VIN');
+    expect(right[2].label).toBe('3V3D');
+    expect(right[3].label).toBe('D30');
+    expect(right[3].pin).toBe(30);
+  });
+
+  it('D26 is not ADC-capable and D28 is A11 (AC-57, per Seed_pinout.csv)', () => {
+    const d26 = PIN_DEFS.find(d => d.pin === 26)!;
+    const d28 = PIN_DEFS.find(d => d.pin === 28)!;
+    expect(d26.adc).toBe(false);
+    expect(d26.aLabel).toBeNull();
+    expect(d28.adc).toBe(true);
+    expect(d28.aLabel).toBe('A11');
   });
 });
 
