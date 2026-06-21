@@ -164,7 +164,7 @@ function buildHtml(): string {
     <span id="ce-emu-status" class="ce-emu-stopped">&#9632;</span>
     <span class="emu-sep" style="margin:0 6px">|</span>
     <span id="save-wrap" style="display:inline-flex;align-items:center;gap:8px">
-      <button id="save-btn">Save controllers.yaml</button>
+      <button id="save-btn">&#x1F4BE; layout</button>
       <span id="save-status"></span>
     </span>
   </div>
