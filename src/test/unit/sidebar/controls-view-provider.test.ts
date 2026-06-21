@@ -100,6 +100,15 @@ describe('ControlsViewProvider', () => {
     );
   });
 
+  it('postLed forwards gpioPin and lit to webview', () => {
+    const view = makeView();
+    provider.resolveWebviewView(view as never);
+    provider.postLed({ type: 'led', gpioPin: 23, lit: true });
+    expect(view.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'led', gpioPin: 23, lit: true }),
+    );
+  });
+
   it('loadEditor sends editorLoad message to webview', () => {
     const view = makeView();
     provider.resolveWebviewView(view as never);

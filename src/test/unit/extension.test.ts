@@ -135,6 +135,25 @@ describe('extension', () => {
     );
   });
 
+  it('routes type:led manager messages to controlsViewProvider', () => {
+    const ctx = makeContext();
+    activate(ctx);
+    const mgr = managerInstances[0]!;
+
+    // Resolve the controls view so postLed has a webview to write to
+    const regCalls = (vscode.window.registerWebviewViewProvider as ReturnType<typeof vi.fn>).mock.calls;
+    const controlsEntry = regCalls.find((c: unknown[]) => c[0] === 'ds-ide.controlsEditor');
+    const controlsProvider = controlsEntry?.[1] as { resolveWebviewView: (v: unknown) => void } | undefined;
+    const view = { visible: true, webview: { options: {}, html: '', postMessage: vi.fn(), onDidReceiveMessage: vi.fn(() => ({ dispose: vi.fn() })) }, onDidChangeVisibility: vi.fn(() => ({ dispose: vi.fn() })) };
+    controlsProvider?.resolveWebviewView(view as never);
+
+    mgr.emit('message', { type: 'led', gpioPin: 23, lit: true });
+
+    expect(view.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'led', gpioPin: 23, lit: true }),
+    );
+  });
+
   it('registers a debug adapter descriptor factory for daisy-debug', () => {
     const ctx = makeContext();
     activate(ctx);

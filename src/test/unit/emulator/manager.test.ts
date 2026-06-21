@@ -400,6 +400,31 @@ describe('EmulatorManager', () => {
   });
 
   describe('sendTransport()', () => {
+    it('resets lastKnownRunning so scope data after stop+start re-synthesizes running:true', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      const messages: unknown[] = [];
+      manager.on('message', (msg) => messages.push(msg));
+
+      // Initial running cycle
+      ipcClientStub.emit('message', { type: 'status', running: false });
+      ipcClientStub.emit('message', { type: 'scope', in: [], out: [] }); // synthesizes running:true
+
+      // Explicit stop via transport command (bypasses IPC status message)
+      manager.sendTransport('stop');
+
+      // Restart: scope data arrives — must synthesize running:true again
+      ipcClientStub.emit('message', { type: 'scope', in: [], out: [] });
+
+      const statusMsgs = (messages as Record<string, unknown>[]).filter(m => m['type'] === 'status');
+      // expect: running:false, synthesized running:true (first start), synthesized running:true (after stop+start)
+      expect(statusMsgs).toHaveLength(3);
+      expect(statusMsgs[2]).toMatchObject({ type: 'status', running: true });
+    });
+
     it('sends correct JSON for start', async () => {
       await manager.build(
         { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },

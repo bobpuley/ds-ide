@@ -69,6 +69,10 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
     this.view?.webview.postMessage({ command: 'status', ...msg });
   }
 
+  postLed(msg: IpcMessage): void {
+    this.view?.webview.postMessage({ command: 'led', gpioPin: msg['gpioPin'], lit: msg['lit'] });
+  }
+
   loadEditor(cfg: ControllerConfig): void {
     this.pendingEditorCfg = cfg;
     this.view?.webview.postMessage({ command: 'editorLoad', cfg });

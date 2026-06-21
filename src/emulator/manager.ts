@@ -47,6 +47,7 @@ export class EmulatorManager extends EventEmitter {
   // Set to true before intentional kills (redeploy/dispose) so the disconnect
   // event is not forwarded to callers as an unexpected crash.
   private intentionalDisconnect = false;
+  private lastKnownRunning: boolean | undefined = undefined;
 
   private readonly spawn: typeof cp.spawn;
   private readonly ipcClientFactory: () => IpcClient;
@@ -142,6 +143,9 @@ export class EmulatorManager extends EventEmitter {
 
   sendTransport(action: 'start' | 'stop'): void {
     this.ipcClient?.send({ type: 'transport', action });
+    // Explicit stop resets the running flag so the next scope burst after
+    // sendTransport('start') will re-synthesize the running:true status event.
+    if (action === 'stop') this.lastKnownRunning = false;
   }
 
   sendSine(freq: number, amplitude: number): void {
@@ -214,20 +218,22 @@ export class EmulatorManager extends EventEmitter {
 
   private async connectIpc(socketPath: string): Promise<void> {
     this.intentionalDisconnect = false;  // new live connection — reset flag
+    this.lastKnownRunning = undefined;   // fresh connection — unknown until first status
     const client = this.ipcClientFactory();
     this.ipcClient = client;
     // Synthesize status:{running:true} when scope data arrives after status:{running:false}.
     // The emulator sends running:false on connect but never sends running:true explicitly —
     // it simply starts sending scope/spectrum data when audio is active.
-    let lastKnownRunning: boolean | undefined = undefined;
+    // lastKnownRunning is a class field so sendTransport('stop') can reset it between
+    // stop and the next start, keeping the synthesis logic correct across restarts.
     let lastStatusMsg: IpcMessage | null = null;
     client.on('message', (msg: IpcMessage) => {
       if (msg['type'] === 'status') {
-        lastKnownRunning = !!msg['running'];
+        this.lastKnownRunning = !!msg['running'];
         lastStatusMsg = msg;
       } else if (msg['type'] === 'scope' || msg['type'] === 'spectrum') {
-        if (lastKnownRunning === false) {
-          lastKnownRunning = true;
+        if (this.lastKnownRunning === false) {
+          this.lastKnownRunning = true;
           this.emit('message', { ...(lastStatusMsg ?? {}), type: 'status', running: true });
         }
       }

@@ -238,6 +238,9 @@ export function activate(context: vscode.ExtensionContext): void {
       statusBar.tooltip = FIDELITY_CAVEAT;
       controlsViewProvider?.postStatus(msg);
     }
+    if (msg['type'] === 'led') {
+      controlsViewProvider?.postLed(msg);
+    }
   });
 
   manager.on('disconnect', () => {
