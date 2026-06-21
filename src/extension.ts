@@ -60,25 +60,16 @@ async function buildControlsConfig(folder: string, yamlCfg: ControllerConfig): P
   }
 }
 
-let manager: EmulatorManager | undefined;
-let scopePanel: ScopePanel | undefined;
-let controlsViewProvider: ControlsViewProvider | undefined;
-let wiringViewProvider: WiringViewProvider | undefined;
-let potStore: PotStore | undefined;
-let buttonStore: ButtonStore | undefined;
-let sineState: SineParams = { ...SINE_DEFAULTS };
-let audioSourceState: AudioSource = { ...AUDIO_SOURCE_DEFAULTS };
-let activeRecordPath: string | undefined;
-
 export function activate(context: vscode.ExtensionContext): void {
-  potStore = new PotStore(context.workspaceState);
-  buttonStore = new ButtonStore(context.workspaceState);
-  sineState = context.workspaceState.get<SineParams>('ds-ide.sine') ?? { ...SINE_DEFAULTS };
-  audioSourceState = {
+  const potStore    = new PotStore(context.workspaceState);
+  const buttonStore = new ButtonStore(context.workspaceState);
+  let sineState: SineParams = context.workspaceState.get<SineParams>('ds-ide.sine') ?? { ...SINE_DEFAULTS };
+  let audioSourceState: AudioSource = {
     ...AUDIO_SOURCE_DEFAULTS,
     ...context.workspaceState.get<Partial<AudioSource>>('ds-ide.audioSource'),
   };
-  manager = new EmulatorManager();
+  let activeRecordPath: string | undefined;
+  const manager = new EmulatorManager();
 
   const diagnostics = vscode.languages.createDiagnosticCollection('ds-ide');
   const buildChannel    = vscode.window.createOutputChannel('Daisy IDE Build');
@@ -90,7 +81,7 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBar.tooltip = FIDELITY_CAVEAT;
   statusBar.show();
 
-  controlsViewProvider = new ControlsViewProvider(
+  const controlsViewProvider = new ControlsViewProvider(
     (cfg) => {
       const folders = vscode.workspace.workspaceFolders;
       if (!folders?.[0]) return;
@@ -111,7 +102,7 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   );
 
-  wiringViewProvider = new WiringViewProvider(
+  const wiringViewProvider = new WiringViewProvider(
     async (wp: WiredPin) => {
       const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
       const effectPath = await findEffectSource(folder);
@@ -160,7 +151,7 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   );
 
-  scopePanel = new ScopePanel(
+  const scopePanel = new ScopePanel(
     manager,
     (freq, amplitude) => {
       sineState = { freq, amplitude };
@@ -272,31 +263,31 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   async function performBuildAndDeploy(): Promise<boolean> {
-    const ok = await buildForEmulator(manager!, context.extensionPath, diagnostics, buildChannel);
+    const ok = await buildForEmulator(manager, context.extensionPath, diagnostics, buildChannel);
     if (!ok) return false;
     statusBar.text = '$(loading~spin) Daisy: deploying…';
     statusBar.tooltip = FIDELITY_CAVEAT;
     const cfg = await loadControllerConfig();
     const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-    potStore!.setDefaults(cfg.pots);
-    buttonStore!.setDefaults(cfg.buttons);
-    scopePanel!.show(sineState, audioSourceState);
-    controlsViewProvider!.loadEditor(cfg);
-    controlsViewProvider!.postControlsConfig(await buildControlsConfig(folder, cfg));
-    const deployed = await deployToEmulator(manager!, emulatorChannel);
+    potStore.setDefaults(cfg.pots);
+    buttonStore.setDefaults(cfg.buttons);
+    scopePanel.show(sineState, audioSourceState);
+    controlsViewProvider.loadEditor(cfg);
+    controlsViewProvider.postControlsConfig(await buildControlsConfig(folder, cfg));
+    const deployed = await deployToEmulator(manager, emulatorChannel);
     if (!deployed) {
       statusBar.text = '$(debug-stop) Daisy: stopped';
       statusBar.tooltip = FIDELITY_CAVEAT;
       return false;
     }
-    manager!.sendPotSnapshot(potStore!.getSnapshot());
-    manager!.sendButtonSnapshot(buttonStore!.getSnapshot());
-    manager!.sendSine(sineState.freq, sineState.amplitude);
+    manager.sendPotSnapshot(potStore.getSnapshot());
+    manager.sendButtonSnapshot(buttonStore.getSnapshot());
+    manager.sendSine(sineState.freq, sineState.amplitude);
     const mode = audioSourceState.input === 'live' ? 'realtime' : 'simulated';
-    manager!.sendAudioMode(mode);
-    manager!.sendAudioDevice(audioSourceState.sampleRate, audioSourceState.bufferSize);
+    manager.sendAudioMode(mode);
+    manager.sendAudioDevice(audioSourceState.sampleRate, audioSourceState.bufferSize);
     if (audioSourceState.input === 'wav' && audioSourceState.wavPath) {
-      manager!.sendWavFile(audioSourceState.wavPath, audioSourceState.wavLoop);
+      manager.sendWavFile(audioSourceState.wavPath, audioSourceState.wavLoop);
     }
     return true;
   }
@@ -311,8 +302,8 @@ export function activate(context: vscode.ExtensionContext): void {
     if (!folders?.[0]) return;
     const folder = folders[0].uri.fsPath;
     const cfg = await loadControllerConfig();
-    controlsViewProvider!.loadEditor(cfg);
-    controlsViewProvider!.postControlsConfig(await buildControlsConfig(folder, cfg));
+    controlsViewProvider.loadEditor(cfg);
+    controlsViewProvider.postControlsConfig(await buildControlsConfig(folder, cfg));
     const effectPath = await findEffectSource(folder);
     let wiredPins: WiredPin[] = [];
     if (effectPath) {
@@ -322,7 +313,7 @@ export function activate(context: vscode.ExtensionContext): void {
         wiredPins = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
       } catch { /* file unreadable — leave wiredPins empty */ }
     }
-    wiringViewProvider!.postWiredPins(wiredPins);
+    wiringViewProvider.postWiredPins(wiredPins);
   }
 
   void initViewsFromProject();
@@ -368,8 +359,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.debug.registerDebugAdapterTrackerFactory(DAISY_DEBUG_TYPE, debugTrackerFactory),
     vscode.debug.registerDebugAdapterDescriptorFactory(DS_IDE_DEBUG_TYPE, new DsIdeDebugAdapterDescriptorFactory()),
     vscode.debug.registerDebugConfigurationProvider(DS_IDE_DEBUG_TYPE, runConfigProvider),
-    vscode.window.registerWebviewViewProvider(CONTROLS_VIEW_ID, controlsViewProvider, { webviewOptions: { retainContextWhenHidden: true } }),
-    vscode.window.registerWebviewViewProvider(WIRING_VIEW_ID, wiringViewProvider, { webviewOptions: { retainContextWhenHidden: true } }),
+    vscode.window.registerWebviewViewProvider(CONTROLS_VIEW_ID, controlsViewProvider),
+    vscode.window.registerWebviewViewProvider(WIRING_VIEW_ID, wiringViewProvider),
     vscode.workspace.onDidSaveTextDocument(async (doc) => {
       const folders = vscode.workspace.workspaceFolders;
       if (!folders?.[0]) return;
@@ -383,8 +374,8 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!isYaml && !mightBeSource) return;
 
       const cfg = await loadControllerConfig();
-      controlsViewProvider!.loadEditor(cfg);
-      controlsViewProvider!.postControlsConfig(await buildControlsConfig(folder, cfg));
+      controlsViewProvider.loadEditor(cfg);
+      controlsViewProvider.postControlsConfig(await buildControlsConfig(folder, cfg));
 
       if (mightBeSource) {
         const effectPath = await findEffectSource(folder);
@@ -395,12 +386,12 @@ export function activate(context: vscode.ExtensionContext): void {
             const { controls } = parseControlsConvention(text);
             pins = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
           } catch { /* unreadable */ }
-          wiringViewProvider!.postWiredPins(pins);
+          wiringViewProvider.postWiredPins(pins);
         }
       }
     }),
     vscode.commands.registerCommand('ds-ide.build', () =>
-      buildForEmulator(manager!, context.extensionPath, diagnostics, buildChannel),
+      buildForEmulator(manager, context.extensionPath, diagnostics, buildChannel),
     ),
     vscode.commands.registerCommand('ds-ide.buildAndDeploy', performBuildAndDeploy),
     vscode.commands.registerCommand('ds-ide.deploy', async () => {
@@ -408,30 +399,30 @@ export function activate(context: vscode.ExtensionContext): void {
       statusBar.tooltip = FIDELITY_CAVEAT;
       const cfg = await loadControllerConfig();
       const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-      potStore!.setDefaults(cfg.pots);
-      buttonStore!.setDefaults(cfg.buttons);
-      scopePanel!.show(sineState, audioSourceState);
-      controlsViewProvider!.loadEditor(cfg);
-      controlsViewProvider!.postControlsConfig(await buildControlsConfig(folder, cfg));
-      const deployed = await deployToEmulator(manager!, emulatorChannel);
+      potStore.setDefaults(cfg.pots);
+      buttonStore.setDefaults(cfg.buttons);
+      scopePanel.show(sineState, audioSourceState);
+      controlsViewProvider.loadEditor(cfg);
+      controlsViewProvider.postControlsConfig(await buildControlsConfig(folder, cfg));
+      const deployed = await deployToEmulator(manager, emulatorChannel);
       if (!deployed) {
         statusBar.text = '$(debug-stop) Daisy: stopped';
         statusBar.tooltip = FIDELITY_CAVEAT;
         return;
       }
-      manager!.sendPotSnapshot(potStore!.getSnapshot());
-      manager!.sendButtonSnapshot(buttonStore!.getSnapshot());
-      manager!.sendSine(sineState.freq, sineState.amplitude);
+      manager.sendPotSnapshot(potStore.getSnapshot());
+      manager.sendButtonSnapshot(buttonStore.getSnapshot());
+      manager.sendSine(sineState.freq, sineState.amplitude);
       const mode = audioSourceState.input === 'live' ? 'realtime' : 'simulated';
-      manager!.sendAudioMode(mode);
-      manager!.sendAudioDevice(audioSourceState.sampleRate, audioSourceState.bufferSize);
+      manager.sendAudioMode(mode);
+      manager.sendAudioDevice(audioSourceState.sampleRate, audioSourceState.bufferSize);
       if (audioSourceState.input === 'wav' && audioSourceState.wavPath) {
-        manager!.sendWavFile(audioSourceState.wavPath, audioSourceState.wavLoop);
+        manager.sendWavFile(audioSourceState.wavPath, audioSourceState.wavLoop);
       }
     }),
-    vscode.commands.registerCommand('ds-ide.start', () => startAudio(manager!)),
+    vscode.commands.registerCommand('ds-ide.start', () => startAudio(manager)),
     vscode.commands.registerCommand('ds-ide.stop', () => {
-      stopAudio(manager!);
+      stopAudio(manager);
       scopePanel?.notifyStopped();
       controlsViewProvider?.postStatus({ type: 'status', running: false });
     }),
@@ -439,8 +430,8 @@ export function activate(context: vscode.ExtensionContext): void {
       const cfg = await loadControllerConfig();
       const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
       void vscode.commands.executeCommand(`${CONTROLS_VIEW_ID}.focus`);
-      controlsViewProvider!.loadEditor(cfg);
-      controlsViewProvider!.postControlsConfig(await buildControlsConfig(folder, cfg));
+      controlsViewProvider.loadEditor(cfg);
+      controlsViewProvider.postControlsConfig(await buildControlsConfig(folder, cfg));
     }),
     vscode.commands.registerCommand('ds-ide.buildHardware', () => {
       const folders = vscode.workspace.workspaceFolders;
@@ -462,21 +453,21 @@ export function activate(context: vscode.ExtensionContext): void {
       statusBar.text = '$(loading~spin) Daisy: deploying…';
       statusBar.tooltip = FIDELITY_CAVEAT;
       const cfg = await loadControllerConfig();
-      potStore!.setDefaults(cfg.pots);
-      buttonStore!.setDefaults(cfg.buttons);
+      potStore.setDefaults(cfg.pots);
+      buttonStore.setDefaults(cfg.buttons);
       return debugDeploy(
-        manager!,
+        manager,
         () => cfg.pots,
-        (_defs, _snap) => scopePanel!.show(sineState, audioSourceState),
-        () => potStore!.getSnapshot(),
+        (_defs, _snap) => scopePanel.show(sineState, audioSourceState),
+        () => potStore.getSnapshot(),
         () => {
-          manager!.sendButtonSnapshot(buttonStore!.getSnapshot());
-          manager!.sendSine(sineState.freq, sineState.amplitude);
+          manager.sendButtonSnapshot(buttonStore.getSnapshot());
+          manager.sendSine(sineState.freq, sineState.amplitude);
           const mode = audioSourceState.input === 'live' ? 'realtime' : 'simulated';
-          manager!.sendAudioMode(mode);
-          manager!.sendAudioDevice(audioSourceState.sampleRate, audioSourceState.bufferSize);
+          manager.sendAudioMode(mode);
+          manager.sendAudioDevice(audioSourceState.sampleRate, audioSourceState.bufferSize);
           if (audioSourceState.input === 'wav' && audioSourceState.wavPath) {
-            manager!.sendWavFile(audioSourceState.wavPath, audioSourceState.wavLoop);
+            manager.sendWavFile(audioSourceState.wavPath, audioSourceState.wavLoop);
           }
         },
         emulatorChannel,
@@ -494,7 +485,7 @@ export function activate(context: vscode.ExtensionContext): void {
           wiredPins = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
         } catch { /* file unreadable — open editor with empty state */ }
       }
-      wiringViewProvider!.postWiredPins(wiredPins);
+      wiringViewProvider.postWiredPins(wiredPins);
       await vscode.commands.executeCommand(`${WIRING_VIEW_ID}.focus`);
     }),
     { dispose: () => { manager?.dispose(); scopePanel?.dispose(); } },
@@ -504,8 +495,7 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 export function deactivate(): void {
-  manager?.dispose();
-  scopePanel?.dispose();
+  // disposables are registered in context.subscriptions — VS Code disposes them automatically
 }
 
 async function loadControllerConfig(): Promise<ControllerConfig> {

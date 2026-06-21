@@ -234,12 +234,17 @@ export class ScopePanel {
 }
 
 function buildEmulatorBarHtml(source: AudioSource, sine: SineParams): string {
+  const freq      = Number(sine.freq)        || SINE_DEFAULTS.freq;
+  const amplitude = Number(sine.amplitude)   || SINE_DEFAULTS.amplitude;
+  const bufferSize = Number(source.bufferSize) || AUDIO_SOURCE_DEFAULTS.bufferSize;
+  const wavLoop   = !!source.wavLoop;
+
   const isSine = source.input === 'sine';
   const isLive = source.input === 'live';
   const isWav  = source.input === 'wav';
   const bufSizes = [64, 128, 256, 512];
   const bufOptions = bufSizes.map(s =>
-    `<option value="${s}" ${s === source.bufferSize ? 'selected' : ''}>${s}</option>`
+    `<option value="${s}" ${s === bufferSize ? 'selected' : ''}>${s}</option>`
   ).join('');
   const wavName = source.wavPath ? baseName(source.wavPath) : '';
   const srcOptions = [
@@ -252,14 +257,14 @@ function buildEmulatorBarHtml(source: AudioSource, sine: SineParams): string {
     <select id="audio-source-select">${srcOptions}</select>
     <span class="emu-sep">|</span>
     <span id="sine-group" class="emu-group ${isSine ? '' : 'emu-hidden'}">
-      <label class="emu-field">Freq <input type="number" id="sine-freq" min="20" max="20000" step="1" value="${sine.freq}"/> Hz</label>
-      <label class="emu-field">Amp <input type="range" id="sine-amp" min="0" max="1" step="0.01" value="${sine.amplitude}"/>
-        <span id="sine-amp-val">${sine.amplitude.toFixed(2)}</span></label>
+      <label class="emu-field">Freq <input type="number" id="sine-freq" min="20" max="20000" step="1" value="${freq}"/> Hz</label>
+      <label class="emu-field">Amp <input type="range" id="sine-amp" min="0" max="1" step="0.01" value="${amplitude}"/>
+        <span id="sine-amp-val">${amplitude.toFixed(2)}</span></label>
     </span>
     <span id="wav-group" class="emu-group ${isWav ? '' : 'emu-hidden'}">
       <button id="wav-choose" type="button" class="emu-btn">Choose WAV…</button>
       <span id="wav-name" class="wav-name">${wavName ? escHtml(wavName) : 'no file'}</span>
-      <label class="emu-field"><input type="checkbox" id="wav-loop" ${source.wavLoop ? 'checked' : ''}/> Loop</label>
+      <label class="emu-field"><input type="checkbox" id="wav-loop" ${wavLoop ? 'checked' : ''}/> Loop</label>
     </span>
     <span id="buffer-group" class="emu-group ${isLive || isWav ? '' : 'emu-hidden'}">
       <label class="emu-field">Buffer <select id="buffer-size">${bufOptions}</select> samples</label>

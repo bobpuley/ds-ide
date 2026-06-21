@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { buildHtml, WiringPanel, PIN_DEFS, WiredPin } from '../../../wiring/wiring-panel';
+import { buildHtml, PIN_DEFS, WiredPin } from '../../../wiring/wiring-panel';
 
 // ── PIN_DEFS integrity ───────────────────────────────────────────────────────
 
@@ -142,6 +142,21 @@ describe('buildHtml', () => {
     expect(dangerous).not.toContain('</script><script>');
   });
 
+  it('escapes < and > in pin ID to prevent HTML injection (AC-70)', () => {
+    const html = buildHtml([{ pinNumber: 15, deviceType: 'pot', id: '<script>alert(1)</script>' }], TEST_NONCE);
+    // The user-supplied payload must not appear verbatim in the HTML
+    expect(html).not.toContain('<script>alert(1)');
+    expect(html).not.toContain('</script><');  // no break-out sequence
+    // Encoded form must be present (proves the value is in the JSON island, just safely encoded)
+    expect(html).toContain('\\u003c');
+  });
+
+  it('escapes & in pin ID to prevent entity injection (AC-70)', () => {
+    const html = buildHtml([{ pinNumber: 15, deviceType: 'pot', id: 'vol&amp;gain' }], TEST_NONCE);
+    expect(html).not.toContain('vol&amp;gain');
+    expect(html).not.toContain('&amp;');
+  });
+
   // T19-4 — ID label repositioning (AC-29)
   it('assigned-id label uses connector-zone x (126 or 434), not pin circle cx (T19-4)', () => {
     expect(html).toContain('labelX');
@@ -160,80 +175,3 @@ describe('buildHtml', () => {
   });
 });
 
-// ── WiringPanel show / dispose / postWiredPins ───────────────────────────────
-
-describe('WiringPanel', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('creates a webview panel on first show()', async () => {
-    const panel = new WiringPanel();
-    panel.show([]);
-    const vscode = (await import('vscode'));
-    expect(vscode.window.createWebviewPanel).toHaveBeenCalledWith(
-      'daisy-wiring',
-      'Daisy Seed Wiring',
-      expect.anything(),
-      expect.objectContaining({ enableScripts: true }),
-    );
-    panel.dispose();
-  });
-
-  it('reveals existing panel on second show()', async () => {
-    const panel = new WiringPanel();
-    const vscode = (await import('vscode'));
-    panel.show([]);
-    const mockPanel = (vscode.window.createWebviewPanel as ReturnType<typeof vi.fn>).mock.results[0]?.value;
-    vi.clearAllMocks();
-    panel.show([]);
-    expect(vscode.window.createWebviewPanel).not.toHaveBeenCalled();
-    expect(mockPanel.reveal).toHaveBeenCalled();
-    panel.dispose();
-  });
-
-  it('postWiredPins sends wiredPins message', async () => {
-    const panel = new WiringPanel();
-    const vscode = (await import('vscode'));
-    panel.show([]);
-    const mockPanel = (vscode.window.createWebviewPanel as ReturnType<typeof vi.fn>).mock.results[0]?.value;
-    const pins: WiredPin[] = [{ pinNumber: 15, deviceType: 'pot', id: 'vol' }];
-    panel.postWiredPins(pins);
-    expect(mockPanel.webview.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ command: 'wiredPins', pins }),
-    );
-    panel.dispose();
-  });
-
-  it('dispose closes the panel', async () => {
-    const panel = new WiringPanel();
-    const vscode = (await import('vscode'));
-    panel.show([]);
-    const mockPanel = (vscode.window.createWebviewPanel as ReturnType<typeof vi.fn>).mock.results[0]?.value;
-    panel.dispose();
-    expect(mockPanel.dispose).toHaveBeenCalled();
-  });
-
-  it('calls onWirePin when wirePin message received', async () => {
-    const onWire = vi.fn().mockResolvedValue(undefined);
-    const panel  = new WiringPanel(onWire);
-    const vscode = (await import('vscode'));
-    panel.show([]);
-    const mockPanel = (vscode.window.createWebviewPanel as ReturnType<typeof vi.fn>).mock.results[0]?.value;
-    // Simulate message from webview
-    const handler = (mockPanel.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
-    await handler?.({ command: 'wirePin', pinNumber: 15, deviceType: 'pot', id: 'vol' });
-    expect(onWire).toHaveBeenCalledWith({ pinNumber: 15, deviceType: 'pot', id: 'vol' });
-    panel.dispose();
-  });
-
-  it('calls onUnwirePin when unwirePin message received', async () => {
-    const onUnwire = vi.fn().mockResolvedValue(undefined);
-    const panel    = new WiringPanel(undefined, onUnwire);
-    const vscode   = (await import('vscode'));
-    panel.show([]);
-    const mockPanel = (vscode.window.createWebviewPanel as ReturnType<typeof vi.fn>).mock.results[0]?.value;
-    const handler = (mockPanel.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]?.[0];
-    await handler?.({ command: 'unwirePin', pinNumber: 15, id: 'vol' });
-    expect(onUnwire).toHaveBeenCalledWith(15, 'vol');
-    panel.dispose();
-  });
-});

@@ -21,7 +21,8 @@ export async function buildForEmulator(
   const effectSrc = detectEffectSrc(projectRoot);
   if (!effectSrc) {
     void vscode.window.showErrorMessage(
-      'ds-ide: no effect .cpp found at workspace root. Add one or configure EFFECT_SRC.',
+      'ds-ide: no effect .cpp found at project root, src/, or source/. ' +
+      'Add one or set ds-ide.effectSource in settings.',
     );
     return false;
   }
@@ -68,23 +69,29 @@ export async function buildForEmulator(
 
 export function detectEffectSrc(projectRoot: string): string | undefined {
   const excluded = new Set(['libDaisy', 'DaisySP', 'libdaisy', 'daisysp', '.ds-ide']);
-  try {
-    const entries = fs.readdirSync(projectRoot);
-    const cpps = entries.filter((e) => {
-      if (!e.endsWith('.cpp')) return false;
-      if (excluded.has(e)) return false;
-      return true;
-    });
-    if (cpps.length === 1) return path.join(projectRoot, cpps[0]!);
-    if (cpps.length > 1) {
-      // prefer a file not named 'main.cpp' if there are several
-      const nonMain = cpps.filter((f) => f !== 'main.cpp');
-      if (nonMain.length === 1) return path.join(projectRoot, nonMain[0]!);
-    }
-  } catch {
-    // ignore fs errors
+
+  function findCpp(dir: string): string | undefined {
+    try {
+      const entries = fs.readdirSync(dir);
+      const cpps = entries.filter((e) => {
+        if (!e.endsWith('.cpp')) return false;
+        if (excluded.has(e)) return false;
+        return true;
+      });
+      if (cpps.length === 1) return path.join(dir, cpps[0]!);
+      if (cpps.length > 1) {
+        const nonMain = cpps.filter((f) => f !== 'main.cpp');
+        if (nonMain.length === 1) return path.join(dir, nonMain[0]!);
+      }
+    } catch { /* ignore fs errors */ }
+    return undefined;
   }
-  return undefined;
+
+  return (
+    findCpp(projectRoot) ??
+    findCpp(path.join(projectRoot, 'src')) ??
+    findCpp(path.join(projectRoot, 'source'))
+  );
 }
 
 export function detectDaisySP(projectRoot: string): string | undefined {

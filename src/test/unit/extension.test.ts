@@ -51,8 +51,8 @@ vi.mock('../../emulator/manager', () => {
   return { EmulatorManager: MockEmulatorManager };
 });
 
-// Import under test — vscode resolved from __mocks__ via vitest.config.ts alias.
-import { activate, deactivate } from '../../extension';
+// Imported for type inference only — each test describe re-imports dynamically.
+import type { activate as ActivateFn, deactivate as DeactivateFn } from '../../extension';
 
 function makeContext(): vscode.ExtensionContext {
   return {
@@ -67,9 +67,17 @@ function makeContext(): vscode.ExtensionContext {
 }
 
 describe('extension', () => {
-  beforeEach(() => {
+  let activate: typeof ActivateFn;
+  let deactivate: typeof DeactivateFn;
+
+  beforeEach(async () => {
     vi.clearAllMocks();
     managerInstances.length = 0;
+    // Dynamic re-import ensures the block-scoped variables are always populated.
+    // vi.resetModules() is not needed: all singleton state lives inside activate() now.
+    const ext = await import('../../extension');
+    activate = ext.activate;
+    deactivate = ext.deactivate;
   });
 
   it('exports activate and deactivate', () => {
@@ -94,11 +102,30 @@ describe('extension', () => {
     expect(registeredIds).toContain('ds-ide.flash');
   });
 
-  it('activate pushes disposables onto context.subscriptions', () => {
+  it('activate pushes each command, provider, and listener to context.subscriptions (AC-78)', () => {
     const ctx = makeContext();
     activate(ctx);
-    // diagnostics + 3 output channels + statusBar + daisy-debug descriptor factory + tracker factory + ds-ide descriptor factory + run config provider + 2 webview view providers + onDidSaveTextDocument + 11 commands + 1 manager/scope dispose + 2 debug session disposables
-    expect((ctx.subscriptions as unknown[]).length).toBe(26);
+    const subs = ctx.subscriptions as unknown[];
+    // Every registerCommand return value is in subscriptions
+    for (const r of (vscode.commands.registerCommand as ReturnType<typeof vi.fn>).mock.results) {
+      expect(subs).toContain(r.value);
+    }
+    // Both webview view provider registrations are in subscriptions
+    for (const r of (vscode.window.registerWebviewViewProvider as ReturnType<typeof vi.fn>).mock.results) {
+      expect(subs).toContain(r.value);
+    }
+    // Save listener is in subscriptions
+    expect(subs).toContain((vscode.workspace.onDidSaveTextDocument as ReturnType<typeof vi.fn>).mock.results[0]?.value);
+    // All debug registrations are in subscriptions
+    for (const r of (vscode.debug.registerDebugAdapterDescriptorFactory as ReturnType<typeof vi.fn>).mock.results) {
+      expect(subs).toContain(r.value);
+    }
+    for (const r of (vscode.debug.registerDebugAdapterTrackerFactory as ReturnType<typeof vi.fn>).mock.results) {
+      expect(subs).toContain(r.value);
+    }
+    for (const r of (vscode.debug.registerDebugConfigurationProvider as ReturnType<typeof vi.fn>).mock.results) {
+      expect(subs).toContain(r.value);
+    }
   });
 
   it('deactivate does not throw', () => {
@@ -262,9 +289,12 @@ function makeWebviewView(initiallyVisible = false) {
 }
 
 describe('extension view exclusivity (FR-VW-1)', () => {
-  beforeEach(() => {
+  let activate: (ctx: vscode.ExtensionContext) => void;
+
+  beforeEach(async () => {
     vi.clearAllMocks();
     managerInstances.length = 0;
+    ({ activate } = await import('../../extension'));
     (vscode.workspace as unknown as Record<string, unknown>).workspaceFolders = undefined;
     // executeCommand must return a Promise so the guard's .then()/.finally() chain works
     (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
@@ -465,7 +495,14 @@ describe('extension view initialization (FR-CE-9, FR-WE-11)', () => {
     promisesMock['readFile'].mockReturnValue(new Promise(() => {}));
     const ctx = makeContext();
     act(ctx);
-    // All 26 subscriptions must be registered before any file reads complete
-    expect((ctx.subscriptions as unknown[]).length).toBe(26);
+    // All registrations must be synchronous — even with never-resolving file reads
+    const subs = ctx.subscriptions as unknown[];
+    for (const r of (vscode.commands.registerCommand as ReturnType<typeof vi.fn>).mock.results) {
+      expect(subs).toContain(r.value);
+    }
+    for (const r of (vscode.window.registerWebviewViewProvider as ReturnType<typeof vi.fn>).mock.results) {
+      expect(subs).toContain(r.value);
+    }
+    expect(subs).toContain((vscode.workspace.onDidSaveTextDocument as ReturnType<typeof vi.fn>).mock.results[0]?.value);
   });
 });

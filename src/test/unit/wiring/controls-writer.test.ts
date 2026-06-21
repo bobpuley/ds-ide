@@ -399,3 +399,26 @@ describe('insertIntoSource — duplicate id annotation (FR-EQ-8d)', () => {
     expect(result).toContain('// ds-ide:controls:end');
   });
 });
+
+describe('removeInitFromSource — strict id prefix collision (AC-81)', () => {
+  it('removing id "vol" does not delete the "volume.Init" line when both exist in the init block', () => {
+    const src = [
+      '// ds-ide:controls:begin',
+      'AdcChannelConfig vol; // ds-ide: id=vol, kind=pot, pin=15',
+      'AdcChannelConfig volume; // ds-ide: id=volume, kind=pot, pin=16',
+      '// ds-ide:controls:end',
+      'void Init() {',
+      '// ds-ide:controls:init:begin',
+      '  vol.InitSingle(daisy::seed::A0);',
+      '  volume.InitSingle(daisy::seed::A1);',
+      '  hardware.adc.Init(vol, volume, 2);',
+      '// ds-ide:controls:init:end',
+      '}',
+    ].join('\n');
+
+    const result = removeInitFromSource(src, 'vol', [{ id: 'volume' }]);
+
+    expect(result).not.toContain('vol.InitSingle');
+    expect(result).toContain('volume.InitSingle(daisy::seed::A1)');
+  });
+});

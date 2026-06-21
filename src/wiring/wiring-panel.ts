@@ -1,4 +1,3 @@
-import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
 
 export type DeviceType = 'pot' | 'button' | 'led';
@@ -11,9 +10,6 @@ export interface WiredPin {
 
 export type WirePinHandler   = (pin: WiredPin) => Promise<void>;
 export type UnwirePinHandler = (pinNumber: number, id: string) => Promise<void>;
-
-const PANEL_ID    = 'daisy-wiring';
-const PANEL_TITLE = 'Daisy Seed Wiring';
 
 // Daisy Seed pin definitions for the schematic SVG.
 // side: 'L' = left header, 'R' = right header.
@@ -78,69 +74,13 @@ export const PIN_DEFS: PinDef[] = [
   { row: 19, side: 'R', pin: null,  label: '+3V3A', aLabel: null,  adc: false },
 ];
 
-export class WiringPanel {
-  private panel:         vscode.WebviewPanel | null = null;
-  private msgDisposable: vscode.Disposable   | null = null;
-  private readonly nonce: string = randomBytes(16).toString('base64');
-
-  constructor(
-    private readonly onWirePin?:   WirePinHandler,
-    private readonly onUnwirePin?: UnwirePinHandler,
-  ) {}
-
-  show(wiredPins: WiredPin[]): void {
-    if (this.panel) {
-      this.panel.reveal(vscode.ViewColumn.Two);
-      this.postWiredPins(wiredPins);
-      return;
-    }
-
-    this.panel = vscode.window.createWebviewPanel(
-      PANEL_ID,
-      PANEL_TITLE,
-      vscode.ViewColumn.Two,
-      { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] },
-    );
-    this.panel.webview.html = buildHtml(wiredPins, this.nonce);
-
-    this.msgDisposable = this.panel.webview.onDidReceiveMessage(async (msg: unknown) => {
-      if (!msg || typeof msg !== 'object') return;
-      const m = msg as Record<string, unknown>;
-      if (m['command'] === 'wirePin') {
-        await this.onWirePin?.({
-          pinNumber:  m['pinNumber']  as number,
-          deviceType: m['deviceType'] as DeviceType,
-          id:         m['id']         as string,
-        });
-      }
-      if (m['command'] === 'unwirePin') {
-        await this.onUnwirePin?.(m['pinNumber'] as number, m['id'] as string);
-      }
-    });
-
-    this.panel.onDidDispose(() => {
-      this.msgDisposable?.dispose();
-      this.msgDisposable = null;
-      this.panel = null;
-    });
-  }
-
-  postWiredPins(pins: WiredPin[]): void {
-    this.panel?.webview.postMessage({ command: 'wiredPins', pins });
-  }
-
-  dispose(): void {
-    this.msgDisposable?.dispose();
-    this.msgDisposable = null;
-    this.panel?.dispose();
-    this.panel = null;
-  }
-}
-
 // ── HTML builder ─────────────────────────────────────────────────────────────
 
 function safeJson(obj: unknown): string {
-  return JSON.stringify(obj).replace(/<\//g, '<\\/');
+  return JSON.stringify(obj)
+    .replace(/&/g, '\\u0026')
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e');
 }
 
 export function buildHtml(wiredPins: WiredPin[], nonce: string): string {
