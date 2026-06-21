@@ -2,6 +2,8 @@
 
 A VS Code extension for developing, testing, and debugging Daisy Seed audio effects **without requiring physical hardware** during the development cycle. It replaces the slow hardware-dependent loop (compile → deploy to device → connect instrument → test) with a faster software-only workflow (compile → deploy to emulator → test → debug).
 
+![Scope panel and Controls Editor showing a live tremolo effect](media/screenshot-overview.png)
+
 ---
 
 ## Requirements
@@ -58,6 +60,8 @@ npm run package
 
 ## Wiring Editor
 
+![Wiring Editor showing assigned pins on the Daisy Seed pinout](media/screenshot-wiring-editor.png)
+
 Open with **Daisy IDE: Open Wiring Editor** (`Cmd+Shift+P`).
 
 The Wiring Editor shows the full Daisy Seed 40-pin layout. Click any unassigned pin to open a device-selection popup:
@@ -75,6 +79,8 @@ After any change, the Controls Editor is updated automatically to reflect the ne
 ---
 
 ## Controls Editor
+
+![Controls Editor in design mode showing virtual control cards on the canvas](media/screenshot-controls-design.png)
 
 The Controls Editor is part of the Scope panel, opened automatically when audio starts. It operates in two modes:
 
