@@ -5,6 +5,16 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.8.1 — 2026-06-21
+
+**Showcase + bug fixes**
+
+- **Tremolo-filter showcase** (`examples/showcases/tremolo-filter/`): new end-to-end showcase effect — sine LFO tremolo + DaisySP `Svf` resonant filter, 4 pots (Rate/Depth/Cutoff/Resonance), toggle bypass button, beat LED that blinks in sync with the LFO; designed to demonstrate the full ds-ide workflow to evaluators
+- **Fix: LED updates not reaching the Controls Editor** — `type: 'led'` IPC messages from the emulator were routed only to the Scope Panel webview; the Controls Editor webview had `applyLed()` wired up but no path to call it; added `postLed()` to `ControlsViewProvider` and wired it in `extension.ts`
+- **Fix: Controls Editor stuck in design mode after stop + start** — `lastKnownRunning` in `EmulatorManager` was a closure-local variable; `sendTransport('stop')` never reset it, so the synthesised `running:true` event was suppressed on the next start; promoted to a class field and reset on `sendTransport('stop')`
+
+---
+
 ## 0.8.0 — 2026-06-21
 
 **M27 — Controls Editor UI Polish & View Exclusivity** *(AC-58 green; AC-59 best-effort)*
