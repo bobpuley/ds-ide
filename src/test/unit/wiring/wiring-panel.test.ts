@@ -72,11 +72,21 @@ describe('PIN_DEFS', () => {
 // ── buildHtml structure ──────────────────────────────────────────────────────
 
 describe('buildHtml', () => {
-  const html = buildHtml([]);
+  const TEST_NONCE = 'test-nonce-abc123';
+  const html = buildHtml([], TEST_NONCE);
 
   it('contains DOCTYPE and lang', () => {
     expect(html).toContain('<!DOCTYPE html>');
     expect(html).toContain('lang="en"');
+  });
+
+  it('contains CSP meta tag with nonce (FR-ES-1)', () => {
+    expect(html).toContain(`<meta http-equiv="Content-Security-Policy"`);
+    expect(html).toContain(`nonce-${TEST_NONCE}`);
+  });
+
+  it('has nonce attribute on script tag (FR-ES-1)', () => {
+    expect(html).toContain(`<script nonce="${TEST_NONCE}">`);
   });
 
   it('contains SVG with id pinout', () => {
@@ -122,16 +132,13 @@ describe('buildHtml', () => {
   });
 
   it('embeds initial wiredPins from init-data script tag', () => {
-    const html2 = buildHtml([{ pinNumber: 15, deviceType: 'pot', id: 'vol' }]);
+    const html2 = buildHtml([{ pinNumber: 15, deviceType: 'pot', id: 'vol' }], TEST_NONCE);
     expect(html2).toContain('"pinNumber":15');
     expect(html2).toContain('"id":"vol"');
   });
 
   it('escapes </ in JSON data island to prevent XSS', () => {
-    // safeJson should replace </ with <\/ inside embedded JSON values
-    // so a value containing "</script>" cannot break out of the script tag.
-    const dangerous = buildHtml([{ pinNumber: 15, deviceType: 'pot', id: '</script><script>alert(1)</script>' }]);
-    // The dangerous string should be escaped
+    const dangerous = buildHtml([{ pinNumber: 15, deviceType: 'pot', id: '</script><script>alert(1)</script>' }], TEST_NONCE);
     expect(dangerous).not.toContain('</script><script>');
   });
 

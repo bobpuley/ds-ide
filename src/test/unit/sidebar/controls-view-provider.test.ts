@@ -49,12 +49,58 @@ describe('ControlsViewProvider', () => {
     expect(view.webview.html).toContain('DS-IDE Controls');
   });
 
-  it('calls onEditorSave with cfg when editorSave message received', () => {
+  it('resolveWebviewView sets localResourceRoots: [] (FR-ES-1)', () => {
+    const view = makeView();
+    provider.resolveWebviewView(view as never);
+    expect(view.webview.options).toMatchObject({ localResourceRoots: [] });
+  });
+
+  it('webview HTML includes CSP meta tag with nonce (FR-ES-1)', () => {
+    const view = makeView();
+    provider.resolveWebviewView(view as never);
+    expect(view.webview.html).toContain('<meta http-equiv="Content-Security-Policy"');
+    expect(view.webview.html).toContain('nonce-');
+  });
+
+  it('webview HTML script tag has nonce attribute matching CSP (FR-ES-1)', () => {
+    const view = makeView();
+    provider.resolveWebviewView(view as never);
+    const html = view.webview.html;
+    const nonceMatch = html.match(/nonce-([^'";]+)/);
+    expect(nonceMatch).toBeTruthy();
+    const nonce = nonceMatch![1];
+    expect(html).toContain(`<script nonce="${nonce}">`);
+  });
+
+  it('calls onEditorSave with valid cfg when editorSave message received', () => {
     const view = makeView();
     provider.resolveWebviewView(view as never);
     const cfg = { pots: [], buttons: [], leds: [], errors: [] };
     view._triggerMessage({ command: 'editorSave', cfg });
-    expect(onEditorSave).toHaveBeenCalledWith(cfg);
+    expect(onEditorSave).toHaveBeenCalledWith(expect.objectContaining({ pots: [], buttons: [], leds: [] }));
+  });
+
+  it('drops editorSave with malformed cfg (FR-ES-2)', () => {
+    const view = makeView();
+    provider.resolveWebviewView(view as never);
+    const cfg = { pots: [{ id: '', label: '', adcChannel: -99, range: [0, 1], taper: 'linear', default: 0.5, errors: [] }], buttons: [], leds: [], errors: [] };
+    view._triggerMessage({ command: 'editorSave', cfg });
+    expect(onEditorSave).not.toHaveBeenCalled();
+  });
+
+  it('round-trips a valid pot cfg through serialize/parse before saving (FR-ES-2)', () => {
+    const view = makeView();
+    provider.resolveWebviewView(view as never);
+    const cfg = {
+      pots: [{ id: 'vol', label: 'Volume', adcChannel: 0, range: [0, 1] as [number, number], taper: 'linear' as const, default: 0.5, errors: [] }],
+      buttons: [],
+      leds: [],
+      errors: [],
+    };
+    view._triggerMessage({ command: 'editorSave', cfg });
+    expect(onEditorSave).toHaveBeenCalledOnce();
+    const saved = onEditorSave.mock.calls[0]![0] as typeof cfg;
+    expect(saved.pots[0]!.id).toBe('vol');
   });
 
   it('calls onPotChange when pot message received', () => {

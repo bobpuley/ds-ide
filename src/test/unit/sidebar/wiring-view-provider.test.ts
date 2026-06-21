@@ -50,6 +50,29 @@ describe('WiringViewProvider', () => {
     expect(view.webview.html).toContain('Daisy Seed Wiring');
   });
 
+  it('resolveWebviewView sets localResourceRoots: [] (FR-ES-1)', () => {
+    const view = makeView();
+    provider.resolveWebviewView(view as never);
+    expect(view.webview.options).toMatchObject({ localResourceRoots: [] });
+  });
+
+  it('webview HTML includes CSP meta tag with nonce (FR-ES-1)', () => {
+    const view = makeView();
+    provider.resolveWebviewView(view as never);
+    expect(view.webview.html).toContain('<meta http-equiv="Content-Security-Policy"');
+    expect(view.webview.html).toContain('nonce-');
+  });
+
+  it('webview HTML script tag has nonce attribute matching CSP (FR-ES-1)', () => {
+    const view = makeView();
+    provider.resolveWebviewView(view as never);
+    const html = view.webview.html;
+    const nonceMatch = html.match(/nonce-([^'";]+)/);
+    expect(nonceMatch).toBeTruthy();
+    const nonce = nonceMatch![1];
+    expect(html).toContain(`<script nonce="${nonce}">`);
+  });
+
   it('calls onWirePin when wirePin message received', async () => {
     const view = makeView();
     provider.resolveWebviewView(view as never);
@@ -71,6 +94,49 @@ describe('WiringViewProvider', () => {
     await view._triggerMessage({ command: 'unknown' });
     expect(onWirePin).not.toHaveBeenCalled();
     expect(onUnwirePin).not.toHaveBeenCalled();
+  });
+
+  // FR-ES-2 — message validation
+  it('drops wirePin with pinNumber out of range 0–31 (FR-ES-2)', async () => {
+    const view = makeView();
+    provider.resolveWebviewView(view as never);
+    await view._triggerMessage({ command: 'wirePin', pinNumber: 999, deviceType: 'pot', id: 'vol' });
+    expect(onWirePin).not.toHaveBeenCalled();
+  });
+
+  it('drops wirePin with negative pinNumber (FR-ES-2)', async () => {
+    const view = makeView();
+    provider.resolveWebviewView(view as never);
+    await view._triggerMessage({ command: 'wirePin', pinNumber: -1, deviceType: 'pot', id: 'vol' });
+    expect(onWirePin).not.toHaveBeenCalled();
+  });
+
+  it('drops wirePin with invalid deviceType (FR-ES-2)', async () => {
+    const view = makeView();
+    provider.resolveWebviewView(view as never);
+    await view._triggerMessage({ command: 'wirePin', pinNumber: 15, deviceType: 'motor', id: 'vol' });
+    expect(onWirePin).not.toHaveBeenCalled();
+  });
+
+  it('drops wirePin with invalid id containing a dot (FR-ES-2)', async () => {
+    const view = makeView();
+    provider.resolveWebviewView(view as never);
+    await view._triggerMessage({ command: 'wirePin', pinNumber: 15, deviceType: 'pot', id: 'foo.bar' });
+    expect(onWirePin).not.toHaveBeenCalled();
+  });
+
+  it('accepts wirePin with pinNumber at boundary 0 (FR-ES-2)', async () => {
+    const view = makeView();
+    provider.resolveWebviewView(view as never);
+    await view._triggerMessage({ command: 'wirePin', pinNumber: 0, deviceType: 'led', id: 'onboard' });
+    expect(onWirePin).toHaveBeenCalledWith({ pinNumber: 0, deviceType: 'led', id: 'onboard' });
+  });
+
+  it('accepts wirePin with pinNumber at boundary 31 (FR-ES-2)', async () => {
+    const view = makeView();
+    provider.resolveWebviewView(view as never);
+    await view._triggerMessage({ command: 'wirePin', pinNumber: 31, deviceType: 'button', id: 'bypass' });
+    expect(onWirePin).toHaveBeenCalledWith({ pinNumber: 31, deviceType: 'button', id: 'bypass' });
   });
 
   it('postWiredPins sends postMessage with pins to live-update the webview', () => {

@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { randomBytes } from 'node:crypto';
 import { EmulatorManager } from '../emulator/manager';
 import { IpcMessage } from '../emulator/ipc-client';
 import { startAudio, stopAudio } from '../commands/transport';
@@ -57,6 +58,7 @@ export class ScopePanel {
   private audioSource: AudioSource = { ...AUDIO_SOURCE_DEFAULTS };
   private msgDisposable: vscode.Disposable | null = null;
   private lastStatusMsg: IpcMessage | null = null;
+  private readonly nonce: string = randomBytes(16).toString('base64');
 
   constructor(
     private readonly manager: EmulatorManager,
@@ -98,7 +100,7 @@ export class ScopePanel {
       PANEL_ID,
       PANEL_TITLE,
       vscode.ViewColumn.Two,
-      { enableScripts: true, retainContextWhenHidden: true },
+      { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] },
     );
     this.panel.webview.html = this.html();
 
@@ -118,7 +120,13 @@ export class ScopePanel {
         const input = m['input'] as AudioInputSource;
         const sampleRate = m['sampleRate'] as number;
         const bufferSize = m['bufferSize'] as number;
-        if (input && sampleRate && bufferSize) {
+        const validSampleRates = [8000, 22050, 44100, 48000];
+        const validBufferSizes = [64, 128, 256, 512];
+        if (
+          input && sampleRate && bufferSize &&
+          validSampleRates.includes(sampleRate) &&
+          validBufferSizes.includes(bufferSize)
+        ) {
           this.audioSource = {
             ...this.audioSource,
             input,
@@ -218,7 +226,7 @@ export class ScopePanel {
   }
 
   private html(): string {
-    return buildHtml(this.sineParams, this.audioSource);
+    return buildHtml(this.nonce, this.sineParams, this.audioSource);
   }
 }
 
@@ -274,12 +282,13 @@ function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function buildHtml(sine: SineParams, source: AudioSource): string {
+function buildHtml(nonce: string, sine: SineParams, source: AudioSource): string {
   const audioSourceHtml = buildEmulatorBarHtml(source, sine);
   return /* html */`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline';"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Daisy Scope</title>
   <style>
@@ -376,7 +385,7 @@ function buildHtml(sine: SineParams, source: AudioSource): string {
   <div id="emulator-section" style="background:#252526;border-top:1px solid #3c3c3c;flex-shrink:0">
     ${audioSourceHtml}
   </div>
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const canvas = document.getElementById('scope');
     const ctx = canvas.getContext('2d');

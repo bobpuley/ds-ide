@@ -45,6 +45,33 @@ describe('ScopePanel', () => {
     );
   });
 
+  it('show() sets localResourceRoots: [] on the webview panel (FR-ES-1)', () => {
+    panel.show();
+    expect(webviewMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      expect.anything(),
+      expect.objectContaining({ localResourceRoots: [] }),
+    );
+  });
+
+  it('webview HTML includes CSP meta tag with nonce (FR-ES-1)', () => {
+    panel.show();
+    const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(created.webview.html).toContain('<meta http-equiv="Content-Security-Policy"');
+    expect(created.webview.html).toContain("nonce-");
+  });
+
+  it('webview HTML script tag has nonce attribute matching CSP (FR-ES-1)', () => {
+    panel.show();
+    const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    const html = created.webview.html;
+    const nonceMatch = html.match(/nonce-([^'";]+)/);
+    expect(nonceMatch).toBeTruthy();
+    const nonce = nonceMatch![1];
+    expect(html).toContain(`<script nonce="${nonce}">`);
+  });
+
   it('show() sets webview HTML', () => {
     panel.show();
     const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
@@ -230,6 +257,48 @@ describe('ScopePanel', () => {
     const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
     handler({ command: 'audioSource', input: 'live' }); // missing sampleRate and bufferSize
     expect(audioSourceChangeSpy).not.toHaveBeenCalled();
+  });
+
+  it('drops audioSource with invalid sampleRate (FR-ES-2)', () => {
+    panel.show();
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'audioSource', input: 'live', sampleRate: 99999, bufferSize: 256 });
+    expect(audioSourceChangeSpy).not.toHaveBeenCalled();
+  });
+
+  it('drops audioSource with bufferSize not a power of two in [64,512] (FR-ES-2)', () => {
+    panel.show();
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'audioSource', input: 'live', sampleRate: 48000, bufferSize: 100 });
+    expect(audioSourceChangeSpy).not.toHaveBeenCalled();
+  });
+
+  it('drops audioSource with bufferSize 1024 (power-of-two but > 512) (FR-ES-2)', () => {
+    panel.show();
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'audioSource', input: 'live', sampleRate: 48000, bufferSize: 1024 });
+    expect(audioSourceChangeSpy).not.toHaveBeenCalled();
+  });
+
+  it('accepts audioSource with all valid values (FR-ES-2)', () => {
+    panel.show();
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'audioSource', input: 'live', sampleRate: 44100, bufferSize: 64 });
+    expect(audioSourceChangeSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ input: 'live', sampleRate: 44100, bufferSize: 64 }),
+    );
   });
 
   // T8.7 — xrun and latency message forwarding
