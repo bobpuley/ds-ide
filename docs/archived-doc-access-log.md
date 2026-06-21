@@ -10,4 +10,4 @@ Track every instance where an agent consulted `docs/v1/` or `docs/raw/v1/`. Open
 
 ## Log
 
-_No entries yet._
+| 2026-06-21 | Existing FR-CE-* and FR-WE-* IDs for Controls Editor and Wiring Editor bug triage (v7 first intake after version reset) | `docs/v3/03_requirements.md`, `docs/v4/03_requirements.md` | `docs/03_requirements.md` | open |

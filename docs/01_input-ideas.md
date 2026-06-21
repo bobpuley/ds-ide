@@ -17,4 +17,8 @@
 >
 > **v6 complete** — archived to `docs/v6/` on 2026-06-21. This file now seeds v7 planning.
 
-*v7 planning not yet started. Use `/doc-creator-driver:intake` or `/doc-creator-driver:start` to begin.*
+## View Editor State Initialization & Pinout Accuracy Bugs (`view-problems.md`, 2026-06-21)
+
+- **Bug 1 — Controls Editor: no state on project open.** Observed: opening a project with a valid `controllers.yaml` shows no controls in the Controls Editor until after the first deployment to the emulator. Expected: the editor should parse the `ds-ide:controls` block + `controllers.yaml` at project open time; should also refresh on C++ source or `controllers.yaml` file save.
+- **Bug 2 — Wiring Editor: no state on project open.** Observed: opening a project whose C++ source already contains a `ds-ide:controls` block shows no wired pins in the Wiring Editor — the view appears empty as if nothing is wired. Expected: the Wiring Editor should parse the block at project open time; should also refresh on C++ source file save.
+- **Bug 3 — Daisy Seed SVG pinout is wrong.** Observed: left side from USB shows D1/D0/D2/D3 (wrong order); right side shows 3V3/VIN/BOOT/GND (wrong labels and order). Expected: left side from USB = D0/D1/D2/D3; right side from USB = GND/VIN/3V3/D30, per the authoritative `Seed_pinout.csv`.
