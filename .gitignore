@@ -18,3 +18,4 @@ graphify-out/*
 # Example build dirs and transient screenshots — but track source files
 examples/**/.ds-ide/
 examples/**/*.png
+.ds-ide-shim-test/
