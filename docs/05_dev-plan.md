@@ -61,8 +61,8 @@ WAV div-by-zero guard, IPC reliability hardening, session TOCTOU fix, GPIO alias
 sanitizer CMake options, and low-severity quality improvements (AC-38–AC-54).
 Full registry in [`docs/v6/05_dev-plan.md`](v6/05_dev-plan.md).
 
-### v7 — planned
+### v7 (0.7.0) — released
 
 | Milestone | Title | Semver | Status | File |
 |-----------|-------|--------|--------|------|
-| M26 | View State Initialization & Pinout Accuracy | 0.7.0 | **in progress** | [`docs/milestones/v7/M26_view-bugs.md`](milestones/v7/M26_view-bugs.md) |
+| M26 | View State Initialization & Pinout Accuracy | 0.7.0 | **released** | [`docs/milestones/v7/M26_view-bugs.md`](milestones/v7/M26_view-bugs.md) |

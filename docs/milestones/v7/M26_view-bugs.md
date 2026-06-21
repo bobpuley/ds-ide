@@ -1,6 +1,6 @@
 # M26 — View State Initialization & Pinout Accuracy
 
-**Status:** in progress
+**Status:** released (0.7.0)
 **Semver target:** 0.7.0
 **Requirements:** FR-CE-9 (AC-55), FR-WE-11 (AC-56), FR-WE-12 (AC-57)
 **Source:** `view-problems.md` (user-reported bugs, 2026-06-21)
