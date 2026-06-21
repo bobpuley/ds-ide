@@ -1,7 +1,7 @@
 # M29 — Extension Runtime Reliability
 
 **Semver:** 0.9.1  
-**Status:** in progress  
+**Status:** released  
 **Source:** `docs/06_nodejs_review.md` + `docs/06_vscode_extension_review.md` (2026-06-21)
 
 Covers the eight MEDIUM-urgency runtime correctness findings: IPC safety, deploy race, error propagation, output channel leak, sync I/O in activation, listener disposal gaps, and controls-writer test coverage.

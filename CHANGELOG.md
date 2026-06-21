@@ -5,6 +5,22 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.8.3 — 2026-06-21
+
+**M29 — Extension Runtime Reliability** *(AC-62–AC-69 green)*
+
+- **IPC buffer overflow protection (FR-EQ-1)** — `IpcClient.onData` now caps `this.partial` at 1 MB; if exceeded, the buffer is cleared and an `'error'` event is emitted, preventing unbounded memory growth from a misbehaving emulator.
+- **Deploy concurrency guard (FR-EQ-2)** — `EmulatorManager.deploy()` holds a `deployLock` promise; a second concurrent call returns early without spawning a second process.
+- **Fail-fast deploy return value (FR-EQ-3)** — `deployToEmulator` returns `Promise<boolean>`; callers skip all post-deploy IPC calls and reset the status bar to "stopped" on failure.
+- **Output channels created once (FR-EQ-4)** — Three named channels (`'Daisy IDE Build'`, `'Daisy IDE Emulator'`, `'Daisy IDE Hardware Build'`) are created during `activate()`, added to `context.subscriptions`, and passed to all command handlers — no more per-invocation channel creation.
+- **Async activation path (FR-EQ-5)** — `findEffectSource`, `loadControllerConfig`, and `buildControlsConfig` now use `fs.promises.*`; `initViewsFromProject` is called fire-and-forget so `activate()` returns synchronously; `onDidSaveTextDocument` performs a synchronous path check before any I/O.
+- **Debug session listener cleanup (FR-EQ-6)** — Disposables from `vscode.debug.onDidStartDebugSession` and `vscode.debug.onDidTerminateDebugSession` are now pushed to `context.subscriptions`.
+- **ScopePanel listener leak fixed (FR-EQ-7)** — Manager `'message'` handler stored as `_onManagerMessage` private field; `dispose()` calls `manager.off('message', this._onManagerMessage)` to prevent listener accumulation.
+- **Controls-writer edge-case tests (FR-EQ-8)** — Four new tests: init-block insertion position when decl block is present but init block absent; multi-control line preservation on remove; 3→2 pot adc.Init regeneration; duplicate-ID annotation cleanup.
+- 22 new unit tests across ipc-client, manager, extension, scope-panel, and controls-writer.
+
+---
+
 ## 0.8.2 — 2026-06-21
 
 **M28 — Webview Security Hardening** *(AC-60, AC-61 green)*
