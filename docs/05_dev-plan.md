@@ -65,4 +65,4 @@ Full registry in [`docs/v6/05_dev-plan.md`](v6/05_dev-plan.md).
 
 | Milestone | Title | Semver | Status | File |
 |-----------|-------|--------|--------|------|
-| M26 | View State Initialization & Pinout Accuracy | 0.7.0 | **planned** | [`docs/milestones/v7/M26_view-bugs.md`](milestones/v7/M26_view-bugs.md) |
+| M26 | View State Initialization & Pinout Accuracy | 0.7.0 | **in progress** | [`docs/milestones/v7/M26_view-bugs.md`](milestones/v7/M26_view-bugs.md) |

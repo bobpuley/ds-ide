@@ -371,7 +371,9 @@ function buildHtml(): string {
     }
 
     function adcChannelFromPin(pin) {
-      return (pin >= 15 && pin <= 26) ? pin - 15 : 0;
+      if (pin >= 15 && pin <= 25) return pin - 15;
+      if (pin === 28) return 11;
+      return 0;
     }
 
     function makeDraggable(card, ctrl) {

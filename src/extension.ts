@@ -290,6 +290,27 @@ export function activate(context: vscode.ExtensionContext): void {
     () => manager?.childPid,
   );
 
+  function initViewsFromProject(): void {
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders?.[0]) return;
+    const folder = folders[0].uri.fsPath;
+    const cfg = loadControllerConfig();
+    controlsViewProvider!.loadEditor(cfg);
+    controlsViewProvider!.postControlsConfig(buildControlsConfig(folder, cfg));
+    const effectPath = findEffectSource(folder);
+    let wiredPins: WiredPin[] = [];
+    if (effectPath) {
+      try {
+        const text = fs.readFileSync(effectPath, 'utf8');
+        const { controls } = parseControlsConvention(text);
+        wiredPins = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
+      } catch { /* file unreadable — leave wiredPins empty */ }
+    }
+    wiringViewProvider!.postWiredPins(wiredPins);
+  }
+
+  initViewsFromProject();
+
   context.subscriptions.push(
     diagnostics,
     statusBar,
@@ -299,6 +320,29 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.debug.registerDebugConfigurationProvider(DS_IDE_DEBUG_TYPE, runConfigProvider),
     vscode.window.registerWebviewViewProvider(CONTROLS_VIEW_ID, controlsViewProvider, { webviewOptions: { retainContextWhenHidden: true } }),
     vscode.window.registerWebviewViewProvider(WIRING_VIEW_ID, wiringViewProvider, { webviewOptions: { retainContextWhenHidden: true } }),
+    vscode.workspace.onDidSaveTextDocument((doc) => {
+      const folders = vscode.workspace.workspaceFolders;
+      if (!folders?.[0]) return;
+      const folder = folders[0].uri.fsPath;
+      const effectPath = findEffectSource(folder);
+      const yamlPath = path.join(folder, 'controllers.yaml');
+      const saved = doc.uri.fsPath;
+      const isSource = !!effectPath && saved === effectPath;
+      const isYaml = saved === yamlPath;
+      if (!isSource && !isYaml) return;
+      const cfg = loadControllerConfig();
+      controlsViewProvider!.loadEditor(cfg);
+      controlsViewProvider!.postControlsConfig(buildControlsConfig(folder, cfg));
+      if (isSource) {
+        let pins: WiredPin[] = [];
+        try {
+          const text = fs.readFileSync(effectPath!, 'utf8');
+          const { controls } = parseControlsConvention(text);
+          pins = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
+        } catch { /* unreadable */ }
+        wiringViewProvider!.postWiredPins(pins);
+      }
+    }),
     vscode.commands.registerCommand('ds-ide.build', () =>
       buildForEmulator(manager!, context.extensionPath, diagnostics),
     ),
