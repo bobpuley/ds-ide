@@ -31,6 +31,30 @@ describe('detectEffectSrc', () => {
     vi.mocked(fs.readdirSync).mockImplementation(() => { throw new Error('ENOENT'); });
     expect(detectEffectSrc('/proj')).toBeUndefined();
   });
+
+  it('falls back to src/ subdirectory when no root .cpp found (AC-72)', () => {
+    vi.mocked(fs.readdirSync).mockImplementation((dir) => {
+      if (String(dir).endsWith('src')) return ['effect.cpp'] as unknown as fs.Dirent[];
+      return [] as unknown as fs.Dirent[];
+    });
+    expect(detectEffectSrc('/proj')).toBe('/proj/src/effect.cpp');
+  });
+
+  it('falls back to source/ subdirectory when no root or src .cpp found (AC-72)', () => {
+    vi.mocked(fs.readdirSync).mockImplementation((dir) => {
+      if (String(dir).endsWith('source')) return ['effect.cpp'] as unknown as fs.Dirent[];
+      return [] as unknown as fs.Dirent[];
+    });
+    expect(detectEffectSrc('/proj')).toBe('/proj/source/effect.cpp');
+  });
+
+  it('prefers root .cpp over src/ fallback (AC-72)', () => {
+    vi.mocked(fs.readdirSync).mockImplementation((dir) => {
+      if (String(dir) === '/proj') return ['root.cpp'] as unknown as fs.Dirent[];
+      return ['src.cpp'] as unknown as fs.Dirent[];
+    });
+    expect(detectEffectSrc('/proj')).toBe('/proj/root.cpp');
+  });
 });
 
 describe('detectDaisySP', () => {

@@ -2,8 +2,9 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 
 // clang/gcc:  /abs/path/file.cpp:12:5: error: undeclared identifier 'x'
+//             C:\path\file.cpp:12:5: error: ...  (Windows drive-letter paths)
 // also:       /abs/path/file.cpp:12:5: note: ...
-const DIAG_RE = /^(.+\.(?:cpp|c|h|hpp)):(\d+):(\d+):\s+(error|warning|note):\s+(.*)$/;
+const DIAG_RE = /^([A-Za-z]:[\\/].+\.(?:cpp|c|h|hpp)|.+\.(?:cpp|c|h|hpp)):(\d+):(\d+):\s+(error|warning|note):\s+(.*)$/;
 
 export type DiagnosticSeverity = 'error' | 'warning' | 'note';
 

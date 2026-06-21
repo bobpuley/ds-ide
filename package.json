@@ -9,7 +9,21 @@
     "vscode": "^1.85.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Debuggers"
+  ],
+  "icon": "images/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/daisy-ide/ds-ide"
+  },
+  "homepage": "https://github.com/daisy-ide/ds-ide#readme",
+  "keywords": [
+    "daisy seed",
+    "audio",
+    "embedded",
+    "emulator",
+    "dsp"
   ],
   "activationEvents": [
     "onDebugResolve:ds-ide",

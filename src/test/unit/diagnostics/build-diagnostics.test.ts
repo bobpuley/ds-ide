@@ -49,6 +49,28 @@ describe('parseBuildLine', () => {
     const d = parseBuildLine('/src/util.c:5:2: error: syntax error');
     expect(d?.filePath).toBe('/src/util.c');
   });
+
+  it('parses a Windows drive-letter path (AC-71)', () => {
+    const d = parseBuildLine('C:\\Users\\dev\\project\\effect.cpp:12:5: error: undeclared identifier \'x\'');
+    expect(d).toEqual({
+      filePath: 'C:\\Users\\dev\\project\\effect.cpp',
+      line: 12,
+      col: 5,
+      severity: 'error',
+      message: 'undeclared identifier \'x\'',
+    });
+  });
+
+  it('parses a Windows path with forward slashes (AC-71)', () => {
+    const d = parseBuildLine('C:/Users/dev/project/effect.cpp:3:1: warning: unused variable');
+    expect(d).toEqual({
+      filePath: 'C:/Users/dev/project/effect.cpp',
+      line: 3,
+      col: 1,
+      severity: 'warning',
+      message: 'unused variable',
+    });
+  });
 });
 
 describe('applyDiagnostics', () => {

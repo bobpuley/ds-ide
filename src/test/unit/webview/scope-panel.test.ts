@@ -217,6 +217,20 @@ describe('ScopePanel', () => {
     expect(created.webview.html).toContain(`value="${SINE_DEFAULTS.freq}"`);
   });
 
+  it('coerces corrupted numeric freq to default instead of injecting raw string (AC-80)', () => {
+    panel.show({ freq: 'injected" onmouseover="alert(1)' as unknown as number, amplitude: 0.5 });
+    const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(created.webview.html).not.toContain('injected');
+    expect(created.webview.html).toContain(`value="${SINE_DEFAULTS.freq}"`);
+  });
+
+  it('coerces corrupted numeric amplitude to default instead of injecting raw string (AC-80)', () => {
+    panel.show({ freq: 440, amplitude: 'bad" data-x="1' as unknown as number });
+    const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(created.webview.html).not.toContain('bad"');
+    expect(created.webview.html).toContain(`value="${SINE_DEFAULTS.amplitude}"`);
+  });
+
   // T6.2 / T19-6 — xruns counter in header only (AC-31)
   it('webview HTML does NOT contain xrun-group element (xrun in header status only)', () => {
     panel.show();

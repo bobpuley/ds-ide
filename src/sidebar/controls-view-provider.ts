@@ -101,7 +101,10 @@ export function truncId(id: string): string {
 }
 
 function safeJson(obj: unknown): string {
-  return JSON.stringify(obj).replace(/<\//g, '<\\/');
+  return JSON.stringify(obj)
+    .replace(/&/g, '\\u0026')
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e');
 }
 
 function buildHtml(nonce: string): string {
