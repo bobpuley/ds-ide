@@ -5,6 +5,16 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.8.2 — 2026-06-21
+
+**M28 — Webview Security Hardening** *(AC-60, AC-61 green)*
+
+- **CSP nonce on all three webviews (FR-ES-1)** — `ScopePanel`, `ControlsViewProvider`, and `WiringViewProvider`/`WiringPanel` now generate a per-instance `crypto.randomBytes(16)` nonce; each webview HTML carries a `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-{nonce}'; style-src 'unsafe-inline';">` tag and every `<script>` block bears a matching `nonce` attribute. `localResourceRoots: []` is set on all `WebviewPanel`/`WebviewView` options that load no file-system resources.
+- **Host-side message validation (FR-ES-2)** — Incoming webview messages are validated before any side-effecting operation: `wirePin`/`unwirePin` check `pinNumber` (finite integer 0–31), `deviceType` (`'pot' | 'button' | 'led'`), and `id` (regex `^[a-zA-Z_][a-zA-Z0-9_]*$`); `editorSave` round-trips the received `cfg` through `serializeControllerConfig` → `parseControllerConfig` before calling `onEditorSave`; `audioSource` validates `sampleRate` ∈ `[8000, 22050, 44100, 48000]` and `bufferSize` ∈ `[64, 128, 256, 512]`. Invalid messages are dropped silently.
+- 23 new unit tests (FR-ES-1 CSP/nonce/localResourceRoots assertions across all three providers; FR-ES-2 boundary and rejection scenarios)
+
+---
+
 ## 0.8.1 — 2026-06-21
 
 **Showcase + bug fixes**
