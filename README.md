@@ -114,15 +114,15 @@ Add a `daisy-debug` launch configuration to `.vscode/launch.json`:
 
 These workspace settings can be placed in `.vscode/settings.json`:
 
-| Setting | Type | Default | Description |
-|---|---|---|---|
+| Setting               | Type     | Default         | Description                                                                                                                                           |
+|-----------------------|----------|-----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `ds-ide.effectSource` | `string` | _(auto-detect)_ | Path to the effect `.cpp` file, relative to the workspace root. When unset, the extension auto-detects the first `.cpp` adjacent to `CMakeLists.txt`. |
 
 The following state is persisted per workspace (not user-editable directly; managed by the extension UI):
 
-| Key | Description |
-|---|---|
-| `ds-ide.sine` | Sine generator frequency and amplitude |
+| Key                  | Description                                                          |
+|----------------------|----------------------------------------------------------------------|
+| `ds-ide.sine`        | Sine generator frequency and amplitude                               |
 | `ds-ide.audioSource` | Audio input source, sample rate, buffer size, WAV path and loop flag |
 
 ---
@@ -131,7 +131,7 @@ The following state is persisted per workspace (not user-editable directly; mana
 
 - **macOS only** — the emulator binary is compiled for macOS/Apple Silicon. Linux and Windows are not currently supported.
 - **Not cycle-accurate** — the emulator runs a host compatibility layer, not an STM32 simulation. CPU and RAM budget cannot be validated against the real hardware.
-- **Audio fidelity caveat** — the emulator approximates Daisy Seed audio behaviour; it is not bit-exact with the hardware output.
+- **Audio fidelity caveat** — the emulator approximates Daisy Seed audio behavior; it is not bit-exact with the hardware output.
 
 ---
 
@@ -161,11 +161,11 @@ Rules:
 
 **C++ type mapping:**
 
-| `kind` | C++ type |
-|---|---|
-| `pot` | `AdcChannelConfig` |
-| `button` | `Switch` |
-| `led` | `Led` |
+| `kind`   | C++ type           |
+|----------|--------------------|
+| `pot`    | `AdcChannelConfig` |
+| `button` | `Switch`           |
+| `led`    | `Led`              |
 
 ---
 
@@ -206,35 +206,35 @@ leds:
 
 **`controllers:` section (potentiometers)**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `id` | string | yes | Unique identifier. Must match the `id` in the `ds-ide:controls` annotation. |
-| `label` | string | yes | Human-readable label shown in the Controls Editor. |
-| `adc_channel` | integer | yes | ADC channel number, 0–11. Must be unique across all pots. |
-| `range` | `[min, max]` | yes | Value range sent to the emulator (e.g. `[0, 1]`, `[200, 8000]`). |
-| `taper` | string | yes | `linear`, `log`, or `antilog`. Controls how slider position maps to value. |
-| `default` | number | yes | Initial slider position, normalised 0–1. |
-| `editor_pos` | `[x, y]` | no | Canvas position in the Controls Editor (managed by drag-and-drop; do not edit manually). |
+| Field         | Type         | Required | Description                                                                              |
+|---------------|--------------|----------|------------------------------------------------------------------------------------------|
+| `id`          | string       | yes      | Unique identifier. Must match the `id` in the `ds-ide:controls` annotation.              |
+| `label`       | string       | yes      | Human-readable label shown in the Controls Editor.                                       |
+| `adc_channel` | integer      | yes      | ADC channel number, 0–11. Must be unique across all pots.                                |
+| `range`       | `[min, max]` | yes      | Value range sent to the emulator (e.g. `[0, 1]`, `[200, 8000]`).                         |
+| `taper`       | string       | yes      | `linear`, `log`, or `antilog`. Controls how slider position maps to value.               |
+| `default`     | number       | yes      | Initial slider position, normalised 0–1.                                                 |
+| `editor_pos`  | `[x, y]`     | no       | Canvas position in the Controls Editor (managed by drag-and-drop; do not edit manually). |
 
 **`buttons:` section**
 
-| Field | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `id` | string | yes | — | Unique identifier. |
-| `label` | string | yes | — | Human-readable label. |
-| `gpio_pin` | integer | yes | — | Daisy Seed pin number, 0–31. Must be unique across all buttons. |
-| `mode` | string | no | `momentary` | `momentary` (held) or `toggle` (latched). |
-| `active_level` | string | no | `low` | `high` or `low`. Wiring metadata; the runtime returns the logical press state. |
-| `editor_pos` | `[x, y]` | no | — | Canvas position (managed by the editor). |
+| Field          | Type     | Required | Default     | Description                                                                    |
+|----------------|----------|----------|-------------|--------------------------------------------------------------------------------|
+| `id`           | string   | yes      | —           | Unique identifier.                                                             |
+| `label`        | string   | yes      | —           | Human-readable label.                                                          |
+| `gpio_pin`     | integer  | yes      | —           | Daisy Seed pin number, 0–31. Must be unique across all buttons.                |
+| `mode`         | string   | no       | `momentary` | `momentary` (held) or `toggle` (latched).                                      |
+| `active_level` | string   | no       | `low`       | `high` or `low`. Wiring metadata; the runtime returns the logical press state. |
+| `editor_pos`   | `[x, y]` | no       | —           | Canvas position (managed by the editor).                                       |
 
 **`leds:` section**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `id` | string | yes | Unique identifier. |
-| `label` | string | yes | Human-readable label. |
-| `gpio_pin` | integer | yes | Daisy Seed pin number, 0–31. Pin 23 is the onboard LED. Must be unique across all LEDs. |
-| `editor_pos` | `[x, y]` | no | Canvas position (managed by the editor). |
+| Field        | Type     | Required | Description                                                                             |
+|--------------|----------|----------|-----------------------------------------------------------------------------------------|
+| `id`         | string   | yes      | Unique identifier.                                                                      |
+| `label`      | string   | yes      | Human-readable label.                                                                   |
+| `gpio_pin`   | integer  | yes      | Daisy Seed pin number, 0–31. Pin 23 is the onboard LED. Must be unique across all LEDs. |
+| `editor_pos` | `[x, y]` | no       | Canvas position (managed by the editor).                                                |
 
 Validation errors in `controllers.yaml` are reported as VS Code diagnostics in the Problems panel.
 

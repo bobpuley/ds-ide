@@ -1,7 +1,7 @@
 # M28 — Webview Security Hardening
 
-**Semver:** 0.9.0  
-**Status:** planned  
+**Semver:** 0.8.2  
+**Status:** released  
 **Source:** `docs/06_nodejs_review.md` + `docs/06_vscode_extension_review.md` (2026-06-21)
 
 Covers the two HIGH-urgency security findings from the code review: CSP/nonce on all webviews and host-side validation of incoming webview messages before any workspace write.

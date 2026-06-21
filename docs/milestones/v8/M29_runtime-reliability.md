@@ -1,6 +1,6 @@
 # M29 — Extension Runtime Reliability
 
-**Semver:** 0.9.1  
+**Semver:** 0.8.3  
 **Status:** released  
 **Source:** `docs/06_nodejs_review.md` + `docs/06_vscode_extension_review.md` (2026-06-21)
 
