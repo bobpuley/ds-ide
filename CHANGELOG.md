@@ -5,6 +5,22 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.6.0 — 2026-06-21
+
+**M25 — Emulator Runtime Safety & Code Quality** *(AC-38–AC-54 green)*
+
+- **RT thread safety (AC-38/39/40):** `in_interleaved`/`out_interleaved` promoted to pre-allocated `Impl` members; all audio-engine IPC sends routed through a lock-free SPSC queue drained by a dedicated non-RT thread; `ScopeState::accumulate` hard-capped at 65536 samples to prevent RT heap reallocation
+- **Allocation safety (AC-41):** `CoreAudioDevice::start()` checks each `malloc` return; on null calls `stop()` and returns false before any `AudioUnitRender`
+- **WAV parsing (AC-42/52):** `parse_wav` rejects `bits == 0` before `total_samples` division; `rd_u16`, `decode_pcm24` cast bytes to `uint32_t` before shifting to eliminate integer-promotion UB
+- **IPC reliability (AC-43/44/45):** `sampleRate` validated in `[100, 384000]`, `blockSize` in `[1, 65536]` with IPC error events on rejection; `json_get` adds nesting-depth limit (8) and escaped-quote handling; all `stof`/`stoi` calls wrapped in try/catch with stderr warnings; `::send()` return checked — client fd closed and flagged on error
+- **Session correctness (AC-46/47):** `recorder_mutex` held across `active()` + `enqueuePot/enqueueButton` in `dispatch()` eliminating TOCTOU; `lseek` return checked in `nextBlock` and `open()`; `block_size > 65536` rejected in `open()`
+- **GPIO aliasing (AC-48):** `canonical_gpio_index(port*32+pin)` replaces bare `pin.pin`; `Switch`/`Led` shims updated; `kNumGpioPins` expanded to 64 — A6–A11 no longer alias D0–D5
+- **Build quality (AC-49):** `ASAN` and `TSAN` opt-in CMake options with mutual-exclusivity guard and `message(FATAL_ERROR)` on conflict
+- **Low-severity quality (AC-50–54):** Redundant `delete impl_` removed from destructor; `AudioOutputUnitStop` drain guarantee documented; `mach_timebase_info` return checked with 1.0 fallback; `run_simulated` silent loop subtracts elapsed execution time from sleep
+- **New:** `tests/emulator-safety/` — 50 unit assertions covering all testable ACs (all green)
+
+---
+
 ## 0.5.1 — 2026-06-20
 
 **M24 — Init Block Code Generation** *(AC-37 green)*
