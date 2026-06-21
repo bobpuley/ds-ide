@@ -49,6 +49,7 @@ export type RecordStartHandler = () => void;
 export type RecordStopHandler = () => void;
 export type ReplayStartHandler = () => void;
 export type OutputVolumeHandler = (volume: number) => void;
+export type StopAudioHandler = () => void;
 
 export class ScopePanel {
   private panel: vscode.WebviewPanel | null = null;
@@ -66,6 +67,7 @@ export class ScopePanel {
     private readonly onRecordStop?: RecordStopHandler,
     private readonly onReplayStart?: ReplayStartHandler,
     private readonly onOutputVolume?: OutputVolumeHandler,
+    private readonly onStopAudio?: StopAudioHandler,
   ) {
     manager.on('message', (msg: IpcMessage) => {
       if (msg['type'] === 'scope') this.postScope(msg);
@@ -131,7 +133,11 @@ export class ScopePanel {
         this.onPickWav?.();
       }
       if (m['command'] === 'startAudio') startAudio(this.manager);
-      if (m['command'] === 'stopAudio')  stopAudio(this.manager);
+      if (m['command'] === 'stopAudio') {
+        stopAudio(this.manager);
+        this._synthesizeStopped();
+        this.onStopAudio?.();
+      }
       if (m['command'] === 'recordStart') this.onRecordStart?.();
       if (m['command'] === 'recordStop')  this.onRecordStop?.();
       if (m['command'] === 'replayStart') this.onReplayStart?.();
@@ -195,6 +201,16 @@ export class ScopePanel {
 
   private postReplayDone(): void {
     this.panel?.webview.postMessage({ command: 'replayDone' });
+  }
+
+  notifyStopped(): void {
+    this._synthesizeStopped();
+  }
+
+  private _synthesizeStopped(): void {
+    const stopped: IpcMessage = { ...(this.lastStatusMsg ?? {}), type: 'status', running: false };
+    this.lastStatusMsg = stopped;
+    this.postStatus(stopped);
   }
 
   notifyRecordingState(recording: boolean, replaying: boolean, fileName?: string): void {
@@ -357,14 +373,8 @@ function buildHtml(sine: SineParams, source: AudioSource): string {
     </ol>
     <div style="margin-top:8px;font-size:11px">Use <code>Deploy and Debug</code> to attach breakpoints.</div>
   </div>
-  <div class="coll-section" id="emulator-section">
-    <div class="coll-header" id="emulator-header" aria-expanded="false">
-      <span class="coll-arrow" id="emulator-arrow" style="transform:rotate(-90deg)">&#9662;</span>
-      <span>Emulator</span>
-    </div>
-    <div class="coll-body collapsed" id="emulator-body">
-      ${audioSourceHtml}
-    </div>
+  <div id="emulator-section" style="background:#252526;border-top:1px solid #3c3c3c;flex-shrink:0">
+    ${audioSourceHtml}
   </div>
   <script>
     const vscode = acquireVsCodeApi();
@@ -393,6 +403,18 @@ function buildHtml(sine: SineParams, source: AudioSource): string {
     const activeEvents = new Set();
     let hasStatus = false;
     let xrunCount = 0;
+    let lastStatusRunning = false;
+    let lastStatusSampleRate = 0;
+    let lastStatusBlockSize = 0;
+
+    function updateStatusEl() {
+      if (!statusEl || !hasStatus) return;
+      const symbol = lastStatusRunning ? '▶' : '■';
+      const color  = lastStatusRunning ? '#4ec94e' : '#f04a4a';
+      statusEl.innerHTML =
+        '<span style="color:' + color + '">' + symbol + '</span>' +
+        '  |  ' + lastStatusSampleRate + ' Hz  |  block ' + lastStatusBlockSize + '  |  xruns: ' + xrunCount;
+    }
 
     function showScope() {
       if (!hasStatus) return;
@@ -568,8 +590,6 @@ function buildHtml(sine: SineParams, source: AudioSource): string {
         resize();
       });
     }
-    setupCollapsible('emulator-header', 'emulator-body', 'emulator-arrow');
-
     window.addEventListener('resize', resize);
     resize();
 
@@ -582,8 +602,10 @@ function buildHtml(sine: SineParams, source: AudioSource): string {
       } else if (msg.command === 'status') {
         hasStatus = true;
         showScope();
-        const r = msg.running ? '▶ Running' : '■ Stopped';
-        if (statusEl) statusEl.textContent = r + '  |  ' + msg.sampleRate + ' Hz  |  block ' + msg.blockSize + '  |  xruns: ' + xrunCount;
+        lastStatusRunning   = !!msg.running;
+        lastStatusSampleRate = msg.sampleRate || lastStatusSampleRate;
+        lastStatusBlockSize  = msg.blockSize  || lastStatusBlockSize;
+        updateStatusEl();
         if (btnAudioStart) btnAudioStart.disabled = !!msg.running;
         if (btnAudioStop)  btnAudioStop.disabled  = !msg.running;
         if (!msg.running) {
@@ -609,9 +631,7 @@ function buildHtml(sine: SineParams, source: AudioSource): string {
         eventsEl.textContent = [...activeEvents].map(k => '⚠ ' + k).join('  ');
       } else if (msg.command === 'xrun') {
         xrunCount = msg.count || 0;
-        if (hasStatus) {
-          statusEl.textContent = statusEl.textContent.replace(/xruns: \\d+/, 'xruns: ' + xrunCount);
-        }
+        updateStatusEl();
       } else if (msg.command === 'latency') {
         const ms = msg.measuredMs;
         if (latencyEl) latencyEl.textContent = 'latency: ' + (ms ? ms.toFixed(1) + ' ms' : '—');
@@ -642,6 +662,8 @@ function buildHtml(sine: SineParams, source: AudioSource): string {
       vscode.postMessage({ command: 'stopAudio' });
       if (btnAudioStart) btnAudioStart.disabled = false;
       if (btnAudioStop)  btnAudioStop.disabled  = true;
+      lastStatusRunning = false;
+      updateStatusEl();
     });
 
     const recStartBtn   = document.getElementById('rec-start-btn');

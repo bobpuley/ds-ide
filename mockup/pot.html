@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Pot — Control Showcase</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #1e1e1e; color: #d4d4d4; font-family: monospace; font-size: 12px; padding: 24px; }
+
+    h1 { font-size: 15px; color: #d4d4d4; margin-bottom: 28px; border-bottom: 1px solid #3c3c3c; padding-bottom: 8px; }
+    .showcase-section { margin-bottom: 48px; }
+    .showcase-section h2 { font-size: 11px; color: #9cdcfe; text-transform: uppercase; letter-spacing: 1.5px; border-bottom: 1px solid #3c3c3c; padding-bottom: 5px; margin-bottom: 18px; }
+    .control-row { display: flex; gap: 32px; flex-wrap: wrap; align-items: flex-start; }
+    .mode-block { display: flex; flex-direction: column; gap: 6px; }
+    .mode-label { font-size: 10px; color: #6a6a6a; text-transform: uppercase; letter-spacing: 1px; }
+    .placeholder { color: #3c3c3c; font-size: 11px; font-style: italic; padding: 16px 20px; border: 1px dashed #3c3c3c; border-radius: 4px; min-width: 180px; }
+
+    /* ── card (convention / runtime mode) ── */
+    .ctrl-card { min-width: 168px; background: #252526; border: 1px solid #555; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.4); }
+    .ctrl-card[data-kind="pot"] { border-top: 3px solid #4ec9b0; }
+    .ctrl-handle { display: flex; align-items: center; gap: 6px; padding: 4px 6px 4px 8px; cursor: grab; background: rgba(255,255,255,0.03); border-bottom: 1px solid #3c3c3c; user-select: none; }
+    .handle-glyph { color: #555; font-size: 13px; }
+    .card-kind { font-size: 9px; color: #6a6a6a; text-transform: uppercase; letter-spacing: 0.5px; }
+    .card-id-label { flex: 1; color: #d4d4d4; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .card-pin-label { color: #6a6a6a; font-size: 10px; }
+    .ctrl-body { padding: 6px 8px 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .knob-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: ns-resize; user-select: none; padding: 2px 4px; }
+    .knob-value { color: #b5cea8; font-size: 10px; font-family: monospace; min-width: 36px; text-align: center; }
+
+    /* ── card (legacy editor / yaml-only mode) ── */
+    .card-header { padding: 4px 6px 4px 8px; display: flex; align-items: center; justify-content: space-between; cursor: grab; background: rgba(255,255,255,0.03); }
+    .card-kind-ed { font-size: 9px; color: #6a6a6a; text-transform: uppercase; letter-spacing: 0.5px; }
+    .card-del { background: none; border: none; color: #555; cursor: pointer; font-size: 15px; padding: 0 2px; line-height: 1; }
+    .card-del:hover { color: #f04a4a; }
+    .card-body { padding: 5px 8px 8px; display: flex; flex-direction: column; gap: 4px; }
+    .card-field { display: flex; align-items: center; gap: 5px; }
+    .card-field label { font-size: 10px; color: #9a9a9a; min-width: 46px; }
+    .card-inp { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 2px 4px; font-family: monospace; font-size: 11px; flex: 1; min-width: 0; }
+    .card-sel { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 2px 4px; font-family: monospace; font-size: 11px; flex: 1; }
+
+    /* ── v1 overrides ── */
+    .ctrl-card-v1 { min-width: 0; width: 120px; }
+    .ctrl-card-v1 .ctrl-handle { gap: 4px; }
+
+    /* ── v2 overrides ── */
+    .ctrl-card-v2 { min-width: 0; width: 120px; }
+    .ctrl-card-v2 .ctrl-handle { gap: 4px; }
+    .ctrl-card-v2 .ctrl-body { justify-content: center; }
+  </style>
+</head>
+<body>
+  <h1>Pot — Control Showcase</h1>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       Current (v0) — Baseline
+       ══════════════════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <h2>Current (v0) — Baseline</h2>
+    <div class="control-row">
+
+      <div class="mode-block">
+        <div class="mode-label">Convention mode — runtime interactive</div>
+        <div class="ctrl-card" data-kind="pot">
+          <div class="ctrl-handle">
+            <span class="handle-glyph">⠿</span>
+            <span class="card-kind">Pot</span>
+            <span class="card-id-label">cutoff_pot</span>
+            <span class="card-pin-label">pin 15</span>
+          </div>
+          <div class="ctrl-body">
+            <div class="knob-wrap" id="knob-v0" data-value="0.35"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mode-block">
+        <div class="mode-label">Legacy editor mode — yaml-only config</div>
+        <div class="ctrl-card" data-kind="pot">
+          <div class="card-header">
+            <span class="card-kind-ed">Pot</span>
+            <button class="card-del">×</button>
+          </div>
+          <div class="card-body">
+            <div class="card-field"><label>ID</label><input class="card-inp" value="cutoff_pot"/></div>
+            <div class="card-field"><label>Label</label><input class="card-inp" value="Cutoff"/></div>
+            <div class="card-field"><label>ADC ch</label>
+              <select class="card-sel"><option>ch 0</option><option>ch 1</option></select>
+            </div>
+            <div class="card-field"><label>Taper</label>
+              <select class="card-sel"><option>linear</option><option>log</option><option>antilog</option></select>
+            </div>
+            <div class="card-field"><label>Default</label><input class="card-inp" type="number" min="0" max="1" step="0.01" value="0.5"/></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       v1 — compact header: no kind badge, no pin, tooltips, narrower card
+       ══════════════════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <h2>v1 — compact header · tooltips · narrower card</h2>
+    <div class="control-row">
+
+      <div class="mode-block">
+        <div class="mode-label">Short label (≤15 chars)</div>
+        <div class="ctrl-card ctrl-card-v1" data-kind="pot">
+          <div class="ctrl-handle" title="Pot · pin 15">
+            <span class="handle-glyph">⠿</span>
+            <span class="card-id-label">cutoff_pot</span>
+          </div>
+          <div class="ctrl-body">
+            <div class="knob-wrap" id="knob-v1-a" data-value="0.35"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mode-block">
+        <div class="mode-label">Long label (&gt;15 chars → truncated + tooltip)</div>
+        <div class="ctrl-card ctrl-card-v1" data-kind="pot">
+          <div class="ctrl-handle" title="Pot · pin 15">
+            <span class="handle-glyph">⠿</span>
+            <span class="card-id-label" id="long-label-v1" title="cutoff_resonance_filter_pot"></span>
+          </div>
+          <div class="ctrl-body">
+            <div class="knob-wrap" id="knob-v1-b" data-value="0.7"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       v2 — center-aligned body
+       ══════════════════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <h2>v2 — center-aligned body</h2>
+    <div class="control-row">
+
+      <div class="mode-block">
+        <div class="mode-label">Short label</div>
+        <div class="ctrl-card ctrl-card-v2" data-kind="pot">
+          <div class="ctrl-handle" title="Pot · pin 15">
+            <span class="handle-glyph">⠿</span>
+            <span class="card-id-label">cutoff_pot</span>
+          </div>
+          <div class="ctrl-body">
+            <div class="knob-wrap" id="knob-v2-a" data-value="0.35"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mode-block">
+        <div class="mode-label">Long label (&gt;15 chars)</div>
+        <div class="ctrl-card ctrl-card-v2" data-kind="pot">
+          <div class="ctrl-handle" title="Pot · pin 15">
+            <span class="handle-glyph">⠿</span>
+            <span class="card-id-label" id="long-label-v2" title="cutoff_resonance_filter_pot"></span>
+          </div>
+          <div class="ctrl-body">
+            <div class="knob-wrap" id="knob-v2-b" data-value="0.7"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    function buildKnobSvg(value) {
+      const sz = 52, cx = 26, cy = 26, trackR = 20, dotR2 = 14;
+      const startDeg = -225, rangeDeg = 270;
+      const toRad = d => d * Math.PI / 180;
+      const cv = Math.max(0, Math.min(1, value));
+      const fmt = n => n.toFixed(2);
+      const svgAng = toRad(startDeg + cv * rangeDeg);
+      const x0 = cx + trackR * Math.cos(toRad(startDeg));
+      const y0 = cy + trackR * Math.sin(toRad(startDeg));
+      const x1 = cx + trackR * Math.cos(toRad(startDeg + rangeDeg));
+      const y1 = cy + trackR * Math.sin(toRad(startDeg + rangeDeg));
+      const xa = cx + trackR * Math.cos(svgAng);
+      const ya = cy + trackR * Math.sin(svgAng);
+      const dx = cx + dotR2 * Math.cos(svgAng);
+      const dy = cy + dotR2 * Math.sin(svgAng);
+      const span = cv * rangeDeg;
+      const la = span > 180 ? 1 : 0;
+      const trackPath = 'M ' + fmt(x0) + ' ' + fmt(y0) + ' A ' + trackR + ' ' + trackR + ' 0 1 1 ' + fmt(x1) + ' ' + fmt(y1);
+      const valPath = span > 0.1
+        ? 'M ' + fmt(x0) + ' ' + fmt(y0) + ' A ' + trackR + ' ' + trackR + ' 0 ' + la + ' 1 ' + fmt(xa) + ' ' + fmt(ya)
+        : 'M 0 0';
+      return '<svg class="knob-svg" viewBox="0 0 ' + sz + ' ' + sz + '" width="' + sz + '" height="' + sz + '">'
+        + '<circle cx="' + cx + '" cy="' + cy + '" r="18" fill="#1e1e1e" stroke="#3c3c3c" stroke-width="1.5"/>'
+        + '<path d="' + trackPath + '" fill="none" stroke="#3c3c3c" stroke-width="3" stroke-linecap="round"/>'
+        + '<path class="knob-value-path" d="' + valPath + '" fill="none" stroke="#4ec9b0" stroke-width="3" stroke-linecap="round"' + (span <= 0.1 ? ' style="display:none"' : '') + '/>'
+        + '<circle class="knob-dot" cx="' + fmt(dx) + '" cy="' + fmt(dy) + '" r="2.5" fill="#4ec9b0"/>'
+        + '</svg>';
+    }
+
+    function attachKnob(id, initVal) {
+      const wrap = document.getElementById(id);
+      if (!wrap) return;
+      wrap.innerHTML = buildKnobSvg(initVal) + '<span class="knob-value">' + initVal.toFixed(3) + '</span>';
+      wrap.dataset.value = String(initVal);
+
+      let drag = false, startY = 0, startVal = 0;
+      wrap.addEventListener('mousedown', e => {
+        drag = true; startY = e.clientY; startVal = parseFloat(wrap.dataset.value || '0'); e.preventDefault();
+      });
+      document.addEventListener('mousemove', e => {
+        if (!drag) return;
+        const cv = Math.max(0, Math.min(1, startVal + (startY - e.clientY) / 100));
+        wrap.dataset.value = String(cv);
+        const cx = 26, cy = 26, trackR = 20, dotR2 = 14;
+        const startDeg = -225, rangeDeg = 270;
+        const toRad = d => d * Math.PI / 180;
+        const svgAng = toRad(startDeg + cv * rangeDeg);
+        const x0 = cx + trackR * Math.cos(toRad(startDeg));
+        const y0 = cy + trackR * Math.sin(toRad(startDeg));
+        const xa = cx + trackR * Math.cos(svgAng);
+        const ya = cy + trackR * Math.sin(svgAng);
+        const dx = cx + dotR2 * Math.cos(svgAng);
+        const dy = cy + dotR2 * Math.sin(svgAng);
+        const span = cv * rangeDeg;
+        const la = span > 180 ? 1 : 0;
+        const fmt = n => n.toFixed(2);
+        const vp = wrap.querySelector('.knob-value-path');
+        if (vp) {
+          if (span > 0.1) { vp.setAttribute('d', 'M ' + fmt(x0) + ' ' + fmt(y0) + ' A ' + trackR + ' ' + trackR + ' 0 ' + la + ' 1 ' + fmt(xa) + ' ' + fmt(ya)); vp.style.display = ''; }
+          else vp.style.display = 'none';
+        }
+        const dot = wrap.querySelector('.knob-dot');
+        if (dot) { dot.setAttribute('cx', fmt(dx)); dot.setAttribute('cy', fmt(dy)); }
+        const valEl = wrap.querySelector('.knob-value');
+        if (valEl) valEl.textContent = cv.toFixed(3);
+      });
+      document.addEventListener('mouseup', () => { drag = false; });
+    }
+
+    attachKnob('knob-v0', 0.35);
+
+    // v1 — truncate helper + additional knobs
+    function truncLabel(s) { return s.length > 15 ? s.slice(0, 14) + '…' : s; }
+    const longLabelEl = document.getElementById('long-label-v1');
+    if (longLabelEl) longLabelEl.textContent = truncLabel(longLabelEl.title);
+
+    attachKnob('knob-v1-a', 0.35);
+    attachKnob('knob-v1-b', 0.7);
+
+    // v2
+    const longLabelV2 = document.getElementById('long-label-v2');
+    if (longLabelV2) longLabelV2.textContent = truncLabel(longLabelV2.title);
+    attachKnob('knob-v2-a', 0.35);
+    attachKnob('knob-v2-b', 0.7);
+  </script>
+</body>
+</html>

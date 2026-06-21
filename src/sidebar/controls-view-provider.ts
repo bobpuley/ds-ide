@@ -10,12 +10,19 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
   private pendingConfig: ControlsConfig | null = null;
   private pendingEditorCfg: ControllerConfig | null = null;
   private lastStatus: IpcMessage | null = null;
+  private onBecameVisible: (() => void) | undefined;
 
   constructor(
     private readonly onEditorSave: (cfg: ControllerConfig) => void,
     private readonly onPotChange: (channel: number, value: number) => void,
     private readonly onButtonChange: (gpioPin: number, pressed: boolean) => void,
   ) {}
+
+  get isVisible(): boolean { return this.view?.visible ?? false; }
+
+  setOnBecameVisible(fn: () => void): void {
+    this.onBecameVisible = fn;
+  }
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
@@ -42,7 +49,10 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
     });
 
     view.onDidChangeVisibility(() => {
-      if (view.visible) this._flush();
+      if (view.visible) {
+        this._flush();
+        this.onBecameVisible?.();
+      }
     });
   }
 
@@ -77,6 +87,10 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
   }
 }
 
+export function truncId(id: string): string {
+  return id.length > 15 ? id.slice(0, 14) + '…' : id;
+}
+
 function safeJson(obj: unknown): string {
   return JSON.stringify(obj).replace(/<\//g, '<\\/');
 }
@@ -96,8 +110,8 @@ function buildHtml(): string {
     #save-btn:hover { background: #1177bb; }
     #save-status { font-size: 11px; color: #b5cea8; }
     #ce-emu-status { font-size: 11px; }
-    .ce-emu-running { color: #4ec9b0; }
-    .ce-emu-stopped { color: #9a9a9a; }
+    .ce-emu-running { color: #4ec94e; }
+    .ce-emu-stopped { color: #f04a4a; }
     .emu-sep { color: #3c3c3c; user-select: none; }
     #convention-banner { display: none; align-items: center; gap: 8px; padding: 5px 12px; background: #3a2f00; border-bottom: 1px solid #7a6500; color: #f4c430; font-size: 11px; flex-shrink: 0; }
     #design-area { display: flex; flex: 1; min-height: 0; overflow: hidden; }
@@ -129,22 +143,21 @@ function buildHtml(): string {
     .handle-glyph { color: #555; font-size: 13px; }
     .card-id-label { flex: 1; color: #d4d4d4; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .card-pin-label { color: #6a6a6a; font-size: 10px; }
-    .ctrl-body { padding: 6px 8px 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .ctrl-body { padding: 6px 8px 8px; display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
     .body-disabled { opacity: 0.35; pointer-events: none; }
     .knob-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: ns-resize; user-select: none; padding: 2px 4px; }
     .knob-svg { display: block; }
     .knob-value { color: #b5cea8; font-size: 10px; font-family: monospace; min-width: 36px; text-align: center; }
-    .btn-ce { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; border-radius: 4px; padding: 4px 10px; font-family: monospace; font-size: 11px; cursor: pointer; }
-    .btn-ce[aria-pressed="true"] { background: #0e639c; border-color: #1177bb; color: #fff; }
+    .btn-ce { background: #4a4a4a; border: 1px solid #666; border-radius: 6px; padding: 7px; cursor: pointer; box-shadow: 0 3px 0 #111; transition: box-shadow 0.06s, transform 0.06s, background 0.06s; flex-shrink: 0; user-select: none; }
+    .btn-ce[aria-pressed="true"] { box-shadow: none; transform: translateY(3px); background: #0e639c; border-color: #1177bb; }
     .vled-dot { width: 12px; height: 12px; border-radius: 50%; background: #3c3c3c; border: 1px solid #555; box-shadow: none; display: inline-block; }
     .vled-dot.vled-lit { background: #f04a4a; border-color: #ff6a6a; box-shadow: 0 0 6px 1px #f04a4a; }
-    .vled-label { color: #b5cea8; }
     .section-label { color: #9cdcfe; align-self: center; }
   </style>
 </head>
 <body>
   <div id="editor-toolbar">
-    <span id="ce-emu-status" class="ce-emu-stopped">&#9632; Stopped</span>
+    <span id="ce-emu-status" class="ce-emu-stopped">&#9632;</span>
     <span class="emu-sep" style="margin:0 6px">|</span>
     <span id="save-wrap" style="display:inline-flex;align-items:center;gap:8px">
       <button id="save-btn">Save controllers.yaml</button>
@@ -199,7 +212,7 @@ function buildHtml(): string {
       ceEmulatorRunning = running;
       const ceStatusEl = document.getElementById('ce-emu-status');
       if (ceStatusEl) {
-        ceStatusEl.textContent = running ? '▶ Running' : '■ Stopped';
+        ceStatusEl.textContent = running ? '▶' : '■';
         ceStatusEl.className = running ? 'ce-emu-running' : 'ce-emu-stopped';
       }
       document.querySelectorAll('#canvas-area .ctrl-body').forEach(body => {
@@ -286,12 +299,17 @@ function buildHtml(): string {
       return cv;
     }
 
+    function truncId(id) {
+      return id.length > 15 ? id.slice(0, 14) + '…' : id;
+    }
+
     function buildConventionCard(ctrl, pos) {
       const kindLabel = ctrl.kind === 'pot' ? 'Pot' : ctrl.kind === 'button' ? 'Button' : 'LED';
       const card = document.createElement('div');
       card.className = 'ctrl-card';
       card.dataset.kind = ctrl.kind;
       card.dataset.id = ctrl.id;
+      card.style.minWidth = '90px';
       card.style.left = pos[0] + 'px';
       card.style.top = pos[1] + 'px';
 
@@ -306,19 +324,16 @@ function buildHtml(): string {
           '</div>';
       } else if (ctrl.kind === 'button') {
         bodyInnerHtml =
-          '<button class="btn-ce" type="button" data-pin="' + ctrl.pin + '" aria-pressed="false">' + escJ(ctrl.id) + '</button>';
+          '<button class="btn-ce" type="button" data-pin="' + ctrl.pin + '" aria-pressed="false"></button>';
       } else {
         bodyInnerHtml =
-          '<span class="vled-dot" data-pin="' + ctrl.pin + '"></span>' +
-          '<span class="vled-label">' + escJ(ctrl.id) + '</span>';
+          '<span class="vled-dot" data-pin="' + ctrl.pin + '"></span>';
       }
 
       card.innerHTML =
-        '<div class="ctrl-handle">' +
+        '<div class="ctrl-handle" title="' + escJ(kindLabel + ' \xb7 pin ' + ctrl.pin) + '">' +
           '<span class="handle-glyph">&#x283F;</span>' +
-          '<span class="card-kind">' + kindLabel + '</span>' +
-          '<span class="card-id-label">' + escJ(ctrl.id) + '</span>' +
-          '<span class="card-pin-label">pin ' + ctrl.pin + '</span>' +
+          '<span class="card-id-label" title="' + escJ(ctrl.id) + '">' + escJ(truncId(ctrl.id)) + '</span>' +
         '</div>' +
         '<div class="ctrl-body' + (ceEmulatorRunning ? '' : ' body-disabled') + '">' +
           bodyInnerHtml +
@@ -346,11 +361,24 @@ function buildHtml(): string {
       } else if (ctrl.kind === 'button') {
         const btn = card.querySelector('.btn-ce');
         const gpioPin = ctrl.pin;
-        const press   = () => { btn.setAttribute('aria-pressed', 'true');  vscode.postMessage({ command: 'button', gpioPin, pressed: true }); };
-        const release = () => { btn.setAttribute('aria-pressed', 'false'); vscode.postMessage({ command: 'button', gpioPin, pressed: false }); };
-        btn.addEventListener('mousedown', press);
-        btn.addEventListener('mouseup',   release);
-        btn.addEventListener('mouseleave', () => { if (btn.getAttribute('aria-pressed') === 'true') release(); });
+        const btnMode = (_yamlCfg.buttons.find(b => b.id === ctrl.id) || {}).mode || 'momentary';
+        if (btnMode === 'toggle') {
+          let latch = false;
+          btn.addEventListener('mousedown', () => {
+            latch = !latch;
+            btn.setAttribute('aria-pressed', String(latch));
+            vscode.postMessage({ command: 'button', gpioPin, pressed: true });
+          });
+          btn.addEventListener('mouseup', () => {
+            vscode.postMessage({ command: 'button', gpioPin, pressed: false });
+          });
+        } else {
+          const press   = () => { btn.setAttribute('aria-pressed', 'true');  vscode.postMessage({ command: 'button', gpioPin, pressed: true }); };
+          const release = () => { btn.setAttribute('aria-pressed', 'false'); vscode.postMessage({ command: 'button', gpioPin, pressed: false }); };
+          btn.addEventListener('mousedown', press);
+          btn.addEventListener('mouseup',   release);
+          btn.addEventListener('mouseleave', () => { if (btn.getAttribute('aria-pressed') === 'true') release(); });
+        }
       }
 
       makeDraggable(card, { pos: [pos[0], pos[1]] });

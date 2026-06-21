@@ -97,4 +97,22 @@ describe('WiringViewProvider', () => {
     view._setVisible(true);
     expect(view.webview.postMessage).toHaveBeenLastCalledWith({ command: 'wiredPins', pins });
   });
+
+  it('calls onBecameVisible when view becomes visible', () => {
+    const view = makeView(false);
+    provider.resolveWebviewView(view as never);
+    const cb = vi.fn();
+    provider.setOnBecameVisible(cb);
+    view._setVisible(true);
+    expect(cb).toHaveBeenCalledOnce();
+  });
+
+  it('does not call onBecameVisible when view becomes hidden', () => {
+    const view = makeView(true);
+    provider.resolveWebviewView(view as never);
+    const cb = vi.fn();
+    provider.setOnBecameVisible(cb);
+    view._setVisible(false);
+    expect(cb).not.toHaveBeenCalled();
+  });
 });

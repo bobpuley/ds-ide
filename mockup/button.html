@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Button — Control Showcase</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #1e1e1e; color: #d4d4d4; font-family: monospace; font-size: 12px; padding: 24px; }
+
+    h1 { font-size: 15px; color: #d4d4d4; margin-bottom: 28px; border-bottom: 1px solid #3c3c3c; padding-bottom: 8px; }
+    .showcase-section { margin-bottom: 48px; }
+    .showcase-section h2 { font-size: 11px; color: #9cdcfe; text-transform: uppercase; letter-spacing: 1.5px; border-bottom: 1px solid #3c3c3c; padding-bottom: 5px; margin-bottom: 18px; }
+    .control-row { display: flex; gap: 32px; flex-wrap: wrap; align-items: flex-start; }
+    .mode-block { display: flex; flex-direction: column; gap: 6px; }
+    .mode-label { font-size: 10px; color: #6a6a6a; text-transform: uppercase; letter-spacing: 1px; }
+    .placeholder { color: #3c3c3c; font-size: 11px; font-style: italic; padding: 16px 20px; border: 1px dashed #3c3c3c; border-radius: 4px; min-width: 180px; }
+
+    /* ── card (convention / runtime mode) ── */
+    .ctrl-card { min-width: 168px; background: #252526; border: 1px solid #555; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.4); }
+    .ctrl-card[data-kind="button"] { border-top: 3px solid #569cd6; }
+    .ctrl-handle { display: flex; align-items: center; gap: 6px; padding: 4px 6px 4px 8px; cursor: grab; background: rgba(255,255,255,0.03); border-bottom: 1px solid #3c3c3c; user-select: none; }
+    .handle-glyph { color: #555; font-size: 13px; }
+    .card-kind { font-size: 9px; color: #6a6a6a; text-transform: uppercase; letter-spacing: 0.5px; }
+    .card-id-label { flex: 1; color: #d4d4d4; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .card-pin-label { color: #6a6a6a; font-size: 10px; }
+    .ctrl-body { padding: 6px 8px 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .btn-ce { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; border-radius: 4px; padding: 4px 10px; font-family: monospace; font-size: 11px; cursor: pointer; user-select: none; }
+    .btn-ce[aria-pressed="true"] { background: #0e639c; border-color: #1177bb; color: #fff; }
+
+    /* ── card (legacy editor / yaml-only mode) ── */
+    .card-header { padding: 4px 6px 4px 8px; display: flex; align-items: center; justify-content: space-between; cursor: grab; background: rgba(255,255,255,0.03); }
+    .card-kind-ed { font-size: 9px; color: #6a6a6a; text-transform: uppercase; letter-spacing: 0.5px; }
+    .card-del { background: none; border: none; color: #555; cursor: pointer; font-size: 15px; padding: 0 2px; line-height: 1; }
+    .card-del:hover { color: #f04a4a; }
+    .card-body { padding: 5px 8px 8px; display: flex; flex-direction: column; gap: 4px; }
+    .card-field { display: flex; align-items: center; gap: 5px; }
+    .card-field label { font-size: 10px; color: #9a9a9a; min-width: 46px; }
+    .card-inp { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 2px 4px; font-family: monospace; font-size: 11px; flex: 1; min-width: 0; }
+    .card-sel { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 2px 4px; font-family: monospace; font-size: 11px; flex: 1; }
+
+    /* ── v1 overrides ── */
+    .ctrl-card-v1 { min-width: 0; width: 120px; }
+    .ctrl-card-v1 .ctrl-handle { gap: 4px; }
+    .btn-ce-v1 { background: #3c3c3c; border: 1px solid #555; border-radius: 4px; width: 100%; padding: 7px 0; cursor: pointer; display: block; }
+    .btn-ce-v1[aria-pressed="true"] { background: #0e639c; border-color: #1177bb; }
+
+    /* ── v2 overrides ── */
+    .ctrl-card-v2 { min-width: 0; width: 120px; }
+    .ctrl-card-v2 .ctrl-handle { gap: 4px; }
+    .ctrl-card-v2 .ctrl-body { justify-content: center; }
+    .btn-ce-v2 {
+      background: #4a4a4a;
+      border: 1px solid #666;
+      border-radius: 6px;
+      padding: 7px;           /* same as v1 top/bottom → naturally square at same height */
+      cursor: pointer;
+      box-shadow: 0 3px 0 #111;
+      transition: box-shadow 0.06s, transform 0.06s, background 0.06s;
+      flex-shrink: 0;
+    }
+    .btn-ce-v2[aria-pressed="true"] {
+      box-shadow: none;
+      transform: translateY(3px);
+      background: #0e639c;
+      border-color: #1177bb;
+    }
+  </style>
+</head>
+<body>
+  <h1>Button — Control Showcase</h1>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       Current (v0) — Baseline
+       ══════════════════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <h2>Current (v0) — Baseline</h2>
+    <div class="control-row">
+
+      <div class="mode-block">
+        <div class="mode-label">Convention mode — runtime interactive (momentary)</div>
+        <div class="ctrl-card" data-kind="button">
+          <div class="ctrl-handle">
+            <span class="handle-glyph">⠿</span>
+            <span class="card-kind">Button</span>
+            <span class="card-id-label">bypass</span>
+            <span class="card-pin-label">pin 7</span>
+          </div>
+          <div class="ctrl-body">
+            <button class="btn-ce" id="btn-demo-momentary" aria-pressed="false">bypass</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="mode-block">
+        <div class="mode-label">Convention mode — runtime interactive (toggle)</div>
+        <div class="ctrl-card" data-kind="button">
+          <div class="ctrl-handle">
+            <span class="handle-glyph">⠿</span>
+            <span class="card-kind">Button</span>
+            <span class="card-id-label">hold_mode</span>
+            <span class="card-pin-label">pin 8</span>
+          </div>
+          <div class="ctrl-body">
+            <button class="btn-ce" id="btn-demo-toggle" aria-pressed="false">hold_mode</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="mode-block">
+        <div class="mode-label">Legacy editor mode — yaml-only config</div>
+        <div class="ctrl-card" data-kind="button">
+          <div class="card-header">
+            <span class="card-kind-ed">Button</span>
+            <button class="card-del">×</button>
+          </div>
+          <div class="card-body">
+            <div class="card-field"><label>ID</label><input class="card-inp" value="bypass"/></div>
+            <div class="card-field"><label>Label</label><input class="card-inp" value="Bypass"/></div>
+            <div class="card-field"><label>GPIO pin</label>
+              <select class="card-sel"><option>pin 0</option><option>pin 7</option></select>
+            </div>
+            <div class="card-field"><label>Mode</label>
+              <select class="card-sel"><option>momentary</option><option>toggle</option></select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       v1 — compact header: no kind badge, no pin, tooltips; no label on body
+       ══════════════════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <h2>v1 — compact header · tooltips · label-free body</h2>
+    <div class="control-row">
+
+      <div class="mode-block">
+        <div class="mode-label">Momentary</div>
+        <div class="ctrl-card ctrl-card-v1" data-kind="button">
+          <div class="ctrl-handle" title="Button · pin 7">
+            <span class="handle-glyph">⠿</span>
+            <span class="card-id-label">bypass</span>
+          </div>
+          <div class="ctrl-body">
+            <button class="btn-ce-v1" id="btn-v1-momentary" aria-pressed="false"></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="mode-block">
+        <div class="mode-label">Toggle</div>
+        <div class="ctrl-card ctrl-card-v1" data-kind="button">
+          <div class="ctrl-handle" title="Button · pin 8">
+            <span class="handle-glyph">⠿</span>
+            <span class="card-id-label">hold_mode</span>
+          </div>
+          <div class="ctrl-body">
+            <button class="btn-ce-v1" id="btn-v1-toggle" aria-pressed="false"></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="mode-block">
+        <div class="mode-label">Long label (&gt;15 chars)</div>
+        <div class="ctrl-card ctrl-card-v1" data-kind="button">
+          <div class="ctrl-handle" title="Button · pin 9">
+            <span class="handle-glyph">⠿</span>
+            <span class="card-id-label" id="btn-long-label-v1" title="tap_tempo_sync_btn"></span>
+          </div>
+          <div class="ctrl-body">
+            <button class="btn-ce-v1" id="btn-v1-long" aria-pressed="false"></button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       v2 — pressable square pad + center-aligned body
+       ══════════════════════════════════════════════════════════════════════ -->
+  <div class="showcase-section">
+    <h2>v2 — pressable square pad · center-aligned body</h2>
+    <div class="control-row">
+
+      <div class="mode-block">
+        <div class="mode-label">Momentary</div>
+        <div class="ctrl-card ctrl-card-v2" data-kind="button">
+          <div class="ctrl-handle" title="Button · pin 7">
+            <span class="handle-glyph">⠿</span>
+            <span class="card-id-label">bypass</span>
+          </div>
+          <div class="ctrl-body">
+            <button class="btn-ce-v2" id="btn-v2-momentary" aria-pressed="false"></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="mode-block">
+        <div class="mode-label">Toggle (click to latch)</div>
+        <div class="ctrl-card ctrl-card-v2" data-kind="button">
+          <div class="ctrl-handle" title="Button · pin 8">
+            <span class="handle-glyph">⠿</span>
+            <span class="card-id-label">hold_mode</span>
+          </div>
+          <div class="ctrl-body">
+            <button class="btn-ce-v2" id="btn-v2-toggle" aria-pressed="false"></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="mode-block">
+        <div class="mode-label">Long label (&gt;15 chars)</div>
+        <div class="ctrl-card ctrl-card-v2" data-kind="button">
+          <div class="ctrl-handle" title="Button · pin 9">
+            <span class="handle-glyph">⠿</span>
+            <span class="card-id-label" id="btn-long-label-v2" title="tap_tempo_sync_btn"></span>
+          </div>
+          <div class="ctrl-body">
+            <button class="btn-ce-v2" id="btn-v2-long" aria-pressed="false"></button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // Momentary button
+    const momentary = document.getElementById('btn-demo-momentary');
+    momentary.addEventListener('mousedown', () => momentary.setAttribute('aria-pressed', 'true'));
+    momentary.addEventListener('mouseup',   () => momentary.setAttribute('aria-pressed', 'false'));
+    momentary.addEventListener('mouseleave', () => {
+      if (momentary.getAttribute('aria-pressed') === 'true') momentary.setAttribute('aria-pressed', 'false');
+    });
+
+    // Toggle button
+    const toggle = document.getElementById('btn-demo-toggle');
+    toggle.addEventListener('mousedown', () => {
+      const next = toggle.getAttribute('aria-pressed') === 'true' ? 'false' : 'true';
+      toggle.setAttribute('aria-pressed', next);
+    });
+
+    // v1
+    function truncLabel(s) { return s.length > 15 ? s.slice(0, 14) + '…' : s; }
+    const btnLongEl = document.getElementById('btn-long-label-v1');
+    if (btnLongEl) btnLongEl.textContent = truncLabel(btnLongEl.title);
+
+    const bv1m = document.getElementById('btn-v1-momentary');
+    bv1m.addEventListener('mousedown', () => bv1m.setAttribute('aria-pressed', 'true'));
+    bv1m.addEventListener('mouseup',   () => bv1m.setAttribute('aria-pressed', 'false'));
+    bv1m.addEventListener('mouseleave', () => { if (bv1m.getAttribute('aria-pressed') === 'true') bv1m.setAttribute('aria-pressed', 'false'); });
+
+    const bv1t = document.getElementById('btn-v1-toggle');
+    bv1t.addEventListener('mousedown', () => {
+      bv1t.setAttribute('aria-pressed', bv1t.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+    });
+
+    const bv1l = document.getElementById('btn-v1-long');
+    bv1l.addEventListener('mousedown', () => bv1l.setAttribute('aria-pressed', 'true'));
+    bv1l.addEventListener('mouseup',   () => bv1l.setAttribute('aria-pressed', 'false'));
+    bv1l.addEventListener('mouseleave', () => { if (bv1l.getAttribute('aria-pressed') === 'true') bv1l.setAttribute('aria-pressed', 'false'); });
+
+    // v2
+    const bv2m = document.getElementById('btn-v2-momentary');
+    bv2m.addEventListener('mousedown', () => bv2m.setAttribute('aria-pressed', 'true'));
+    bv2m.addEventListener('mouseup',   () => bv2m.setAttribute('aria-pressed', 'false'));
+    bv2m.addEventListener('mouseleave', () => { if (bv2m.getAttribute('aria-pressed') === 'true') bv2m.setAttribute('aria-pressed', 'false'); });
+
+    const bv2t = document.getElementById('btn-v2-toggle');
+    bv2t.addEventListener('mousedown', () => {
+      bv2t.setAttribute('aria-pressed', bv2t.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+    });
+
+    const longLabelV2 = document.getElementById('btn-long-label-v2');
+    if (longLabelV2) longLabelV2.textContent = truncLabel(longLabelV2.title);
+    const bv2l = document.getElementById('btn-v2-long');
+    bv2l.addEventListener('mousedown', () => bv2l.setAttribute('aria-pressed', 'true'));
+    bv2l.addEventListener('mouseup',   () => bv2l.setAttribute('aria-pressed', 'false'));
+    bv2l.addEventListener('mouseleave', () => { if (bv2l.getAttribute('aria-pressed') === 'true') bv2l.setAttribute('aria-pressed', 'false'); });
+  </script>
+</body>
+</html>
