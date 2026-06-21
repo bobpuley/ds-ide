@@ -8,7 +8,8 @@ import { detectNonPortableSymbol } from '../diagnostics/non-portable';
 export async function buildForEmulator(
   manager: EmulatorManager,
   extensionPath: string,
-  diagnostics?: vscode.DiagnosticCollection,
+  diagnostics: vscode.DiagnosticCollection | undefined,
+  outputChannel: vscode.OutputChannel,
 ): Promise<boolean> {
   const folders = vscode.workspace.workspaceFolders;
   if (!folders || folders.length === 0) {
@@ -31,7 +32,7 @@ export async function buildForEmulator(
   const opts: BuildOptions = { projectRoot, effectSrc, emulatorSrc };
   if (daisySpDir) opts.daisySpDir = daisySpDir;
 
-  const channel = vscode.window.createOutputChannel('Daisy IDE Build');
+  const channel = outputChannel;
   channel.show();
 
   const parsed: ParsedDiagnostic[] = [];

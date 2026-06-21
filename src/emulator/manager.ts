@@ -48,6 +48,7 @@ export class EmulatorManager extends EventEmitter {
   // event is not forwarded to callers as an unexpected crash.
   private intentionalDisconnect = false;
   private lastKnownRunning: boolean | undefined = undefined;
+  private deployLock: Promise<void> | null = null;
 
   private readonly spawn: typeof cp.spawn;
   private readonly ipcClientFactory: () => IpcClient;
@@ -81,6 +82,9 @@ export class EmulatorManager extends EventEmitter {
     if (!this.buildDir) {
       throw new Error('Build before deploying');
     }
+    // Prevent two simultaneous effect_emu processes: return early if already deploying.
+    if (this.deployLock) return;
+
     const exePath = path.join(this.buildDir, 'effect_emu');
     const socketPath = `/tmp/daisy_emu_${Date.now()}.sock`;
 
@@ -91,7 +95,7 @@ export class EmulatorManager extends EventEmitter {
     const child = this.spawn(exePath, [socketPath], { stdio: ['ignore', 'pipe', 'pipe'] });
     this.childProcess = child;
 
-    return new Promise((resolve, reject) => {
+    const deployPromise = new Promise<void>((resolve, reject) => {
       let resolved = false;
       const timeout = setTimeout(() => {
         if (!resolved) {
@@ -139,6 +143,10 @@ export class EmulatorManager extends EventEmitter {
         if (this.childProcess === child) this.childProcess = null;
       });
     });
+
+    this.deployLock = deployPromise;
+    deployPromise.finally(() => { this.deployLock = null; });
+    return deployPromise;
   }
 
   sendTransport(action: 'start' | 'stop'): void {

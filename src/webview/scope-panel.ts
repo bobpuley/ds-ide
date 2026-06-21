@@ -71,17 +71,19 @@ export class ScopePanel {
     private readonly onOutputVolume?: OutputVolumeHandler,
     private readonly onStopAudio?: StopAudioHandler,
   ) {
-    manager.on('message', (msg: IpcMessage) => {
-      if (msg['type'] === 'scope') this.postScope(msg);
-      if (msg['type'] === 'status') { this.lastStatusMsg = msg; this.postStatus(msg); }
-      if (msg['type'] === 'event') this.postEvent(msg);
-      if (msg['type'] === 'xrun') this.postXrun(msg);
-      if (msg['type'] === 'latency') this.postLatency(msg);
-      if (msg['type'] === 'led') this.postLed(msg);
-      if (msg['type'] === 'spectrum') this.postSpectrum(msg);
-      if (msg['type'] === 'replayDone') this.postReplayDone();
-    });
+    manager.on('message', this._onManagerMessage);
   }
+
+  private readonly _onManagerMessage = (msg: IpcMessage): void => {
+    if (msg['type'] === 'scope') this.postScope(msg);
+    if (msg['type'] === 'status') { this.lastStatusMsg = msg; this.postStatus(msg); }
+    if (msg['type'] === 'event') this.postEvent(msg);
+    if (msg['type'] === 'xrun') this.postXrun(msg);
+    if (msg['type'] === 'latency') this.postLatency(msg);
+    if (msg['type'] === 'led') this.postLed(msg);
+    if (msg['type'] === 'spectrum') this.postSpectrum(msg);
+    if (msg['type'] === 'replayDone') this.postReplayDone();
+  };
 
   show(
     sineParams: SineParams = { ...SINE_DEFAULTS },
@@ -168,6 +170,7 @@ export class ScopePanel {
   }
 
   dispose(): void {
+    this.manager.off('message', this._onManagerMessage);
     this.msgDisposable?.dispose();
     this.msgDisposable = null;
     this.panel?.dispose();

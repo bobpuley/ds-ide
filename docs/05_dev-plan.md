@@ -69,6 +69,10 @@ Full registry in [`docs/v6/05_dev-plan.md`](v6/05_dev-plan.md).
 M26 View State Initialization & Pinout Accuracy · M27 Controls Editor UI Polish & View Exclusivity.
 Full registry in [`docs/v7/05_dev-plan.md`](v7/05_dev-plan.md).
 
-### v8 — planned
+### v8 (0.9.0–0.9.2) — planned
 
-*(no milestones yet)*
+| Milestone | Title | Semver | Status | File |
+|-----------|-------|--------|--------|------|
+| M28 | Webview Security Hardening | 0.8.2 | **released** | [`docs/milestones/v8/M28_extension-safety.md`](milestones/v8/M28_extension-safety.md) |
+| M29 | Extension Runtime Reliability | 0.9.1 | **in progress** | [`docs/milestones/v8/M29_runtime-reliability.md`](milestones/v8/M29_runtime-reliability.md) |
+| M30 | Extension Quality Polish | 0.9.2 | **planned** | [`docs/milestones/v8/M30_quality-polish.md`](milestones/v8/M30_quality-polish.md) |

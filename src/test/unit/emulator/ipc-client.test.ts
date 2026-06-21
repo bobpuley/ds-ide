@@ -137,4 +137,26 @@ describe('IpcClient', () => {
     client.disconnect();
     expect(socketStub.destroy).toHaveBeenCalledOnce();
   });
+
+  it('emits error and clears partial when buffer exceeds 1 MB (FR-EQ-1)', async () => {
+    const client = new IpcClient();
+    const promise = client.connect('/tmp/test.sock');
+    socketStub.emit('connect');
+    await promise;
+
+    const errors: Error[] = [];
+    client.on('error', (e) => errors.push(e));
+
+    // Feed slightly over 1 MB of data with no newline
+    const chunk = Buffer.alloc((1 << 20) + 1, 0x41); // 1 MB + 1 byte of 'A'
+    socketStub.emit('data', chunk);
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.message).toMatch(/overflow/i);
+    // Verify internal buffer is cleared by sending a valid message after the overflow
+    const messages: unknown[] = [];
+    client.on('message', (m) => messages.push(m));
+    socketStub.emit('data', Buffer.from('{"type":"ok"}\n'));
+    expect(messages).toEqual([{ type: 'ok' }]);
+  });
 });

@@ -28,30 +28,31 @@ import * as os from 'os';
 const FIDELITY_CAVEAT =
   'Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget.';
 
-function findEffectSource(folder: string): string | undefined {
+async function findEffectSource(folder: string): Promise<string | undefined> {
   const configured = vscode.workspace.getConfiguration('ds-ide').get<string>('effectSource');
   if (configured) {
     const p = path.isAbsolute(configured) ? configured : path.join(folder, configured);
-    if (fs.existsSync(p)) return p;
+    try { await fs.promises.access(p); return p; } catch { /* path not accessible */ }
   }
   const cmake = path.join(folder, 'CMakeLists.txt');
-  if (!fs.existsSync(cmake)) return undefined;
-  for (const entry of fs.readdirSync(folder)) {
-    if (entry.endsWith('.cpp')) return path.join(folder, entry);
+  try { await fs.promises.access(cmake); } catch { return undefined; }
+  const entries = await fs.promises.readdir(folder);
+  for (const entry of entries) {
+    if (typeof entry === 'string' && entry.endsWith('.cpp')) return path.join(folder, entry);
   }
   return undefined;
 }
 
-function buildControlsConfig(folder: string, yamlCfg: ControllerConfig): ControlsConfig {
+async function buildControlsConfig(folder: string, yamlCfg: ControllerConfig): Promise<ControlsConfig> {
   const placements: ControlsPlacement[] = [
     ...yamlCfg.pots.filter(p => p.pos).map(p => ({ id: p.id, pos: p.pos! })),
     ...yamlCfg.buttons.filter(b => b.pos).map(b => ({ id: b.id, pos: b.pos! })),
     ...yamlCfg.leds.filter(l => l.pos).map(l => ({ id: l.id, pos: l.pos! })),
   ];
-  const effectPath = findEffectSource(folder);
+  const effectPath = await findEffectSource(folder);
   if (!effectPath) return { controls: [], placements, missingBlock: true };
   try {
-    const text = fs.readFileSync(effectPath, 'utf8');
+    const text = await fs.promises.readFile(effectPath, 'utf8');
     const { controls, missingBlock } = parseControlsConvention(text);
     return { controls, placements, missingBlock };
   } catch {
@@ -80,6 +81,9 @@ export function activate(context: vscode.ExtensionContext): void {
   manager = new EmulatorManager();
 
   const diagnostics = vscode.languages.createDiagnosticCollection('ds-ide');
+  const buildChannel    = vscode.window.createOutputChannel('Daisy IDE Build');
+  const emulatorChannel = vscode.window.createOutputChannel('Daisy IDE Emulator');
+  const hardwareChannel = vscode.window.createOutputChannel('Daisy IDE Hardware Build');
 
   const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBar.text = '$(circuit-board) Daisy';
@@ -110,7 +114,7 @@ export function activate(context: vscode.ExtensionContext): void {
   wiringViewProvider = new WiringViewProvider(
     async (wp: WiredPin) => {
       const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-      const effectPath = findEffectSource(folder);
+      const effectPath = await findEffectSource(folder);
       if (!effectPath) {
         void vscode.window.showErrorMessage('ds-ide: no effect source file found — set ds-ide.effectSource');
         return;
@@ -128,12 +132,12 @@ export function activate(context: vscode.ExtensionContext): void {
       const { controls } = parseControlsConvention(newText);
       const pins: WiredPin[] = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
       wiringViewProvider?.postWiredPins(pins);
-      const cfg = loadControllerConfig();
-      controlsViewProvider?.postControlsConfig(buildControlsConfig(folder, cfg));
+      const cfg = await loadControllerConfig();
+      controlsViewProvider?.postControlsConfig(await buildControlsConfig(folder, cfg));
     },
     async (pinNumber: number, id: string) => {
       const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-      const effectPath = findEffectSource(folder);
+      const effectPath = await findEffectSource(folder);
       if (!effectPath) {
         void vscode.window.showErrorMessage('ds-ide: no effect source file found — set ds-ide.effectSource');
         return;
@@ -151,8 +155,8 @@ export function activate(context: vscode.ExtensionContext): void {
       const { controls } = parseControlsConvention(newText);
       const pins: WiredPin[] = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
       wiringViewProvider?.postWiredPins(pins);
-      const cfg = loadControllerConfig();
-      controlsViewProvider?.postControlsConfig(buildControlsConfig(folder, cfg));
+      const cfg = await loadControllerConfig();
+      controlsViewProvider?.postControlsConfig(await buildControlsConfig(folder, cfg));
     },
   );
 
@@ -254,13 +258,13 @@ export function activate(context: vscode.ExtensionContext): void {
   const debugAdapterFactory = new DaisyDebugAdapterFactory();
   const debugTrackerFactory = new DaisyDebugAdapterTrackerFactory((mode) => manager?.sendAudioMode(mode));
 
-  vscode.debug.onDidStartDebugSession((session) => {
+  const startSessionDisposable = vscode.debug.onDidStartDebugSession((session) => {
     if (session.type === DAISY_DEBUG_TYPE) {
       statusBar.text = '$(bug) Daisy: debugging';
       statusBar.tooltip = FIDELITY_CAVEAT;
     }
   });
-  vscode.debug.onDidTerminateDebugSession((session) => {
+  const terminateSessionDisposable = vscode.debug.onDidTerminateDebugSession((session) => {
     if (session.type === DAISY_DEBUG_TYPE) {
       statusBar.text = '$(debug-stop) Daisy: stopped';
       statusBar.tooltip = FIDELITY_CAVEAT;
@@ -268,18 +272,23 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   async function performBuildAndDeploy(): Promise<boolean> {
-    const ok = await buildForEmulator(manager!, context.extensionPath, diagnostics);
+    const ok = await buildForEmulator(manager!, context.extensionPath, diagnostics, buildChannel);
     if (!ok) return false;
     statusBar.text = '$(loading~spin) Daisy: deploying…';
     statusBar.tooltip = FIDELITY_CAVEAT;
-    const cfg = loadControllerConfig();
+    const cfg = await loadControllerConfig();
     const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
     potStore!.setDefaults(cfg.pots);
     buttonStore!.setDefaults(cfg.buttons);
     scopePanel!.show(sineState, audioSourceState);
     controlsViewProvider!.loadEditor(cfg);
-    controlsViewProvider!.postControlsConfig(buildControlsConfig(folder, cfg));
-    await deployToEmulator(manager!);
+    controlsViewProvider!.postControlsConfig(await buildControlsConfig(folder, cfg));
+    const deployed = await deployToEmulator(manager!, emulatorChannel);
+    if (!deployed) {
+      statusBar.text = '$(debug-stop) Daisy: stopped';
+      statusBar.tooltip = FIDELITY_CAVEAT;
+      return false;
+    }
     manager!.sendPotSnapshot(potStore!.getSnapshot());
     manager!.sendButtonSnapshot(buttonStore!.getSnapshot());
     manager!.sendSine(sineState.freq, sineState.amplitude);
@@ -297,18 +306,18 @@ export function activate(context: vscode.ExtensionContext): void {
     () => manager?.childPid,
   );
 
-  function initViewsFromProject(): void {
+  async function initViewsFromProject(): Promise<void> {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders?.[0]) return;
     const folder = folders[0].uri.fsPath;
-    const cfg = loadControllerConfig();
+    const cfg = await loadControllerConfig();
     controlsViewProvider!.loadEditor(cfg);
-    controlsViewProvider!.postControlsConfig(buildControlsConfig(folder, cfg));
-    const effectPath = findEffectSource(folder);
+    controlsViewProvider!.postControlsConfig(await buildControlsConfig(folder, cfg));
+    const effectPath = await findEffectSource(folder);
     let wiredPins: WiredPin[] = [];
     if (effectPath) {
       try {
-        const text = fs.readFileSync(effectPath, 'utf8');
+        const text = await fs.promises.readFile(effectPath, 'utf8');
         const { controls } = parseControlsConvention(text);
         wiredPins = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
       } catch { /* file unreadable — leave wiredPins empty */ }
@@ -316,7 +325,7 @@ export function activate(context: vscode.ExtensionContext): void {
     wiringViewProvider!.postWiredPins(wiredPins);
   }
 
-  initViewsFromProject();
+  void initViewsFromProject();
 
   // Mutual exclusion: when one sidebar panel becomes visible, collapse the other.
   // VS Code has no public collapse API for WebviewViews. Workaround:
@@ -351,6 +360,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     diagnostics,
+    buildChannel,
+    emulatorChannel,
+    hardwareChannel,
     statusBar,
     vscode.debug.registerDebugAdapterDescriptorFactory(DAISY_DEBUG_TYPE, debugAdapterFactory),
     vscode.debug.registerDebugAdapterTrackerFactory(DAISY_DEBUG_TYPE, debugTrackerFactory),
@@ -358,44 +370,55 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.debug.registerDebugConfigurationProvider(DS_IDE_DEBUG_TYPE, runConfigProvider),
     vscode.window.registerWebviewViewProvider(CONTROLS_VIEW_ID, controlsViewProvider, { webviewOptions: { retainContextWhenHidden: true } }),
     vscode.window.registerWebviewViewProvider(WIRING_VIEW_ID, wiringViewProvider, { webviewOptions: { retainContextWhenHidden: true } }),
-    vscode.workspace.onDidSaveTextDocument((doc) => {
+    vscode.workspace.onDidSaveTextDocument(async (doc) => {
       const folders = vscode.workspace.workspaceFolders;
       if (!folders?.[0]) return;
       const folder = folders[0].uri.fsPath;
-      const effectPath = findEffectSource(folder);
-      const yamlPath = path.join(folder, 'controllers.yaml');
       const saved = doc.uri.fsPath;
-      const isSource = !!effectPath && saved === effectPath;
+      const yamlPath = path.join(folder, 'controllers.yaml');
+
+      // Early exit before any I/O: only proceed for the yaml or a .cpp in the workspace
       const isYaml = saved === yamlPath;
-      if (!isSource && !isYaml) return;
-      const cfg = loadControllerConfig();
+      const mightBeSource = saved.endsWith('.cpp') && saved.startsWith(folder);
+      if (!isYaml && !mightBeSource) return;
+
+      const cfg = await loadControllerConfig();
       controlsViewProvider!.loadEditor(cfg);
-      controlsViewProvider!.postControlsConfig(buildControlsConfig(folder, cfg));
-      if (isSource) {
-        let pins: WiredPin[] = [];
-        try {
-          const text = fs.readFileSync(effectPath!, 'utf8');
-          const { controls } = parseControlsConvention(text);
-          pins = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
-        } catch { /* unreadable */ }
-        wiringViewProvider!.postWiredPins(pins);
+      controlsViewProvider!.postControlsConfig(await buildControlsConfig(folder, cfg));
+
+      if (mightBeSource) {
+        const effectPath = await findEffectSource(folder);
+        if (effectPath && saved === effectPath) {
+          let pins: WiredPin[] = [];
+          try {
+            const text = await fs.promises.readFile(effectPath, 'utf8');
+            const { controls } = parseControlsConvention(text);
+            pins = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
+          } catch { /* unreadable */ }
+          wiringViewProvider!.postWiredPins(pins);
+        }
       }
     }),
     vscode.commands.registerCommand('ds-ide.build', () =>
-      buildForEmulator(manager!, context.extensionPath, diagnostics),
+      buildForEmulator(manager!, context.extensionPath, diagnostics, buildChannel),
     ),
     vscode.commands.registerCommand('ds-ide.buildAndDeploy', performBuildAndDeploy),
     vscode.commands.registerCommand('ds-ide.deploy', async () => {
       statusBar.text = '$(loading~spin) Daisy: deploying…';
       statusBar.tooltip = FIDELITY_CAVEAT;
-      const cfg = loadControllerConfig();
+      const cfg = await loadControllerConfig();
       const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
       potStore!.setDefaults(cfg.pots);
       buttonStore!.setDefaults(cfg.buttons);
       scopePanel!.show(sineState, audioSourceState);
       controlsViewProvider!.loadEditor(cfg);
-      controlsViewProvider!.postControlsConfig(buildControlsConfig(folder, cfg));
-      await deployToEmulator(manager!);
+      controlsViewProvider!.postControlsConfig(await buildControlsConfig(folder, cfg));
+      const deployed = await deployToEmulator(manager!, emulatorChannel);
+      if (!deployed) {
+        statusBar.text = '$(debug-stop) Daisy: stopped';
+        statusBar.tooltip = FIDELITY_CAVEAT;
+        return;
+      }
       manager!.sendPotSnapshot(potStore!.getSnapshot());
       manager!.sendButtonSnapshot(buttonStore!.getSnapshot());
       manager!.sendSine(sineState.freq, sineState.amplitude);
@@ -412,12 +435,12 @@ export function activate(context: vscode.ExtensionContext): void {
       scopePanel?.notifyStopped();
       controlsViewProvider?.postStatus({ type: 'status', running: false });
     }),
-    vscode.commands.registerCommand('ds-ide.openControllerEditor', () => {
-      const cfg = loadControllerConfig();
+    vscode.commands.registerCommand('ds-ide.openControllerEditor', async () => {
+      const cfg = await loadControllerConfig();
       const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
       void vscode.commands.executeCommand(`${CONTROLS_VIEW_ID}.focus`);
       controlsViewProvider!.loadEditor(cfg);
-      controlsViewProvider!.postControlsConfig(buildControlsConfig(folder, cfg));
+      controlsViewProvider!.postControlsConfig(await buildControlsConfig(folder, cfg));
     }),
     vscode.commands.registerCommand('ds-ide.buildHardware', () => {
       const folders = vscode.workspace.workspaceFolders;
@@ -425,7 +448,7 @@ export function activate(context: vscode.ExtensionContext): void {
         void vscode.window.showErrorMessage('ds-ide: no workspace folder open');
         return;
       }
-      return buildForHardware(folders[0].uri.fsPath, diagnostics);
+      return buildForHardware(folders[0].uri.fsPath, diagnostics, {}, hardwareChannel);
     }),
     vscode.commands.registerCommand('ds-ide.flash', () => {
       const folders = vscode.workspace.workspaceFolders;
@@ -435,10 +458,10 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       return flashToHardware(folders[0].uri.fsPath);
     }),
-    vscode.commands.registerCommand('ds-ide.debug', () => {
+    vscode.commands.registerCommand('ds-ide.debug', async () => {
       statusBar.text = '$(loading~spin) Daisy: deploying…';
       statusBar.tooltip = FIDELITY_CAVEAT;
-      const cfg = loadControllerConfig();
+      const cfg = await loadControllerConfig();
       potStore!.setDefaults(cfg.pots);
       buttonStore!.setDefaults(cfg.buttons);
       return debugDeploy(
@@ -456,16 +479,17 @@ export function activate(context: vscode.ExtensionContext): void {
             manager!.sendWavFile(audioSourceState.wavPath, audioSourceState.wavLoop);
           }
         },
+        emulatorChannel,
       );
     }),
     vscode.commands.registerCommand('ds-ide.createNewEffectProject', createEffectProject),
     vscode.commands.registerCommand('ds-ide.openWiringEditor', async () => {
       const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-      const effectPath = findEffectSource(folder);
+      const effectPath = await findEffectSource(folder);
       let wiredPins: WiredPin[] = [];
       if (effectPath) {
         try {
-          const text = fs.readFileSync(effectPath, 'utf8');
+          const text = await fs.promises.readFile(effectPath, 'utf8');
           const { controls } = parseControlsConvention(text);
           wiredPins = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
         } catch { /* file unreadable — open editor with empty state */ }
@@ -474,6 +498,8 @@ export function activate(context: vscode.ExtensionContext): void {
       await vscode.commands.executeCommand(`${WIRING_VIEW_ID}.focus`);
     }),
     { dispose: () => { manager?.dispose(); scopePanel?.dispose(); } },
+    startSessionDisposable,
+    terminateSessionDisposable,
   );
 }
 
@@ -482,12 +508,12 @@ export function deactivate(): void {
   scopePanel?.dispose();
 }
 
-function loadControllerConfig(): ControllerConfig {
+async function loadControllerConfig(): Promise<ControllerConfig> {
   const folders = vscode.workspace.workspaceFolders;
   if (!folders?.[0]) return { pots: [], buttons: [], leds: [], errors: [] };
   const yamlPath = path.join(folders[0].uri.fsPath, 'controllers.yaml');
   try {
-    const text = fs.readFileSync(yamlPath, 'utf8');
+    const text = await fs.promises.readFile(yamlPath, 'utf8');
     const cfg = parseControllerConfig(text);
     for (const e of cfg.errors) {
       void vscode.window.showWarningMessage(`controllers.yaml: ${e}`);

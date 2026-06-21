@@ -323,3 +323,79 @@ describe('removeInitFromSource', () => {
     expect(result).toContain('// ds-ide:controls:init:end');
   });
 });
+
+// ── FR-EQ-8 edge cases ────────────────────────────────────────────────────────
+
+describe('insertInitIntoSource — init absent, declaration block present, extra content after (FR-EQ-8a)', () => {
+  it('inserts init block immediately after controls:end even when source has content after the block', () => {
+    const src = [
+      '// ds-ide:controls:begin',
+      'AdcChannelConfig vol; // ds-ide: id=vol, kind=pot, pin=15',
+      '// ds-ide:controls:end',
+      'void init() { /* user code */ }',
+      'void loop() {}',
+    ].join('\n');
+    const result = insertInitIntoSource(src, 'vol', 'pot', 15, [{ id: 'vol' }]);
+    const lines = result.split('\n');
+    const declEndIdx = lines.indexOf('// ds-ide:controls:end');
+    const initBegIdx = lines.indexOf('// ds-ide:controls:init:begin');
+    expect(initBegIdx).toBe(declEndIdx + 1);
+    // Content after the decl block must still be present
+    expect(result).toContain('void init()');
+    expect(result).toContain('void loop()');
+  });
+});
+
+describe('removeInitFromSource — init block has lines from other controls that must be preserved (FR-EQ-8b)', () => {
+  it('preserves second button init line and pot adc.Init when removing first button', () => {
+    const src = [
+      '// ds-ide:controls:init:begin',
+      '  pot1.InitSingle(daisy::seed::A0);',
+      '  btn1.Init(daisy::seed::D28, hardware.AudioCallbackRate());',
+      '  btn2.Init(daisy::seed::D29, hardware.AudioCallbackRate());',
+      '  hardware.adc.Init(pot1, 1);',
+      '// ds-ide:controls:init:end',
+    ].join('\n');
+    const result = removeInitFromSource(src, 'btn1', [{ id: 'pot1' }]);
+    expect(result).not.toContain('btn1.Init');
+    expect(result).toContain('  btn2.Init(daisy::seed::D29, hardware.AudioCallbackRate());');
+    expect(result).toContain('  pot1.InitSingle(daisy::seed::A0);');
+    expect(result).toContain('  hardware.adc.Init(pot1, 1);');
+  });
+});
+
+describe('adcInitLine regeneration — partially removed pots (FR-EQ-8c)', () => {
+  it('regenerates adc.Init with 2 remaining pots after removing one of three', () => {
+    const src = [
+      '// ds-ide:controls:init:begin',
+      '  pot1.InitSingle(daisy::seed::A0);',
+      '  pot2.InitSingle(daisy::seed::A1);',
+      '  pot3.InitSingle(daisy::seed::A2);',
+      '  hardware.adc.Init(pot1, pot2, pot3, 3);',
+      '// ds-ide:controls:init:end',
+    ].join('\n');
+    const result = removeInitFromSource(src, 'pot3', [{ id: 'pot1' }, { id: 'pot2' }]);
+    expect(result).not.toContain('pot3.InitSingle');
+    expect(result).toContain('  pot1.InitSingle(daisy::seed::A0);');
+    expect(result).toContain('  pot2.InitSingle(daisy::seed::A1);');
+    expect(result).toContain('  hardware.adc.Init(pot1, pot2, 2);');
+    expect(result).not.toContain('pot3, 3');
+  });
+});
+
+describe('insertIntoSource — duplicate id annotation (FR-EQ-8d)', () => {
+  it('removeFromSource removes all duplicate annotations for the same id', () => {
+    const srcWithDuplicate = [
+      '// ds-ide:controls:begin',
+      'AdcChannelConfig vol; // ds-ide: id=vol, kind=pot, pin=15',
+      'AdcChannelConfig vol; // ds-ide: id=vol, kind=pot, pin=15',
+      '// ds-ide:controls:end',
+    ].join('\n');
+    const result = removeFromSource(srcWithDuplicate, 'vol');
+    // Both duplicate lines must be removed
+    expect(result).not.toContain('id=vol');
+    // Block markers remain
+    expect(result).toContain('// ds-ide:controls:begin');
+    expect(result).toContain('// ds-ide:controls:end');
+  });
+});
