@@ -10,11 +10,19 @@ dist/
 # Emulator build output (generated per-project, not committed)
 .ds-ide/
 
-# graphify: track the queryable graph + audit report; ignore regenerable/local state
-# (HTML viz, cache/, manifest, cost, and the machine-specific .graphify_* dotfiles)
-graphify-out/*
-!graphify-out/graph.json
-!graphify-out/GRAPH_REPORT.md
+# graphify: fully regenerable — run `graphify ./daisy-seed-knowledge/ --update`
+graphify-out/
+
+# local Claude session state, skills, memory
+.claude/
+
+# design-sprint mockups and raw planning scraps
+mockup/
+docs/raw/
+
+# session handoff files
+HANDOFF.md
+
 # Example build dirs and transient screenshots — but track source files
 examples/**/.ds-ide/
 examples/**/*.png
