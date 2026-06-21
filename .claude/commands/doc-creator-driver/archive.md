@@ -1,5 +1,5 @@
 ---
-description: Archive a completed version — snapshot docs 01–05, stamp root docs, clean them up as next-version seeds, update CLAUDE.md and the full milestone registry, commit
+description: Archive a completed version — snapshot docs 01–05, stamp root docs, clean them up as next-version seeds, update ./.claude/memory/project-progress.md and the full milestone registry, commit
 arguments: version
 ---
 
@@ -151,43 +151,31 @@ For each file, the target structure after cleanup is:
   not remove them. Only the body (non-banner content) is replaced with the stub.
 - Write each doc via the Write tool (full rewrite), not piecemeal edits.
 - Do not invent next-version content — stubs only. Planning sessions fill in the real content.
-- After cleanup, CLAUDE.md document map Purpose/Status cells for docs/01–05 must be updated to
-  reflect `$nextVersion` (e.g. `v3 feature ideas` → `v4 planning seed`).
+- After cleanup, the document map in `CLAUDE.md` does not need updating — the Purpose/Status cells for docs/01–05 are version-agnostic stubs. No edits to `CLAUDE.md` are required during archive.
 
 ## Step 4 — Create the next-version milestone directory
 
 Create `docs/milestones/$nextVersion/` with a `.gitkeep` placeholder so the directory
 is tracked by git before any milestone files are added.
 
-## Step 5 — Update `CLAUDE.md`
+## Step 5 — Update `./.claude/memory/project-progress.md`
 
-In `CLAUDE.md` (project root):
+Append a shipped-version summary line to `./.claude/memory/project-progress.md`, directly before the `**$nextVersion planning**` line. Compose it from the Milestone Registry in `docs/05_dev-plan.md` and the milestone files:
 
-1. **Archived docs protocol line** — extend the list of read-only archive paths to include
-   `docs/$version/`. For example, change:
-   ```
-   `docs/v1/` and `docs/raw/v1/` are read-only archives.
-   ```
-   to:
-   ```
-   `docs/v1/`, `docs/v2/` and `docs/raw/v1/` are read-only archives.
-   ```
-   (adapt to whatever versions already appear in the line)
+```
+**$version shipped** ($semverRange, $milestoneRange, all ACs green): <comma-separated feature summary>. Archived docs: `docs/$version/`.
+```
 
-2. **Document map table** — add a row for the new archive:
-   ```
-   | docs/$version/  | $version archived docs (01–05, read-only) | complete; do not edit |
-   ```
-   Insert it directly below the existing archive rows.
+Do not touch `CLAUDE.md` — it uses a generic `docs/v[n]/` pattern and needs no update.
 
 ## Step 6 — Commit
 
-Stage and commit all changes (archive snapshot + cleaned-up root docs + CLAUDE.md + milestone dir):
+Stage and commit all changes (archive snapshot + cleaned-up root docs + ./.claude/memory/project-progress.md + milestone dir):
 
 ```
 git add docs/$version/ docs/milestones/$nextVersion/.gitkeep docs/01_input-ideas.md \
         docs/02_assumptions-and-risks.md docs/03_requirements.md docs/04_architecture.md \
-        docs/05_dev-plan.md CLAUDE.md
+        docs/05_dev-plan.md .claude/memory/project-progress.md
 git commit -m "chore: archive $version docs — all milestones released"
 ```
 

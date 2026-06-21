@@ -25,21 +25,10 @@ The system consists of two primary components:
 
 The emulator executes Daisy applications as native desktop programs through a compatibility layer that implements the Daisy APIs, rather than performing cycle-accurate STM32 hardware emulation. The goal is rapid development, easy debugging, and high developer productivity while preserving behavior that is relevant to audio-effect development.
 
-**v1 shipped** (0.1.0–0.1.7, M0–M7, all ACs green): native simulation; VS Code extension; CMake emulator build; sine-input audio engine; virtual potentiometers; waveform scope; breakpoint debugging. Archived docs: `docs/v1/`. The bundled `daisy-seed-knowledge/` corpus is the API reference; indexed as a graphify knowledge graph — query with `/graphify query "…"` (see `graphify-out/`).
-
-**v2 shipped** (0.2.0–0.2.9, M8–M15, all ACs green): live host audio I/O; WAV file input; virtual buttons/GPIO/LEDs; visual controller editor; full debug (step/variables/call-stack); in-IDE hardware build + DFU flash; spectrum/FFT view; session recording; scope UI refresh. Archived docs: `docs/v2/`.
-
-**v3 shipped** (0.3.0–0.3.3, M16–M18, all ACs green): Controls Editor v3 (two-mode, code inference); Wiring Editor (SVG pinout, C++ gen); spectrum/scope polish. Archived docs: `docs/v3/`.
-
-**v4 shipped** (0.4.0–0.4.3, M19–M22, all ACs green): Controls Editor single-mode handle UX; Wiring Editor polish; command cleanup; VS Code Run integration (F5/Ctrl+F5); secondary sidebar panels. Archived docs: `docs/v4/`.
-
-**v5 shipped** (0.5.0–0.5.1, M23–M24, all ACs green): Effect Project Wizard; init block code generation. Archived docs: `docs/v5/`.
-
-**v6 planning**: see `docs/01_input-ideas.md`–`docs/05_dev-plan.md`.
-
 Runtime: VS Code (Visual Studio Code). Primary OS: macOS / Apple Silicon.
 Audience: developers.
-Phase: v1–v5 complete; v6 planning (docs 01–05 are now v6 seeds).
+
+Load the current progress state from [Project Progress Report](./.claude/memory/project-progress.md)
 
 ## Daisy API knowledge — query graphify first
 The `daisy-seed-knowledge/` corpus (libDaisy docs + DaisyExamples) is indexed as a knowledge graph in `graphify-out/`. **Before answering any question about Daisy/libDaisy APIs, hardware behavior, or example patterns — and before reading raw files under `daisy-seed-knowledge/` — run `graphify query "<question>"` (Bash) first.** It returns a budgeted answer and does not load the graph into context.
@@ -59,7 +48,7 @@ The `daisy-seed-knowledge/` corpus (libDaisy docs + DaisyExamples) is indexed as
    If green: merge → inspect existing tags → propose next semver tag → update CHANGELOG.md + commit → create annotated tag → push commit and tag.
 
 ## Archived docs protocol
-`docs/v1/`, `docs/v2/`, `docs/v3/`, `docs/v4/`, `docs/v5/` and `docs/raw/v1/` are read-only archives. All current project knowledge should be in `docs/00_`–`docs/05_`.
+`docs/v[n]/` and `docs/raw/v[n]/` directories are read-only archives. All current project knowledge should be in `docs/00_`–`docs/05_`.
 
 - **Do not read archived docs** unless the root docs genuinely lack the information needed.
 - **If you do read an archived doc**, append an entry to `docs/archived-doc-access-log.md` immediately: date, what was needed, which file was consulted, which root doc should have had it, status = open.
@@ -75,12 +64,10 @@ The `daisy-seed-knowledge/` corpus (libDaisy docs + DaisyExamples) is indexed as
 | docs/04_architecture.md          | v6 architecture                                | v6 seed; not yet started                       |
 | docs/05_dev-plan.md              | v6 sprint plan                                 | v6 seed; no milestones yet                     |
 | docs/milestones/v6/              | v6 milestone files (none yet)                  | placeholder                                    |
-| docs/v1/                         | v1 archived docs (01–05, read-only)            | complete; do not edit                          |
-| docs/v2/                         | v2 archived docs (01–05, read-only)            | complete; do not edit                          |
-| docs/v3/                         | v3 archived docs (01–05, read-only)            | complete; do not edit                          |
-| docs/v4/                         | v4 archived docs (01–05, read-only)            | complete; do not edit                          |
-| docs/v5/                         | v5 archived docs (01–05, read-only)            | complete; do not edit                          |
-| docs/raw/v1/                     | v1 raw contributions (read-only)               | complete; do not edit                          |
+| docs/v[n]/                       | archived docs per version (01–05, read-only)   | complete; do not edit                          |
+| docs/raw/v[n]/                   | raw contributions per version (read-only)      | complete; do not edit                          |
+| docs/06_emulator_review.md       | C/C++ emulator code review report              | generated by `/doc-creator-driver:cpp-emulator-review`   |
+| docs/07_review.md                | doc audit report (ephemeral)                   | generated by `/doc-creator-driver:review`                |
 
 ## Interaction model
 Claude drives. The user responds.

@@ -20,7 +20,7 @@ Your job is to:
 * Produce a structured report at:
 
 ```
-./docs/06_emulator_review.md
+./docs/07_emulator_review.md
 ```
 
 ---

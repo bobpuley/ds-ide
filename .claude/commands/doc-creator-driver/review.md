@@ -18,7 +18,7 @@ Do not fix anything.
 1. Analyze the documents
 2. if 0 problems (don't count cosmetics) exit
 3. otherwise:
-   1. Write the result into docs/06_review.md with a checklist at the bottom to track progress
+   1. Write the result into docs/07_review.md with a checklist at the bottom to track progress
    2. Create a task list (TaskCreate for each issue)
    3. Start fixing them (involve the user for any decisions/clarifications/doubts), for each item:
       * (TaskUpdate in_progress)
@@ -28,6 +28,6 @@ Do not fix anything.
       * Update 06_review.md checklist
       * (TaskUpdate completed)
    4. if the checklist is done:
-      * delete docs/06_review.md
+      * delete docs/07_review.md
       * commit the changes
       * go to 1
