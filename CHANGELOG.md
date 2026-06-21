@@ -5,6 +5,24 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.8.4 — 2026-06-21
+
+**M30 — Extension Quality Polish** *(AC-70–AC-81 green)*
+
+- **AC-70** — `safeJson` now escapes `&`, `<`, `>` in JSON-in-HTML data islands (XSS hardening)
+- **AC-71** — Build diagnostics regex handles Windows `C:\...` drive-letter paths
+- **AC-72** — `detectEffectSrc` falls back to `src/` and `source/` subdirectories
+- **AC-73** — Removed dead `WiringPanel` class from `wiring-panel.ts`
+- **AC-74/77** — Module-level singletons moved into `activate()`; `!` assertions eliminated; `deactivate()` is now a no-op (VS Code disposes subscriptions automatically)
+- **AC-75** — Added `icon`, `repository`, `keywords`, `homepage`, and `"Debuggers"` category to `package.json`
+- **AC-76** — Removed `retainContextWhenHidden: true` from both sidebar webview view providers
+- **AC-78** — `extension.test.ts` uses dynamic imports for isolation; brittle `toBe(26)` subscription count replaced with targeted per-registration assertions
+- **AC-79** — Confirmed `localResourceRoots: []` on all three webviews; covered by existing tests
+- **AC-80** — Numeric HTML attributes (`freq`, `amplitude`, `bufferSize`, `wavLoop`) coerced before interpolation in `scope-panel.ts`; corrupted workspace state values fall back to defaults
+- **AC-81** — Added prefix-collision test: `removeInitFromSource('vol')` does not delete `volume.Init(...)` line
+
+---
+
 ## 0.8.3 — 2026-06-21
 
 **M29 — Extension Runtime Reliability** *(AC-62–AC-69 green)*
