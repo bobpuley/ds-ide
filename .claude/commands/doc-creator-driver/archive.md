@@ -1,5 +1,5 @@
 ---
-description: Archive a completed version — snapshot docs 01–05, stamp root docs, clean them up as next-version seeds, update ./.claude/memory/project-progress.md and the full milestone registry, commit
+description: Archive a completed version — snapshot docs 01–05 and 06_emulator_review.md (if present), stamp root docs, clean them up as next-version seeds, update ./.claude/memory/project-progress.md and the full milestone registry, commit
 arguments: version
 ---
 
@@ -19,8 +19,8 @@ milestones are **all released** in `docs/05_dev-plan.md`.
    - If any unchecked item exists: halt —
      "Cannot archive $version: open task in <file>."
 5. AskUserQuestion: "All milestones for $version are released and all tasks are checked.
-   Archive $version now? This will snapshot docs/01–05 into docs/$version/ and is not
-   reversible without git."
+   Archive $version now? This will snapshot docs/01–05 (and 06_emulator_review.md if present)
+   into docs/$version/ and is not reversible without git."
    - If not confirmed: halt — "Archive cancelled."
 
 # Archive steps
@@ -36,6 +36,11 @@ Create the directory `docs/$version/` and copy these five files verbatim into it
 
 Do NOT copy `docs/00_north-star.md` (version-agnostic; persists in place).
 Do NOT copy `docs/archived-doc-access-log.md` (running log; persists in place).
+
+If `docs/06_emulator_review.md` exists, copy it verbatim into the archive:
+- `docs/06_emulator_review.md` → `docs/$version/06_emulator_review.md`
+
+If it does not exist, skip with a note: "docs/06_emulator_review.md not found — skipping."
 
 If `docs/raw/` contains any files that are not already under a versioned sub-directory
 (e.g. `docs/raw/v1/`), move them to `docs/raw/$version/`. If there are none, skip.
@@ -144,6 +149,20 @@ For each file, the target structure after cleanup is:
 *(no milestones yet)*
 ```
 
+### `docs/06_emulator_review.md`
+
+If the file was archived in Step 1, reset the root copy to a stub:
+
+```markdown
+# 06 — Emulator Code Review ($nextVersion)
+
+> **$version review archived** — [`docs/$version/06_emulator_review.md`]($version/06_emulator_review.md).
+
+*$nextVersion review not yet generated. Run `/doc-creator-driver:cpp-emulator-review` to produce it.*
+```
+
+If the file was not present (skipped in Step 1), leave `docs/06_emulator_review.md` unchanged.
+
 ### Rules for the cleanup
 
 - The `#` heading of each doc must be updated from `$version` to `$nextVersion`.
@@ -180,6 +199,7 @@ git commit -m "chore: archive $version docs — all milestones released"
 ```
 
 If `docs/raw/$version/` was created, include it in the staged files.
+If `docs/06_emulator_review.md` was archived and reset, include it in the staged files.
 
 # What this command does NOT do
 
