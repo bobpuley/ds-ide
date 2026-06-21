@@ -75,4 +75,4 @@ Full registry in [`docs/v7/05_dev-plan.md`](v7/05_dev-plan.md).
 |-----------|-------|--------|--------|------|
 | M28 | Webview Security Hardening | 0.8.2  | **released** | [`docs/milestones/v8/M28_extension-safety.md`](milestones/v8/M28_extension-safety.md) |
 | M29 | Extension Runtime Reliability | 0.8.3  | **released** | [`docs/milestones/v8/M29_runtime-reliability.md`](milestones/v8/M29_runtime-reliability.md) |
-| M30 | Extension Quality Polish | 0.8.4  | **planned** | [`docs/milestones/v8/M30_quality-polish.md`](milestones/v8/M30_quality-polish.md) |
+| M30 | Extension Quality Polish | 0.8.4  | **released** | [`docs/milestones/v8/M30_quality-polish.md`](milestones/v8/M30_quality-polish.md) |
