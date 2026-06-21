@@ -1,6 +1,6 @@
 # M25 — Emulator Runtime Safety & Code Quality
 
-**Status:** planned  
+**Status:** released  
 **Semver target:** 0.6.0  
 **Requirements:** FR-QS-1 – FR-QS-15 (AC-38 – AC-54)  
 **Source:** `docs/06_emulator_review.md`
