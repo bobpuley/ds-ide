@@ -1,8 +1,10 @@
 #pragma once
+#include <array>
 #include <atomic>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -16,6 +18,48 @@ namespace daisy_emu {
 
 // Clock mode: simulated = v1 sleep-paced loop; realtime = CoreAudio OS callback.
 enum class AudioMode { Simulated = 0, Realtime = 1 };
+
+// Lock-free single-producer / single-consumer ring buffer for IPC messages
+// emitted from the CoreAudio real-time thread (AC-39).
+//
+// Producer (RT thread): push() — no mutex, no heap allocation after construction.
+// Consumer (drain thread): pop() — no mutex on the producer path.
+// Slot strings are pre-reserved to MAX_MSG bytes so assign() inside push()
+// never triggers heap reallocation for typical scope/spectrum messages.
+struct SpscIpcQueue {
+    static constexpr size_t CAPACITY = 32;
+    static constexpr size_t MAX_MSG  = 16384;
+
+    struct alignas(64) Slot { std::string msg; };
+
+    SpscIpcQueue() {
+        for (auto& s : slots_) s.msg.reserve(MAX_MSG);
+    }
+
+    // Called from RT thread. Returns false if queue is full (message is dropped).
+    bool push(const std::string& m) {
+        size_t w    = write_.load(std::memory_order_relaxed);
+        size_t next = (w + 1) % CAPACITY;
+        if (next == read_.load(std::memory_order_acquire)) return false;
+        slots_[w].msg.assign(m);  // no alloc: capacity pre-reserved in constructor
+        write_.store(next, std::memory_order_release);
+        return true;
+    }
+
+    // Called from drain thread. Returns false when queue is empty.
+    bool pop(std::string& out) {
+        size_t r = read_.load(std::memory_order_relaxed);
+        if (r == write_.load(std::memory_order_acquire)) return false;
+        out.assign(slots_[r].msg);
+        read_.store((r + 1) % CAPACITY, std::memory_order_release);
+        return true;
+    }
+
+private:
+    std::array<Slot, CAPACITY> slots_;
+    std::atomic<size_t> write_{0};
+    std::atomic<size_t> read_{0};
+};
 
 struct EmulatorState {
     // Audio configuration — set via IPC config message or shim calls
@@ -33,17 +77,18 @@ struct EmulatorState {
     // ADC pot values (0..1), one per channel (Daisy Seed has 12 ADC channels)
     std::atomic<float> pot_values[12];
 
-    // v2 (M10): virtual button state, indexed by Daisy pin number (0..31).
+    // v2 (M10): virtual button state, indexed by canonical_gpio_index(pin) (AC-48).
     // Written by the IPC `button`/`buttonSnapshot` thread, read by the Switch
     // shim's Debounce(). The stored value is the *logical* press (active_level
     // is resolved UI-side), so Switch::Pressed() returns it directly.
-    static constexpr int kNumGpioPins = 32;
+    // kNumGpioPins = 64: port=0 occupies 0–30 (D/A pins), port=1 occupies 32–37 (A6–A11).
+    static constexpr int kNumGpioPins = 64;
     std::atomic<bool> button_states[kNumGpioPins];
 
     // v2 (M10): LED output. The LED shim (SetLed / Led::Update) emits a `led`
     // IPC message on each *change*; led_last_state holds the last emitted level
     // per pin (-1 = none yet) so unchanged writes are suppressed. The onboard
-    // user LED maps to pin 23 (emulator convention) for hw.SetLed().
+    // user LED maps to D23 = canonical_gpio_index({0, 23}) = 23.
     static constexpr int kOnboardLedPin = 23;
     std::atomic<int8_t> led_last_state[kNumGpioPins];
 
@@ -93,6 +138,10 @@ struct EmulatorState {
     // Audio engine calls this to emit scope/status/event JSON lines.
     std::mutex                        send_mutex;
     std::function<void(std::string)>  send_ipc;
+
+    // Lock-free queue for IPC messages posted from the RT audio thread (AC-39).
+    // The drain thread in run_audio_engine() reads this and forwards via send_ipc.
+    SpscIpcQueue ipc_queue;
 
     EmulatorState() {
         for (auto& v : pot_values) v.store(0.f);

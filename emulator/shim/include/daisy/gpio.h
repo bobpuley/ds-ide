@@ -2,9 +2,10 @@
 #include <cstdint>
 
 // Minimal GPIO pin representation matching libDaisy's dsy_gpio_pin.
-// The emulator ignores port/pin values — potentiometer state is driven via
-// IPC (see architecture §7). Providing a real-looking type preserves
-// source-level compatibility with bare-libDaisy projects.
+// Port 0 holds digital pins D0–D30 (and analog-capable A0–A5 which alias D15–D20).
+// Port 1 holds analog-only pins A6–A11. The canonical_gpio_index() function below
+// maps {port, pin} to a unique slot so that A6–A11 (port=1) do not alias D0–D5
+// (port=0) in the emulator's button_states / led_last_state arrays (AC-48).
 
 struct dsy_gpio_pin {
     uint8_t port;
@@ -14,6 +15,13 @@ struct dsy_gpio_pin {
         return port == o.port && pin == o.pin;
     }
 };
+
+// Map a dsy_gpio_pin to a unique index for use with the emulator's state arrays.
+// Port 0 → indices 0–30; port 1 → indices 32–37 (A6–A11).
+// Arrays must be sized to kNumGpioPins = 64.
+static inline int canonical_gpio_index(dsy_gpio_pin p) {
+    return static_cast<int>(p.port) * 32 + static_cast<int>(p.pin);
+}
 
 namespace daisy {
 namespace seed {
@@ -34,7 +42,7 @@ namespace seed {
     static constexpr dsy_gpio_pin A11 = {1,  5};
 
     // Digital pin constants D0-D30. port=0, pin=n mirrors libDaisy seed.h.
-    // The emulator uses pin.pin as the GPIO/Switch channel index (driven by IPC).
+    // The emulator uses canonical_gpio_index(pin) as the GPIO/Switch channel index.
     static constexpr dsy_gpio_pin D0  = {0,  0};
     static constexpr dsy_gpio_pin D1  = {0,  1};
     static constexpr dsy_gpio_pin D2  = {0,  2};

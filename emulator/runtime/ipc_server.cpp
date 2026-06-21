@@ -26,17 +26,34 @@ static std::string json_get(const std::string& json, const std::string& key) {
     if (pos >= json.size()) return {};
 
     if (json[pos] == '"') {
-        // String value: scan to closing quote
+        // String value: scan to unescaped closing quote (AC-44: handle \" inside strings).
         ++pos;
-        auto end = json.find('"', pos);
-        return (end == std::string::npos) ? std::string{} : json.substr(pos, end - pos);
+        std::string result;
+        while (pos < json.size()) {
+            char c = json[pos];
+            if (c == '\\' && pos + 1 < json.size()) {
+                ++pos;  // skip escape character
+                result += json[pos];
+            } else if (c == '"') {
+                break;
+            } else {
+                result += c;
+            }
+            ++pos;
+        }
+        return result;
     }
     if (json[pos] == '{') {
-        // Object value: scan to matching closing brace
+        // Object value: scan to matching closing brace.
+        // Enforce a nesting-depth limit to reject pathological inputs (AC-44).
+        static constexpr size_t MAX_DEPTH = 8;
         size_t depth = 0, start = pos;
         while (pos < json.size()) {
-            if      (json[pos] == '{') ++depth;
-            else if (json[pos] == '}') { if (--depth == 0) { ++pos; break; } }
+            if (json[pos] == '{') {
+                if (++depth > MAX_DEPTH) return {};  // reject — too deeply nested
+            } else if (json[pos] == '}') {
+                if (--depth == 0) { ++pos; break; }
+            }
             ++pos;
         }
         return json.substr(start, pos - start);
@@ -101,8 +118,30 @@ static void dispatch(const std::string& line) {
     if (type == "config") {
         auto sr = json_get(line, "sampleRate");
         auto bs = json_get(line, "blockSize");
-        if (!sr.empty()) g_state.sample_rate.store(std::stof(sr));
-        if (!bs.empty()) g_state.block_size.store(static_cast<size_t>(std::stoul(bs)));
+        if (!sr.empty()) {
+            try {
+                float v = std::stof(sr);
+                // Range-validate before storage (AC-43)
+                if (v < 100.f || v > 384000.f) {
+                    emit_event("{\"type\":\"event\",\"kind\":\"config_error\","
+                               "\"msg\":\"sampleRate out of range\"}");
+                } else {
+                    g_state.sample_rate.store(v);
+                }
+            } catch (...) { std::fprintf(stderr, "[daisy-emu] stof failed: sampleRate\n"); }
+        }
+        if (!bs.empty()) {
+            try {
+                unsigned long v = std::stoul(bs);
+                // Range-validate before storage (AC-43)
+                if (v < 1 || v > 65536) {
+                    emit_event("{\"type\":\"event\",\"kind\":\"config_error\","
+                               "\"msg\":\"blockSize out of range\"}");
+                } else {
+                    g_state.block_size.store(static_cast<size_t>(v));
+                }
+            } catch (...) { std::fprintf(stderr, "[daisy-emu] stoul failed: blockSize\n"); }
+        }
     }
     else if (type == "transport") {
         auto action = json_get(line, "action");
@@ -112,20 +151,30 @@ static void dispatch(const std::string& line) {
     else if (type == "sine") {
         auto freq = json_get(line, "freq");
         auto amp  = json_get(line, "amplitude");
-        if (!freq.empty()) g_state.sine_freq.store(std::stof(freq));
-        if (!amp.empty())  g_state.sine_amp.store(std::stof(amp));
+        if (!freq.empty()) {
+            try { g_state.sine_freq.store(std::stof(freq)); }
+            catch (...) { std::fprintf(stderr, "[daisy-emu] stof failed: sine.freq\n"); }
+        }
+        if (!amp.empty()) {
+            try { g_state.sine_amp.store(std::stof(amp)); }
+            catch (...) { std::fprintf(stderr, "[daisy-emu] stof failed: sine.amplitude\n"); }
+        }
     }
     else if (type == "pot") {
         auto ch  = json_get(line, "channel");
         auto val = json_get(line, "value");
         if (!ch.empty() && !val.empty()) {
-            int c = std::stoi(ch);
-            if (c >= 0 && c < 12) {
-                float v = std::stof(val);
-                g_state.pot_values[c].store(v);
-                if (g_state.recorder.active())
-                    g_state.recorder.enqueuePot(static_cast<uint8_t>(c), v);
-            }
+            try {
+                int c = std::stoi(ch);
+                if (c >= 0 && c < 12) {
+                    float v = std::stof(val);
+                    g_state.pot_values[c].store(v);
+                    // Hold recorder_mutex across active() check + enqueue to close TOCTOU (AC-46).
+                    std::lock_guard<std::mutex> lk(g_state.recorder_mutex);
+                    if (g_state.recorder.active())
+                        g_state.recorder.enqueuePot(static_cast<uint8_t>(c), v);
+                }
+            } catch (...) { std::fprintf(stderr, "[daisy-emu] stoi/stof failed: pot\n"); }
         }
     }
     else if (type == "potSnapshot") {
@@ -142,13 +191,17 @@ static void dispatch(const std::string& line) {
         auto pin     = json_get(line, "gpioPin");
         auto pressed = json_get(line, "pressed");
         if (!pin.empty()) {
-            int p = std::stoi(pin);
-            if (p >= 0 && p < EmulatorState::kNumGpioPins) {
-                bool pr = (pressed == "true");
-                g_state.button_states[p].store(pr);
-                if (g_state.recorder.active())
-                    g_state.recorder.enqueueButton(static_cast<uint8_t>(p), pr);
-            }
+            try {
+                int p = std::stoi(pin);
+                if (p >= 0 && p < EmulatorState::kNumGpioPins) {
+                    bool pr = (pressed == "true");
+                    g_state.button_states[p].store(pr);
+                    // Hold recorder_mutex across active() check + enqueue to close TOCTOU (AC-46).
+                    std::lock_guard<std::mutex> lk(g_state.recorder_mutex);
+                    if (g_state.recorder.active())
+                        g_state.recorder.enqueueButton(static_cast<uint8_t>(p), pr);
+                }
+            } catch (...) { std::fprintf(stderr, "[daisy-emu] stoi failed: button.gpioPin\n"); }
         }
     }
     else if (type == "buttonSnapshot") {
@@ -172,8 +225,26 @@ static void dispatch(const std::string& line) {
     else if (type == "audioDevice") {
         auto sr = json_get(line, "sampleRate");
         auto bs = json_get(line, "bufferSize");
-        if (!sr.empty()) g_state.sample_rate.store(std::stof(sr));
-        if (!bs.empty()) g_state.rt_buffer_size.store(static_cast<size_t>(std::stoul(bs)));
+        if (!sr.empty()) {
+            try {
+                float v = std::stof(sr);
+                if (v < 100.f || v > 384000.f)
+                    emit_event("{\"type\":\"event\",\"kind\":\"config_error\","
+                               "\"msg\":\"sampleRate out of range\"}");
+                else
+                    g_state.sample_rate.store(v);
+            } catch (...) { std::fprintf(stderr, "[daisy-emu] stof failed: audioDevice.sampleRate\n"); }
+        }
+        if (!bs.empty()) {
+            try {
+                unsigned long v = std::stoul(bs);
+                if (v < 1 || v > 65536)
+                    emit_event("{\"type\":\"event\",\"kind\":\"config_error\","
+                               "\"msg\":\"bufferSize out of range\"}");
+                else
+                    g_state.rt_buffer_size.store(static_cast<size_t>(v));
+            } catch (...) { std::fprintf(stderr, "[daisy-emu] stoul failed: audioDevice.bufferSize\n"); }
+        }
         // Notify audio engine of device config change
         {
             std::lock_guard<std::mutex> lk(g_state.mode_mutex);
@@ -227,10 +298,12 @@ static void dispatch(const std::string& line) {
     else if (type == "outputVolume") {
         auto vol = json_get(line, "volume");
         if (!vol.empty()) {
-            float v = std::stof(vol);
-            if (v < 0.f) v = 0.f;
-            if (v > 1.f) v = 1.f;
-            g_state.output_volume.store(v);
+            try {
+                float v = std::stof(vol);
+                if (v < 0.f) v = 0.f;
+                if (v > 1.f) v = 1.f;
+                g_state.output_volume.store(v);
+            } catch (...) { std::fprintf(stderr, "[daisy-emu] stof failed: outputVolume\n"); }
         }
     }
     else if (type == "wavFile") {
@@ -266,10 +339,12 @@ static void dispatch(const std::string& line) {
 }
 
 // ---- Helper: send a line to the active client (must hold send_mutex) --------
+// Returns false on send failure (disconnect or EPIPE). AC-45.
 
-static void send_line(int fd, const std::string& msg) {
+static bool send_line(int fd, const std::string& msg) {
     std::string line = msg + '\n';
-    ::send(fd, line.c_str(), line.size(), 0);
+    ssize_t r = ::send(fd, line.c_str(), line.size(), 0);
+    return r > 0;
 }
 
 // ---- Server loop ------------------------------------------------------------
@@ -316,12 +391,20 @@ void run_ipc_server(const char* socket_path) {
         ::setsockopt(client_fd, SOL_SOCKET, SO_NOSIGPIPE, &copt, sizeof(copt));
 #endif
 
-        // Register the IPC send function for this client
+        // Register the IPC send function for this client.
+        // On send failure (EPIPE / disconnect) close the fd (AC-45). send_ipc is
+        // cleared below when the read loop exits after the fd is closed.
+        auto client_dead = std::make_shared<std::atomic<bool>>(false);
         {
             std::lock_guard<std::mutex> lk(g_state.send_mutex);
-            g_state.send_ipc = [client_fd](std::string msg) {
+            g_state.send_ipc = [client_fd, client_dead](std::string msg) {
+                if (client_dead->load(std::memory_order_relaxed)) return;
                 std::string line = msg + '\n';
-                ::send(client_fd, line.c_str(), line.size(), 0);
+                ssize_t r = ::send(client_fd, line.c_str(), line.size(), 0);
+                if (r <= 0) {
+                    client_dead->store(true, std::memory_order_relaxed);
+                    ::close(client_fd);
+                }
             };
         }
 
