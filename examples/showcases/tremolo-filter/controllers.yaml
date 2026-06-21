@@ -1,0 +1,41 @@
+controllers:
+  - id: ratePot
+    label: Rate
+    adc_channel: 0
+    range: [0, 1]
+    taper: linear
+    default: 0.2
+    editor_pos: [20, 20]
+  - id: depthPot
+    label: Depth
+    adc_channel: 1
+    range: [0, 1]
+    taper: linear
+    default: 0.7
+    editor_pos: [200, 20]
+  - id: cutoffPot
+    label: Cutoff
+    adc_channel: 2
+    range: [0, 1]
+    taper: linear
+    default: 0.5
+    editor_pos: [380, 20]
+  - id: resPot
+    label: Resonance
+    adc_channel: 3
+    range: [0, 1]
+    taper: linear
+    default: 0.3
+    editor_pos: [560, 20]
+buttons:
+  - id: bypassBtn
+    label: Bypass
+    gpio_pin: 28
+    mode: toggle
+    active_level: low
+    editor_pos: [20, 180]
+leds:
+  - id: beatLed
+    label: Beat
+    gpio_pin: 23
+    editor_pos: [200, 180]
