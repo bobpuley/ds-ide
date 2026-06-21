@@ -1,9 +1,6 @@
-# 04 — Architecture (v6)
+# 04 — Architecture (v7)
 
-> **v4 complete** — full v4 architecture (C11 secondary sidebar, DebugConfigurationProvider,
-> C2 split) in [`docs/v4/04_architecture.md`](v4/04_architecture.md).
->
-> **v5 complete** — full v5 architecture in
-> [`docs/v5/04_architecture.md`](v5/04_architecture.md).
+> **v6 complete** — full v6 architecture in
+> [`docs/v6/04_architecture.md`](v6/04_architecture.md).
 
-*v6 architecture not yet defined.*
+*v7 architecture not yet defined.*

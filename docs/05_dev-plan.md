@@ -1,4 +1,4 @@
-# 05 — Development Plan (v6)
+# 05 — Development Plan (v7)
 
 > **v1 complete** — M0–M7 released (0.1.0–0.1.7), all ACs green.
 > Archived: [`docs/v1/`](v1/).
@@ -14,8 +14,11 @@
 >
 > **v5 complete** — M23–M24 released (0.5.0–0.5.1), all ACs green.
 > Archived: [`docs/v5/`](v5/).
+>
+> **v6 complete** — M25 released (0.6.0), all ACs green.
+> Archived: [`docs/v6/`](v6/).
 
-*v6 milestones not yet planned.*
+*v7 milestones not yet planned.*
 
 ---
 
@@ -51,8 +54,13 @@ Full registry in [`docs/v4/05_dev-plan.md`](v4/05_dev-plan.md).
 M23 Effect Project Wizard · M24 Init block code generation.
 Full registry in [`docs/v5/05_dev-plan.md`](v5/05_dev-plan.md).
 
-### v6 — planned
+### v6 (0.6.0) — archived in `docs/v6/`
 
-| Milestone | Title | Semver | Status | File |
-|-----------|-------|--------|--------|------|
-| M25 | Emulator Runtime Safety & Code Quality | 0.6.0 | **released** | [`docs/milestones/v6/M25_emulator-safety.md`](milestones/v6/M25_emulator-safety.md) |
+M25 Emulator Runtime Safety & Code Quality — RT-thread heap/mutex/scope fixes, malloc null-check,
+WAV div-by-zero guard, IPC reliability hardening, session TOCTOU fix, GPIO alias correction,
+sanitizer CMake options, and low-severity quality improvements (AC-38–AC-54).
+Full registry in [`docs/v6/05_dev-plan.md`](v6/05_dev-plan.md).
+
+### v7 — planned
+
+*(no milestones yet)*
