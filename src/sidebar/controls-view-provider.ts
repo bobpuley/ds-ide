@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
+import { randomBytes } from 'node:crypto';
 import { IpcMessage } from '../emulator/ipc-client';
-import { ControllerConfig } from '../controllers/controller-config';
+import { ControllerConfig, parseControllerConfig, serializeControllerConfig } from '../controllers/controller-config';
 import { ControlsConfig } from '../webview/scope-panel';
 
 export const CONTROLS_VIEW_ID = 'ds-ide.controlsEditor';
@@ -11,6 +12,7 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
   private pendingEditorCfg: ControllerConfig | null = null;
   private lastStatus: IpcMessage | null = null;
   private onBecameVisible: (() => void) | undefined;
+  private readonly nonce: string = randomBytes(16).toString('base64');
 
   constructor(
     private readonly onEditorSave: (cfg: ControllerConfig) => void,
@@ -26,8 +28,8 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
-    view.webview.options = { enableScripts: true };
-    view.webview.html = buildHtml();
+    view.webview.options = { enableScripts: true, localResourceRoots: [] };
+    view.webview.html = buildHtml(this.nonce);
 
     view.webview.onDidReceiveMessage((msg: unknown) => {
       if (!msg || typeof msg !== 'object') return;
@@ -38,7 +40,10 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
       }
       if (m['command'] === 'editorSave') {
         const cfg = m['cfg'] as ControllerConfig | undefined;
-        if (cfg) this.onEditorSave(cfg);
+        if (cfg) {
+          const validated = parseControllerConfig(serializeControllerConfig(cfg));
+          if (validated.errors.length === 0) this.onEditorSave(validated);
+        }
       }
       if (m['command'] === 'pot' && typeof m['channel'] === 'number' && typeof m['value'] === 'number') {
         this.onPotChange(m['channel'], m['value']);
@@ -99,11 +104,12 @@ function safeJson(obj: unknown): string {
   return JSON.stringify(obj).replace(/<\//g, '<\\/');
 }
 
-function buildHtml(): string {
+function buildHtml(nonce: string): string {
   return /* html */`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline';"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>DS-IDE Controls</title>
   <style>
@@ -180,8 +186,8 @@ function buildHtml(): string {
       <div id="canvas-hint">Drag a control from the palette</div>
     </div>
   </div>
-  <script id="yaml-init" type="application/json">${safeJson({ pots: [], buttons: [], leds: [] })}</script>
-  <script>
+  <script id="yaml-init" type="application/json" nonce="${nonce}">${safeJson({ pots: [], buttons: [], leds: [] })}</script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
     const _yamlInitEl = document.getElementById('yaml-init');

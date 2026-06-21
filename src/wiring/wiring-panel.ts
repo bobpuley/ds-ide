@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { randomBytes } from 'node:crypto';
 
 export type DeviceType = 'pot' | 'button' | 'led';
 
@@ -80,6 +81,7 @@ export const PIN_DEFS: PinDef[] = [
 export class WiringPanel {
   private panel:         vscode.WebviewPanel | null = null;
   private msgDisposable: vscode.Disposable   | null = null;
+  private readonly nonce: string = randomBytes(16).toString('base64');
 
   constructor(
     private readonly onWirePin?:   WirePinHandler,
@@ -97,9 +99,9 @@ export class WiringPanel {
       PANEL_ID,
       PANEL_TITLE,
       vscode.ViewColumn.Two,
-      { enableScripts: true, retainContextWhenHidden: true },
+      { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] },
     );
-    this.panel.webview.html = buildHtml(wiredPins);
+    this.panel.webview.html = buildHtml(wiredPins, this.nonce);
 
     this.msgDisposable = this.panel.webview.onDidReceiveMessage(async (msg: unknown) => {
       if (!msg || typeof msg !== 'object') return;
@@ -141,11 +143,12 @@ function safeJson(obj: unknown): string {
   return JSON.stringify(obj).replace(/<\//g, '<\\/');
 }
 
-export function buildHtml(wiredPins: WiredPin[]): string {
+export function buildHtml(wiredPins: WiredPin[], nonce: string): string {
   return /* html */`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline';"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Daisy Seed Wiring</title>
   <style>
@@ -255,8 +258,8 @@ export function buildHtml(wiredPins: WiredPin[]): string {
     </div>
   </div>
 
-  <script id="init-data" type="application/json">${safeJson(wiredPins)}</script>
-  <script>
+  <script id="init-data" type="application/json" nonce="${nonce}">${safeJson(wiredPins)}</script>
+  <script nonce="${nonce}">
     const vscode  = acquireVsCodeApi();
     const svg     = document.getElementById('pinout');
     const popup   = document.getElementById('popup');
