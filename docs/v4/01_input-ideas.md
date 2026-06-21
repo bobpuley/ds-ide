@@ -1,0 +1,225 @@
+# 01 — Input Ideas (v4)
+
+> **v1 complete** — ds-ide 0.1.0–0.1.7 (M0–M7), all ACs green. Full v1 ideas archived in
+> [`docs/v1/01_input-ideas.md`](v1/01_input-ideas.md).
+>
+> **v2 complete** — ds-ide 0.2.0–0.2.9 (M8–M15), all ACs green. Full v2 ideas archived in
+> [`docs/v2/01_input-ideas.md`](v2/01_input-ideas.md).
+>
+> **v3 complete** — ds-ide 0.3.0–0.3.3 (M16–M18), all ACs green. Full v3 ideas archived in
+> [`docs/v3/01_input-ideas.md`](v3/01_input-ideas.md).
+
+This document collects **v4 feature ideas**. v4 planning started 2026-06-20.
+
+---
+
+## 1. v3 north star (recap)
+
+v3 made the development environment smarter: the IDE understands the hardware design, not just
+the runtime state. Developers can visually wire physical devices to Daisy Seed pins — and the
+IDE writes the matching C++ declarations.
+
+---
+
+## 2. v4 north star
+
+v4 **refines the interaction model**: the Controls Editor moves from an explicit two-mode panel
+(Design / Run) to a single always-on canvas with handle-based rearrangement. Pot controls get
+a hardware-style visual. The command surface is trimmed for the hot path. The Wiring Editor SVG
+gets orientation cues and legible ID labels.
+
+---
+
+## 3. v4 bug backlog (from post-v3 review, 2026-06-20)
+
+### 3a. Bugs & UX issues
+
+- **Bug: Wiring Editor — wired control IDs not clearly visible in SVG** — the ID label of an
+  assigned control is hard to read in the current SVG layout (screenshot: `to_check_screenshot_1.png`).
+  Two candidate fixes: (1) shift label right, same vertical, centred between circle and Daisy Seed
+  diagram; (2) shift label left, vertically aligned to the pin row. *(Scheduled: M19, T19-4)*
+
+- **UX: "xruns" label appears in both Scope view header and Emulator section** — unclear whether
+  both counters represent the same data or different data. If the same: consolidate. If different:
+  rename one for clarity. *(Scheduled: M19, T19-6 — requires investigation)*
+
+---
+
+## 4. v4 feature ideas
+
+### 4a. Controls Editor: single-mode handle UX
+
+Replace the v3 two-mode Design/Run panel (D18) with a unified single-mode panel (D19):
+- Each control has a **drag handle**. Dragging the handle rearranges the layout at all times
+  (emulator stopped or running).
+- Interacting with the **control body** (pot/button/LED) is available only while the emulator
+  is running; otherwise controls are visible but grayed-out.
+- No explicit mode toggle. Emulator state is shown in the panel header or status area.
+- (A18, confirmed 2026-06-20) *(Scheduled: M20, T20-1)*
+
+### 4b. Controls Editor: visual controls improvement
+
+- Pot controls visually resemble a real hardware rotary knob.
+- Look and feel consistent with the Wiring Editor panel.
+- Pot interaction model TBD: mouse wheel vs. vertical drag. *(Open — must resolve before M20 T20-2)*
+- *(Scheduled: M20, T20-2 — blocked on interaction model decision)*
+
+### 4c. Command improvements
+
+- **"Build & Deploy to Emulator" combined command** — replaces the two-step "Build" then "Deploy"
+  flow. Sequential; blocks deploy on build failure. *(Scheduled: M19, T19-1)*
+- **Stop Audio / Start Audio in Scope header** — toolbar buttons alongside the existing palette
+  commands; reflect emulator running/stopped state. *(Scheduled: M19, T19-2)*
+
+### 4d. Scope UX
+
+- **Session recording button label simplification** — "() Record" → "()", "[] Stop" → "[]".
+  *(Scheduled: M19, T19-3)*
+
+### 4e. Wiring Editor visual
+
+- **Micro USB port indicator on Daisy Seed SVG** — minimal shape to convey board orientation.
+  *(Scheduled: M19, T19-5)*
+- **Evaluate adding a user-visible label per control** — separate from `id`/`varname`; purely
+  visual in the SVG diagram. Decision deferred: needs design exploration.
+
+### 4f. VS Code Run command integration
+
+Hook `F5` (Start Debugging) and `Ctrl+F5` (Start Without Debugging) into ds-ide via a
+`DebugConfigurationProvider` for a custom `ds-ide` debug type. (D20, confirmed 2026-06-20)
+- **F5**: stop any running emulator → build → deploy → attach lldb (full debug cycle in one key).
+- **Ctrl+F5**: stop → build → deploy, no debugger attached (equivalent to FR-CM-1 but triggered
+  via VS Code's native run mechanism).
+- A `launch.json` template/snippet shall be provided so developers opt in without manual config.
+*(Scheduled: M21, T21-1)*
+
+### 4g. Secondary sidebar panels
+
+Convert Controls Editor and Wiring Editor from floating `WebviewPanel`s to persistent
+`WebviewView`s registered in a ds-ide container in the VS Code secondary sidebar (right panel).
+(D21, confirmed 2026-06-20)
+- **Controls Editor** (C11): extracted from C2; always accessible in the right sidebar.
+- **Wiring Editor** (C11): C10 converted from `WebviewPanel` to `WebviewView` in the same container.
+- C2 retains Scope and Spectrum.
+*(Scheduled: M22, T22-1, T22-2)*
+
+---
+
+## 5. v4 open questions (need decisions before design)
+
+- ~~**Controls / Wiring Editor as panes of the effect source editor**~~ — **Decided (2026-06-20):**
+  both panels move to the VS Code **secondary sidebar** as persistent `WebviewView`s in a ds-ide
+  container (D21, FR-CE-8, FR-WE-10). *(Scheduled: M22)*
+
+- ~~**VS Code "Run → Start Debugging" / "Run → Start Without Debugging" in ds-ide context**~~ —
+  **Decided (2026-06-20):** ds-ide registers a `DebugConfigurationProvider` for a `ds-ide` debug
+  type. F5 = stop+build+deploy+attach; Ctrl+F5 = stop+build+deploy, no debug. (D20, FR-CM-3,
+  FR-CM-4). *(Scheduled: M21)*
+
+- ~~**Implementation template / "Create new effect" wizard**~~ — **Decided (2026-06-20): wizard
+  command.** `ds-ide: Create New Effect Project` prompts for project name + folder, scaffolds
+  `.cpp` stub, `CMakeLists.txt`, `controllers.yaml`, and `README.md`, then opens the folder in
+  VS Code. (D22, FR-WZ-1). *(Scheduled: M23, v5.0)*
+
+- ~~**Extend controls convention to initialization block**~~ — **Decided (2026-06-20): generate
+  init block.** Add `// ds-ide:controls:init:begin/end` markers; Wiring Editor writes matching
+  init calls (`.InitSingle()`, `.Init()`) alongside declarations. (D23, FR-CG-1). *(Scheduled:
+  M24, v5.1)*
+
+- **Plugin extension points: declarative control definition** — a mechanism by which third parties
+  or the user can define new control types that the Controls and Wiring Editors understand. Large,
+  exploratory — not yet scoped. *(Deferred: vX)*
+
+---
+
+## 6. Roadmap
+
+| Phase | Theme | Key features | Status |
+|-------|-------|--------------|--------|
+| **v1** | Foundation | Native simulation; VS Code extension; pots; scope; breakpoints | ✅ complete (M0–M7) |
+| **v2** | Realism | Live audio I/O; WAV; buttons/GPIO/LEDs; visual editor; full debug; HW build; spectrum; recording; scope UI | ✅ complete (M8–M15) |
+| **v3** | Editor intelligence | Controls Editor v3 (two-mode, code inference); Wiring Editor (SVG pinout, C++ gen); spectrum/scope polish | ✅ complete (M16–M18) |
+| **v4** | UX refinement | Controls Editor single-mode handle UX; Wiring Editor polish; command cleanup; Run integration; secondary sidebar panels | 🔵 planning (M19–M22) |
+| **v5** | Developer experience | New effect wizard; init block code generation | 🔵 planning (M23–M24) |
+| **vX** | Pre-public release | Built-in board maps; auto-derived controllers (arbitrary code); MIDI; cross-platform audio+debug; ARM toolchain bundle | planned |
+
+---
+
+## 6. Post-v3 review (from to_check.md, 2026-06-20)
+
+Ideas and issues identified after shipping v3 (M16–M18). These feed v4 planning.
+
+### 6a. Bugs & UX issues
+
+- **Bug: Wiring Editor — wired control IDs not clearly visible in SVG** — the ID label of an
+  assigned control is hard to read in the current SVG layout (screenshot: `to_check_screenshot_1.png`).
+  Two candidate fixes: (1) shift label right, same vertical, centred between circle and Daisy Seed
+  diagram; (2) shift label left, vertically aligned to the pin row. *(Bug: visual)*
+
+- **UX: "xruns" label appears in both Scope view header and Emulator section** — unclear whether
+  both counters represent the same data or different data. If the same: consolidate. If different:
+  rename one for clarity. *(Needs investigation before classifying as bug or feature)*
+
+### 6b. Feature ideas
+
+- **Commands: move Stop Audio / Start Audio into Scope view header** — currently palette commands
+  only. Exposing them as header toolbar buttons reduces friction for the most common audio
+  lifecycle actions.
+
+- **Commands: add "Build & Deploy to Emulator" combined command** — currently "Build for Emulator"
+  and "Deploy to Emulator" are separate. A single combined command reduces the number of steps
+  in the hot path.
+
+- **Scope: simplify session recording button labels** — "() Record" → "()", "[] Stop" → "[]".
+  Cleaner look; icons carry the meaning without text.
+
+- **Controls Editor: replace two-mode Design/Run panel with single-mode handle UX** — the current
+  D18 two-mode design (explicit Design / Run toggle) is replaced by a unified single mode where:
+  each control has a drag handle; dragging the handle rearranges the layout; clicking/dragging/
+  wheeling the control body (outside the handle) sends live interaction to the emulator. No
+  explicit mode switch. Controls are always visible. Dragging a handle rearranges the layout
+  at any time. Interacting with the control body (pot/button/LED) is disabled (grayed-out)
+  when the emulator is not running. (A18, confirmed 2026-06-20)
+
+- **Controls Editor: visual controls improvement** — knob visuals should more closely resemble
+  real hardware. Interaction model for knobs should be decided (mouse wheel vs. vertical drag).
+  Look and feel should match the Wiring Editor aesthetic.
+
+- **Wiring Editor: add micro USB port indicator to Daisy Seed SVG** — minimal visual cue (just
+  the USB port shape) to help the developer orient the board at a glance. Minimal change to the
+  existing SVG asset.
+
+- **Wiring Editor: evaluate adding a user-visible label to each assigned control** — separate
+  from the `id`/`varname`. Purely visual in the Wiring Editor SVG; does not affect C++ output.
+  Decision deferred: needs design exploration.
+
+### 6c. Open questions (need decisions before design)
+
+- ~~**Controls / Wiring Editor as panes of the effect source editor**~~ — **Decided (2026-06-20):**
+  both editors become persistent `WebviewView`s in the VS Code secondary sidebar (right panel).
+  See §4g, D21, FR-CE-8, FR-WE-10. *(Scheduled: M22)*
+
+- ~~**VS Code "Run → Start Debugging" and "Run → Start Without Debugging" — what do they mean in
+  ds-ide context?**~~ — **Decided (2026-06-20):** `DebugConfigurationProvider` for a `ds-ide`
+  debug type. F5 = stop+build+deploy+attach lldb; Ctrl+F5 = stop+build+deploy. See §4f, D20,
+  FR-CM-3, FR-CM-4. *(Scheduled: M21)*
+
+- ~~**Implementation template / "Create new effect" wizard**~~ — **Decided (2026-06-20): wizard
+  command.** `ds-ide: Create New Effect Project` scaffolds `.cpp`, `CMakeLists.txt`,
+  `controllers.yaml`, `README.md`. See §4 (wizard feature), D22, FR-WZ-1. *(Scheduled: M23, v5.0)*
+
+- ~~**Extend controls convention to initialization block**~~ — **Decided (2026-06-20): generate
+  init block.** `// ds-ide:controls:init:begin/end` markers; Wiring Editor writes init calls
+  alongside declarations. See D23, FR-CG-1. *(Scheduled: M24, v5.1)*
+
+- **Plugin extension points: declarative control definition** — a broader mechanism by which
+  third parties (or the user) can define new control types that the Controls and Wiring Editors
+  understand, including code template integration. *Large, exploratory — not yet scoped.* *(Deferred: vX)*
+
+---
+
+## Open Conflicts
+
+- **D18 superseded** — the v3 decision D18 ("two-mode panel: Design / Run") is replaced by the
+  single-mode handle-based UX described in §6b. Requirements (FR-CE-1, FR-CE-4, FR-CE-5) and
+  architecture (§04 §3) must be updated before v4 work begins.
