@@ -73,8 +73,8 @@ Arguments (both optional):
 4. **In-progress milestone file** — Add a bug-fix task to the appropriate sprint.
    - Find the in-progress milestone from the registry in `05_dev-plan.md` and append the fix there.
    - Label it clearly as a fix (e.g. `fix: <short description>`)
-   - Write a DoD that describes the corrected behaviour
-   - Create a task list entry (TaskCreate) for the fix
+   - Write a DoD that describes the corrected behavior
+   - Create a task list entry for the fix
 5. **`02_assumptions-and-risks.md`** — Ask: does this bug reveal a false assumption?
    - If yes: update or remove the relevant assumption
 6. State what changed across all files in one concise summary line per file.
