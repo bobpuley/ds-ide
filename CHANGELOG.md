@@ -5,6 +5,17 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.7.0 — 2026-06-21
+
+**M26 — View State Initialization & Pinout Accuracy** *(AC-55–AC-57 green)*
+
+- **Controls Editor init on project open (AC-55/FR-CE-9):** `activate()` now calls `initViewsFromProject()` immediately — parses `ds-ide:controls` block and `controllers.yaml`, pushes `controlsConfig` to the Controls Editor webview without requiring deployment
+- **Wiring Editor init on project open (AC-56/FR-WE-11):** Same `initViewsFromProject()` call parses the `ds-ide:controls` block and pushes `wiredPins` to the Wiring Editor SVG on extension activation
+- **File-save refresh (AC-55/AC-56):** `onDidSaveTextDocument` watcher registered at activation; saving the effect C++ source or `controllers.yaml` re-parses and pushes updated state to both views within ~1 second
+- **Pinout accuracy (AC-57/FR-WE-12):** `PIN_DEFS` rebuilt to match `Seed_pinout.csv` exactly — left side rows 0–14 = D0→D14 (USB at top), rows 15–19 = NC audio/AGND; right side rows 0–19 = GND, VIN, 3V3D, D30, D29, A11/D28, D27, D26, A10/D25…A0/D15, +3V3A; D28 correctly carries A11/ADC, D26 is non-ADC; `adcChannelFromPin` updated (D15–D25 → ch0–10, D28 → ch11)
+
+---
+
 ## 0.6.0 — 2026-06-21
 
 **M25 — Emulator Runtime Safety & Code Quality** *(AC-38–AC-54 green)*
