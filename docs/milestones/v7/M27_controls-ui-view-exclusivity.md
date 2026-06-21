@@ -1,7 +1,7 @@
 # M27 — Controls Editor UI Polish & View Exclusivity
 
 **Semver:** 0.8.0
-**Status:** in progress
+**Status:** released
 **Branch:** feat/m27-controls-ui-exclusivity
 
 ---

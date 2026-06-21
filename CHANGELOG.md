@@ -5,6 +5,15 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.8.0 — 2026-06-21
+
+**M27 — Controls Editor UI Polish & View Exclusivity** *(AC-58 green; AC-59 best-effort)*
+
+- **Compact convention-mode cards (AC-58/FR-CE-10):** `buildConventionCard()` redesigned — kind badge and pin label removed from handle; handle now shows `title` tooltip with `"Kind · pin N"`; IDs > 15 chars truncated with `…` (full ID in span title); `.ctrl-body` vertically centered; button body is a square raised pad with `box-shadow: 0 3px 0 #111` (pressed state collapses shadow + `translateY(3px)`); LED body reduced to dot only; toggle-mode buttons latch visually after mouseup; convention cards have `minWidth: 90px`
+- **View exclusivity (FR-VW-1):** `onDidChangeVisibility` wired in both providers; when Controls Editor expands and Wiring Editor is open, a three-step command sequence (focus sibling → `workbench.action.collapseSection` → refocus self) attempts to collapse the sibling; symmetric for Wiring Editor; re-entry guard prevents infinite loops. **Known limitation:** VS Code exposes no public API to programmatically collapse a `WebviewView` section — the workaround is best-effort and may not fire reliably in all VS Code builds.
+
+---
+
 ## 0.7.0 — 2026-06-21
 
 **M26 — View State Initialization & Pinout Accuracy** *(AC-55–AC-57 green)*
