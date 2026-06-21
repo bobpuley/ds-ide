@@ -217,6 +217,10 @@ export function activate(context: vscode.ExtensionContext): void {
       scopePanel?.notifyRecordingState(false, true, path.basename(uri.fsPath));
       manager?.sendReplayStart(uri.fsPath);
     },
+    undefined,
+    () => {
+      controlsViewProvider?.postStatus({ type: 'status', running: false });
+    },
   );
 
   manager.on('message', (msg: IpcMessage) => {
@@ -311,6 +315,37 @@ export function activate(context: vscode.ExtensionContext): void {
 
   initViewsFromProject();
 
+  // Mutual exclusion: when one sidebar panel becomes visible, collapse the other.
+  // VS Code has no public collapse API for WebviewViews. Workaround:
+  //   1. Focus the sibling (makes it the active section in the sidebar).
+  //   2. Call workbench.action.collapseSection (collapses the currently active section).
+  //   3. Re-focus the panel that just became visible.
+  // Only runs if the sibling is actually expanded (visible) to avoid a flash.
+  let _exclusionGuard = false;
+
+  async function collapseSibling(siblingId: string, selfId: string): Promise<void> {
+    await vscode.commands.executeCommand(`${siblingId}.focus`);
+    await vscode.commands.executeCommand('workbench.action.collapseSection');
+    await vscode.commands.executeCommand(`${selfId}.focus`);
+  }
+
+  controlsViewProvider.setOnBecameVisible(() => {
+    if (!_exclusionGuard && wiringViewProvider.isVisible) {
+      _exclusionGuard = true;
+      void collapseSibling(WIRING_VIEW_ID, CONTROLS_VIEW_ID)
+        .catch(() => { /* best-effort: collapseSection may not exist in all VS Code builds */ })
+        .finally(() => { _exclusionGuard = false; });
+    }
+  });
+  wiringViewProvider.setOnBecameVisible(() => {
+    if (!_exclusionGuard && controlsViewProvider.isVisible) {
+      _exclusionGuard = true;
+      void collapseSibling(CONTROLS_VIEW_ID, WIRING_VIEW_ID)
+        .catch(() => { /* best-effort */ })
+        .finally(() => { _exclusionGuard = false; });
+    }
+  });
+
   context.subscriptions.push(
     diagnostics,
     statusBar,
@@ -369,7 +404,11 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
     vscode.commands.registerCommand('ds-ide.start', () => startAudio(manager!)),
-    vscode.commands.registerCommand('ds-ide.stop', () => stopAudio(manager!)),
+    vscode.commands.registerCommand('ds-ide.stop', () => {
+      stopAudio(manager!);
+      scopePanel?.notifyStopped();
+      controlsViewProvider?.postStatus({ type: 'status', running: false });
+    }),
     vscode.commands.registerCommand('ds-ide.openControllerEditor', () => {
       const cfg = loadControllerConfig();
       const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';

@@ -6,11 +6,18 @@ export const WIRING_VIEW_ID = 'ds-ide.wiringEditor';
 export class WiringViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
   private wiredPins: WiredPin[] = [];
+  private onBecameVisible: (() => void) | undefined;
 
   constructor(
     private readonly onWirePin: WirePinHandler,
     private readonly onUnwirePin: UnwirePinHandler,
   ) {}
+
+  get isVisible(): boolean { return this.view?.visible ?? false; }
+
+  setOnBecameVisible(fn: () => void): void {
+    this.onBecameVisible = fn;
+  }
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
@@ -37,6 +44,7 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
         // when retainContextWhenHidden keeps the JS alive; rebuilding HTML
         // covers the case where the context was discarded.
         void view.webview.postMessage({ command: 'wiredPins', pins: this.wiredPins });
+        this.onBecameVisible?.();
       }
     });
   }

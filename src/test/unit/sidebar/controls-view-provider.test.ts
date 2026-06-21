@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ControlsViewProvider } from '../../../sidebar/controls-view-provider';
+import { ControlsViewProvider, truncId } from '../../../sidebar/controls-view-provider';
 
 function makeView(initiallyVisible = true) {
   let _visible = initiallyVisible;
@@ -158,5 +158,61 @@ describe('ControlsViewProvider', () => {
     const configIdx = calls.indexOf('controlsConfig');
     expect(editorIdx).toBeGreaterThanOrEqual(0);
     expect(configIdx).toBeGreaterThan(editorIdx);
+  });
+
+  it('calls onBecameVisible when view becomes visible', () => {
+    const view = makeView(false);
+    provider.resolveWebviewView(view as never);
+    const cb = vi.fn();
+    provider.setOnBecameVisible(cb);
+    view._setVisible(true);
+    expect(cb).toHaveBeenCalledOnce();
+  });
+
+  it('does not call onBecameVisible when view becomes hidden', () => {
+    const view = makeView(true);
+    provider.resolveWebviewView(view as never);
+    const cb = vi.fn();
+    provider.setOnBecameVisible(cb);
+    view._setVisible(false);
+    expect(cb).not.toHaveBeenCalled();
+  });
+
+  it('generates HTML with title tooltip on ctrl-handle (compact convention header)', () => {
+    const view = makeView();
+    provider.resolveWebviewView(view as never);
+    // Convention handle now carries a title attribute instead of card-kind / card-pin-label spans
+    expect(view.webview.html).toContain('"ctrl-handle" title=');
+    expect(view.webview.html).not.toContain('"card-pin-label"');
+  });
+
+  it('generates HTML with justify-content: center on ctrl-body', () => {
+    const view = makeView();
+    provider.resolveWebviewView(view as never);
+    expect(view.webview.html).toContain('justify-content: center');
+  });
+
+  it('generates HTML with box-shadow on btn-ce (square pad)', () => {
+    const view = makeView();
+    provider.resolveWebviewView(view as never);
+    expect(view.webview.html).toContain('box-shadow: 0 3px 0 #111');
+  });
+});
+
+describe('truncId', () => {
+  it('returns id unchanged when 15 chars or fewer', () => {
+    expect(truncId('short')).toBe('short');
+    expect(truncId('exactly15chars!')).toBe('exactly15chars!');
+  });
+
+  it('truncates to 14 chars + ellipsis when id exceeds 15 chars', () => {
+    const result = truncId('tap_tempo_sync_btn');
+    expect(result).toBe('tap_tempo_sync…');
+    expect(result.length).toBe(15); // 14 chars + 1 ellipsis char
+  });
+
+  it('truncates id of exactly 16 chars', () => {
+    const result = truncId('1234567890123456');
+    expect(result).toBe('12345678901234…');
   });
 });
