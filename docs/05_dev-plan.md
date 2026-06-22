@@ -1,4 +1,4 @@
-# 05 — Development Plan (v8)
+# 05 — Development Plan (v9)
 
 > **v1 complete** — M0–M7 released (0.1.0–0.1.7), all ACs green.
 > Archived: [`docs/v1/`](v1/).
@@ -20,8 +20,11 @@
 >
 > **v7 complete** — M26–M27 released (0.7.0–0.8.0), all ACs green.
 > Archived: [`docs/v7/`](v7/).
+>
+> **v8 complete** — M28–M30 released (0.8.2–0.8.4), all ACs green.
+> Archived: [`docs/v8/`](v8/).
 
-*v8 milestones not yet planned.*
+*v9 milestones not yet planned.*
 
 ---
 
@@ -69,10 +72,11 @@ Full registry in [`docs/v6/05_dev-plan.md`](v6/05_dev-plan.md).
 M26 View State Initialization & Pinout Accuracy · M27 Controls Editor UI Polish & View Exclusivity.
 Full registry in [`docs/v7/05_dev-plan.md`](v7/05_dev-plan.md).
 
-### v8 (0.9.0–0.9.2) — planned
+### v8 (0.8.2–0.8.4) — archived in `docs/v8/`
 
-| Milestone | Title | Semver | Status | File |
-|-----------|-------|--------|--------|------|
-| M28 | Webview Security Hardening | 0.8.2  | **released** | [`docs/milestones/v8/M28_extension-safety.md`](milestones/v8/M28_extension-safety.md) |
-| M29 | Extension Runtime Reliability | 0.8.3  | **released** | [`docs/milestones/v8/M29_runtime-reliability.md`](milestones/v8/M29_runtime-reliability.md) |
-| M30 | Extension Quality Polish | 0.8.4  | **released** | [`docs/milestones/v8/M30_quality-polish.md`](milestones/v8/M30_quality-polish.md) |
+M28 Webview Security Hardening · M29 Extension Runtime Reliability · M30 Extension Quality Polish.
+Full registry in [`docs/v8/05_dev-plan.md`](v8/05_dev-plan.md).
+
+### v9 — planned
+
+*(no milestones yet)*
