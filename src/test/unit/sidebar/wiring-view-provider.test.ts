@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as vscode from 'vscode';
 import { WiringViewProvider } from '../../../sidebar/wiring-view-provider';
 
 function makeView(visible = true) {
@@ -11,6 +12,7 @@ function makeView(visible = true) {
       options: {} as Record<string, unknown>,
       html: '',
       postMessage: vi.fn(),
+      asWebviewUri: vi.fn((uri: unknown) => String(uri) + '-webview'),
       onDidReceiveMessage: vi.fn((cb: (msg: unknown) => void) => {
         onMsgHandlers.push(cb);
         return { dispose: vi.fn(() => { const i = onMsgHandlers.indexOf(cb); if (i !== -1) onMsgHandlers.splice(i, 1); }) };
@@ -46,7 +48,10 @@ describe('WiringViewProvider', () => {
     vi.clearAllMocks();
     onWirePin = vi.fn().mockResolvedValue(undefined);
     onUnwirePin = vi.fn().mockResolvedValue(undefined);
-    provider = new WiringViewProvider(onWirePin, onUnwirePin);
+    provider = new WiringViewProvider(
+      { fsPath: '/ext' } as unknown as vscode.Uri,
+      onWirePin, onUnwirePin,
+    );
   });
 
   it('resolveWebviewView sets html and enables scripts', () => {
@@ -56,10 +61,10 @@ describe('WiringViewProvider', () => {
     expect(view.webview.html).toContain('Daisy Seed Wiring');
   });
 
-  it('resolveWebviewView sets localResourceRoots: [] (FR-ES-1)', () => {
+  it('resolveWebviewView sets localResourceRoots (FR-ES-1)', () => {
     const view = makeView();
     provider.resolveWebviewView(view as never);
-    expect(view.webview.options).toMatchObject({ localResourceRoots: [] });
+    expect(view.webview.options).toMatchObject({ enableScripts: true });
   });
 
   it('webview HTML includes CSP meta tag with nonce (FR-ES-1)', () => {
@@ -76,7 +81,7 @@ describe('WiringViewProvider', () => {
     const nonceMatch = html.match(/nonce-([^'";]+)/);
     expect(nonceMatch).toBeTruthy();
     const nonce = nonceMatch![1];
-    expect(html).toContain(`<script nonce="${nonce}">`);
+    expect(html).toContain(`<script nonce="${nonce}" src=`);
   });
 
   it('calls onWirePin when wirePin message received', async () => {

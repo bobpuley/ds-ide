@@ -118,18 +118,18 @@ static void test_spsc_queue_wrap() {
 
     SpscIpcQueue q;
     // Fill (CAPACITY - 1) slots: queue is full when write_+1 == read_.
-    // SpscIpcQueue::CAPACITY = 32, so push 31 messages.
-    for (int i = 0; i < 31; ++i) {
+    const int max_pushes = static_cast<int>(SpscIpcQueue::CAPACITY) - 1;
+    for (int i = 0; i < max_pushes; ++i) {
         bool ok = q.push(std::to_string(i));
         CHECK(ok, "push before full succeeds");
         if (!ok) break;
     }
-    // 32nd push should fail (queue full).
+    // One more push should fail (queue full).
     CHECK(!q.push("overflow"), "push fails when full");
 
     // Drain all and verify order.
     bool order_ok = true;
-    for (int i = 0; i < 31; ++i) {
+    for (int i = 0; i < max_pushes; ++i) {
         std::string s;
         if (!q.pop(s) || s != std::to_string(i)) { order_ok = false; break; }
     }

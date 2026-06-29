@@ -6,9 +6,14 @@ const watch = process.argv.includes('--watch');
 
 /** @type {import('esbuild').BuildOptions} */
 const buildOptions = {
-  entryPoints: ['src/extension.ts'],
+  entryPoints: {
+    'extension': 'src/extension.ts',
+    'webview/controls-webview': 'src/webview/controls-webview.ts',
+    'webview/scope-webview': 'src/webview/scope-webview.ts',
+    'webview/wiring-webview': 'src/webview/wiring-webview.ts',
+  },
   bundle: true,
-  outfile: 'dist/extension.js',
+  outdir: 'dist',
   external: ['vscode'],
   format: 'cjs',
   platform: 'node',

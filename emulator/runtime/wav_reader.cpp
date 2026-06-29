@@ -42,8 +42,10 @@ static float decode_pcm24(const uint8_t* p) {
 }
 
 static float decode_pcm32(const uint8_t* p) {
-    int32_t v = static_cast<int32_t>(rd_u32(p));
-    return static_cast<float>(v) / 2147483648.0;
+    uint32_t u = rd_u32(p);
+    int32_t v;
+    std::memcpy(&v, &u, sizeof(v));  // defined bit-reinterpretation in C++17 (FR-QA-7)
+    return static_cast<float>(v) / 2147483648.0f;
 }
 
 static float decode_float32(const uint8_t* p) {

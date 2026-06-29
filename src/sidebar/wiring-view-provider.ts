@@ -11,6 +11,7 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
   private readonly nonce: string = randomBytes(16).toString('base64');
 
   constructor(
+    private readonly extensionUri: vscode.Uri,
     private readonly onWirePin: WirePinHandler,
     private readonly onUnwirePin: UnwirePinHandler,
   ) {}
@@ -23,8 +24,14 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
-    view.webview.options = { enableScripts: true, localResourceRoots: [] };
-    view.webview.html = buildHtml(this.wiredPins, this.nonce);
+    const scriptUri = view.webview.asWebviewUri(
+      vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview', 'wiring-webview.js'),
+    ).toString();
+    view.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'dist')],
+    };
+    view.webview.html = buildHtml(this.wiredPins, this.nonce, scriptUri);
 
     const msgDisposable = view.webview.onDidReceiveMessage(async (msg: unknown) => {
       if (!msg || typeof msg !== 'object') return;

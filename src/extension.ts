@@ -24,23 +24,58 @@ import { ControlsViewProvider, CONTROLS_VIEW_ID } from './sidebar/controls-view-
 import { WiringViewProvider, WIRING_VIEW_ID } from './sidebar/wiring-view-provider';
 import { createEffectProject } from './commands/create-effect-project';
 import * as os from 'os';
+import { getString, getBoolean } from './ipc/narrow';
+import { findEffectSource as _findEffectSource } from './commands/find-effect-source';
 
 const FIDELITY_CAVEAT =
   'Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget.';
 
 async function findEffectSource(folder: string): Promise<string | undefined> {
-  const configured = vscode.workspace.getConfiguration('ds-ide').get<string>('effectSource');
-  if (configured) {
-    const p = path.isAbsolute(configured) ? configured : path.join(folder, configured);
-    try { await fs.promises.access(p); return p; } catch { /* path not accessible */ }
+  return _findEffectSource(folder, vscode.workspace.getConfiguration('ds-ide').get<string>('effectSource'));
+}
+
+// Build a WorkspaceEdit that replaces only the marker blocks that changed.
+// Falls back to a full-file replacement when blocks are absent (legacy projects).
+function makeBlockEdit(
+  doc: vscode.TextDocument,
+  uri: vscode.Uri,
+  oldText: string,
+  newText: string,
+): vscode.WorkspaceEdit {
+  const MARKERS: Array<[string, string]> = [
+    ['// ds-ide:controls:begin',      '// ds-ide:controls:end'],
+    ['// ds-ide:controls:init:begin', '// ds-ide:controls:init:end'],
+  ];
+  const oldLines = oldText.split('\n');
+  const newLines = newText.split('\n');
+
+  function findRange(lines: string[], begin: string, end: string): { s: number; e: number } | null {
+    const s = lines.findIndex(l => l.replace(/\r$/, '') === begin);
+    const e = lines.findIndex(l => l.replace(/\r$/, '') === end);
+    return (s !== -1 && e !== -1 && e > s) ? { s, e } : null;
   }
-  const cmake = path.join(folder, 'CMakeLists.txt');
-  try { await fs.promises.access(cmake); } catch { return undefined; }
-  const entries = await fs.promises.readdir(folder);
-  for (const entry of entries) {
-    if (typeof entry === 'string' && entry.endsWith('.cpp')) return path.join(folder, entry);
+
+  const edit = new vscode.WorkspaceEdit();
+  let allFound = true;
+
+  for (const [begin, end] of MARKERS) {
+    const oldR = findRange(oldLines, begin, end);
+    const newR = findRange(newLines, begin, end);
+    if (!oldR || !newR) { allFound = false; break; }
+
+    const newBlock = newLines.slice(newR.s, newR.e + 1).join('\n');
+    edit.replace(uri, new vscode.Range(
+      new vscode.Position(oldR.s, 0),
+      doc.lineAt(oldR.e).range.end,
+    ), newBlock);
   }
-  return undefined;
+
+  if (!allFound) {
+    // Fallback: full-file replacement
+    edit.replace(uri, new vscode.Range(new vscode.Position(0, 0), doc.lineAt(doc.lineCount - 1).range.end), newText);
+  }
+
+  return edit;
 }
 
 async function buildControlsConfig(folder: string, yamlCfg: ControllerConfig): Promise<ControlsConfig> {
@@ -71,6 +106,23 @@ export function activate(context: vscode.ExtensionContext): void {
   let activeRecordPath: string | undefined;
   const manager = new EmulatorManager();
 
+  // Remove stale UNIX socket files left by previous crashed sessions (FR-QA).
+  void fs.promises.readdir('/tmp').then((entries) => {
+    for (const entry of entries) {
+      if (entry.startsWith('daisy_emu_') && entry.endsWith('.sock')) {
+        void fs.promises.unlink(`/tmp/${entry}`).catch(() => { /* ignore already-gone */ });
+      }
+    }
+  }).catch(() => { /* ignore readdir failure */ });
+
+  // One-time info when multiple workspace folders are present (FR-QA-17).
+  const _folders = vscode.workspace.workspaceFolders;
+  if (_folders && _folders.length > 1) {
+    void vscode.window.showInformationMessage(
+      `ds-ide: multiple workspace folders detected — operating on '${_folders[0]!.name}'`,
+    );
+  }
+
   const diagnostics = vscode.languages.createDiagnosticCollection('ds-ide');
   const buildChannel    = vscode.window.createOutputChannel('Daisy IDE Build');
   const emulatorChannel = vscode.window.createOutputChannel('Daisy IDE Emulator');
@@ -82,6 +134,7 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBar.show();
 
   const controlsViewProvider = new ControlsViewProvider(
+    context.extensionUri,
     (cfg) => {
       const folders = vscode.workspace.workspaceFolders;
       if (!folders?.[0]) return;
@@ -101,6 +154,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   const wiringViewProvider = new WiringViewProvider(
+    context.extensionUri,
     async (wp: WiredPin) => {
       const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
       const effectPath = await findEffectSource(folder);
@@ -114,9 +168,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const { controls: controlsAfterDecl } = parseControlsConvention(afterDecl);
       const allPots = controlsAfterDecl.filter(c => c.kind === 'pot');
       const newText = insertInitIntoSource(afterDecl, wp.id, wp.deviceType as 'pot' | 'button' | 'led', wp.pinNumber, allPots);
-      const edit = new vscode.WorkspaceEdit();
-      const end = doc.lineAt(doc.lineCount - 1).range.end;
-      edit.replace(vscode.Uri.file(effectPath), new vscode.Range(new vscode.Position(0, 0), end), newText);
+      const edit = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
       await vscode.workspace.applyEdit(edit);
       const { controls } = parseControlsConvention(newText);
       const pins: WiredPin[] = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
@@ -137,9 +189,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const { controls: controlsAfterDecl } = parseControlsConvention(afterDecl);
       const allPots = controlsAfterDecl.filter(c => c.kind === 'pot');
       const newText = removeInitFromSource(afterDecl, id, allPots);
-      const edit = new vscode.WorkspaceEdit();
-      const end = doc.lineAt(doc.lineCount - 1).range.end;
-      edit.replace(vscode.Uri.file(effectPath), new vscode.Range(new vscode.Position(0, 0), end), newText);
+      const edit = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
       await vscode.workspace.applyEdit(edit);
       const { controls } = parseControlsConvention(newText);
       const pins: WiredPin[] = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
@@ -150,6 +200,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   const scopePanel = new ScopePanel(
+    context.extensionUri,
     manager,
     (freq, amplitude) => {
       sineState = { freq, amplitude };
@@ -218,7 +269,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   manager.on('message', (msg: IpcMessage) => {
     if (msg['type'] === 'event') {
-      const kind = msg['kind'] as string;
+      const kind = getString(msg, 'kind');
       if (kind === 'nan' || kind === 'inf') {
         void vscode.window.showWarningMessage(
           `ds-ide: audio ${kind.toUpperCase()} detected — effect may misbehave`,
@@ -226,7 +277,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }
     if (msg['type'] === 'status') {
-      const running = msg['running'] as boolean;
+      const running = getBoolean(msg, 'running') ?? false;
       statusBar.text = running ? '$(play) Daisy: running' : '$(debug-stop) Daisy: stopped';
       statusBar.tooltip = FIDELITY_CAVEAT;
       controlsViewProvider?.postStatus(msg);
@@ -260,6 +311,18 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   });
 
+  function sendPostDeployState(): void {
+    manager.sendPotSnapshot(potStore.getSnapshot());
+    manager.sendButtonSnapshot(buttonStore.getSnapshot());
+    manager.sendSine(sineState.freq, sineState.amplitude);
+    const mode = audioSourceState.input === 'live' ? 'realtime' : 'simulated';
+    manager.sendAudioMode(mode);
+    manager.sendAudioDevice(audioSourceState.sampleRate, audioSourceState.bufferSize);
+    if (audioSourceState.input === 'wav' && audioSourceState.wavPath) {
+      manager.sendWavFile(audioSourceState.wavPath, audioSourceState.wavLoop);
+    }
+  }
+
   async function performBuildAndDeploy(): Promise<boolean> {
     const ok = await buildForEmulator(manager, context.extensionPath, diagnostics, buildChannel);
     if (!ok) return false;
@@ -278,15 +341,7 @@ export function activate(context: vscode.ExtensionContext): void {
       statusBar.tooltip = FIDELITY_CAVEAT;
       return false;
     }
-    manager.sendPotSnapshot(potStore.getSnapshot());
-    manager.sendButtonSnapshot(buttonStore.getSnapshot());
-    manager.sendSine(sineState.freq, sineState.amplitude);
-    const mode = audioSourceState.input === 'live' ? 'realtime' : 'simulated';
-    manager.sendAudioMode(mode);
-    manager.sendAudioDevice(audioSourceState.sampleRate, audioSourceState.bufferSize);
-    if (audioSourceState.input === 'wav' && audioSourceState.wavPath) {
-      manager.sendWavFile(audioSourceState.wavPath, audioSourceState.wavLoop);
-    }
+    sendPostDeployState();
     return true;
   }
 
@@ -408,15 +463,7 @@ export function activate(context: vscode.ExtensionContext): void {
         statusBar.tooltip = FIDELITY_CAVEAT;
         return;
       }
-      manager.sendPotSnapshot(potStore.getSnapshot());
-      manager.sendButtonSnapshot(buttonStore.getSnapshot());
-      manager.sendSine(sineState.freq, sineState.amplitude);
-      const mode = audioSourceState.input === 'live' ? 'realtime' : 'simulated';
-      manager.sendAudioMode(mode);
-      manager.sendAudioDevice(audioSourceState.sampleRate, audioSourceState.bufferSize);
-      if (audioSourceState.input === 'wav' && audioSourceState.wavPath) {
-        manager.sendWavFile(audioSourceState.wavPath, audioSourceState.wavLoop);
-      }
+      sendPostDeployState();
     }),
     vscode.commands.registerCommand('ds-ide.start', () => startAudio(manager)),
     vscode.commands.registerCommand('ds-ide.stop', () => {

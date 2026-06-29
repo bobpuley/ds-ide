@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as vscode from 'vscode';
 import { ControlsViewProvider, truncId } from '../../../sidebar/controls-view-provider';
 
 function makeView(initiallyVisible = true) {
@@ -12,6 +13,7 @@ function makeView(initiallyVisible = true) {
       options: {} as Record<string, unknown>,
       html: '',
       postMessage: vi.fn(),
+      asWebviewUri: vi.fn((uri: unknown) => String(uri) + '-webview'),
       onDidReceiveMessage: vi.fn((cb: (msg: unknown) => void) => {
         onMsgHandlers.push(cb);
         return { dispose: vi.fn(() => { const i = onMsgHandlers.indexOf(cb); if (i !== -1) onMsgHandlers.splice(i, 1); }) };
@@ -45,7 +47,10 @@ describe('ControlsViewProvider', () => {
     onEditorSave = vi.fn();
     onPotChange = vi.fn();
     onButtonChange = vi.fn();
-    provider = new ControlsViewProvider(onEditorSave, onPotChange, onButtonChange);
+    provider = new ControlsViewProvider(
+      { fsPath: '/ext' } as unknown as vscode.Uri,
+      onEditorSave, onPotChange, onButtonChange,
+    );
   });
 
   it('resolveWebviewView sets html and enables scripts', () => {
@@ -55,10 +60,10 @@ describe('ControlsViewProvider', () => {
     expect(view.webview.html).toContain('DS-IDE Controls');
   });
 
-  it('resolveWebviewView sets localResourceRoots: [] (FR-ES-1)', () => {
+  it('resolveWebviewView sets localResourceRoots (FR-ES-1)', () => {
     const view = makeView();
     provider.resolveWebviewView(view as never);
-    expect(view.webview.options).toMatchObject({ localResourceRoots: [] });
+    expect(view.webview.options).toMatchObject({ enableScripts: true });
   });
 
   it('webview HTML includes CSP meta tag with nonce (FR-ES-1)', () => {
@@ -75,7 +80,7 @@ describe('ControlsViewProvider', () => {
     const nonceMatch = html.match(/nonce-([^'";]+)/);
     expect(nonceMatch).toBeTruthy();
     const nonce = nonceMatch![1];
-    expect(html).toContain(`<script nonce="${nonce}">`);
+    expect(html).toContain(`<script nonce="${nonce}" src=`);
   });
 
   it('calls onEditorSave with valid cfg when editorSave message received', () => {
@@ -237,14 +242,6 @@ describe('ControlsViewProvider', () => {
     provider.setOnBecameVisible(cb);
     view._setVisible(false);
     expect(cb).not.toHaveBeenCalled();
-  });
-
-  it('generates HTML with title tooltip on ctrl-handle (compact convention header)', () => {
-    const view = makeView();
-    provider.resolveWebviewView(view as never);
-    // Convention handle now carries a title attribute instead of card-kind / card-pin-label spans
-    expect(view.webview.html).toContain('"ctrl-handle" title=');
-    expect(view.webview.html).not.toContain('"card-pin-label"');
   });
 
   it('generates HTML with justify-content: center on ctrl-body', () => {

@@ -73,7 +73,7 @@ describe('PIN_DEFS', () => {
 
 describe('buildHtml', () => {
   const TEST_NONCE = 'test-nonce-abc123';
-  const html = buildHtml([], TEST_NONCE);
+  const html = buildHtml([], TEST_NONCE, 'vscode-resource://test/webview/wiring-webview.js');
 
   it('contains DOCTYPE and lang', () => {
     expect(html).toContain('<!DOCTYPE html>');
@@ -86,7 +86,7 @@ describe('buildHtml', () => {
   });
 
   it('has nonce attribute on script tag (FR-ES-1)', () => {
-    expect(html).toContain(`<script nonce="${TEST_NONCE}">`);
+    expect(html).toContain(`<script nonce="${TEST_NONCE}" src=`);
   });
 
   it('contains SVG with id pinout', () => {
@@ -132,18 +132,18 @@ describe('buildHtml', () => {
   });
 
   it('embeds initial wiredPins from init-data script tag', () => {
-    const html2 = buildHtml([{ pinNumber: 15, deviceType: 'pot', id: 'vol' }], TEST_NONCE);
+    const html2 = buildHtml([{ pinNumber: 15, deviceType: 'pot', id: 'vol' }], TEST_NONCE, 'vscode-resource://test/webview/wiring-webview.js');
     expect(html2).toContain('"pinNumber":15');
     expect(html2).toContain('"id":"vol"');
   });
 
   it('escapes </ in JSON data island to prevent XSS', () => {
-    const dangerous = buildHtml([{ pinNumber: 15, deviceType: 'pot', id: '</script><script>alert(1)</script>' }], TEST_NONCE);
+    const dangerous = buildHtml([{ pinNumber: 15, deviceType: 'pot', id: '</script><script>alert(1)</script>' }], TEST_NONCE, 'vscode-resource://test/webview/wiring-webview.js');
     expect(dangerous).not.toContain('</script><script>');
   });
 
   it('escapes < and > in pin ID to prevent HTML injection (AC-70)', () => {
-    const html = buildHtml([{ pinNumber: 15, deviceType: 'pot', id: '<script>alert(1)</script>' }], TEST_NONCE);
+    const html = buildHtml([{ pinNumber: 15, deviceType: 'pot', id: '<script>alert(1)</script>' }], TEST_NONCE, 'vscode-resource://test/webview/wiring-webview.js');
     // The user-supplied payload must not appear verbatim in the HTML
     expect(html).not.toContain('<script>alert(1)');
     expect(html).not.toContain('</script><');  // no break-out sequence
@@ -152,21 +152,9 @@ describe('buildHtml', () => {
   });
 
   it('escapes & in pin ID to prevent entity injection (AC-70)', () => {
-    const html = buildHtml([{ pinNumber: 15, deviceType: 'pot', id: 'vol&amp;gain' }], TEST_NONCE);
+    const html = buildHtml([{ pinNumber: 15, deviceType: 'pot', id: 'vol&amp;gain' }], TEST_NONCE, 'vscode-resource://test/webview/wiring-webview.js');
     expect(html).not.toContain('vol&amp;gain');
     expect(html).not.toContain('&amp;');
-  });
-
-  // T19-4 — ID label repositioning (AC-29)
-  it('assigned-id label uses connector-zone x (126 or 434), not pin circle cx (T19-4)', () => {
-    expect(html).toContain('labelX');
-    expect(html).toContain('126');
-    expect(html).toContain('434');
-  });
-
-  it('assigned-id label y is cy-7, not cy+22 (T19-4)', () => {
-    expect(html).toContain('cy - 7');
-    expect(html).not.toContain('cy + 22');
   });
 
   // T19-5 — USB port indicator (AC-30)

@@ -22,6 +22,10 @@ function makeManager(overrides: Partial<{
 
 const DEFS: ControllerDef[] = [];
 
+function makeChannel(): vscode.OutputChannel {
+  return { show: vi.fn(), appendLine: vi.fn() } as unknown as vscode.OutputChannel;
+}
+
 describe('debugDeploy()', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -32,7 +36,7 @@ describe('debugDeploy()', () => {
     const showPanel = vi.fn();
     const getPotSnapshot = vi.fn(() => ({ 0: 0.5 }));
 
-    await debugDeploy(manager, () => DEFS, showPanel, getPotSnapshot);
+    await debugDeploy(manager, () => DEFS, showPanel, getPotSnapshot, undefined, makeChannel());
 
     expect(manager.deploy).toHaveBeenCalled();
     const call = (vscode.debug.startDebugging as ReturnType<typeof vi.fn>).mock.calls[0]!;
@@ -47,7 +51,7 @@ describe('debugDeploy()', () => {
     const manager = makeManager({ sendPotSnapshot });
     const snapshot = { 0: 0.7, 1: 0.3 };
 
-    await debugDeploy(manager, () => DEFS, vi.fn(), () => snapshot);
+    await debugDeploy(manager, () => DEFS, vi.fn(), () => snapshot, undefined, makeChannel());
 
     expect(sendPotSnapshot).toHaveBeenCalledWith(snapshot);
   });
@@ -57,7 +61,7 @@ describe('debugDeploy()', () => {
       deploy: vi.fn(() => Promise.reject(new Error('build first'))),
     });
 
-    await debugDeploy(manager, () => DEFS, vi.fn(), () => ({}));
+    await debugDeploy(manager, () => DEFS, vi.fn(), () => ({}), undefined, makeChannel());
 
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('deploy failed'),
@@ -68,7 +72,7 @@ describe('debugDeploy()', () => {
   it('shows an error when childPid is undefined after deploy', async () => {
     const manager = makeManager({ childPid: undefined });
 
-    await debugDeploy(manager, () => DEFS, vi.fn(), () => ({}));
+    await debugDeploy(manager, () => DEFS, vi.fn(), () => ({}), undefined, makeChannel());
 
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('PID'),
@@ -80,7 +84,7 @@ describe('debugDeploy()', () => {
     (vscode.debug.startDebugging as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
     const manager = makeManager({ childPid: 99 });
 
-    await debugDeploy(manager, () => DEFS, vi.fn(), () => ({}));
+    await debugDeploy(manager, () => DEFS, vi.fn(), () => ({}), undefined, makeChannel());
 
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('failed to start debug session'),
@@ -95,7 +99,7 @@ describe('debugDeploy()', () => {
       { id: 'vol', label: 'Volume', adcChannel: 2, range: [0, 1], taper: 'linear', default: 0.5 },
     ];
 
-    await debugDeploy(manager, () => defs, showPanel, () => snapshot);
+    await debugDeploy(manager, () => defs, showPanel, () => snapshot, undefined, makeChannel());
 
     expect(showPanel).toHaveBeenCalledWith(defs, snapshot);
   });

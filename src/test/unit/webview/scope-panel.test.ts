@@ -31,7 +31,10 @@ describe('ScopePanel', () => {
     sineChangeSpy = vi.fn();
     audioSourceChangeSpy = vi.fn();
     pickWavSpy = vi.fn();
-    panel = new ScopePanel(manager, sineChangeSpy, audioSourceChangeSpy, pickWavSpy);
+    panel = new ScopePanel(
+      { fsPath: '/ext' } as unknown as vscode.Uri,
+      manager, sineChangeSpy, audioSourceChangeSpy, pickWavSpy,
+    );
     webviewMock = vscode.window.createWebviewPanel as ReturnType<typeof vi.fn>;
   });
 
@@ -45,13 +48,13 @@ describe('ScopePanel', () => {
     );
   });
 
-  it('show() sets localResourceRoots: [] on the webview panel (FR-ES-1)', () => {
+  it('show() sets localResourceRoots on the webview panel (FR-ES-1)', () => {
     panel.show();
     expect(webviewMock).toHaveBeenCalledWith(
       expect.any(String),
       expect.any(String),
       expect.anything(),
-      expect.objectContaining({ localResourceRoots: [] }),
+      expect.objectContaining({ localResourceRoots: [expect.anything()] }),
     );
   });
 
@@ -69,7 +72,7 @@ describe('ScopePanel', () => {
     const nonceMatch = html.match(/nonce-([^'";]+)/);
     expect(nonceMatch).toBeTruthy();
     const nonce = nonceMatch![1];
-    expect(html).toContain(`<script nonce="${nonce}">`);
+    expect(html).toContain(`<script nonce="${nonce}" src=`);
   });
 
   it('show() sets webview HTML', () => {
@@ -150,7 +153,7 @@ describe('ScopePanel', () => {
 
     const localManager = makeManager();
     for (let i = 0; i < 12; i++) {
-      const p = new ScopePanel(localManager);
+      const p = new ScopePanel({ fsPath: '/ext' } as unknown as vscode.Uri, localManager);
       p.dispose();
     }
 
@@ -173,12 +176,6 @@ describe('ScopePanel', () => {
     const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(created.webview.html).toContain('fidelity-caveat');
     expect(created.webview.html).toContain('Approx. Seed');
-  });
-
-  it('webview HTML uses sticky event accumulation (T4.3)', () => {
-    panel.show();
-    const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(created.webview.html).toContain('activeEvents');
   });
 
   it('webview HTML does NOT contain duplicate xrun-display elements in emulator bar (T19-6)', () => {
@@ -461,28 +458,12 @@ describe('ScopePanel', () => {
     expect(webview.html).toMatch(/body\s*\{[^}]*\bborder\b[^}]*1px solid #3c3c3c/);
   });
 
-  // T16-1 — Spectrum label overlap fix
-  it('drawSpectrum uses overlap-prevention: lastLabelRight and measureText present (T16-1)', () => {
-    panel.show();
-    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('lastLabelRight');
-    expect(webview.html).toContain('measureText');
-  });
-
   it('does not forward spectrum message if panel is not open', () => {
     expect(() =>
       (manager as unknown as EventEmitter).emit('message', {
         type: 'spectrum', in_fft: [0.1], out_fft: [0.1], binHz: 46.875,
       }),
     ).not.toThrow();
-  });
-
-  it('webview HTML includes drawSpectrum function', () => {
-    panel.show();
-    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('drawSpectrum');
-    expect(webview.html).toContain('lastSpecIn');
-    expect(webview.html).toContain('lastSpecOut');
   });
 
   // T14.4 — Recording bar
@@ -497,7 +478,7 @@ describe('ScopePanel', () => {
 
   it('forwards recordStart command from webview to onRecordStart', () => {
     const onRecordStart = vi.fn();
-    const p = new ScopePanel(manager, undefined, undefined, undefined, onRecordStart);
+    const p = new ScopePanel({ fsPath: '/ext' } as unknown as vscode.Uri, manager, undefined, undefined, undefined, onRecordStart);
     p.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
@@ -509,7 +490,7 @@ describe('ScopePanel', () => {
 
   it('forwards recordStop command from webview to onRecordStop', () => {
     const onRecordStop = vi.fn();
-    const p = new ScopePanel(manager, undefined, undefined, undefined, undefined, onRecordStop);
+    const p = new ScopePanel({ fsPath: '/ext' } as unknown as vscode.Uri, manager, undefined, undefined, undefined, undefined, onRecordStop);
     p.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
@@ -521,7 +502,7 @@ describe('ScopePanel', () => {
 
   it('forwards replayStart command from webview to onReplayStart', () => {
     const onReplayStart = vi.fn();
-    const p = new ScopePanel(manager, undefined, undefined, undefined, undefined, undefined, onReplayStart);
+    const p = new ScopePanel({ fsPath: '/ext' } as unknown as vscode.Uri, manager, undefined, undefined, undefined, undefined, undefined, onReplayStart);
     p.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
@@ -606,7 +587,7 @@ describe('ScopePanel', () => {
 
   it('forwards outputVolume webview message to manager.sendOutputVolume (T15.4)', () => {
     const onOutputVolume = vi.fn();
-    const p = new ScopePanel(manager, undefined, undefined, undefined, undefined, undefined, undefined, onOutputVolume);
+    const p = new ScopePanel({ fsPath: '/ext' } as unknown as vscode.Uri, manager, undefined, undefined, undefined, undefined, undefined, undefined, onOutputVolume);
     p.show();
     const created = webviewMock.mock.results[0]?.value as {
       webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };

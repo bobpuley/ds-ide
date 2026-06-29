@@ -1,7 +1,7 @@
 # M33 — Quality Polish
 
 **Version:** 0.9.2  
-**Status:** planned  
+**Status:** in progress  
 **Source:** 2026-06-28 code reviews — remaining MEDIUM + all LOW findings across three reviews
 
 ## Goal
@@ -264,7 +264,7 @@ Plain `static double` read from the RT thread without memory ordering guarantee.
 
 ---
 
-### fix: Extract webview JS to typed TypeScript entry points (FR-QA-20)
+### fix: Extract webview JS to typed TypeScript entry points (FR-QA-20) ✅
 
 `controls-view-provider.ts`, `scope-panel.ts`, and `wiring-panel.ts` embed hundreds of lines of untyped, untested JS in template strings.
 

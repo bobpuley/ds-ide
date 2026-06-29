@@ -28,11 +28,14 @@ namespace daisy_emu {
 // Post msg to the SPSC queue; drained to the IPC socket by the non-RT drain
 // thread started in run_audio_engine() (AC-39). Safe to call from RT thread.
 // The const char* overload avoids constructing a temporary std::string (FR-RTS-2).
+// Drops are counted atomically; the drain thread reports them periodically (FR-QA-1).
 static void ipc_send(const char* msg) {
-    g_state.ipc_queue.push(msg);
+    if (!g_state.ipc_queue.push(msg))
+        g_state.ipc_queue_drops.fetch_add(1, std::memory_order_relaxed);
 }
 static void ipc_send(const std::string& msg) {
-    g_state.ipc_queue.push(msg);
+    if (!g_state.ipc_queue.push(msg))
+        g_state.ipc_queue_drops.fetch_add(1, std::memory_order_relaxed);
 }
 
 // ---- Inline radix-2 FFT (Cooley-Tukey, power-of-2 N) -----------------------
@@ -612,15 +615,32 @@ void run_audio_engine() {
 
     // Drain thread: forwards messages from the SPSC queue to the IPC socket (AC-39).
     // Runs for the lifetime of the audio engine; the mutex and ::send() stay off
-    // the real-time thread.
+    // the real-time thread. Reports ipc_queue_drops periodically (FR-QA-1).
     std::thread drain_thread([&]() {
         std::string msg;
+        uint32_t last_reported_drops = 0;
+        int idle_ticks = 0;
         while (!g_state.shutdown.load()) {
             if (g_state.ipc_queue.pop(msg)) {
                 std::lock_guard<std::mutex> lk(g_state.send_mutex);
                 if (g_state.send_ipc) g_state.send_ipc(msg);
+                idle_ticks = 0;
             } else {
                 std::this_thread::sleep_for(std::chrono::microseconds(500));
+                ++idle_ticks;
+                // Report drop count roughly every 500 ms of idle time.
+                if (idle_ticks >= 1000) {
+                    idle_ticks = 0;
+                    uint32_t drops = g_state.ipc_queue_drops.load(std::memory_order_relaxed);
+                    if (drops != last_reported_drops) {
+                        last_reported_drops = drops;
+                        char buf[80];
+                        std::snprintf(buf, sizeof(buf),
+                            "{\"type\":\"ipc_drops\",\"count\":%u}", drops);
+                        std::lock_guard<std::mutex> lk(g_state.send_mutex);
+                        if (g_state.send_ipc) g_state.send_ipc(buf);
+                    }
+                }
             }
         }
         // Flush any remaining messages after shutdown
