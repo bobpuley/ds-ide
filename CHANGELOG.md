@@ -5,6 +5,17 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.9.0 — 2026-06-29
+
+**M31 — Emulator RT-thread Safety** *(FR-RTS-1, FR-RTS-2, FR-RTS-3 — all DoD green)*
+
+- **FR-RTS-1** — Session recorder writes moved off the CoreAudio RT thread. `enqueueBlock()` is a lock-free SPSC push; a dedicated drain thread handles all `::write()`, `flushPending()`, END-marker, and `::close()` calls. The RT callback no longer acquires `recorder_mutex`.
+- **FR-RTS-2** — Heap allocation eliminated from the RT audio callback path. `SpscIpcQueue::MAX_MSG` raised from 16 kB to 81920 bytes (≥ maximum scope message size). `push(const char*)` overload avoids constructing temporary `std::string` for string-literal IPC sends. `build_scope_json` and `build_spectrum_json` write into pre-allocated `std::string&` buffers. FFT working buffers (`fft_work`, `mag_in_buf`, `mag_out_buf`) are pre-allocated in `FftState`; `magnitude_spectrum` is refactored to fill caller-owned buffers.
+- **FR-RTS-3** — `emit_led_change` routes LED messages through `ipc_queue.push()` (SPSC, lock-free) instead of acquiring `send_mutex` and calling `send_ipc` directly, eliminating priority-inversion risk when `Led::Update` / `DaisySeed::SetLed` is called from the audio callback.
+- 57 unit-test assertions across `emulator-safety` and `led-shim` suites, all green.
+
+---
+
 ## 0.8.4 — 2026-06-21
 
 **M30 — Extension Quality Polish** *(AC-70–AC-81 green)*
