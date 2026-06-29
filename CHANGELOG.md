@@ -5,6 +5,21 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.10.0 — 2026-06-29
+
+**M34 — UI Polish: Independent Editors, Always-Visible Audio Settings, Panel Icons** *(FR-SCOPE-1, FR-TWE-1 through FR-TWE-6, FR-ICON-1 through FR-ICON-2 — all DoD green)*
+
+- **FR-SCOPE-1** — Scope panel Audio Settings section is now always visible; removed collapsible toggle, arrow, and JS collapse logic.
+- **FR-TWE-1/2** — Controls Editor and Wiring Editor promoted from sidebar `WebviewView` panels to independent `WebviewPanel` tool windows (`createWebviewPanel`); users can freely reposition, split, and close them.
+- **FR-TWE-3** — Controls Editor auto-opens (or reveals) when deploying to the emulator (Play / Build & Deploy).
+- **FR-TWE-4** — DS-IDE sidebar now shows a minimal welcome view with "Open Controls Editor" and "Open Wiring Editor" buttons (`ds-ide.openControlsEditor` / `ds-ide.openWiringEditor` commands).
+- **FR-TWE-5** — Deleted `collapseSibling` mutual-exclusion hack, `onDidChangeVisibility` subscriptions, `registerWebviewViewProvider` calls, and `CONTROLS_VIEW_ID` / `WIRING_VIEW_ID` constants.
+- **FR-TWE-6** — Panel state (pot positions, wired pins) is retained by the extension host and pushed to a freshly opened panel on reopen, without requiring a redeploy.
+- **FR-ICON-1** — Controls Editor tab shows a circular knob SVG icon (dark + light variants).
+- **FR-ICON-2** — Wiring Editor tab shows a DIP IC package SVG icon (dark + light variants).
+
+---
+
 ## 0.9.2 — 2026-06-29
 
 **M33 — Quality Polish** *(FR-QA-1 through FR-QA-20 — all DoD green)*
