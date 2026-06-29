@@ -1,4 +1,4 @@
-# 05 — Development Plan (v9)
+# 05 — Development Plan (v10)
 
 > **v1 complete** — M0–M7 released (0.1.0–0.1.7), all ACs green.
 > Archived: [`docs/v1/`](v1/).
@@ -23,8 +23,11 @@
 >
 > **v8 complete** — M28–M30 released (0.8.2–0.8.4), all ACs green.
 > Archived: [`docs/v8/`](v8/).
+>
+> **v9 complete** — M31–M33 released (0.9.0–0.9.2), all ACs green.
+> Archived: [`docs/v9/`](v9/).
 
-*v9 milestones not yet planned.*
+*v10 milestones not yet planned.*
 
 ---
 
@@ -77,12 +80,11 @@ Full registry in [`docs/v7/05_dev-plan.md`](v7/05_dev-plan.md).
 M28 Webview Security Hardening · M29 Extension Runtime Reliability · M30 Extension Quality Polish.
 Full registry in [`docs/v8/05_dev-plan.md`](v8/05_dev-plan.md).
 
-### v9 — planned
+### v9 (0.9.0–0.9.2) — archived in `docs/v9/`
 
-| ID  | Name | Status      | Version | File |
-|-----|------|-------------|---------|------|
-| M31 | Emulator RT-thread Safety | released    | 0.9.0 | [Milestone_M31.md](milestones/v9/Milestone_M31.md) |
-| M32 | Extension & Emulator Correctness | released    | 0.9.1 | [Milestone_M32.md](milestones/v9/Milestone_M32.md) |
-| M33 | Quality Polish | released    | 0.9.2 | [Milestone_M33.md](milestones/v9/Milestone_M33.md) |
+M31 Emulator RT-thread Safety · M32 Extension & Emulator Correctness · M33 Quality Polish.
+Full registry in [`docs/v9/05_dev-plan.md`](v9/05_dev-plan.md).
 
-Source: 2026-06-28 automated code reviews of `./emulator/`, `./src/` (Node.js/TS), and `./src/` (VS Code extension).
+### v10 — planned
+
+*(no milestones yet)*
