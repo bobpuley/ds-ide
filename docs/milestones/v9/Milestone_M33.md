@@ -1,7 +1,7 @@
 # M33 — Quality Polish
 
 **Version:** 0.9.2  
-**Status:** in progress  
+**Status:** released  
 **Source:** 2026-06-28 code reviews — remaining MEDIUM + all LOW findings across three reviews
 
 ## Goal
