@@ -79,4 +79,10 @@ Full registry in [`docs/v8/05_dev-plan.md`](v8/05_dev-plan.md).
 
 ### v9 — planned
 
-*(no milestones yet)*
+| ID  | Name | Status      | Version | File |
+|-----|------|-------------|---------|------|
+| M31 | Emulator RT-thread Safety | in progress | 0.9.0 | [Milestone_M31.md](milestones/v9/Milestone_M31.md) |
+| M32 | Extension & Emulator Correctness | planned     | 0.9.1 | [Milestone_M32.md](milestones/v9/Milestone_M32.md) |
+| M33 | Quality Polish | planned     | 0.9.2 | [Milestone_M33.md](milestones/v9/Milestone_M33.md) |
+
+Source: 2026-06-28 automated code reviews of `./emulator/`, `./src/` (Node.js/TS), and `./src/` (VS Code extension).
