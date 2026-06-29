@@ -332,12 +332,7 @@ function buildHtml(nonce: string, scriptUri: string, sine: SineParams, source: A
     canvas { display: block; width: 100%; }
     #scope { flex: 1; min-height: 0; }
     #spectrum { height: 140px; border-top: 1px solid #3c3c3c; background: #1a1a1a; flex-shrink: 0; }
-    .coll-section { background: #252526; border-top: 1px solid #3c3c3c; flex-shrink: 0; }
-    .coll-header { display: flex; align-items: center; gap: 8px; padding: 5px 12px; cursor: pointer; user-select: none; color: #9cdcfe; font-size: 11px; }
-    .coll-header:hover { background: #2a2a2a; }
-    .coll-arrow { font-size: 10px; transition: transform 0.15s; }
-    .coll-body { overflow: hidden; }
-    .coll-body.collapsed { display: none; }
+    #emulator-section { background: #252526; border-top: 1px solid #3c3c3c; flex-shrink: 0; }
     #emulator-bar { padding: 6px 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .emu-label { color: #9cdcfe; }
     #audio-source-select { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 2px 6px; font-family: monospace; cursor: pointer; border-radius: 2px; }
@@ -404,14 +399,8 @@ function buildHtml(nonce: string, scriptUri: string, sine: SineParams, source: A
     </ol>
     <div style="margin-top:8px;font-size:11px">Use <code>Deploy and Debug</code> to attach breakpoints.</div>
   </div>
-  <div class="coll-section" id="emulator-section">
-    <div class="coll-header" id="emulator-header" aria-expanded="false" role="button" tabindex="0">
-      <span class="coll-arrow" id="emulator-arrow">&#9654;</span>
-      <span>Audio Settings</span>
-    </div>
-    <div class="coll-body collapsed" id="emulator-body">
-      ${audioSourceHtml}
-    </div>
+  <div id="emulator-section">
+    ${audioSourceHtml}
   </div>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>

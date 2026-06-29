@@ -69,7 +69,7 @@ const Uri = {
   }),
 };
 
-const ViewColumn = { One: 1, Two: 2, Three: 3 } as const;
+const ViewColumn = { One: 1, Two: 2, Three: 3, Beside: -2 } as const;
 
 const StatusBarAlignment = { Left: 1, Right: 2 } as const;
 
