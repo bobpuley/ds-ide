@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Emulator runtime safety unit tests (M25).
+# Emulator runtime safety unit tests (M25 / M31).
 #
 # Compiles the safety test harness against the emulator runtime units under test
 # and runs the resulting binary. No CoreAudio or AudioUnit linking required.
@@ -34,6 +34,7 @@ SOURCES=(
     "${TEST_SRC}"
     "${RUNTIME_DIR}/wav_reader.cpp"
     "${RUNTIME_DIR}/session_player.cpp"
+    "${RUNTIME_DIR}/session_recorder.cpp"
 )
 
 "${CXX}" "${CXXFLAGS[@]}" -pthread -o "${BIN}" "${SOURCES[@]}"

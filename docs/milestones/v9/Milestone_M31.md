@@ -10,7 +10,7 @@ Eliminate all real-time thread safety violations in the CoreAudio render callbac
 
 ## Sprint Tasks
 
-### fix: Move session recorder writes off the RT thread (FR-RTS-1)
+### [x] fix: Move session recorder writes off the RT thread (FR-RTS-1)
 
 The `SessionRecorder::writeBlock` call inside `ca_process` (the CoreAudio render callback) performs blocking POSIX `::write()` on the RT thread. Audio blocks must instead be enqueued into a non-blocking ring buffer (or the existing `pending_` queue), and a dedicated recorder-drain thread must flush the queue to disk.
 
@@ -24,7 +24,7 @@ The `SessionRecorder::writeBlock` call inside `ca_process` (the CoreAudio render
 
 ---
 
-### fix: Eliminate heap allocation on the RT thread — SPSC slot size and JSON strings (FR-RTS-2)
+### [x] fix: Eliminate heap allocation on the RT thread — SPSC slot size and JSON strings (FR-RTS-2)
 
 Three heap-allocation paths exist on the CoreAudio RT thread:
 1. `build_scope_json` and `build_spectrum_json` each construct a `std::string` per emission
@@ -41,7 +41,7 @@ Three heap-allocation paths exist on the CoreAudio RT thread:
 
 ---
 
-### fix: Route LED messages through the SPSC queue, not send_mutex (FR-RTS-3)
+### [x] fix: Route LED messages through the SPSC queue, not send_mutex (FR-RTS-3)
 
 `emit_led_change` acquires `send_mutex` and calls `send_ipc()` (a `::send()` syscall) on whatever thread calls `Led::Update()` or `DaisySeed::SetLed()`. If that thread is the CoreAudio RT thread (a valid usage pattern in embedded audio code), priority inversion occurs.
 

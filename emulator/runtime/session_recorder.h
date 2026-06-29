@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace daisy_emu {
@@ -33,7 +34,7 @@ static constexpr uint8_t kRecTypePotEvent    = 0x02;
 static constexpr uint8_t kRecTypeButtonEvent = 0x03;
 static constexpr uint8_t kRecTypeEnd         = 0xFF;
 
-// Pending event queued by IPC thread; flushed to file by audio engine.
+// Pending event queued by IPC thread; flushed to file by drain thread (FR-RTS-1).
 struct PendingEvent {
     uint8_t type;
     uint8_t channel_or_pin;
@@ -43,34 +44,57 @@ struct PendingEvent {
 
 class SessionRecorder {
 public:
-    // Open file and write header. Returns true on success.
+    // Open file and write header. Pre-allocates audio ring buffer and starts
+    // the drain thread. Returns true on success.
     bool start(const std::string& path, uint32_t sample_rate, uint32_t block_size);
 
     // Enqueue a pot or button event (called from IPC thread).
     void enqueuePot(uint8_t channel, float value);
     void enqueueButton(uint8_t gpio_pin, bool pressed);
 
-    // Flush queued events then write one audio block (called from audio thread).
-    // Returns false on write error.
-    bool writeBlock(const float* in_buf, size_t frames);
+    // RT-safe: enqueue one stereo audio block into the SPSC ring buffer.
+    // Returns false if the ring buffer is full (block is dropped) or
+    // if the slot capacity is exceeded by the given frame count.
+    // Does NOT call ::write() or acquire any mutex — safe for the RT thread (FR-RTS-1).
+    bool enqueueBlock(const float* in_buf, size_t frames);
 
-    // Close the file cleanly (writes END record).
+    // Signal the drain thread to finish flushing and close the file.
+    // Blocks until the drain thread has written all remaining data.
     void stop();
 
     bool active() const { return active_.load(std::memory_order_relaxed); }
     uint32_t blockCount() const { return block_count_.load(std::memory_order_relaxed); }
 
 private:
+    // Maximum frames per audio slot. Pre-allocated at start() time so
+    // the RT thread never calls resize(). 8192 frames covers all practical
+    // hardware buffer sizes (typical max is 4096).
+    static constexpr size_t kMaxFramesPerSlot = 8192;
+    // Number of SPSC ring-buffer slots. 64 slots at 8192 frames × 2 ch × 4 B = 4 MB.
+    static constexpr size_t kAudioSlotCount   = 64;
+
     int      fd_{-1};
     uint32_t block_size_{0};
     std::atomic<bool>     active_{false};
     std::atomic<uint32_t> block_count_{0};
 
+    // Pot/button event queue (IPC thread → drain thread)
     std::mutex               queue_mutex_;
     std::vector<PendingEvent> pending_;
 
+    // Audio block SPSC ring buffer (RT thread pushes, drain thread pops).
+    // Pre-allocated in start() so enqueueBlock() never calls new/malloc.
+    std::vector<std::vector<float>> audio_slots_;    // kAudioSlotCount × kMaxFramesPerSlot*2
+    std::vector<size_t>             frames_in_slot_; // actual frame count for each slot
+    std::atomic<size_t>             audio_write_idx_{0};
+    std::atomic<size_t>             audio_read_idx_{0};
+
+    // Drain thread — started in start(), joined in stop().
+    std::thread drain_thread_;
+
     bool writeBytes(const void* data, size_t n);
     void flushPending();
+    void drainLoop();
 };
 
 }  // namespace daisy_emu
