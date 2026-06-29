@@ -103,16 +103,12 @@ describe('extension', () => {
     expect(registeredIds).toContain('ds-ide.flash');
   });
 
-  it('activate pushes each command, provider, and listener to context.subscriptions (AC-78)', () => {
+  it('activate pushes each command and listener to context.subscriptions (AC-78)', () => {
     const ctx = makeContext();
     activate(ctx);
     const subs = ctx.subscriptions as unknown[];
     // Every registerCommand return value is in subscriptions
     for (const r of (vscode.commands.registerCommand as ReturnType<typeof vi.fn>).mock.results) {
-      expect(subs).toContain(r.value);
-    }
-    // Both webview view provider registrations are in subscriptions
-    for (const r of (vscode.window.registerWebviewViewProvider as ReturnType<typeof vi.fn>).mock.results) {
       expect(subs).toContain(r.value);
     }
     // Save listener is in subscriptions
@@ -172,21 +168,24 @@ describe('extension', () => {
     );
   });
 
-  it('routes type:led manager messages to controlsViewProvider', () => {
+  it('routes type:led manager messages to controlsEditorPanel webview (FR-TWE-1)', async () => {
     const ctx = makeContext();
     activate(ctx);
     const mgr = managerInstances[0]!;
 
-    // Resolve the controls view so postLed has a webview to write to
-    const regCalls = (vscode.window.registerWebviewViewProvider as ReturnType<typeof vi.fn>).mock.calls;
-    const controlsEntry = regCalls.find((c: unknown[]) => c[0] === 'ds-ide.controlsEditor');
-    const controlsProvider = controlsEntry?.[1] as { resolveWebviewView: (v: unknown) => void } | undefined;
-    const view = { visible: true, webview: { options: {}, html: '', postMessage: vi.fn(), asWebviewUri: vi.fn((uri: unknown) => uri), onDidReceiveMessage: vi.fn(() => ({ dispose: vi.fn() })) }, onDidChangeVisibility: vi.fn(() => ({ dispose: vi.fn() })), onDidDispose: vi.fn(() => ({ dispose: vi.fn() })) };
-    controlsProvider?.resolveWebviewView(view as never);
+    // Open the Controls Editor panel so it has a webview to write to
+    const openCalls = (vscode.commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls;
+    const openEntry = openCalls.find((c: unknown[]) => c[0] === 'ds-ide.openControlsEditor');
+    const openHandler = openEntry?.[1] as (() => Promise<void>) | undefined;
+    await openHandler?.();
+
+    const panelMock = (vscode.window.createWebviewPanel as ReturnType<typeof vi.fn>).mock.results[0]?.value as {
+      webview: { postMessage: ReturnType<typeof vi.fn> };
+    } | undefined;
 
     mgr.emit('message', { type: 'led', gpioPin: 23, lit: true });
 
-    expect(view.webview.postMessage).toHaveBeenCalledWith(
+    expect(panelMock?.webview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ command: 'led', gpioPin: 23, lit: true }),
     );
   });
@@ -265,144 +264,6 @@ describe('extension', () => {
   });
 });
 
-// ── FR-VW-1: mutual exclusion between Controls and Wiring sidebar panels ─────
-
-function makeWebviewView(initiallyVisible = false) {
-  let _visible = initiallyVisible;
-  const visHandlers: (() => void)[] = [];
-  return {
-    get visible() { return _visible; },
-    webview: {
-      options: {} as Record<string, unknown>,
-      html: '',
-      postMessage: vi.fn(),
-      asWebviewUri: vi.fn((uri: unknown) => uri),
-      onDidReceiveMessage: vi.fn(() => ({ dispose: vi.fn() })),
-    },
-    onDidChangeVisibility: vi.fn((cb: () => void) => {
-      visHandlers.push(cb);
-      return { dispose: vi.fn() };
-    }),
-    onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
-    _setVisible: (v: boolean) => {
-      _visible = v;
-      visHandlers.forEach(h => h());
-    },
-  };
-}
-
-describe('extension view exclusivity (FR-VW-1)', () => {
-  let activate: (ctx: vscode.ExtensionContext) => void;
-
-  beforeEach(async () => {
-    vi.clearAllMocks();
-    managerInstances.length = 0;
-    ({ activate } = await import('../../extension'));
-    (vscode.workspace as unknown as Record<string, unknown>).workspaceFolders = undefined;
-    // executeCommand must return a Promise so the guard's .then()/.finally() chain works
-    (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
-  });
-
-  function setupBothProviders() {
-    const ctx = makeContext();
-    activate(ctx);
-    const regCalls = (vscode.window.registerWebviewViewProvider as ReturnType<typeof vi.fn>).mock.calls;
-    const controlsEntry  = regCalls.find((c: unknown[]) => c[0] === 'ds-ide.controlsEditor');
-    const wiringEntry    = regCalls.find((c: unknown[]) => c[0] === 'ds-ide.wiringEditor');
-    const controlsProvider = controlsEntry?.[1] as { resolveWebviewView: (v: unknown) => void } | undefined;
-    const wiringProvider   = wiringEntry?.[1]   as { resolveWebviewView: (v: unknown) => void } | undefined;
-    const controlsView = makeWebviewView(true);  // starts visible so sibling check passes
-    const wiringView   = makeWebviewView(true);
-    controlsProvider?.resolveWebviewView(controlsView as never);
-    wiringProvider?.resolveWebviewView(wiringView as never);
-    return { controlsView, wiringView };
-  }
-
-  // Drains all pending microtasks (and any microtasks they schedule).
-  // Using setImmediate guarantees the event loop processes the full microtask queue
-  // before resuming the test, even with chained awaits inside the implementation.
-  const drainMicrotasks = () => new Promise<void>(resolve => setImmediate(resolve));
-
-  it('issues focus+collapseSection+focus sequence when Controls becomes visible and Wiring is open', async () => {
-    const { controlsView } = setupBothProviders();
-    (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mockClear();
-
-    controlsView._setVisible(true);
-    await drainMicrotasks();
-
-    const calls = (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mock.calls
-      .map((c: unknown[]) => c[0] as string);
-    expect(calls).toContain('ds-ide.wiringEditor.focus');
-    expect(calls).toContain('workbench.action.collapseSection');
-    expect(calls).toContain('ds-ide.controlsEditor.focus');
-    const wiringFocusIdx     = calls.indexOf('ds-ide.wiringEditor.focus');
-    const collapseSectionIdx = calls.indexOf('workbench.action.collapseSection');
-    const controlsFocusIdx   = calls.lastIndexOf('ds-ide.controlsEditor.focus');
-    expect(wiringFocusIdx).toBeLessThan(collapseSectionIdx);
-    expect(collapseSectionIdx).toBeLessThan(controlsFocusIdx);
-  });
-
-  it('issues focus+collapseSection+focus sequence when Wiring becomes visible and Controls is open', async () => {
-    const { wiringView } = setupBothProviders();
-    (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mockClear();
-
-    wiringView._setVisible(true);
-    await drainMicrotasks();
-
-    const calls = (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mock.calls
-      .map((c: unknown[]) => c[0] as string);
-    expect(calls).toContain('ds-ide.controlsEditor.focus');
-    expect(calls).toContain('workbench.action.collapseSection');
-    expect(calls).toContain('ds-ide.wiringEditor.focus');
-    const controlsFocusIdx   = calls.indexOf('ds-ide.controlsEditor.focus');
-    const collapseSectionIdx = calls.indexOf('workbench.action.collapseSection');
-    const wiringFocusIdx     = calls.lastIndexOf('ds-ide.wiringEditor.focus');
-    expect(controlsFocusIdx).toBeLessThan(collapseSectionIdx);
-    expect(collapseSectionIdx).toBeLessThan(wiringFocusIdx);
-  });
-
-  it('does not trigger collapse sequence when sibling is already collapsed (not visible)', async () => {
-    const ctx = makeContext();
-    activate(ctx);
-    const regCalls = (vscode.window.registerWebviewViewProvider as ReturnType<typeof vi.fn>).mock.calls;
-    const controlsEntry = regCalls.find((c: unknown[]) => c[0] === 'ds-ide.controlsEditor');
-    const wiringEntry   = regCalls.find((c: unknown[]) => c[0] === 'ds-ide.wiringEditor');
-    const controlsProvider = controlsEntry?.[1] as { resolveWebviewView: (v: unknown) => void } | undefined;
-    const wiringProvider   = wiringEntry?.[1]   as { resolveWebviewView: (v: unknown) => void } | undefined;
-    const controlsView = makeWebviewView(false);
-    const wiringView   = makeWebviewView(false); // already collapsed
-    controlsProvider?.resolveWebviewView(controlsView as never);
-    wiringProvider?.resolveWebviewView(wiringView as never);
-
-    (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mockClear();
-    controlsView._setVisible(true);
-    await drainMicrotasks();
-
-    const calls = (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mock.calls
-      .map((c: unknown[]) => c[0] as string);
-    expect(calls).not.toContain('workbench.action.collapseSection');
-  });
-
-  it('guard prevents re-entrant collapse when view visibility changes during the command sequence', async () => {
-    const { controlsView, wiringView } = setupBothProviders();
-
-    let callCount = 0;
-    (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mockImplementation(() => {
-      callCount++;
-      // Simulate focus/collapse triggering visibility events — guard should block re-entry
-      wiringView._setVisible(false);
-      wiringView._setVisible(true);
-      return Promise.resolve();
-    });
-
-    controlsView._setVisible(true);
-    await drainMicrotasks();
-
-    // 3-step sequence (focus sibling + collapseSection + refocus self);
-    // guard must prevent any additional collapse from re-entrant visibility events
-    expect(callCount).toBeLessThanOrEqual(3);
-  });
-});
 
 // ── FR-CE-9 / FR-WE-11: initialize views on project open + refresh on save ──
 
@@ -501,9 +362,6 @@ describe('extension view initialization (FR-CE-9, FR-WE-11)', () => {
     // All registrations must be synchronous — even with never-resolving file reads
     const subs = ctx.subscriptions as unknown[];
     for (const r of (vscode.commands.registerCommand as ReturnType<typeof vi.fn>).mock.results) {
-      expect(subs).toContain(r.value);
-    }
-    for (const r of (vscode.window.registerWebviewViewProvider as ReturnType<typeof vi.fn>).mock.results) {
       expect(subs).toContain(r.value);
     }
     expect(subs).toContain((vscode.workspace.onDidSaveTextDocument as ReturnType<typeof vi.fn>).mock.results[0]?.value);

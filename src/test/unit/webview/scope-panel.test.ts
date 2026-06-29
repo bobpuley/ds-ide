@@ -544,28 +544,32 @@ describe('ScopePanel', () => {
     expect(webview.html).toContain('value="wav"');
   });
 
-  // T15.2 — Collapsible emulator section (Controls Editor is now in sidebar — no CE tab in scope)
-  it('webview HTML includes emulator-section collapsible but no Controls Editor tab (T15.2 / M22)', () => {
+  // FR-SCOPE-1 — Audio Settings always visible (no collapsible)
+  it('webview HTML includes emulator-section with no Controls Editor tab (FR-SCOPE-1)', () => {
     panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('id="emulator-section"');
     expect(webview.html).not.toContain('Controls Editor');
   });
 
-  it('emulator-header is collapsed by default (T15.2)', () => {
+  it('emulator-section has no coll-header, coll-arrow or coll-body elements (FR-SCOPE-1)', () => {
     panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('id="emulator-header" aria-expanded="false"');
+    expect(webview.html).not.toContain('coll-header');
+    expect(webview.html).not.toContain('coll-arrow');
+    expect(webview.html).not.toContain('coll-body');
+    expect(webview.html).not.toContain('aria-expanded');
   });
 
-  it('emulator-body has collapsed class by default (T15.2)', () => {
+  it('audio-source-select is directly inside emulator-section — always visible (FR-SCOPE-1)', () => {
     panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toContain('class="coll-body collapsed" id="emulator-body"');
+    expect(webview.html).toContain('id="audio-source-select"');
+    expect(webview.html).not.toContain('class="coll-body collapsed"');
   });
 
-  // T15.3 / T19-6 — emulator bar still has latency element; xrun-display removed
-  it('latency-display is still present in emulator bar (T15.3)', () => {
+  // FR-SCOPE-1 / T19-6 — emulator bar always-visible; latency present; xrun-display removed
+  it('latency-display is still present in emulator bar (FR-SCOPE-1)', () => {
     panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('id="latency-display"');

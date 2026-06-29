@@ -54,8 +54,8 @@
         "category": "Daisy IDE"
       },
       {
-        "command": "ds-ide.openControllerEditor",
-        "title": "Open Controller Editor",
+        "command": "ds-ide.openControlsEditor",
+        "title": "Open Controls Editor",
         "category": "Daisy IDE"
       },
       {
@@ -118,17 +118,18 @@
     "views": {
       "ds-ide-sidebar": [
         {
-          "type": "webview",
-          "id": "ds-ide.controlsEditor",
-          "name": "Controls"
-        },
-        {
-          "type": "webview",
-          "id": "ds-ide.wiringEditor",
-          "name": "Wiring"
+          "type": "tree",
+          "id": "ds-ide.launchView",
+          "name": "DS-IDE"
         }
       ]
     },
+    "viewsWelcome": [
+      {
+        "view": "ds-ide.launchView",
+        "contents": "Daisy Seed IDE\n\n[Open Controls Editor](command:ds-ide.openControlsEditor)\n\n[Open Wiring Editor](command:ds-ide.openWiringEditor)"
+      }
+    ],
     "configuration": {
       "title": "Daisy IDE",
       "properties": {

@@ -2,13 +2,9 @@ import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
 import { WiredPin, WirePinHandler, UnwirePinHandler, buildHtml } from '../wiring/wiring-panel';
 
-export const WIRING_VIEW_ID = 'ds-ide.wiringEditor';
-
-export class WiringViewProvider implements vscode.WebviewViewProvider {
-  private view: vscode.WebviewView | undefined;
-  private wiredPins: WiredPin[] = [];
-  private onBecameVisible: (() => void) | undefined;
-  private readonly nonce: string = randomBytes(16).toString('base64');
+export class WiringEditorPanel {
+  private panel: vscode.WebviewPanel | undefined;
+  private lastWiredPins: WiredPin[] = [];
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -16,24 +12,35 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
     private readonly onUnwirePin: UnwirePinHandler,
   ) {}
 
-  get isVisible(): boolean { return this.view?.visible ?? false; }
+  createOrReveal(): void {
+    if (this.panel) {
+      this.panel.reveal();
+      return;
+    }
 
-  setOnBecameVisible(fn: () => void): void {
-    this.onBecameVisible = fn;
-  }
+    const nonce = randomBytes(16).toString('base64');
+    this.panel = vscode.window.createWebviewPanel(
+      'ds-ide.wiringEditor',
+      'Wiring Editor',
+      vscode.ViewColumn.Beside,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+        localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'dist')],
+      },
+    );
 
-  resolveWebviewView(view: vscode.WebviewView): void {
-    this.view = view;
-    const scriptUri = view.webview.asWebviewUri(
+    this.panel.iconPath = {
+      light: vscode.Uri.joinPath(this.extensionUri, 'media', 'wiring-editor-icon-light.svg'),
+      dark:  vscode.Uri.joinPath(this.extensionUri, 'media', 'wiring-editor-icon-dark.svg'),
+    };
+
+    const scriptUri = this.panel.webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview', 'wiring-webview.js'),
     ).toString();
-    view.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'dist')],
-    };
-    view.webview.html = buildHtml(this.wiredPins, this.nonce, scriptUri);
+    this.panel.webview.html = buildHtml(this.lastWiredPins, nonce, scriptUri);
 
-    const msgDisposable = view.webview.onDidReceiveMessage(async (msg: unknown) => {
+    const msgDisposable = this.panel.webview.onDidReceiveMessage(async (msg: unknown) => {
       if (!msg || typeof msg !== 'object') return;
       const m = msg as Record<string, unknown>;
       if (m['command'] === 'wirePin') {
@@ -63,25 +70,20 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
       }
     });
 
-    const visDisposable = view.onDidChangeVisibility(() => {
-      if (view.visible) {
-        void view.webview.postMessage({ command: 'wiredPins', pins: this.wiredPins });
-        this.onBecameVisible?.();
-      }
-    });
+    void this.panel.webview.postMessage({ command: 'wiredPins', pins: this.lastWiredPins });
 
-    view.onDidDispose(() => {
+    this.panel.onDidDispose(() => {
       msgDisposable.dispose();
-      visDisposable.dispose();
+      this.panel = undefined;
     });
   }
 
+  get isOpen(): boolean { return this.panel !== undefined; }
+
   postWiredPins(pins: WiredPin[]): void {
-    this.wiredPins = pins;
-    if (this.view) {
-      // Send a live update message; the JS receives it and calls applyWiredPins
-      // without a full page reload — avoids visible state timing issues.
-      void this.view.webview.postMessage({ command: 'wiredPins', pins });
+    this.lastWiredPins = pins;
+    if (this.panel) {
+      void this.panel.webview.postMessage({ command: 'wiredPins', pins });
     }
   }
 }

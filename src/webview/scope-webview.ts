@@ -201,20 +201,6 @@ outputVolEl?.addEventListener('input', () => {
   vscode.postMessage({ command: 'outputVolume', volume: vol });
 });
 
-function setupCollapsible(headerId, bodyId, arrowId) {
-  const header = document.getElementById(headerId);
-  const body   = document.getElementById(bodyId);
-  const arrow  = document.getElementById(arrowId);
-  if (!header || !body) return;
-  header.addEventListener('click', () => {
-    const expanded = header.getAttribute('aria-expanded') !== 'false';
-    header.setAttribute('aria-expanded', expanded ? 'false' : 'true');
-    body.classList.toggle('collapsed', expanded);
-    if (arrow) arrow.style.transform = expanded ? 'rotate(-90deg)' : '';
-    resize();
-  });
-}
-setupCollapsible('emulator-header', 'emulator-body', 'emulator-arrow');
 window.addEventListener('resize', resize);
 resize();
 
