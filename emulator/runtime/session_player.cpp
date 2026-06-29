@@ -25,11 +25,12 @@ void SessionPlayer::countBlocks(long data_start_offset) {
     while (::read(fd_, &type, 1) == 1) {
         if (type == kRecTypeAudioBlock) {
             ++total_blocks_;
-            ::lseek(fd_, static_cast<off_t>(block_size_ * 2 * sizeof(float)), SEEK_CUR);
+            if (::lseek(fd_, static_cast<off_t>(block_size_ * 2 * sizeof(float)), SEEK_CUR) < 0)
+                break;
         } else if (type == kRecTypePotEvent) {
-            ::lseek(fd_, 5, SEEK_CUR);
+            if (::lseek(fd_, 5, SEEK_CUR) < 0) break;
         } else if (type == kRecTypeButtonEvent) {
-            ::lseek(fd_, 2, SEEK_CUR);
+            if (::lseek(fd_, 2, SEEK_CUR) < 0) break;
         } else {
             break;  // END or unknown
         }

@@ -6,14 +6,14 @@
 const UNDEF_CLANG_RE = /^\s+"(_\w+)",\s+referenced from:/;
 const UNDEF_GNU_RE   = /undefined reference to `([^']+)'/;
 
-export function detectNonPortableSymbol(buildLines: string[]): string | undefined {
+export function detectNonPortableSymbol(buildLines: string[]): string[] {
+  const syms: string[] = [];
   for (const line of buildLines) {
     const m = UNDEF_CLANG_RE.exec(line) ?? UNDEF_GNU_RE.exec(line);
     if (m) {
       // Strip leading underscore (macOS name-mangling) for display
-      const sym = m[1]!.replace(/^_/, '');
-      return sym;
+      syms.push(m[1]!.replace(/^_/, ''));
     }
   }
-  return undefined;
+  return syms;
 }

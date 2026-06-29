@@ -27,7 +27,7 @@ enum class AudioMode { Simulated = 0, Realtime = 1 };
 // Slot strings are pre-reserved to MAX_MSG bytes so assign() inside push()
 // never triggers heap reallocation for typical scope/spectrum messages.
 struct SpscIpcQueue {
-    static constexpr size_t CAPACITY = 32;
+    static constexpr size_t CAPACITY = 64;
     // 80 kB: accommodates the maximum scope message (~76 kB at SCOPE_BLOCKS=33,
     // SCOPE_STEP=4, rt_buffer_size=256). Must be ≥ that size to prevent
     // std::string::assign from reallocating on the RT thread.
@@ -156,6 +156,8 @@ struct EmulatorState {
     // Lock-free queue for IPC messages posted from the RT audio thread (AC-39).
     // The drain thread in run_audio_engine() reads this and forwards via send_ipc.
     SpscIpcQueue ipc_queue;
+    // Counts messages silently dropped when ipc_queue is full (FR-QA-1).
+    std::atomic<uint32_t> ipc_queue_drops{0};
 
     EmulatorState() {
         for (auto& v : pot_values) v.store(0.f);

@@ -12,6 +12,8 @@ export interface IIpcClient {
   on(event: 'disconnect', listener: () => void): this;
 }
 
+const IPC_MAX_BUFFER = 1 << 20;  // 1 MB receive buffer ceiling
+
 export class IpcClient extends EventEmitter implements IIpcClient {
   private socket: net.Socket | null = null;
   private partial = '';
@@ -52,7 +54,7 @@ export class IpcClient extends EventEmitter implements IIpcClient {
 
   private onData(data: Buffer): void {
     this.partial += data.toString('utf8');
-    if (this.partial.length > 1 << 20) {
+    if (this.partial.length > IPC_MAX_BUFFER) {
       this.partial = '';
       this.emit('error', new Error('IPC receive buffer overflow: message exceeds 1 MB'));
       return;

@@ -1,8 +1,11 @@
 import * as cp from 'child_process';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { EventEmitter } from 'events';
 import { IpcClient, IpcMessage } from './ipc-client';
+
+const SOCKET_TIMEOUT_MS = 10_000;
 
 function pidFilePath(buildDir: string): string {
   return path.join(buildDir, 'emu.pid');
@@ -50,6 +53,7 @@ export class EmulatorManager extends EventEmitter {
   private childProcess: cp.ChildProcess | null = null;
   private ipcClient: IpcClient | null = null;
   private buildDir = '';
+  private socketPath: string | null = null;
   // Set to true before intentional kills (redeploy/dispose) so the disconnect
   // event is not forwarded to callers as an unexpected crash.
   private intentionalDisconnect = false;
@@ -81,7 +85,7 @@ export class EmulatorManager extends EventEmitter {
     }
 
     await this.runProcess('cmake', configureArgs, onOutput);
-    await this.runProcess('cmake', ['--build', this.buildDir, '--', '-j4'], onOutput);
+    await this.runProcess('cmake', ['--build', this.buildDir, '--', `-j${os.cpus().length}`], onOutput);
   }
 
   deploy(onOutput: (line: string) => void): Promise<void> {
@@ -92,7 +96,8 @@ export class EmulatorManager extends EventEmitter {
     if (this.deployLock) return this.deployLock;
 
     const exePath = path.join(this.buildDir, 'effect_emu');
-    const socketPath = `/tmp/daisy_emu_${Date.now()}.sock`;
+    this.socketPath = `/tmp/daisy_emu_${Date.now()}.sock`;
+    const socketPath = this.socketPath;
 
     // Kill any process left over from a previous session, waiting up to 200 ms
     // for it to exit before spawning a new one (FR-EMU-3).
@@ -108,9 +113,9 @@ export class EmulatorManager extends EventEmitter {
           let resolved = false;
           const timeout = setTimeout(() => {
             if (!resolved) {
-              reject(new Error('Emulator did not announce socket path within 10s'));
+              reject(new Error(`Emulator did not announce socket path within ${SOCKET_TIMEOUT_MS / 1000}s`));
             }
-          }, 10000);
+          }, SOCKET_TIMEOUT_MS);
 
           const onStdout = (data: Buffer): void => {
             const text = data.toString('utf8');
@@ -273,6 +278,10 @@ export class EmulatorManager extends EventEmitter {
     if (this.ipcClient) {
       this.ipcClient.disconnect();
       this.ipcClient = null;
+    }
+    if (this.socketPath) {
+      void fs.promises.unlink(this.socketPath).catch(() => { /* ignore if already gone */ });
+      this.socketPath = null;
     }
     if (this.buildDir) void clearPid(this.buildDir);
   }

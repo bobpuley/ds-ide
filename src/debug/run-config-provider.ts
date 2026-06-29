@@ -24,7 +24,7 @@ export class DaisyRunConfigurationProvider implements vscode.DebugConfigurationP
     const ok = await this.onBuildAndDeploy();
     if (!ok) return undefined;
 
-    if (config.noDebug) return undefined;
+    if (config['noDebug']) return undefined;
 
     const pid = this.getEmulatorPid();
     if (pid === undefined) {
@@ -56,43 +56,54 @@ export class DaisyRunConfigurationProvider implements vscode.DebugConfigurationP
 // the 'ds-ide' type. The adapter terminates immediately because the actual
 // debugging is handled by a separate 'daisy-debug' session started in
 // resolveDebugConfiguration above.
+// DebugProtocolMessage is an opaque VS Code type; valid DAP payloads are narrowed here once.
+function makeDap(msg: { type: string; seq: number; [k: string]: unknown }): vscode.DebugProtocolMessage {
+  return msg as vscode.DebugProtocolMessage;
+}
+
 class DsIdeTerminatingAdapter implements vscode.DebugAdapter {
   private readonly _emitter = new vscode.EventEmitter<vscode.DebugProtocolMessage>();
   readonly onDidSendMessage: vscode.Event<vscode.DebugProtocolMessage> = this._emitter.event;
   private _seq = 0;
+  private _terminateTimer: ReturnType<typeof setTimeout> | undefined;
+
+  private static readonly DAP_TERMINATE_DELAY_MS = 50;
 
   handleMessage(message: vscode.DebugProtocolMessage): void {
     const req = message as { type: string; command: string; seq: number };
     if (req.type !== 'request') return;
-    this._emitter.fire({
+    this._emitter.fire(makeDap({
       type: 'response',
       command: req.command,
       request_seq: req.seq,
       seq: ++this._seq,
       success: true,
       body: {},
-    } as unknown as vscode.DebugProtocolMessage);
+    }));
     if (req.command === 'initialize') {
-      this._emitter.fire({
+      this._emitter.fire(makeDap({
         type: 'event',
         event: 'initialized',
         seq: ++this._seq,
         body: {},
-      } as unknown as vscode.DebugProtocolMessage);
+      }));
     } else if (req.command === 'launch' || req.command === 'attach') {
       // Give VS Code a tick to process the response before sending terminated.
-      setTimeout(() => {
-        this._emitter.fire({
+      this._terminateTimer = setTimeout(() => {
+        this._terminateTimer = undefined;
+        this._emitter.fire(makeDap({
           type: 'event',
           event: 'terminated',
           seq: ++this._seq,
           body: {},
-        } as unknown as vscode.DebugProtocolMessage);
-      }, 50);
+        }));
+      }, DsIdeTerminatingAdapter.DAP_TERMINATE_DELAY_MS);
     }
   }
 
   dispose(): void {
+    clearTimeout(this._terminateTimer);
+    this._terminateTimer = undefined;
     this._emitter.dispose();
   }
 }

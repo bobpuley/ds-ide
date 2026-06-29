@@ -25,10 +25,6 @@
     "emulator",
     "dsp"
   ],
-  "activationEvents": [
-    "onDebugResolve:ds-ide",
-    "onDebugAdapterProtocolTracker:ds-ide"
-  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [

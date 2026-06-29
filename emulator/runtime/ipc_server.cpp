@@ -367,6 +367,14 @@ void run_ipc_server(const char* socket_path) {
     ::setsockopt(server_fd, SOL_SOCKET, SO_NOSIGPIPE, &opt, sizeof(opt));
 #endif
 
+    // Reject paths that would be silently truncated by strncpy (FR-QA-6).
+    if (std::strlen(socket_path) >= sizeof(sockaddr_un::sun_path)) {
+        std::fprintf(stderr, "[daisy-emu] socket path too long (max %zu bytes): %s\n",
+                     sizeof(sockaddr_un::sun_path) - 1, socket_path);
+        ::close(server_fd);
+        return;
+    }
+
     struct sockaddr_un addr{};
     addr.sun_family = AF_UNIX;
     std::strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
@@ -433,6 +441,12 @@ void run_ipc_server(const char* socket_path) {
             if (n <= 0) break;  // disconnected
             raw[n] = '\0';
             partial.append(raw, static_cast<size_t>(n));
+
+            // Guard against unbounded growth from malformed (no-newline) input (FR-QA-5).
+            if (partial.size() > 1024u * 1024u) {
+                std::fprintf(stderr, "[daisy-emu] IPC receive buffer exceeded 1 MB — disconnecting client\n");
+                break;
+            }
 
             size_t nl;
             while ((nl = partial.find('\n')) != std::string::npos) {

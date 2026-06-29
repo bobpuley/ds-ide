@@ -12,17 +12,12 @@
 
 namespace daisy_emu {
 
-static double s_mach_ns_per_tick = 0.0;
-
-static void init_mach_timebase() {
-    if (s_mach_ns_per_tick != 0.0) return;
+static double compute_mach_ns_per_tick() {
     mach_timebase_info_data_t info;
     kern_return_t kr = mach_timebase_info(&info);
-    if (kr != KERN_SUCCESS || info.denom == 0) {
-        s_mach_ns_per_tick = 1.0;  // fallback: treat ticks as nanoseconds
-        return;
-    }
-    s_mach_ns_per_tick = static_cast<double>(info.numer) / static_cast<double>(info.denom);
+    if (kr != KERN_SUCCESS || info.denom == 0)
+        return 1.0;  // fallback: treat ticks as nanoseconds
+    return static_cast<double>(info.numer) / static_cast<double>(info.denom);
 }
 
 struct CoreAudioDevice::Impl {
@@ -31,6 +26,9 @@ struct CoreAudioDevice::Impl {
     uint32_t  bufferSize{256};
     uint32_t  sampleRate{48000};
     uint32_t  inputChannels{1};
+    // Stored before AudioOutputUnitStart so the RT thread reads a stable value
+    // without races against the construction thread (FR-QA-19).
+    double    mach_ns_per_tick{1.0};
 
     // Input buffer list — allocated after querying hardware format, freed in stop().
     // Null in output-only mode.
@@ -103,7 +101,7 @@ struct CoreAudioDevice::Impl {
         self->processBlock(self->in_interleaved.data(), self->out_interleaved.data(), frames);
         uint64_t t_end = mach_absolute_time();
 
-        double elapsed_ms = static_cast<double>(t_end - t_start) * s_mach_ns_per_tick / 1e6;
+        double elapsed_ms = static_cast<double>(t_end - t_start) * self->mach_ns_per_tick / 1e6;
         double budget_ms  = static_cast<double>(inNumberFrames) /
                             static_cast<double>(self->sampleRate) * 1000.0;
         if (elapsed_ms > budget_ms) {
@@ -150,7 +148,7 @@ struct CoreAudioDevice::Impl {
         self->processBlock(self->silentInput.data(), self->workOut.data(), frames);
         uint64_t t_end = mach_absolute_time();
 
-        double elapsed_ms = static_cast<double>(t_end - t_start) * s_mach_ns_per_tick / 1e6;
+        double elapsed_ms = static_cast<double>(t_end - t_start) * self->mach_ns_per_tick / 1e6;
         double budget_ms  = static_cast<double>(inNumberFrames) /
                             static_cast<double>(self->sampleRate) * 1000.0;
         if (elapsed_ms > budget_ms)
@@ -174,9 +172,7 @@ struct CoreAudioDevice::Impl {
     }
 };
 
-CoreAudioDevice::CoreAudioDevice() {
-    init_mach_timebase();
-}
+CoreAudioDevice::CoreAudioDevice() {}
 
 CoreAudioDevice::~CoreAudioDevice() {
     stop();  // stop() already calls delete impl_ and sets impl_ = nullptr (AC-50)
@@ -296,8 +292,32 @@ bool CoreAudioDevice::start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn 
         stop(); return false;
     }
 
+    impl_->mach_ns_per_tick = compute_mach_ns_per_tick();
+
     if (AudioUnitInitialize(impl_->unit) != noErr) { stop(); return false; }
     if (AudioOutputUnitStart(impl_->unit) != noErr) { stop(); return false; }
+
+    // Re-size interleaved render buffers to the actual hardware frame count so no
+    // assign/resize occurs on the RT thread when a USB device clamps to its minimum.
+    {
+        AudioDeviceID defaultOutput = kAudioDeviceUnknown;
+        UInt32 sz = sizeof(defaultOutput);
+        AudioObjectPropertyAddress a{kAudioHardwarePropertyDefaultOutputDevice,
+                                     kAudioObjectPropertyScopeGlobal,
+                                     kAudioObjectPropertyElementMain};
+        AudioObjectGetPropertyData(kAudioObjectSystemObject, &a, 0, nullptr, &sz, &defaultOutput);
+        if (defaultOutput != kAudioDeviceUnknown) {
+            UInt32 actual = static_cast<UInt32>(bufferSize);
+            UInt32 propSz = sizeof(actual);
+            AudioObjectPropertyAddress ba{kAudioDevicePropertyBufferFrameSize,
+                                          kAudioObjectPropertyScopeGlobal,
+                                          kAudioObjectPropertyElementMain};
+            AudioObjectGetPropertyData(defaultOutput, &ba, 0, nullptr, &propSz, &actual);
+            size_t n = static_cast<size_t>(actual);
+            impl_->in_interleaved.assign(n * 2, 0.f);
+            impl_->out_interleaved.assign(n * 2, 0.f);
+        }
+    }
 
     running_ = true;
     return true;
@@ -370,8 +390,31 @@ bool CoreAudioDevice::start_output_only(uint32_t sampleRate, uint32_t bufferSize
         stop(); return false;
     }
 
+    impl_->mach_ns_per_tick = compute_mach_ns_per_tick();
+
     if (AudioUnitInitialize(impl_->unit) != noErr) { stop(); return false; }
     if (AudioOutputUnitStart(impl_->unit) != noErr) { stop(); return false; }
+
+    // Re-size work buffers to the actual hardware frame count.
+    {
+        AudioDeviceID defaultOutput = kAudioDeviceUnknown;
+        UInt32 sz = sizeof(defaultOutput);
+        AudioObjectPropertyAddress a{kAudioHardwarePropertyDefaultOutputDevice,
+                                     kAudioObjectPropertyScopeGlobal,
+                                     kAudioObjectPropertyElementMain};
+        AudioObjectGetPropertyData(kAudioObjectSystemObject, &a, 0, nullptr, &sz, &defaultOutput);
+        if (defaultOutput != kAudioDeviceUnknown) {
+            UInt32 actual = static_cast<UInt32>(bufferSize);
+            UInt32 propSz = sizeof(actual);
+            AudioObjectPropertyAddress ba{kAudioDevicePropertyBufferFrameSize,
+                                          kAudioObjectPropertyScopeGlobal,
+                                          kAudioObjectPropertyElementMain};
+            AudioObjectGetPropertyData(defaultOutput, &ba, 0, nullptr, &propSz, &actual);
+            size_t n = static_cast<size_t>(actual);
+            impl_->silentInput.assign(n * 2, 0.f);
+            impl_->workOut.resize(n * 2, 0.f);
+        }
+    }
 
     running_ = true;
     return true;

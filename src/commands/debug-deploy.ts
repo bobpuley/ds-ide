@@ -9,10 +9,10 @@ export async function debugDeploy(
   loadDefs: () => ControllerDef[],
   showPanel: (defs: ControllerDef[], snapshot: Record<number, number>) => void,
   getPotSnapshot: () => Record<number, number>,
-  sendSine?: () => void,
-  outputChannel?: vscode.OutputChannel,
+  sendSine: (() => void) | undefined,
+  outputChannel: vscode.OutputChannel,
 ): Promise<void> {
-  const channel = outputChannel ?? vscode.window.createOutputChannel('Daisy IDE Emulator');
+  const channel = outputChannel;
   channel.show();
 
   try {
