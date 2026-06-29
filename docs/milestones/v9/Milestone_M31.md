@@ -1,7 +1,7 @@
 # M31 — Emulator RT-thread Safety
 
 **Version:** 0.9.0  
-**Status:** planned  
+**Status:** released (0.9.0)  
 **Source:** 2026-06-28 C/C++ emulator code review — HIGH findings
 
 ## Goal
