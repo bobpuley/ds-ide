@@ -5,6 +5,34 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.9.2 — 2026-06-29
+
+**M33 — Quality Polish** *(FR-QA-1 through FR-QA-20 — all DoD green)*
+
+- **FR-RTS-2** — Pre-size RT working buffers to hardware-clamped frame count after `AudioOutputUnitStart`; first callback on USB devices with 512-frame minimum no longer produces xruns
+- **FR-QA-1** — SPSC queue capacity raised from 32 to 64; `ipc_send` increments `g_state.ipc_queue_drops` on overflow
+- **FR-QA-2** — Shared `src/ipc/narrow.ts` provides `getString`, `getBoolean`, `getNumber` guards; all `as T` casts on `IpcMessage` field accesses eliminated
+- **FR-QA-3** — `sendPostDeployState()` helper consolidates duplicate post-deploy state blocks in `extension.ts`
+- **FR-QA-4** — `SessionPlayer::countBlocks` checks `lseek` return values; corrupted `.dsrec` files produce partial block count with no crash
+- **FR-QA-5** — IPC receive buffer capped at 1 MB; oversized clients are disconnected with a stderr diagnostic
+- **FR-QA-6** — `ipc_server` validates socket path length before `strncpy`; paths ≥ 104 chars log and return early
+- **FR-QA-7** — `decode_pcm32` uses `std::memcpy` for bit reinterpretation (defined behaviour in C++17)
+- **FR-QA-8** — `truncId` injected via constant into the webview JS; no longer re-implemented as a duplicate string
+- **FR-QA-9** — `detectNonPortableSymbol` returns all undefined symbols (was early-exit on first)
+- **FR-QA-10** — Magic numbers replaced with named constants: `SOCKET_TIMEOUT_MS`, `IPC_MAX_BUFFER`, `DAP_TERMINATE_DELAY_MS`, CPU-count parallel jobs
+- **FR-QA-11** — `DsIdeTerminatingAdapter.dispose()` clears the 50 ms terminate timer before disposing the emitter
+- **FR-QA-12** — Pot channel/value, output volume, and audio-source enum validated before `manager.send*` calls
+- **FR-QA-13** — `outputChannel` made required in `debugDeploy`; fallback `createOutputChannel` path removed
+- **FR-QA-14** — Redundant `activationEvents` removed from `package.json`; VS Code ≥ 1.74 infers them from `contributes`
+- **FR-QA-15** — CSP nonce regenerated on each `ScopePanel.show()` call instead of reusing the constructor value
+- **FR-QA-16** — Wire/unwire `WorkspaceEdit` targets only the modified line ranges instead of replacing the entire file
+- **FR-QA-17** — Info message shown once per session when operating on first folder of a multi-root workspace
+- **FR-QA-18** — Single async `findEffectSource()` in `src/commands/find-effect-source.ts` replaces dual sync/async implementations
+- **FR-QA-19** — `s_mach_ns_per_tick` stored in `Impl` struct and set before `AudioOutputUnitStart` (natural publication barrier)
+- **FR-QA-20** — Webview JS extracted to typed TypeScript entry points (`controls-webview.ts`, `scope-webview.ts`, `wiring-webview.ts`); esbuild compiles them as separate bundles; extension injects URIs via `asWebviewUri`
+
+---
+
 ## 0.9.1 — 2026-06-29
 
 **M32 — Extension & Emulator Correctness** *(FR-PIN-1, FR-EXT-1/2/3/4/5, FR-PKG-1, FR-EMU-1/2/3 — all DoD green)*
