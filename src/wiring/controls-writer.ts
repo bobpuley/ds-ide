@@ -49,14 +49,16 @@ export function removeFromSource(source: string, id: string): string {
 
 // ── Init block ────────────────────────────────────────────────────────────────
 
-// Analog pin index: D15=A0, D16=A1, ..., D26=A11.
-function analogIndex(pin: number): number {
-  return pin - 15;
+// ADC channel mapping: D15–D25 → A0–A10 (pin - 15), D28 → A11.
+export function pinToAdcChannel(pin: number): number {
+  if (pin >= 15 && pin <= 25) return pin - 15;
+  if (pin === 28) return 11;
+  return 0;
 }
 
 function initCallLine(id: string, kind: DeviceKind, pin: number): string {
   if (kind === 'pot') {
-    return `  ${id}.InitSingle(daisy::seed::A${analogIndex(pin)});`;
+    return `  ${id}.InitSingle(daisy::seed::A${pinToAdcChannel(pin)});`;
   } else if (kind === 'button') {
     return `  ${id}.Init(daisy::seed::D${pin}, hardware.AudioCallbackRate());`;
   } else {

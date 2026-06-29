@@ -5,6 +5,7 @@ import {
   removeFromSource,
   insertInitIntoSource,
   removeInitFromSource,
+  pinToAdcChannel,
 } from '../../../wiring/controls-writer';
 
 // ── declarationLine ──────────────────────────────────────────────────────────
@@ -397,6 +398,25 @@ describe('insertIntoSource — duplicate id annotation (FR-EQ-8d)', () => {
     // Block markers remain
     expect(result).toContain('// ds-ide:controls:begin');
     expect(result).toContain('// ds-ide:controls:end');
+  });
+});
+
+// ── pinToAdcChannel (FR-PIN-1) ────────────────────────────────────────────────
+
+describe('pinToAdcChannel', () => {
+  it('maps D15 to A0', () => expect(pinToAdcChannel(15)).toBe(0));
+  it('maps D16 to A1', () => expect(pinToAdcChannel(16)).toBe(1));
+  it('maps D25 to A10', () => expect(pinToAdcChannel(25)).toBe(10));
+  it('maps D28 to A11 (not A13)', () => expect(pinToAdcChannel(28)).toBe(11));
+  it('returns 0 for unknown pins', () => expect(pinToAdcChannel(0)).toBe(0));
+});
+
+describe('insertInitIntoSource — D28 generates A11 (FR-PIN-1)', () => {
+  it('pot on pin 28 generates daisy::seed::A11', () => {
+    const src = '// ds-ide:controls:begin\n// ds-ide:controls:end\n';
+    const result = insertInitIntoSource(src, 'cv', 'pot', 28, [{ id: 'cv' }]);
+    expect(result).toContain('  cv.InitSingle(daisy::seed::A11);');
+    expect(result).not.toContain('A13');
   });
 });
 

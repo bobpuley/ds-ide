@@ -31,7 +31,7 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
     view.webview.options = { enableScripts: true, localResourceRoots: [] };
     view.webview.html = buildHtml(this.nonce);
 
-    view.webview.onDidReceiveMessage((msg: unknown) => {
+    const msgDisposable = view.webview.onDidReceiveMessage((msg: unknown) => {
       if (!msg || typeof msg !== 'object') return;
       const m = msg as Record<string, unknown>;
       if (m['command'] === 'webviewReady') {
@@ -53,11 +53,16 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
       }
     });
 
-    view.onDidChangeVisibility(() => {
+    const visDisposable = view.onDidChangeVisibility(() => {
       if (view.visible) {
         this._flush();
         this.onBecameVisible?.();
       }
+    });
+
+    view.onDidDispose(() => {
+      msgDisposable.dispose();
+      visDisposable.dispose();
     });
   }
 
@@ -193,6 +198,16 @@ function buildHtml(nonce: string): string {
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
+    const _docListeners = [];
+    function _addDocListener(event, fn) {
+      document.addEventListener(event, fn);
+      _docListeners.push({ event, fn });
+    }
+    function clearDocListeners() {
+      for (const { event, fn } of _docListeners) document.removeEventListener(event, fn);
+      _docListeners.length = 0;
+    }
+
     const _yamlInitEl = document.getElementById('yaml-init');
     const _yamlInit = JSON.parse(_yamlInitEl ? _yamlInitEl.textContent || '{}' : '{}');
     let _yamlCfg = { pots: _yamlInit.pots || [], buttons: _yamlInit.buttons || [], leds: _yamlInit.leds || [], errors: [] };
@@ -234,6 +249,7 @@ function buildHtml(nonce: string): string {
     }
 
     function renderConventionCanvas() {
+      clearDocListeners();
       const area = document.getElementById('canvas-area');
       const hint = document.getElementById('canvas-hint');
       if (!area) return;
@@ -369,8 +385,8 @@ function buildHtml(nonce: string): string {
           vscode.postMessage({ command: 'pot', channel: adcCh, value: newVal });
         };
         const onKnobUp = () => { kDrag = false; };
-        document.addEventListener('mousemove', onKnobMove);
-        document.addEventListener('mouseup', onKnobUp);
+        _addDocListener('mousemove', onKnobMove);
+        _addDocListener('mouseup', onKnobUp);
       } else if (ctrl.kind === 'button') {
         const btn = card.querySelector('.btn-ce');
         const gpioPin = ctrl.pin;
@@ -427,14 +443,14 @@ function buildHtml(nonce: string): string {
         sl = parseInt(card.style.left,10)||0; st = parseInt(card.style.top,10)||0;
         e.preventDefault();
       });
-      document.addEventListener('mousemove', e => {
+      _addDocListener('mousemove', e => {
         if (!drag) return;
         const nx = Math.max(0, sl + e.clientX - sx);
         const ny = Math.max(0, st + e.clientY - sy);
         card.style.left = nx + 'px'; card.style.top = ny + 'px';
         ctrl.pos = [nx, ny];
       });
-      document.addEventListener('mouseup', () => { drag = false; });
+      _addDocListener('mouseup', () => { drag = false; });
     }
 
     // ── Legacy YAML editor (missingBlock mode) ───────────────────────────────
@@ -451,6 +467,7 @@ function buildHtml(nonce: string): string {
     }
 
     function renderCanvas() {
+      clearDocListeners();
       const area = document.getElementById('canvas-area');
       const hint = document.getElementById('canvas-hint');
       area.innerHTML = '';

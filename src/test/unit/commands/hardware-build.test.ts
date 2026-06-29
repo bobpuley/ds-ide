@@ -5,7 +5,7 @@ import { buildForHardware } from '../../../commands/hardware-build';
 
 // Mock toolchain module so tests don't depend on actual fs/execSync.
 vi.mock('../../../hardware/toolchain', () => ({
-  detectArmToolchain: vi.fn(() => '/opt/homebrew/bin/arm-none-eabi-gcc'),
+  detectArmToolchain: vi.fn().mockResolvedValue('/opt/homebrew/bin/arm-none-eabi-gcc'),
   ARM_GCC_INSTALL_HINT: 'brew install arm-none-eabi-gcc',
 }));
 
@@ -59,7 +59,7 @@ describe('buildForHardware()', () => {
   });
 
   it('shows error and skips make when toolchain is not found', async () => {
-    (detectArmToolchain as ReturnType<typeof vi.fn>).mockReturnValueOnce(undefined);
+    (detectArmToolchain as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
     const spawn = makeSpawn(0);
 
     await buildForHardware('/project', makeDiagnostics(), { spawn });
@@ -98,7 +98,7 @@ describe('buildForHardware()', () => {
     });
     const spawn = makeSpawn(0);
     await buildForHardware('/project', makeDiagnostics(), { spawn });
-    expect(detectArmToolchain).toHaveBeenCalledWith('/custom/bin', undefined, undefined);
+    expect(detectArmToolchain).toHaveBeenCalledWith('/custom/bin');
   });
 
   it('invokes make in the project root', async () => {

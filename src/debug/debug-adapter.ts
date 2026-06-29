@@ -8,28 +8,43 @@ const LLDB_DAP_CANDIDATES = [
   '/Applications/Xcode.app/Contents/Developer/usr/bin/lldb-dap',
 ];
 
-export function findLldbDap(
-  existsSync: (p: string) => boolean = fs.existsSync,
-  execSync: (cmd: string) => Buffer = cp.execSync,
-): string | undefined {
+type Exists = (p: string) => Promise<boolean>;
+type Exec   = (cmd: string) => Promise<string>;
+
+const defaultExists: Exists = async (p) => {
+  try { await fs.promises.access(p); return true; } catch { return false; }
+};
+
+const defaultExec: Exec = (cmd) =>
+  new Promise<string>((resolve, reject) =>
+    cp.exec(cmd, (err, stdout) => (err ? reject(err) : resolve(stdout)))
+  );
+
+export async function findLldbDap(
+  exists: Exists = defaultExists,
+  exec: Exec = defaultExec,
+): Promise<string | undefined> {
   // Prefer xcrun so it respects the active Xcode/CLT selection.
   try {
-    const result = execSync('xcrun --find lldb-dap 2>/dev/null').toString().trim();
-    if (result && existsSync(result)) return result;
+    const result = (await exec('xcrun --find lldb-dap 2>/dev/null')).trim();
+    if (result && await exists(result)) return result;
   } catch { /* xcrun not available or lldb-dap not found */ }
 
-  return LLDB_DAP_CANDIDATES.find((p) => existsSync(p));
+  for (const p of LLDB_DAP_CANDIDATES) {
+    if (await exists(p)) return p;
+  }
+  return undefined;
 }
 
 export class DaisyDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory {
   constructor(
-    private readonly _findLldbDap: () => string | undefined = findLldbDap,
+    private readonly _findLldbDap: () => Promise<string | undefined> = findLldbDap,
   ) {}
 
-  createDebugAdapterDescriptor(
+  async createDebugAdapterDescriptor(
     _session: vscode.DebugSession,
-  ): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
-    const lldbDap = this._findLldbDap();
+  ): Promise<vscode.DebugAdapterDescriptor | undefined> {
+    const lldbDap = await this._findLldbDap();
     if (!lldbDap) {
       void vscode.window.showErrorMessage(
         'ds-ide: lldb-dap not found. Install Xcode Command Line Tools: xcode-select --install',

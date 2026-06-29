@@ -133,6 +133,21 @@
         }
       ]
     },
+    "configuration": {
+      "title": "Daisy IDE",
+      "properties": {
+        "ds-ide.effectSource": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the effect .cpp file, relative to project root or absolute. Leave empty for auto-detection."
+        },
+        "ds-ide.armToolchainPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the ARM embedded toolchain binary or its bin/ directory. Leave empty for auto-detection."
+        }
+      }
+    },
     "debuggers": [
       {
         "type": "daisy-debug",
@@ -181,6 +196,7 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
     "esbuild": "^0.21.0",
     "typescript": "^5.4.0",
     "vitest": "^1.5.0"

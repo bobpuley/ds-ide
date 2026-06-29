@@ -112,6 +112,7 @@ static void emit_event(const std::string& msg) {
 // ---- Message dispatch -------------------------------------------------------
 
 static void dispatch(const std::string& line) {
+    try {
     std::string type = json_get(line, "type");
     if (type.empty()) return;
 
@@ -336,6 +337,11 @@ static void dispatch(const std::string& line) {
             }
         }
     }
+    } catch (const std::exception& e) {
+        emit_event(std::string("{\"type\":\"event\",\"kind\":\"dispatch_error\",\"msg\":\"") + e.what() + "\"}");
+    } catch (...) {
+        emit_event("{\"type\":\"event\",\"kind\":\"dispatch_error\",\"msg\":\"unknown exception\"}");
+    }
 }
 
 // ---- Helper: send a line to the active client (must hold send_mutex) --------
@@ -403,7 +409,6 @@ void run_ipc_server(const char* socket_path) {
                 ssize_t r = ::send(client_fd, line.c_str(), line.size(), 0);
                 if (r <= 0) {
                     client_dead->store(true, std::memory_order_relaxed);
-                    ::close(client_fd);
                 }
             };
         }

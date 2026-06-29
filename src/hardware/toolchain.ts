@@ -24,38 +24,56 @@ export const DFU_UTIL_CANDIDATES = [
 export const DFU_UTIL_INSTALL_HINT =
   'Install dfu-util: brew install dfu-util';
 
+type Exists = (p: string) => Promise<boolean>;
+type Exec   = (cmd: string) => Promise<string>;
+
+const defaultExists: Exists = async (p) => {
+  try { await fs.promises.access(p); return true; } catch { return false; }
+};
+
+const defaultExec: Exec = (cmd) =>
+  new Promise<string>((resolve, reject) =>
+    cp.exec(cmd, (err, stdout) => (err ? reject(err) : resolve(stdout)))
+  );
+
 // Detect arm-none-eabi-gcc.
 // configuredPath may be a full path to the binary or a bin directory.
 // Detection order: configured setting → which → known Homebrew / system paths.
-export function detectArmToolchain(
+export async function detectArmToolchain(
   configuredPath: string | undefined,
-  existsSync: (p: string) => boolean = fs.existsSync,
-  execSync: (cmd: string) => Buffer = cp.execSync,
-): string | undefined {
+  exists: Exists = defaultExists,
+  exec: Exec = defaultExec,
+): Promise<string | undefined> {
   if (configuredPath) {
     const candidate = configuredPath.endsWith(ARM_GCC_BINARY)
       ? configuredPath
       : `${configuredPath.replace(/\/$/, '')}/${ARM_GCC_BINARY}`;
-    if (existsSync(candidate)) return candidate;
+    if (await exists(candidate)) return candidate;
   }
 
   try {
-    const result = execSync(`which ${ARM_GCC_BINARY} 2>/dev/null`).toString().trim();
-    if (result && existsSync(result)) return result;
+    const result = (await exec(`which ${ARM_GCC_BINARY} 2>/dev/null`)).trim();
+    if (result && await exists(result)) return result;
   } catch { /* not on PATH */ }
 
-  return ARM_GCC_CANDIDATES.find((p) => existsSync(p));
+  for (const p of ARM_GCC_CANDIDATES) {
+    if (await exists(p)) return p;
+  }
+  return undefined;
 }
 
 // Detect dfu-util. Detection order: which → known paths.
-export function detectDfuUtil(
-  existsSync: (p: string) => boolean = fs.existsSync,
-  execSync: (cmd: string) => Buffer = cp.execSync,
-): string | undefined {
+export async function detectDfuUtil(
+  exists: Exists = defaultExists,
+  exec: Exec = defaultExec,
+): Promise<string | undefined> {
   try {
-    const result = execSync(`which ${DFU_UTIL_BINARY} 2>/dev/null`).toString().trim();
-    if (result && existsSync(result)) return result;
+    const result = (await exec(`which ${DFU_UTIL_BINARY} 2>/dev/null`)).trim();
+    if (result && await exists(result)) return result;
   } catch { /* not on PATH */ }
 
-  return DFU_UTIL_CANDIDATES.find((p) => existsSync(p));
+  for (const p of DFU_UTIL_CANDIDATES) {
+    if (await exists(p)) return p;
+  }
+  return undefined;
 }

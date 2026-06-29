@@ -26,7 +26,7 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
     view.webview.options = { enableScripts: true, localResourceRoots: [] };
     view.webview.html = buildHtml(this.wiredPins, this.nonce);
 
-    view.webview.onDidReceiveMessage(async (msg: unknown) => {
+    const msgDisposable = view.webview.onDidReceiveMessage(async (msg: unknown) => {
       if (!msg || typeof msg !== 'object') return;
       const m = msg as Record<string, unknown>;
       if (m['command'] === 'wirePin') {
@@ -56,14 +56,16 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
       }
     });
 
-    view.onDidChangeVisibility(() => {
+    const visDisposable = view.onDidChangeVisibility(() => {
       if (view.visible) {
-        // Re-hydrate the webview with current state. postMessage is preferred
-        // when retainContextWhenHidden keeps the JS alive; rebuilding HTML
-        // covers the case where the context was discarded.
         void view.webview.postMessage({ command: 'wiredPins', pins: this.wiredPins });
         this.onBecameVisible?.();
       }
+    });
+
+    view.onDidDispose(() => {
+      msgDisposable.dispose();
+      visDisposable.dispose();
     });
   }
 

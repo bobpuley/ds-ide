@@ -494,7 +494,18 @@ describe('EmulatorManager', () => {
     });
   });
 
-  describe('deploy() concurrency guard (FR-EQ-2)', () => {
+  describe('deploy() concurrency guard (FR-EXT-2)', () => {
+    it('a second concurrent deploy() call returns the same in-flight promise', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      const p1 = manager.deploy(() => undefined);
+      const p2 = manager.deploy(() => undefined);
+      expect(p2).toBe(p1);
+      await p1;
+    });
+
     it('a second concurrent deploy() call does not spawn a second effect_emu process', async () => {
       await manager.build(
         { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
