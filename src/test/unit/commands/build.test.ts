@@ -2,74 +2,79 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { detectEffectSrc, detectDaisySP } from '../../../commands/build';
 import * as fs from 'fs';
 
-vi.mock('fs');
+vi.mock('fs', () => ({
+  promises: {
+    readdir: vi.fn(),
+    stat: vi.fn(),
+  },
+}));
 
 describe('detectEffectSrc', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('returns the single .cpp file at root', () => {
-    vi.mocked(fs.readdirSync).mockReturnValue(['effect.cpp', 'Makefile'] as unknown as fs.Dirent[]);
-    expect(detectEffectSrc('/proj')).toBe('/proj/effect.cpp');
+  it('returns the single .cpp file at root', async () => {
+    vi.mocked(fs.promises.readdir).mockResolvedValue(['effect.cpp', 'Makefile'] as never);
+    expect(await detectEffectSrc('/proj')).toBe('/proj/effect.cpp');
   });
 
-  it('returns undefined when no .cpp found', () => {
-    vi.mocked(fs.readdirSync).mockReturnValue(['Makefile'] as unknown as fs.Dirent[]);
-    expect(detectEffectSrc('/proj')).toBeUndefined();
+  it('returns undefined when no .cpp found', async () => {
+    vi.mocked(fs.promises.readdir).mockResolvedValue(['Makefile'] as never);
+    expect(await detectEffectSrc('/proj')).toBeUndefined();
   });
 
-  it('returns undefined when multiple .cpp files present and no single non-main', () => {
-    vi.mocked(fs.readdirSync).mockReturnValue(['a.cpp', 'b.cpp'] as unknown as fs.Dirent[]);
-    expect(detectEffectSrc('/proj')).toBeUndefined();
+  it('returns undefined when multiple .cpp files present and no single non-main', async () => {
+    vi.mocked(fs.promises.readdir).mockResolvedValue(['a.cpp', 'b.cpp'] as never);
+    expect(await detectEffectSrc('/proj')).toBeUndefined();
   });
 
-  it('picks non-main.cpp when exactly one other exists', () => {
-    vi.mocked(fs.readdirSync).mockReturnValue(['main.cpp', 'effect.cpp'] as unknown as fs.Dirent[]);
-    expect(detectEffectSrc('/proj')).toBe('/proj/effect.cpp');
+  it('picks non-main.cpp when exactly one other exists', async () => {
+    vi.mocked(fs.promises.readdir).mockResolvedValue(['main.cpp', 'effect.cpp'] as never);
+    expect(await detectEffectSrc('/proj')).toBe('/proj/effect.cpp');
   });
 
-  it('returns undefined on fs error', () => {
-    vi.mocked(fs.readdirSync).mockImplementation(() => { throw new Error('ENOENT'); });
-    expect(detectEffectSrc('/proj')).toBeUndefined();
+  it('returns undefined on fs error', async () => {
+    vi.mocked(fs.promises.readdir).mockRejectedValue(new Error('ENOENT'));
+    expect(await detectEffectSrc('/proj')).toBeUndefined();
   });
 
-  it('falls back to src/ subdirectory when no root .cpp found (AC-72)', () => {
-    vi.mocked(fs.readdirSync).mockImplementation((dir) => {
-      if (String(dir).endsWith('src')) return ['effect.cpp'] as unknown as fs.Dirent[];
-      return [] as unknown as fs.Dirent[];
+  it('falls back to src/ subdirectory when no root .cpp found (AC-72)', async () => {
+    vi.mocked(fs.promises.readdir).mockImplementation((dir) => {
+      if (String(dir).endsWith('src')) return Promise.resolve(['effect.cpp'] as never);
+      return Promise.resolve([] as never);
     });
-    expect(detectEffectSrc('/proj')).toBe('/proj/src/effect.cpp');
+    expect(await detectEffectSrc('/proj')).toBe('/proj/src/effect.cpp');
   });
 
-  it('falls back to source/ subdirectory when no root or src .cpp found (AC-72)', () => {
-    vi.mocked(fs.readdirSync).mockImplementation((dir) => {
-      if (String(dir).endsWith('source')) return ['effect.cpp'] as unknown as fs.Dirent[];
-      return [] as unknown as fs.Dirent[];
+  it('falls back to source/ subdirectory when no root or src .cpp found (AC-72)', async () => {
+    vi.mocked(fs.promises.readdir).mockImplementation((dir) => {
+      if (String(dir).endsWith('source')) return Promise.resolve(['effect.cpp'] as never);
+      return Promise.resolve([] as never);
     });
-    expect(detectEffectSrc('/proj')).toBe('/proj/source/effect.cpp');
+    expect(await detectEffectSrc('/proj')).toBe('/proj/source/effect.cpp');
   });
 
-  it('prefers root .cpp over src/ fallback (AC-72)', () => {
-    vi.mocked(fs.readdirSync).mockImplementation((dir) => {
-      if (String(dir) === '/proj') return ['root.cpp'] as unknown as fs.Dirent[];
-      return ['src.cpp'] as unknown as fs.Dirent[];
+  it('prefers root .cpp over src/ fallback (AC-72)', async () => {
+    vi.mocked(fs.promises.readdir).mockImplementation((dir) => {
+      if (String(dir) === '/proj') return Promise.resolve(['root.cpp'] as never);
+      return Promise.resolve(['src.cpp'] as never);
     });
-    expect(detectEffectSrc('/proj')).toBe('/proj/root.cpp');
+    expect(await detectEffectSrc('/proj')).toBe('/proj/root.cpp');
   });
 });
 
 describe('detectDaisySP', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('finds DaisySP/Source at project root', () => {
-    vi.mocked(fs.statSync).mockImplementation((p) => {
-      if (String(p).endsWith('DaisySP/Source')) return { isDirectory: () => true } as fs.Stats;
-      throw new Error('ENOENT');
+  it('finds DaisySP/Source at project root', async () => {
+    vi.mocked(fs.promises.stat).mockImplementation((p) => {
+      if (String(p).endsWith('DaisySP/Source')) return Promise.resolve({ isDirectory: () => true } as fs.Stats);
+      return Promise.reject(new Error('ENOENT'));
     });
-    expect(detectDaisySP('/proj')).toBe('/proj/DaisySP/Source');
+    expect(await detectDaisySP('/proj')).toBe('/proj/DaisySP/Source');
   });
 
-  it('returns undefined when DaisySP not found', () => {
-    vi.mocked(fs.statSync).mockImplementation(() => { throw new Error('ENOENT'); });
-    expect(detectDaisySP('/proj')).toBeUndefined();
+  it('returns undefined when DaisySP not found', async () => {
+    vi.mocked(fs.promises.stat).mockRejectedValue(new Error('ENOENT'));
+    expect(await detectDaisySP('/proj')).toBeUndefined();
   });
 });

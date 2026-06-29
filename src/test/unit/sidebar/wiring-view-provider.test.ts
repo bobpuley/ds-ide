@@ -4,6 +4,7 @@ import { WiringViewProvider } from '../../../sidebar/wiring-view-provider';
 function makeView(visible = true) {
   const onMsgHandlers: ((msg: unknown) => Promise<void> | void)[] = [];
   const onVisHandlers: (() => void)[] = [];
+  const onDisposeHandlers: (() => void)[] = [];
   const view = {
     get visible() { return _visible; },
     webview: {
@@ -12,11 +13,15 @@ function makeView(visible = true) {
       postMessage: vi.fn(),
       onDidReceiveMessage: vi.fn((cb: (msg: unknown) => void) => {
         onMsgHandlers.push(cb);
-        return { dispose: vi.fn() };
+        return { dispose: vi.fn(() => { const i = onMsgHandlers.indexOf(cb); if (i !== -1) onMsgHandlers.splice(i, 1); }) };
       }),
     },
     onDidChangeVisibility: vi.fn((cb: () => void) => {
       onVisHandlers.push(cb);
+      return { dispose: vi.fn(() => { const i = onVisHandlers.indexOf(cb); if (i !== -1) onVisHandlers.splice(i, 1); }) };
+    }),
+    onDidDispose: vi.fn((cb: () => void) => {
+      onDisposeHandlers.push(cb);
       return { dispose: vi.fn() };
     }),
     _triggerMessage: async (msg: unknown) => {
@@ -26,6 +31,7 @@ function makeView(visible = true) {
       _visible = v;
       onVisHandlers.forEach(h => h());
     },
+    _triggerDispose: () => onDisposeHandlers.forEach(h => h()),
   };
   let _visible = visible;
   return view;
@@ -180,5 +186,14 @@ describe('WiringViewProvider', () => {
     provider.setOnBecameVisible(cb);
     view._setVisible(false);
     expect(cb).not.toHaveBeenCalled();
+  });
+
+  it('does not fire duplicate onWirePin callbacks after double resolveWebviewView (FR-EXT-4)', async () => {
+    const view = makeView();
+    provider.resolveWebviewView(view as never);
+    view._triggerDispose();
+    provider.resolveWebviewView(view as never);
+    await view._triggerMessage({ command: 'wirePin', pinNumber: 15, deviceType: 'pot', id: 'cutoff' });
+    expect(onWirePin).toHaveBeenCalledOnce();
   });
 });

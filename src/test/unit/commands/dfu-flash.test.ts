@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import { flashToHardware, findHardwareBin } from '../../../commands/dfu-flash';
 
 vi.mock('../../../hardware/toolchain', () => ({
-  detectDfuUtil: vi.fn(() => '/opt/homebrew/bin/dfu-util'),
+  detectDfuUtil: vi.fn().mockResolvedValue('/opt/homebrew/bin/dfu-util'),
   DFU_UTIL_INSTALL_HINT: 'brew install dfu-util',
 }));
 
@@ -23,8 +23,6 @@ function makeSpawn(exitCode = 0) {
 function makeFlashDeps(exitCode = 0) {
   return {
     spawn: makeSpawn(exitCode),
-    existsSync: vi.fn(() => true),
-    execSync: vi.fn(() => { throw new Error(); }),
     readdirSync: vi.fn(() => ['effect.bin']),
     statSync: vi.fn(() => ({ mtimeMs: 1000 })),
   };
@@ -55,7 +53,7 @@ describe('flashToHardware()', () => {
   });
 
   it('shows error and skips flash when dfu-util is not found', async () => {
-    (detectDfuUtil as ReturnType<typeof vi.fn>).mockReturnValueOnce(undefined);
+    (detectDfuUtil as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
     const deps = makeFlashDeps(0);
 
     await flashToHardware('/project', deps);

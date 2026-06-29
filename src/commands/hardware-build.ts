@@ -6,8 +6,6 @@ import { parseBuildLine, applyDiagnostics, ParsedDiagnostic } from '../diagnosti
 
 export interface HardwareBuildDeps {
   spawn?: typeof cp.spawn;
-  existsSync?: (p: string) => boolean;
-  execSync?: (cmd: string) => Buffer;
 }
 
 // Invoke the project Makefile for the hardware target (arm-none-eabi).
@@ -19,15 +17,9 @@ export async function buildForHardware(
   outputChannel?: vscode.OutputChannel,
 ): Promise<void> {
   const spawnFn = deps.spawn ?? cp.spawn;
-  const existsSync = deps.existsSync;
-  const execSync = deps.execSync;
 
   const configuredPath = vscode.workspace.getConfiguration('ds-ide').get<string>('armToolchainPath');
-  const gccPath = detectArmToolchain(
-    configuredPath ?? undefined,
-    existsSync,
-    execSync,
-  );
+  const gccPath = await detectArmToolchain(configuredPath ?? undefined);
 
   if (!gccPath) {
     void vscode.window.showErrorMessage(

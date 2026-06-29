@@ -1,7 +1,7 @@
 # M32 — Extension & Emulator Correctness
 
 **Version:** 0.9.1  
-**Status:** planned  
+**Status:** in progress  
 **Source:** 2026-06-28 code reviews — HIGH TS finding + impactful MEDIUM findings across all three reviews
 
 ## Goal
@@ -10,7 +10,7 @@ Fix correctness bugs that produce user-visible failures: invalid generated C++ c
 
 ## Sprint Tasks
 
-### fix: D28 / A11 analog index in controls-writer.ts (FR-PIN-1)
+### [x] fix: D28 / A11 analog index in controls-writer.ts (FR-PIN-1)
 
 `analogIndex(28)` returns 13 via `pin - 15`, generating `daisy::seed::A13` (does not exist). The correct index for D28 is 11 (`A11`).
 
@@ -23,7 +23,7 @@ Fix correctness bugs that produce user-visible failures: invalid generated C++ c
 
 ---
 
-### fix: deploy() returns deployLock on concurrent call (FR-EXT-2)
+### [x] fix: deploy() returns deployLock on concurrent call (FR-EXT-2)
 
 `deploy()` currently returns bare `undefined` when `this.deployLock` is set, causing callers to misinterpret the no-op as success.
 
@@ -36,7 +36,7 @@ Fix correctness bugs that produce user-visible failures: invalid generated C++ c
 
 ---
 
-### fix: Add contributes.configuration for ds-ide settings (FR-EXT-3)
+### [x] fix: Add contributes.configuration for ds-ide settings (FR-EXT-3)
 
 `ds-ide.effectSource` and `ds-ide.armToolchainPath` are read but not declared in `package.json`.
 
@@ -48,7 +48,7 @@ Fix correctness bugs that produce user-visible failures: invalid generated C++ c
 
 ---
 
-### fix: Add @vscode/vsce to devDependencies (FR-PKG-1)
+### [x] fix: Add @vscode/vsce to devDependencies (FR-PKG-1)
 
 `npm run package` fails on a clean machine without a globally installed `vsce`.
 
@@ -60,7 +60,7 @@ Fix correctness bugs that produce user-visible failures: invalid generated C++ c
 
 ---
 
-### fix: Remove accumulating document event listeners in controls webview (FR-EXT-5)
+### [x] fix: Remove accumulating document event listeners in controls webview (FR-EXT-5)
 
 `buildConventionCard` and `makeDraggable` register `mousemove`/`mouseup` on `document` per card per render cycle. The listeners are never removed when cards are removed from the DOM.
 
@@ -73,7 +73,7 @@ Fix correctness bugs that produce user-visible failures: invalid generated C++ c
 
 ---
 
-### fix: Track and dispose view provider event listener disposables (FR-EXT-4)
+### [x] fix: Track and dispose view provider event listener disposables (FR-EXT-4)
 
 `view.webview.onDidReceiveMessage` and `view.onDidChangeVisibility` return values are silently discarded in `ControlsViewProvider` and `WiringViewProvider`.
 
@@ -85,7 +85,7 @@ Fix correctness bugs that produce user-visible failures: invalid generated C++ c
 
 ---
 
-### fix: Guard against std::bad_alloc from oversized WAV files (FR-EMU-1)
+### [x] fix: Guard against std::bad_alloc from oversized WAV files (FR-EMU-1)
 
 `parse_wav` calls `out.samples.resize(total_samples)` with an unchecked size. A malformed WAV with `data_size ≈ 4 GB` throws `std::bad_alloc`, propagating through the IPC server and terminating the emulator.
 
@@ -98,7 +98,7 @@ Fix correctness bugs that produce user-visible failures: invalid generated C++ c
 
 ---
 
-### fix: Single authoritative ::close for IPC client fd (FR-EMU-2)
+### [x] fix: Single authoritative ::close for IPC client fd (FR-EMU-2)
 
 On `::send()` failure, `send_ipc` lambda and the cleanup block both call `::close(client_fd)`.
 
@@ -110,7 +110,7 @@ On `::send()` failure, `send_ipc` lambda and the cleanup block both call `::clos
 
 ---
 
-### fix: Replace synchronous extension host I/O with async equivalents (FR-EXT-1)
+### [x] fix: Replace synchronous extension host I/O with async equivalents (FR-EXT-1)
 
 `detectArmToolchain`, `detectDfuUtil` (toolchain.ts), `findLldbDap` (debug-adapter.ts), `detectEffectSrc`/`detectDaisySP` (build.ts), `killStalePid`/`writePid`/`clearPid` (manager.ts), and `controllers.yaml` write (extension.ts) all use blocking Node.js APIs on the extension host event loop.
 
@@ -123,7 +123,7 @@ On `::send()` failure, `send_ipc` lambda and the cleanup block both call `::clos
 
 ---
 
-### fix: Wait for stale emulator process exit before spawning replacement (FR-EMU-3)
+### [x] fix: Wait for stale emulator process exit before spawning replacement (FR-EMU-3)
 
 `killStalePid` sends `SIGKILL` and immediately proceeds; the new emulator may fail to acquire the socket address or audio device if the old process is still alive.
 

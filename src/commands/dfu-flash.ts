@@ -6,8 +6,6 @@ import { detectDfuUtil, DFU_UTIL_INSTALL_HINT } from '../hardware/toolchain';
 
 export interface DfuFlashDeps {
   spawn?: typeof cp.spawn;
-  existsSync?: (p: string) => boolean;
-  execSync?: (cmd: string) => Buffer;
   readdirSync?: typeof fs.readdirSync;
   statSync?: typeof fs.statSync;
 }
@@ -20,12 +18,10 @@ export async function flashToHardware(
   deps: DfuFlashDeps = {},
 ): Promise<void> {
   const spawnFn = deps.spawn ?? cp.spawn;
-  const existsSync = deps.existsSync ?? fs.existsSync;
-  const execSync = deps.execSync ?? cp.execSync;
   const readdirSync = deps.readdirSync ?? fs.readdirSync;
   const statSync = deps.statSync ?? fs.statSync;
 
-  const dfuUtil = detectDfuUtil(existsSync, execSync);
+  const dfuUtil = await detectDfuUtil();
   if (!dfuUtil) {
     void vscode.window.showErrorMessage(
       `ds-ide: dfu-util not found. ${DFU_UTIL_INSTALL_HINT}`,

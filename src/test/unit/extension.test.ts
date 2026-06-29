@@ -180,7 +180,7 @@ describe('extension', () => {
     const regCalls = (vscode.window.registerWebviewViewProvider as ReturnType<typeof vi.fn>).mock.calls;
     const controlsEntry = regCalls.find((c: unknown[]) => c[0] === 'ds-ide.controlsEditor');
     const controlsProvider = controlsEntry?.[1] as { resolveWebviewView: (v: unknown) => void } | undefined;
-    const view = { visible: true, webview: { options: {}, html: '', postMessage: vi.fn(), onDidReceiveMessage: vi.fn(() => ({ dispose: vi.fn() })) }, onDidChangeVisibility: vi.fn(() => ({ dispose: vi.fn() })) };
+    const view = { visible: true, webview: { options: {}, html: '', postMessage: vi.fn(), onDidReceiveMessage: vi.fn(() => ({ dispose: vi.fn() })) }, onDidChangeVisibility: vi.fn(() => ({ dispose: vi.fn() })), onDidDispose: vi.fn(() => ({ dispose: vi.fn() })) };
     controlsProvider?.resolveWebviewView(view as never);
 
     mgr.emit('message', { type: 'led', gpioPin: 23, lit: true });
@@ -281,6 +281,7 @@ function makeWebviewView(initiallyVisible = false) {
       visHandlers.push(cb);
       return { dispose: vi.fn() };
     }),
+    onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
     _setVisible: (v: boolean) => {
       _visible = v;
       visHandlers.forEach(h => h());

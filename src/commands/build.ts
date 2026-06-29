@@ -18,7 +18,7 @@ export async function buildForEmulator(
   }
   const projectRoot = folders[0]!.uri.fsPath;
 
-  const effectSrc = detectEffectSrc(projectRoot);
+  const effectSrc = await detectEffectSrc(projectRoot);
   if (!effectSrc) {
     void vscode.window.showErrorMessage(
       'ds-ide: no effect .cpp found at project root, src/, or source/. ' +
@@ -27,7 +27,7 @@ export async function buildForEmulator(
     return false;
   }
 
-  const daisySpDir = detectDaisySP(projectRoot);
+  const daisySpDir = await detectDaisySP(projectRoot);
   const emulatorSrc = path.join(extensionPath, 'emulator');
 
   const opts: BuildOptions = { projectRoot, effectSrc, emulatorSrc };
@@ -67,12 +67,12 @@ export async function buildForEmulator(
   }
 }
 
-export function detectEffectSrc(projectRoot: string): string | undefined {
+export async function detectEffectSrc(projectRoot: string): Promise<string | undefined> {
   const excluded = new Set(['libDaisy', 'DaisySP', 'libdaisy', 'daisysp', '.ds-ide']);
 
-  function findCpp(dir: string): string | undefined {
+  async function findCpp(dir: string): Promise<string | undefined> {
     try {
-      const entries = fs.readdirSync(dir);
+      const entries = (await fs.promises.readdir(dir)) as string[];
       const cpps = entries.filter((e) => {
         if (!e.endsWith('.cpp')) return false;
         if (excluded.has(e)) return false;
@@ -87,21 +87,25 @@ export function detectEffectSrc(projectRoot: string): string | undefined {
     return undefined;
   }
 
-  return (
-    findCpp(projectRoot) ??
-    findCpp(path.join(projectRoot, 'src')) ??
-    findCpp(path.join(projectRoot, 'source'))
-  );
+  const r1 = await findCpp(projectRoot);
+  if (r1) return r1;
+  const r2 = await findCpp(path.join(projectRoot, 'src'));
+  if (r2) return r2;
+  return findCpp(path.join(projectRoot, 'source'));
 }
 
-export function detectDaisySP(projectRoot: string): string | undefined {
+export async function detectDaisySP(projectRoot: string): Promise<string | undefined> {
   const candidates = [
     path.join(projectRoot, 'DaisySP', 'Source'),
     path.join(projectRoot, 'DaisySP', 'src'),
     path.join(projectRoot, 'daisysp', 'Source'),
     path.join(projectRoot, 'daisysp', 'src'),
   ];
-  return candidates.find((p) => {
-    try { return fs.statSync(p).isDirectory(); } catch { return false; }
-  });
+  for (const p of candidates) {
+    try {
+      const stat = await fs.promises.stat(p);
+      if (stat.isDirectory()) return p;
+    } catch { /* ignore */ }
+  }
+  return undefined;
 }

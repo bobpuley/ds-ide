@@ -131,6 +131,15 @@ bool parse_wav(const uint8_t* data, size_t size, WavData& out, std::string& err)
     }
 
     uint32_t total_samples = data_size / bytes_per_sample;
+    static constexpr uint32_t MAX_WAV_SAMPLES = 10u * 60u * 48000u * 2u; // 10 min stereo @48 kHz
+    if (total_samples > MAX_WAV_SAMPLES) {
+        char buf[128];
+        std::snprintf(buf, sizeof(buf),
+                      "WAV file too large (%u samples, max %u)",
+                      total_samples, MAX_WAV_SAMPLES);
+        err = buf;
+        return false;
+    }
     out.channels    = channels;
     out.sample_rate = sample_rate;
     out.samples.resize(total_samples);

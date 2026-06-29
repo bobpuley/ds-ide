@@ -86,11 +86,9 @@ export function activate(context: vscode.ExtensionContext): void {
       const folders = vscode.workspace.workspaceFolders;
       if (!folders?.[0]) return;
       const yamlPath = path.join(folders[0].uri.fsPath, 'controllers.yaml');
-      try {
-        fs.writeFileSync(yamlPath, serializeControllerConfig(cfg), 'utf8');
-      } catch (err) {
+      void fs.promises.writeFile(yamlPath, serializeControllerConfig(cfg), 'utf8').catch((err: unknown) => {
         void vscode.window.showErrorMessage(`ds-ide: could not write controllers.yaml: ${String(err)}`);
-      }
+      });
     },
     (channel, value) => {
       potStore?.set(channel, value);
