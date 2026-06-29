@@ -28,7 +28,10 @@ enum class AudioMode { Simulated = 0, Realtime = 1 };
 // never triggers heap reallocation for typical scope/spectrum messages.
 struct SpscIpcQueue {
     static constexpr size_t CAPACITY = 32;
-    static constexpr size_t MAX_MSG  = 16384;
+    // 80 kB: accommodates the maximum scope message (~76 kB at SCOPE_BLOCKS=33,
+    // SCOPE_STEP=4, rt_buffer_size=256). Must be ≥ that size to prevent
+    // std::string::assign from reallocating on the RT thread.
+    static constexpr size_t MAX_MSG  = 81920;
 
     struct alignas(64) Slot { std::string msg; };
 
@@ -38,6 +41,17 @@ struct SpscIpcQueue {
 
     // Called from RT thread. Returns false if queue is full (message is dropped).
     bool push(const std::string& m) {
+        size_t w    = write_.load(std::memory_order_relaxed);
+        size_t next = (w + 1) % CAPACITY;
+        if (next == read_.load(std::memory_order_acquire)) return false;
+        slots_[w].msg.assign(m);  // no alloc: capacity pre-reserved in constructor
+        write_.store(next, std::memory_order_release);
+        return true;
+    }
+
+    // Overload for NUL-terminated C strings — avoids constructing a temporary
+    // std::string on the RT thread when called with a string literal or char buf[].
+    bool push(const char* m) {
         size_t w    = write_.load(std::memory_order_relaxed);
         size_t next = (w + 1) % CAPACITY;
         if (next == read_.load(std::memory_order_acquire)) return false;

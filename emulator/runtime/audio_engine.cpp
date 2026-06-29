@@ -27,6 +27,10 @@ namespace daisy_emu {
 
 // Post msg to the SPSC queue; drained to the IPC socket by the non-RT drain
 // thread started in run_audio_engine() (AC-39). Safe to call from RT thread.
+// The const char* overload avoids constructing a temporary std::string (FR-RTS-2).
+static void ipc_send(const char* msg) {
+    g_state.ipc_queue.push(msg);
+}
 static void ipc_send(const std::string& msg) {
     g_state.ipc_queue.push(msg);
 }
@@ -59,31 +63,32 @@ static void fft_radix2(std::vector<std::complex<float>>& x) {
     }
 }
 
-// Returns single-sided magnitude spectrum (N/2 bins). Applies a Hann window.
-static std::vector<float> magnitude_spectrum(const std::vector<float>& samples) {
+// Fills mag_out (N/2 entries) with the single-sided magnitude spectrum of samples.
+// Uses work (size N) as scratch space. Both buffers must be pre-allocated (FR-RTS-2).
+static void magnitude_spectrum(const std::vector<float>& samples,
+                               std::vector<std::complex<float>>& work,
+                               std::vector<float>& mag_out) {
     const size_t N = samples.size();
-    std::vector<std::complex<float>> X(N);
     const float inv_n1 = 1.f / static_cast<float>(N > 1 ? N - 1 : 1);
     for (size_t i = 0; i < N; ++i) {
         float w = 0.5f * (1.f - std::cos(2.f * static_cast<float>(M_PI) * static_cast<float>(i) * inv_n1));
-        X[i] = std::complex<float>(samples[i] * w, 0.f);
+        work[i] = std::complex<float>(samples[i] * w, 0.f);
     }
-    fft_radix2(X);
+    fft_radix2(work);
     const float norm = 2.f / static_cast<float>(N);
-    std::vector<float> mag(N / 2);
     for (size_t i = 0; i < N / 2; ++i)
-        mag[i] = std::abs(X[i]) * norm;
-    return mag;
+        mag_out[i] = std::abs(work[i]) * norm;
 }
 
-static std::string build_spectrum_json(const std::vector<float>& in_mag,
-                                       const std::vector<float>& out_mag,
-                                       float bin_hz) {
-    std::string s;
-    s.reserve(64 + (in_mag.size() + out_mag.size()) * 10);
+// Writes into a pre-allocated std::string to avoid RT heap allocation (FR-RTS-2).
+static void build_spectrum_json(const std::vector<float>& in_mag,
+                                const std::vector<float>& out_mag,
+                                float bin_hz,
+                                std::string& s) {
     char num[32];
     std::snprintf(num, sizeof(num), "%.4f", static_cast<double>(bin_hz));
-    s = "{\"type\":\"spectrum\",\"binHz\":";
+    s.clear();
+    s += "{\"type\":\"spectrum\",\"binHz\":";
     s += num;
     s += ",\"in_fft\":[";
     for (size_t i = 0; i < in_mag.size(); ++i) {
@@ -98,7 +103,6 @@ static std::string build_spectrum_json(const std::vector<float>& in_mag,
         s += num;
     }
     s += "]}";
-    return s;
 }
 
 // ---- FFT accumulation state -------------------------------------------------
@@ -107,8 +111,20 @@ struct FftState {
     static constexpr size_t N_FFT = 1024;
 
     std::vector<float> in_samples, out_samples;
+    // Pre-allocated working buffers — no RT heap allocation in compute path (FR-RTS-2).
+    std::vector<std::complex<float>> fft_work;    // size N_FFT
+    std::vector<float>               mag_in_buf;  // size N_FFT/2
+    std::vector<float>               mag_out_buf; // size N_FFT/2
+    std::string                      json_buf;    // pre-reserved to MAX_MSG
 
-    FftState() { in_samples.reserve(N_FFT); out_samples.reserve(N_FFT); }
+    FftState() {
+        in_samples.reserve(N_FFT);
+        out_samples.reserve(N_FFT);
+        fft_work.resize(N_FFT);
+        mag_in_buf.resize(N_FFT / 2);
+        mag_out_buf.resize(N_FFT / 2);
+        json_buf.reserve(SpscIpcQueue::MAX_MSG);
+    }
 
     void reset() { in_samples.clear(); out_samples.clear(); }
 
@@ -135,22 +151,22 @@ static void emit_spectrum_if_ready(FftState& fft,
                                    size_t frames,
                                    float sample_rate) {
     if (!fft.accumulate(in_buf, out_buf, frames)) return;
-    auto in_mag  = magnitude_spectrum(fft.in_samples);
-    auto out_mag = magnitude_spectrum(fft.out_samples);
     float bin_hz = sample_rate / static_cast<float>(FftState::N_FFT);
-    ipc_send(build_spectrum_json(in_mag, out_mag, bin_hz));
+    magnitude_spectrum(fft.in_samples,  fft.fft_work, fft.mag_in_buf);
+    magnitude_spectrum(fft.out_samples, fft.fft_work, fft.mag_out_buf);
+    build_spectrum_json(fft.mag_in_buf, fft.mag_out_buf, bin_hz, fft.json_buf);
+    ipc_send(fft.json_buf);
     fft.reset();
 }
 
-// ----------------------------------------------------------------------------
-
-static std::string build_scope_json(const std::vector<float>& in_pts,
-                                    const std::vector<float>& out_pts,
-                                    const std::vector<float>& out_r_pts) {
-    std::string s;
-    s.reserve(64 + (in_pts.size() + out_pts.size() + out_r_pts.size()) * 12);
-    s = "{\"type\":\"scope\",\"in\":[";
+// Writes into a pre-allocated std::string to avoid RT heap allocation (FR-RTS-2).
+static void build_scope_json(const std::vector<float>& in_pts,
+                             const std::vector<float>& out_pts,
+                             const std::vector<float>& out_r_pts,
+                             std::string& s) {
     char num[32];
+    s.clear();
+    s += "{\"type\":\"scope\",\"in\":[";
     for (size_t i = 0; i < in_pts.size(); ++i) {
         if (i) s += ',';
         std::snprintf(num, sizeof(num), "%.6g", in_pts[i]);
@@ -169,7 +185,6 @@ static std::string build_scope_json(const std::vector<float>& in_pts,
         s += num;
     }
     s += "]}";
-    return s;
 }
 
 // Scan output for NaN/Inf, denormals, and clipping (FR-RU-4). Sends at most
@@ -203,12 +218,14 @@ struct ScopeState {
     static constexpr size_t SCOPE_SAMPLES_MAX = 65536;
 
     std::vector<float> in, out, out_r;
+    std::string json_buf;  // pre-reserved to MAX_MSG — no RT heap allocation (FR-RTS-2)
     size_t block_count{0};
 
     ScopeState() {
         in.reserve(SCOPE_SAMPLES_MAX);
         out.reserve(SCOPE_SAMPLES_MAX);
         out_r.reserve(SCOPE_SAMPLES_MAX);
+        json_buf.reserve(SpscIpcQueue::MAX_MSG);
     }
 
     void reset() {
@@ -326,11 +343,8 @@ static void run_simulated(bool use_block,
             }
         }
 
-        // Record input block (M14).
-        if (g_state.recorder.active()) {
-            std::lock_guard<std::mutex> lk(g_state.recorder_mutex);
-            g_state.recorder.writeBlock(in_buf.data(), frames);
-        }
+        // Record input block (M14 / FR-RTS-1): enqueueBlock is RT-safe (SPSC, no mutex).
+        g_state.recorder.enqueueBlock(in_buf.data(), frames);
 
         std::fill(out_buf.begin(), out_buf.begin() + static_cast<ptrdiff_t>(frames * 2), 0.f);
 
@@ -362,7 +376,8 @@ static void run_simulated(bool use_block,
         }
 
         if (scope.accumulate(in_buf, out_buf, frames)) {
-            ipc_send(build_scope_json(scope.in, scope.out, scope.out_r));
+            build_scope_json(scope.in, scope.out, scope.out_r, scope.json_buf);
+            ipc_send(scope.json_buf);
             scope.reset();
         }
 
@@ -515,7 +530,8 @@ static void run_realtime(bool use_block,
 
         // Scope tap
         if (scope.accumulate(in_buf, out_buf, frames)) {
-            ipc_send(build_scope_json(scope.in, scope.out, scope.out_r));
+            build_scope_json(scope.in, scope.out, scope.out_r, scope.json_buf);
+            ipc_send(scope.json_buf);
             scope.reset();
         }
 

@@ -1,7 +1,6 @@
 #include "daisy/led.h"
 #include "emulator_state.h"
 #include <cstdio>
-#include <mutex>
 
 namespace daisy {
 
@@ -18,8 +17,7 @@ void emit_led_change(int pin, bool lit) {
                   "{\"type\":\"led\",\"gpioPin\":%d,\"lit\":%s}",
                   pin, lit ? "true" : "false");
 
-    std::lock_guard<std::mutex> lk(daisy_emu::g_state.send_mutex);
-    if (daisy_emu::g_state.send_ipc) daisy_emu::g_state.send_ipc(buf);
+    daisy_emu::g_state.ipc_queue.push(buf);
 }
 
 void Led::Init(dsy_gpio_pin pin, bool invert) {
