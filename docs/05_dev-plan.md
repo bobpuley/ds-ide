@@ -27,8 +27,6 @@
 > **v9 complete** — M31–M33 released (0.9.0–0.9.2), all ACs green.
 > Archived: [`docs/v9/`](v9/).
 
-*v10 milestones not yet planned.*
-
 ---
 
 ## 0. Milestone Registry
@@ -87,4 +85,6 @@ Full registry in [`docs/v9/05_dev-plan.md`](v9/05_dev-plan.md).
 
 ### v10 — planned
 
-*(no milestones yet)*
+| ID  | Name | Status          | Version | File |
+|-----|------|-----------------|---------|------|
+| M34 | UI Polish: Independent Editors, Always-Visible Audio Settings, Panel Icons | **released** | 0.10.0 | [Milestone_M34.md](milestones/v10/Milestone_M34.md) |
