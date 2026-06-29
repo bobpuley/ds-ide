@@ -5,6 +5,23 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.9.1 — 2026-06-29
+
+**M32 — Extension & Emulator Correctness** *(FR-PIN-1, FR-EXT-1/2/3/4/5, FR-PKG-1, FR-EMU-1/2/3 — all DoD green)*
+
+- **FR-PIN-1** — Fixed `analogIndex` for D28: now correctly returns 11 (`daisy::seed::A11`); extracted `pinToAdcChannel()` as single source of truth in `controls-writer.ts` and the webview JS
+- **FR-EXT-1** — Replaced all synchronous `fs.*Sync` / `cp.execSync` extension-host calls with `fs.promises.*` / promisified `cp.exec` equivalents across `toolchain.ts`, `debug-adapter.ts`, `build.ts`, `manager.ts`, and `extension.ts`
+- **FR-EXT-2** — `deploy()` now returns the in-flight promise on concurrent calls instead of bare `undefined`, preventing false-success races on rapid redeploy
+- **FR-EXT-3** — Added `contributes.configuration` to `package.json` so `ds-ide.effectSource` and `ds-ide.armToolchainPath` appear in the VS Code Settings UI
+- **FR-EXT-4** — Webview `onDidReceiveMessage` and `onDidChangeVisibility` disposables are now stored and disposed in `onDidDispose` handlers in `ControlsViewProvider` and `WiringViewProvider`
+- **FR-EXT-5** — Removed accumulating `mousemove`/`mouseup` document listeners in the controls webview; `clearDocListeners()` is called at the start of each render cycle
+- **FR-PKG-1** — Added `@vscode/vsce` to `devDependencies`; `npm ci && npm run package` succeeds without a globally installed `vsce`
+- **FR-EMU-1** — `parse_wav` validates `total_samples ≤ MAX_WAV_SAMPLES` before `resize`; a `try/catch` in `dispatch` converts unexpected exceptions to error IPC events instead of crashing the emulator
+- **FR-EMU-2** — Removed the redundant `::close(client_fd)` from inside the `send_ipc` lambda; the cleanup block is now the single authoritative close site
+- **FR-EMU-3** — `killStalePid` now polls `process.kill(pid, 0)` (up to 200 ms) after `SIGKILL` before spawning a replacement emulator, eliminating socket/audio-device acquisition races on rapid redeploy
+
+---
+
 ## 0.9.0 — 2026-06-29
 
 **M31 — Emulator RT-thread Safety** *(FR-RTS-1, FR-RTS-2, FR-RTS-3 — all DoD green)*

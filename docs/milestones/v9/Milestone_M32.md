@@ -1,7 +1,7 @@
 # M32 — Extension & Emulator Correctness
 
 **Version:** 0.9.1  
-**Status:** in progress  
+**Status:** released  
 **Source:** 2026-06-28 code reviews — HIGH TS finding + impactful MEDIUM findings across all three reviews
 
 ## Goal
