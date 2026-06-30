@@ -4,8 +4,8 @@ import { IpcMessage } from '../emulator/ipc-client';
 import { ControllerConfig, parseControllerConfig, serializeControllerConfig } from '../controllers/controller-config';
 import { ControlsConfig } from '../webview/scope-panel';
 
-export class ControlsEditorPanel {
-  private panel: vscode.WebviewPanel | undefined;
+export class ControlsViewProvider implements vscode.WebviewViewProvider {
+  private view: vscode.WebviewView | undefined;
   private lastControlsConfig: ControlsConfig | undefined;
   private lastEditorCfg: ControllerConfig | undefined;
   private lastStatus: IpcMessage | undefined;
@@ -17,35 +17,21 @@ export class ControlsEditorPanel {
     private readonly onButtonChange: (gpioPin: number, pressed: boolean) => void,
   ) {}
 
-  createOrReveal(): void {
-    if (this.panel) {
-      this.panel.reveal();
-      return;
-    }
+  resolveWebviewView(webviewView: vscode.WebviewView): void {
+    this.view = webviewView;
 
-    const nonce = randomBytes(16).toString('base64');
-    this.panel = vscode.window.createWebviewPanel(
-      'ds-ide.controlsEditor',
-      'Controls Editor',
-      vscode.ViewColumn.Beside,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-        localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'dist')],
-      },
-    );
-
-    this.panel.iconPath = {
-      light: vscode.Uri.joinPath(this.extensionUri, 'media', 'controls-editor-icon-light.svg'),
-      dark:  vscode.Uri.joinPath(this.extensionUri, 'media', 'controls-editor-icon-dark.svg'),
+    webviewView.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'dist')],
     };
 
-    const scriptUri = this.panel.webview.asWebviewUri(
+    const nonce = randomBytes(16).toString('base64');
+    const scriptUri = webviewView.webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview', 'controls-webview.js'),
     ).toString();
-    this.panel.webview.html = buildHtml(nonce, scriptUri);
+    webviewView.webview.html = buildHtml(nonce, scriptUri);
 
-    const msgDisposable = this.panel.webview.onDidReceiveMessage((msg: unknown) => {
+    const msgDisposable = webviewView.webview.onDidReceiveMessage((msg: unknown) => {
       if (!msg || typeof msg !== 'object') return;
       const m = msg as Record<string, unknown>;
       if (m['command'] === 'webviewReady') {
@@ -72,47 +58,53 @@ export class ControlsEditorPanel {
       }
     });
 
-    this._flush();
-
-    this.panel.onDidDispose(() => {
-      msgDisposable.dispose();
-      this.panel = undefined;
+    webviewView.onDidChangeVisibility(() => {
+      if (webviewView.visible) {
+        this._flush();
+      }
     });
+
+    webviewView.onDidDispose(() => {
+      msgDisposable.dispose();
+      this.view = undefined;
+    });
+
+    this._flush();
   }
 
-  get isOpen(): boolean { return this.panel !== undefined; }
+  get isVisible(): boolean { return this.view?.visible ?? false; }
 
   postControlsConfig(config: ControlsConfig): void {
     this.lastControlsConfig = config;
-    this.panel?.webview.postMessage({ command: 'controlsConfig', ...config });
+    void this.view?.webview.postMessage({ command: 'controlsConfig', ...config });
     if (this.lastStatus) {
-      this.panel?.webview.postMessage({ command: 'status', ...this.lastStatus });
+      void this.view?.webview.postMessage({ command: 'status', ...this.lastStatus });
     }
   }
 
   postStatus(msg: IpcMessage): void {
     this.lastStatus = msg;
-    this.panel?.webview.postMessage({ command: 'status', ...msg });
+    void this.view?.webview.postMessage({ command: 'status', ...msg });
   }
 
   postLed(msg: IpcMessage): void {
-    this.panel?.webview.postMessage({ command: 'led', gpioPin: msg['gpioPin'], lit: msg['lit'] });
+    void this.view?.webview.postMessage({ command: 'led', gpioPin: msg['gpioPin'], lit: msg['lit'] });
   }
 
   loadEditor(cfg: ControllerConfig): void {
     this.lastEditorCfg = cfg;
-    this.panel?.webview.postMessage({ command: 'editorLoad', cfg });
+    void this.view?.webview.postMessage({ command: 'editorLoad', cfg });
   }
 
   private _flush(): void {
     if (this.lastEditorCfg) {
-      this.panel?.webview.postMessage({ command: 'editorLoad', cfg: this.lastEditorCfg });
+      void this.view?.webview.postMessage({ command: 'editorLoad', cfg: this.lastEditorCfg });
     }
     if (this.lastControlsConfig) {
-      this.panel?.webview.postMessage({ command: 'controlsConfig', ...this.lastControlsConfig });
+      void this.view?.webview.postMessage({ command: 'controlsConfig', ...this.lastControlsConfig });
     }
     if (this.lastStatus) {
-      this.panel?.webview.postMessage({ command: 'status', ...this.lastStatus });
+      void this.view?.webview.postMessage({ command: 'status', ...this.lastStatus });
     }
   }
 }

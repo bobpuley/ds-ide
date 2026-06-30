@@ -86,7 +86,7 @@ describe('extension', () => {
     expect(typeof deactivate).toBe('function');
   });
 
-  it('activate registers all commands', () => {
+  it('activate registers all commands (FR-TWE-4: no openControlsEditor/openWiringEditor)', () => {
     const ctx = makeContext();
     activate(ctx);
 
@@ -101,14 +101,21 @@ describe('extension', () => {
     expect(registeredIds).toContain('ds-ide.debug');
     expect(registeredIds).toContain('ds-ide.buildHardware');
     expect(registeredIds).toContain('ds-ide.flash');
+    // Removed in M35 — access now via Activity Bar icons
+    expect(registeredIds).not.toContain('ds-ide.openControlsEditor');
+    expect(registeredIds).not.toContain('ds-ide.openWiringEditor');
   });
 
-  it('activate pushes each command and listener to context.subscriptions (AC-78)', () => {
+  it('activate pushes each command, provider, and listener to context.subscriptions (AC-78)', () => {
     const ctx = makeContext();
     activate(ctx);
     const subs = ctx.subscriptions as unknown[];
     // Every registerCommand return value is in subscriptions
     for (const r of (vscode.commands.registerCommand as ReturnType<typeof vi.fn>).mock.results) {
+      expect(subs).toContain(r.value);
+    }
+    // Both WebviewViewProvider registrations are in subscriptions (FR-TWE-1, FR-TWE-2)
+    for (const r of (vscode.window.registerWebviewViewProvider as ReturnType<typeof vi.fn>).mock.results) {
       expect(subs).toContain(r.value);
     }
     // Save listener is in subscriptions
@@ -168,26 +175,47 @@ describe('extension', () => {
     );
   });
 
-  it('routes type:led manager messages to controlsEditorPanel webview (FR-TWE-1)', async () => {
+  it('routes type:led manager messages to controlsProvider webview (FR-TWE-1)', async () => {
     const ctx = makeContext();
     activate(ctx);
     const mgr = managerInstances[0]!;
 
-    // Open the Controls Editor panel so it has a webview to write to
-    const openCalls = (vscode.commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls;
-    const openEntry = openCalls.find((c: unknown[]) => c[0] === 'ds-ide.openControlsEditor');
-    const openHandler = openEntry?.[1] as (() => Promise<void>) | undefined;
-    await openHandler?.();
+    // Retrieve the registered ControlsViewProvider and simulate VS Code calling resolveWebviewView
+    const registerCalls = (vscode.window.registerWebviewViewProvider as ReturnType<typeof vi.fn>).mock.calls;
+    const controlsEntry = registerCalls.find((c: unknown[]) => c[0] === 'ds-ide.controlsEditor');
+    const controlsProvider = controlsEntry?.[1] as { resolveWebviewView: (view: unknown) => void } | undefined;
 
-    const panelMock = (vscode.window.createWebviewPanel as ReturnType<typeof vi.fn>).mock.results[0]?.value as {
-      webview: { postMessage: ReturnType<typeof vi.fn> };
-    } | undefined;
+    const webviewPostMessage = vi.fn();
+    const mockView = {
+      webview: {
+        html: '',
+        options: {},
+        onDidReceiveMessage: vi.fn(() => ({ dispose: vi.fn() })),
+        postMessage: webviewPostMessage,
+        asWebviewUri: vi.fn((u: unknown) => u),
+        cspSource: '',
+      },
+      visible: true,
+      onDidDispose: vi.fn((_cb: () => void) => ({ dispose: vi.fn() })),
+      onDidChangeVisibility: vi.fn((_cb: () => void) => ({ dispose: vi.fn() })),
+      show: vi.fn(),
+    };
+    controlsProvider?.resolveWebviewView(mockView);
 
     mgr.emit('message', { type: 'led', gpioPin: 23, lit: true });
 
-    expect(panelMock?.webview.postMessage).toHaveBeenCalledWith(
+    expect(webviewPostMessage).toHaveBeenCalledWith(
       expect.objectContaining({ command: 'led', gpioPin: 23, lit: true }),
     );
+  });
+
+  it('registers WebviewViewProvider for ds-ide.controlsEditor and ds-ide.wiringEditor (FR-TWE-1, FR-TWE-2)', () => {
+    const ctx = makeContext();
+    activate(ctx);
+    const calls = (vscode.window.registerWebviewViewProvider as ReturnType<typeof vi.fn>).mock.calls;
+    const viewIds = calls.map((c: unknown[]) => c[0] as string);
+    expect(viewIds).toContain('ds-ide.controlsEditor');
+    expect(viewIds).toContain('ds-ide.wiringEditor');
   });
 
   it('registers a debug adapter descriptor factory for daisy-debug', () => {

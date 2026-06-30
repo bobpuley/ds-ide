@@ -54,11 +54,6 @@
         "category": "Daisy IDE"
       },
       {
-        "command": "ds-ide.openControlsEditor",
-        "title": "Open Controls Editor",
-        "category": "Daisy IDE"
-      },
-      {
         "command": "ds-ide.buildHardware",
         "title": "Build for Hardware",
         "category": "Daisy IDE"
@@ -66,11 +61,6 @@
       {
         "command": "ds-ide.flash",
         "title": "Flash to Daisy Seed",
-        "category": "Daisy IDE"
-      },
-      {
-        "command": "ds-ide.openWiringEditor",
-        "title": "Open Wiring Editor",
         "category": "Daisy IDE"
       },
       {
@@ -109,27 +99,33 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "ds-ide-sidebar",
-          "title": "DS-IDE",
-          "icon": "media/ds-ide-icon.svg"
+          "id": "ds-ide-controls",
+          "title": "Controls Editor",
+          "icon": "media/controls-editor-icon-dark.svg"
+        },
+        {
+          "id": "ds-ide-wiring",
+          "title": "Wiring Editor",
+          "icon": "media/wiring-editor-icon-dark.svg"
         }
       ]
     },
     "views": {
-      "ds-ide-sidebar": [
+      "ds-ide-controls": [
         {
-          "type": "tree",
-          "id": "ds-ide.launchView",
-          "name": "DS-IDE"
+          "type": "webview",
+          "id": "ds-ide.controlsEditor",
+          "name": "Controls Editor"
+        }
+      ],
+      "ds-ide-wiring": [
+        {
+          "type": "webview",
+          "id": "ds-ide.wiringEditor",
+          "name": "Wiring Editor"
         }
       ]
     },
-    "viewsWelcome": [
-      {
-        "view": "ds-ide.launchView",
-        "contents": "Daisy Seed IDE\n\n[Open Controls Editor](command:ds-ide.openControlsEditor)\n\n[Open Wiring Editor](command:ds-ide.openWiringEditor)"
-      }
-    ],
     "configuration": {
       "title": "Daisy IDE",
       "properties": {
