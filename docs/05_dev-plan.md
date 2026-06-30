@@ -1,4 +1,4 @@
-# 05 — Development Plan (v10)
+# 05 — Development Plan (v11)
 
 > **v1 complete** — M0–M7 released (0.1.0–0.1.7), all ACs green.
 > Archived: [`docs/v1/`](v1/).
@@ -26,6 +26,11 @@
 >
 > **v9 complete** — M31–M33 released (0.9.0–0.9.2), all ACs green.
 > Archived: [`docs/v9/`](v9/).
+>
+> **v10 complete** — M34–M35 released (0.10.0–0.11.0), all ACs green.
+> Archived: [`docs/v10/`](v10/).
+
+*v11 milestones not yet planned.*
 
 ---
 
@@ -83,9 +88,11 @@ Full registry in [`docs/v8/05_dev-plan.md`](v8/05_dev-plan.md).
 M31 Emulator RT-thread Safety · M32 Extension & Emulator Correctness · M33 Quality Polish.
 Full registry in [`docs/v9/05_dev-plan.md`](v9/05_dev-plan.md).
 
-### v10 — planned
+### v10 (0.10.0–0.11.0) — archived in `docs/v10/`
 
-| ID  | Name                                                                       | Status           | Version  | File                                                |
-|-----|----------------------------------------------------------------------------|------------------|----------|-----------------------------------------------------|
-| M34 | UI Polish: Independent Editors, Always-Visible Audio Settings, Panel Icons | **released**     | 0.10.0   | [Milestone_M34.md](milestones/v10/Milestone_M34.md) |
-| M35 | Activity Bar Split: Controls and Wiring as Independent Sidebar Views       | **released**     | 0.11.0   | [Milestone_M35.md](milestones/v10/Milestone_M35.md) |
+M34 UI Polish: Independent Editors, Always-Visible Audio Settings, Panel Icons · M35 Activity Bar Split: Controls and Wiring as Independent Sidebar Views.
+Full registry in [`docs/v10/05_dev-plan.md`](v10/05_dev-plan.md).
+
+### v11 — planned
+
+*(no milestones yet)*

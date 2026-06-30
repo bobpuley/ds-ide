@@ -1,5 +1,5 @@
-# 06 — C/C++ Emulator Code Review (v10)
+# 06 — C/C++ Emulator Code Review (v11)
 
-> **v9 review archived** — [`docs/v9/06_emulator_review.md`](v9/06_emulator_review.md).
+> **v10 review archived** — [`docs/v10/06_emulator_review.md`](v10/06_emulator_review.md).
 
-*v10 review not yet generated. Run `/doc-creator-driver:cpp-emulator-review` to produce it.*
+*v11 review not yet generated. Run the appropriate `/doc-creator-driver:cpp-emulator-review` command to produce it.*

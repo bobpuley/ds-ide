@@ -1,5 +1,5 @@
-# 06 — VS Code Extension Code Review (v10)
+# 06 — VS Code Extension Code Review (v11)
 
-> **v9 review archived** — [`docs/v9/06_vscode_extension_review.md`](v9/06_vscode_extension_review.md).
+> **v10 review archived** — [`docs/v10/06_vscode_extension_review.md`](v10/06_vscode_extension_review.md).
 
-*v10 review not yet generated. Run `/doc-creator-driver:vscode-extensions-review` to produce it.*
+*v11 review not yet generated. Run the appropriate `/doc-creator-driver:vscode-extensions-review` command to produce it.*
