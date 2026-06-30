@@ -5,6 +5,20 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.11.0 — 2026-06-30
+
+**M35 — Activity Bar Split: Controls and Wiring as Independent Sidebar Views** *(FR-TWE-1 through FR-TWE-6, FR-ICON-1 through FR-ICON-2 — all DoD green)*
+
+- Two dedicated Activity Bar icons replace the single DS-IDE launcher: knob SVG (`ds-ide-controls`) for the Controls Editor, DIP chip SVG (`ds-ide-wiring`) for the Wiring Editor.
+- Both editors render as `WebviewView` panels in the Primary Sidebar; no editor-area tabs are created.
+- `ControlsViewProvider` and `WiringViewProvider` implement `vscode.WebviewViewProvider`; registered via `registerWebviewViewProvider` with `retainContextWhenHidden: true`.
+- Controls Editor auto-reveals on Build & Deploy via `executeCommand('workbench.view.extension.ds-ide-controls')`.
+- `onDidChangeVisibility → true` flushes last-known state (pot config, wired pins) to the webview, preserving state across sidebar hide/show and window reload.
+- Removed: `ds-ide-sidebar` view container, `ds-ide.launchView` welcome view, `ds-ide.openControlsEditor` and `ds-ide.openWiringEditor` commands.
+- No mutual-exclusion logic; each editor has its own sidebar slot.
+
+---
+
 ## 0.10.0 — 2026-06-29
 
 **M34 — UI Polish: Independent Editors, Always-Visible Audio Settings, Panel Icons** *(FR-SCOPE-1, FR-TWE-1 through FR-TWE-6, FR-ICON-1 through FR-ICON-2 — all DoD green)*
