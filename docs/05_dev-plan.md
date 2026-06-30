@@ -88,4 +88,4 @@ Full registry in [`docs/v9/05_dev-plan.md`](v9/05_dev-plan.md).
 | ID  | Name                                                                       | Status           | Version  | File                                                |
 |-----|----------------------------------------------------------------------------|------------------|----------|-----------------------------------------------------|
 | M34 | UI Polish: Independent Editors, Always-Visible Audio Settings, Panel Icons | **released**     | 0.10.0   | [Milestone_M34.md](milestones/v10/Milestone_M34.md) |
-| M35 | Activity Bar Split: Controls and Wiring as Independent Sidebar Views       | **released**     | 0.11.0   | [Milestone_M35.md](milestones/v11/Milestone_M35.md) |
+| M35 | Activity Bar Split: Controls and Wiring as Independent Sidebar Views       | **released**     | 0.11.0   | [Milestone_M35.md](milestones/v10/Milestone_M35.md) |

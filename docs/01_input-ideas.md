@@ -27,4 +27,12 @@
 > **v9 complete** — archived to `docs/v9/` on 2026-06-29. Full v9 ideas archived in
 > [`docs/v9/01_input-ideas.md`](v9/01_input-ideas.md).
 
-*v10 planning not yet started. Use `/doc-creator-driver:intake` or `/doc-creator-driver:start` to begin.*
+## v10 Ideas (2026-06-29)
+
+- **Scope audio settings always visible** — The "Audio Settings" collapsible footer section in the Daisy Scope panel should no longer be collapsible; the section should always be fully expanded (no collapse toggle, no arrow, always visible).
+- **Controls Editor and Wiring Editor as independent tool windows** — The two editors should no longer be stacked in the shared sidebar container as `WebviewView` panels. Each should live in its own independent tool window so the user can freely position them in the VS Code layout (move, split, float, dock to bottom, etc.).
+- **Dedicated icons for Controls Editor and Wiring Editor** — Now that the two editors are independent windows, each should have a distinct, meaningful icon that visually identifies it (e.g. shown in the tab bar / panel title).
+
+## v10 Revision Ideas (2026-06-30)
+
+- **Activity Bar split: Controls Editor and Wiring Editor as separate Activity Bar views** — Replace the single DS-IDE Activity Bar icon (which in M34 became a welcome view with two buttons opening editor-area `WebviewPanel` tabs) with two dedicated Activity Bar icons: one for the Controls Editor (knob icon) and one for the Wiring Editor (DIP chip icon). Clicking each icon shows the corresponding editor directly in the Primary Sidebar as a `WebviewView`, not as a tab in the editor area. Each editor lives in its own `viewsContainers.activitybar` entry with its own icon.
