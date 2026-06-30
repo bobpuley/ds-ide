@@ -2,8 +2,8 @@ import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
 import { WiredPin, WirePinHandler, UnwirePinHandler, buildHtml } from '../wiring/wiring-panel';
 
-export class WiringEditorPanel {
-  private panel: vscode.WebviewPanel | undefined;
+export class WiringViewProvider implements vscode.WebviewViewProvider {
+  private view: vscode.WebviewView | undefined;
   private lastWiredPins: WiredPin[] = [];
 
   constructor(
@@ -12,35 +12,21 @@ export class WiringEditorPanel {
     private readonly onUnwirePin: UnwirePinHandler,
   ) {}
 
-  createOrReveal(): void {
-    if (this.panel) {
-      this.panel.reveal();
-      return;
-    }
+  resolveWebviewView(webviewView: vscode.WebviewView): void {
+    this.view = webviewView;
 
     const nonce = randomBytes(16).toString('base64');
-    this.panel = vscode.window.createWebviewPanel(
-      'ds-ide.wiringEditor',
-      'Wiring Editor',
-      vscode.ViewColumn.Beside,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-        localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'dist')],
-      },
-    );
-
-    this.panel.iconPath = {
-      light: vscode.Uri.joinPath(this.extensionUri, 'media', 'wiring-editor-icon-light.svg'),
-      dark:  vscode.Uri.joinPath(this.extensionUri, 'media', 'wiring-editor-icon-dark.svg'),
+    webviewView.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'dist')],
     };
 
-    const scriptUri = this.panel.webview.asWebviewUri(
+    const scriptUri = webviewView.webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview', 'wiring-webview.js'),
     ).toString();
-    this.panel.webview.html = buildHtml(this.lastWiredPins, nonce, scriptUri);
+    webviewView.webview.html = buildHtml(this.lastWiredPins, nonce, scriptUri);
 
-    const msgDisposable = this.panel.webview.onDidReceiveMessage(async (msg: unknown) => {
+    const msgDisposable = webviewView.webview.onDidReceiveMessage(async (msg: unknown) => {
       if (!msg || typeof msg !== 'object') return;
       const m = msg as Record<string, unknown>;
       if (m['command'] === 'wirePin') {
@@ -70,20 +56,26 @@ export class WiringEditorPanel {
       }
     });
 
-    void this.panel.webview.postMessage({ command: 'wiredPins', pins: this.lastWiredPins });
-
-    this.panel.onDidDispose(() => {
-      msgDisposable.dispose();
-      this.panel = undefined;
+    webviewView.onDidChangeVisibility(() => {
+      if (webviewView.visible) {
+        void webviewView.webview.postMessage({ command: 'wiredPins', pins: this.lastWiredPins });
+      }
     });
+
+    webviewView.onDidDispose(() => {
+      msgDisposable.dispose();
+      this.view = undefined;
+    });
+
+    void webviewView.webview.postMessage({ command: 'wiredPins', pins: this.lastWiredPins });
   }
 
-  get isOpen(): boolean { return this.panel !== undefined; }
+  get isVisible(): boolean { return this.view?.visible ?? false; }
 
   postWiredPins(pins: WiredPin[]): void {
     this.lastWiredPins = pins;
-    if (this.panel) {
-      void this.panel.webview.postMessage({ command: 'wiredPins', pins });
+    if (this.view) {
+      void this.view.webview.postMessage({ command: 'wiredPins', pins });
     }
   }
 }

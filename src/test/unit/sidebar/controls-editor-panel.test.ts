@@ -1,148 +1,162 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
-import { ControlsEditorPanel, truncId } from '../../../sidebar/controls-editor-panel';
+import { ControlsViewProvider, truncId } from '../../../sidebar/controls-editor-panel';
 
-function getPanelMock() {
-  return (vscode.window.createWebviewPanel as ReturnType<typeof vi.fn>).mock.results[0]?.value as {
-    webview: {
-      html: string;
-      postMessage: ReturnType<typeof vi.fn>;
-      onDidReceiveMessage: ReturnType<typeof vi.fn>;
-    };
-    reveal: ReturnType<typeof vi.fn>;
-    dispose: ReturnType<typeof vi.fn>;
-    onDidDispose: ReturnType<typeof vi.fn>;
-    iconPath: { light: unknown; dark: unknown } | undefined;
+function makeWebviewViewMock() {
+  const onDisposeHandlers: Array<() => void> = [];
+  const onVisibilityHandlers: Array<() => void> = [];
+
+  const webview = {
+    html: '',
+    options: {} as vscode.WebviewOptions,
+    onDidReceiveMessage: vi.fn(() => ({ dispose: vi.fn() })),
+    postMessage: vi.fn(),
+    asWebviewUri: vi.fn((uri: unknown) => uri),
+    cspSource: 'vscode-resource:',
   };
+
+  const view = {
+    webview,
+    visible: true,
+    onDidDispose: vi.fn((cb: () => void) => {
+      onDisposeHandlers.push(cb);
+      return { dispose: vi.fn() };
+    }),
+    onDidChangeVisibility: vi.fn((cb: () => void) => {
+      onVisibilityHandlers.push(cb);
+      return { dispose: vi.fn() };
+    }),
+    show: vi.fn(),
+    _simulateDispose: () => onDisposeHandlers.forEach(h => h()),
+    _simulateVisibilityChange: (visible: boolean) => {
+      view.visible = visible;
+      onVisibilityHandlers.forEach(h => h());
+    },
+  };
+
+  return view;
 }
 
-describe('ControlsEditorPanel', () => {
+describe('ControlsViewProvider', () => {
   let onEditorSave: ReturnType<typeof vi.fn>;
   let onPotChange: ReturnType<typeof vi.fn>;
   let onButtonChange: ReturnType<typeof vi.fn>;
-  let panel: ControlsEditorPanel;
-  let createWebviewPanelMock: ReturnType<typeof vi.fn>;
+  let provider: ControlsViewProvider;
 
   beforeEach(() => {
     vi.clearAllMocks();
     onEditorSave  = vi.fn();
     onPotChange   = vi.fn();
     onButtonChange = vi.fn();
-    panel = new ControlsEditorPanel(
+    provider = new ControlsViewProvider(
       { fsPath: '/ext' } as unknown as vscode.Uri,
       onEditorSave, onPotChange, onButtonChange,
     );
-    createWebviewPanelMock = vscode.window.createWebviewPanel as ReturnType<typeof vi.fn>;
   });
 
-  it('createOrReveal creates a WebviewPanel with correct viewType and title (FR-TWE-1)', () => {
-    panel.createOrReveal();
-    expect(createWebviewPanelMock).toHaveBeenCalledWith(
-      'ds-ide.controlsEditor',
-      'Controls Editor',
-      vscode.ViewColumn.Beside,
-      expect.objectContaining({ enableScripts: true }),
-    );
+  it('resolveWebviewView sets enableScripts and localResourceRoots on webview options (FR-TWE-1)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(view.webview.options).toMatchObject({
+      enableScripts: true,
+      localResourceRoots: [expect.anything()],
+    });
   });
 
-  it('createOrReveal sets localResourceRoots (FR-ES-1)', () => {
-    panel.createOrReveal();
-    expect(createWebviewPanelMock).toHaveBeenCalledWith(
-      expect.any(String), expect.any(String), expect.anything(),
-      expect.objectContaining({ localResourceRoots: [expect.anything()] }),
-    );
+  it('resolveWebviewView sets HTML containing DS-IDE Controls title', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(view.webview.html).toContain('DS-IDE Controls');
   });
 
-  it('createOrReveal sets iconPath on the panel (FR-ICON-1)', () => {
-    panel.createOrReveal();
-    const mock = getPanelMock();
-    expect(mock).toBeDefined();
-    // iconPath is assigned after panel creation
-    // We verify it's set by checking the panel object — the mock captures assignments
+  it('resolveWebviewView sets HTML with CSP meta tag and nonce (FR-ES-1)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(view.webview.html).toContain('<meta http-equiv="Content-Security-Policy"');
+    expect(view.webview.html).toContain('nonce-');
   });
 
-  it('webview HTML contains DS-IDE Controls title', () => {
-    panel.createOrReveal();
-    const mock = getPanelMock();
-    expect(mock.webview.html).toContain('DS-IDE Controls');
-  });
-
-  it('webview HTML includes CSP meta tag with nonce (FR-ES-1)', () => {
-    panel.createOrReveal();
-    const mock = getPanelMock();
-    expect(mock.webview.html).toContain('<meta http-equiv="Content-Security-Policy"');
-    expect(mock.webview.html).toContain('nonce-');
-  });
-
-  it('webview HTML script tag has nonce matching CSP (FR-ES-1)', () => {
-    panel.createOrReveal();
-    const html = getPanelMock().webview.html;
+  it('resolveWebviewView sets HTML with script nonce matching CSP (FR-ES-1)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const html = view.webview.html;
     const nonceMatch = html.match(/nonce-([^'";]+)/);
     expect(nonceMatch).toBeTruthy();
     const nonce = nonceMatch![1];
     expect(html).toContain(`<script nonce="${nonce}" src=`);
   });
 
-  it('reveal() is called when createOrReveal() is called on already-open panel (FR-TWE-1)', () => {
-    panel.createOrReveal();
-    const mock = getPanelMock();
-    panel.createOrReveal();
-    expect(createWebviewPanelMock).toHaveBeenCalledTimes(1);
-    expect(mock.reveal).toHaveBeenCalled();
+  it('resolveWebviewView registers onDidReceiveMessage on the webview', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(view.webview.onDidReceiveMessage).toHaveBeenCalled();
   });
 
-  it('isOpen is true after createOrReveal, false before', () => {
-    expect(panel.isOpen).toBe(false);
-    panel.createOrReveal();
-    expect(panel.isOpen).toBe(true);
+  it('resolveWebviewView registers onDidChangeVisibility on the view', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(view.onDidChangeVisibility).toHaveBeenCalled();
   });
 
-  it('isOpen becomes false after panel is disposed', () => {
-    panel.createOrReveal();
-    const mock = getPanelMock();
-    const disposeCb = mock.onDidDispose.mock.calls[0]?.[0] as () => void;
-    disposeCb?.();
-    expect(panel.isOpen).toBe(false);
+  it('resolveWebviewView registers onDidDispose on the view', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(view.onDidDispose).toHaveBeenCalled();
   });
 
-  it('registers onDidReceiveMessage on the webview', () => {
-    panel.createOrReveal();
-    expect(getPanelMock().webview.onDidReceiveMessage).toHaveBeenCalled();
+  it('isVisible is true while view is visible, false before resolve', () => {
+    expect(provider.isVisible).toBe(false);
+    const view = makeWebviewViewMock();
+    view.visible = true;
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(provider.isVisible).toBe(true);
+  });
+
+  it('isVisible becomes false after view is disposed', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    view._simulateDispose();
+    expect(provider.isVisible).toBe(false);
   });
 
   it('calls onPotChange when pot message received', () => {
-    panel.createOrReveal();
-    const handler = getPanelMock().webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => void;
     handler({ command: 'pot', channel: 2, value: 0.75 });
     expect(onPotChange).toHaveBeenCalledWith(2, 0.75);
   });
 
   it('calls onButtonChange when button message received', () => {
-    panel.createOrReveal();
-    const handler = getPanelMock().webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => void;
     handler({ command: 'button', gpioPin: 28, pressed: true });
     expect(onButtonChange).toHaveBeenCalledWith(28, true);
   });
 
   it('calls onEditorSave with valid cfg when editorSave message received', () => {
-    panel.createOrReveal();
-    const handler = getPanelMock().webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => void;
     const cfg = { pots: [], buttons: [], leds: [], errors: [] };
     handler({ command: 'editorSave', cfg });
     expect(onEditorSave).toHaveBeenCalledWith(expect.objectContaining({ pots: [], buttons: [], leds: [] }));
   });
 
   it('drops editorSave with malformed cfg (FR-ES-2)', () => {
-    panel.createOrReveal();
-    const handler = getPanelMock().webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => void;
     const cfg = { pots: [{ id: '', label: '', adcChannel: -99, range: [0, 1], taper: 'linear', default: 0.5, errors: [] }], buttons: [], leds: [], errors: [] };
     handler({ command: 'editorSave', cfg });
     expect(onEditorSave).not.toHaveBeenCalled();
   });
 
   it('ignores malformed messages', () => {
-    panel.createOrReveal();
-    const handler = getPanelMock().webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => void;
     handler(null);
     handler({ command: 'pot' }); // missing channel/value
     handler({ command: 'button', gpioPin: 28 }); // missing pressed
@@ -150,93 +164,75 @@ describe('ControlsEditorPanel', () => {
     expect(onButtonChange).not.toHaveBeenCalled();
   });
 
-  it('postControlsConfig sends controlsConfig message to panel webview', () => {
-    panel.createOrReveal();
-    const mock = getPanelMock();
-    mock.webview.postMessage.mockClear();
+  it('postControlsConfig sends controlsConfig message to webview', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    view.webview.postMessage.mockClear();
     const config = { controls: [], placements: [], missingBlock: false };
-    panel.postControlsConfig(config);
-    expect(mock.webview.postMessage).toHaveBeenCalledWith(
+    provider.postControlsConfig(config);
+    expect(view.webview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ command: 'controlsConfig' }),
     );
   });
 
-  it('postStatus sends status message to panel webview', () => {
-    panel.createOrReveal();
-    const mock = getPanelMock();
-    mock.webview.postMessage.mockClear();
-    panel.postStatus({ type: 'status', running: true, sampleRate: 48000, blockSize: 256 });
-    expect(mock.webview.postMessage).toHaveBeenCalledWith(
+  it('postStatus sends status message to webview', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    view.webview.postMessage.mockClear();
+    provider.postStatus({ type: 'status', running: true, sampleRate: 48000, blockSize: 256 });
+    expect(view.webview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ command: 'status', running: true }),
     );
   });
 
-  it('postLed forwards gpioPin and lit to panel webview', () => {
-    panel.createOrReveal();
-    const mock = getPanelMock();
-    mock.webview.postMessage.mockClear();
-    panel.postLed({ type: 'led', gpioPin: 23, lit: true });
-    expect(mock.webview.postMessage).toHaveBeenCalledWith(
+  it('postLed forwards gpioPin and lit to webview', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    view.webview.postMessage.mockClear();
+    provider.postLed({ type: 'led', gpioPin: 23, lit: true });
+    expect(view.webview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ command: 'led', gpioPin: 23, lit: true }),
     );
   });
 
-  it('loadEditor sends editorLoad message to panel webview', () => {
-    panel.createOrReveal();
-    const mock = getPanelMock();
-    mock.webview.postMessage.mockClear();
+  it('loadEditor sends editorLoad message to webview', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    view.webview.postMessage.mockClear();
     const cfg = { pots: [], buttons: [], leds: [], errors: [] };
-    panel.loadEditor(cfg);
-    expect(mock.webview.postMessage).toHaveBeenCalledWith(
+    provider.loadEditor(cfg);
+    expect(view.webview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ command: 'editorLoad', cfg }),
     );
   });
 
-  // FR-TWE-6 — state restoration on reopen
-  it('flushes last-known state to webview on createOrReveal (FR-TWE-6)', () => {
+  // FR-TWE-6 — state restoration on initial resolve
+  it('flushes last-known state to webview on resolveWebviewView (FR-TWE-6)', () => {
     const editorCfg = { pots: [], buttons: [], leds: [], errors: [] };
     const config = { controls: [], placements: [], missingBlock: false };
     const status = { type: 'status', running: false };
 
-    // Set state before panel opens
-    panel.loadEditor(editorCfg);
-    panel.postControlsConfig(config);
-    panel.postStatus(status as never);
+    provider.loadEditor(editorCfg);
+    provider.postControlsConfig(config);
+    provider.postStatus(status as never);
 
-    panel.createOrReveal();
-    const mock = getPanelMock();
-    const calls = mock.webview.postMessage.mock.calls.map((c: unknown[]) => (c[0] as Record<string, unknown>).command);
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const calls = view.webview.postMessage.mock.calls.map((c: unknown[]) => (c[0] as Record<string, unknown>).command);
     expect(calls).toContain('editorLoad');
     expect(calls).toContain('controlsConfig');
     expect(calls).toContain('status');
   });
 
-  it('flushes state again when panel is closed and reopened (FR-TWE-6)', () => {
-    const editorCfg = { pots: [], buttons: [], leds: [], errors: [] };
-    panel.createOrReveal();
-    panel.loadEditor(editorCfg);
-
-    // Simulate user closing the panel
-    const disposeCb = getPanelMock().onDidDispose.mock.calls[0]?.[0] as () => void;
-    disposeCb?.();
-    vi.clearAllMocks();
-
-    // Reopen
-    panel.createOrReveal();
-    const newMock = getPanelMock();
-    const calls = newMock.webview.postMessage.mock.calls.map((c: unknown[]) => (c[0] as Record<string, unknown>).command);
-    expect(calls).toContain('editorLoad');
-  });
-
-  it('flushes editorLoad before controlsConfig on reopen (FR-TWE-6)', () => {
+  it('flushes editorLoad before controlsConfig on resolve (FR-TWE-6)', () => {
     const editorCfg = { pots: [], buttons: [], leds: [], errors: [] };
     const config = { controls: [], placements: [], missingBlock: false };
-    panel.loadEditor(editorCfg);
-    panel.postControlsConfig(config);
+    provider.loadEditor(editorCfg);
+    provider.postControlsConfig(config);
 
-    panel.createOrReveal();
-    const mock = getPanelMock();
-    const calls = mock.webview.postMessage.mock.calls.map((c: unknown[]) => (c[0] as Record<string, unknown>).command);
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const calls = view.webview.postMessage.mock.calls.map((c: unknown[]) => (c[0] as Record<string, unknown>).command);
     const editorIdx = calls.indexOf('editorLoad');
     const configIdx = calls.indexOf('controlsConfig');
     expect(editorIdx).toBeGreaterThanOrEqual(0);
@@ -244,27 +240,52 @@ describe('ControlsEditorPanel', () => {
   });
 
   it('webviewReady message triggers flush of pending state', () => {
-    panel.createOrReveal();
-    const mock = getPanelMock();
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
     const editorCfg = { pots: [], buttons: [], leds: [], errors: [] };
-    panel.loadEditor(editorCfg);
-    mock.webview.postMessage.mockClear();
+    provider.loadEditor(editorCfg);
+    view.webview.postMessage.mockClear();
 
-    const handler = mock.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => void;
     handler({ command: 'webviewReady' });
-    expect(mock.webview.postMessage).toHaveBeenCalledWith(
+    expect(view.webview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ command: 'editorLoad' }),
     );
   });
 
+  // FR-TWE-6 — state restored when visibility becomes true
+  it('flushes state again when view becomes visible after being hidden (FR-TWE-6)', () => {
+    const editorCfg = { pots: [], buttons: [], leds: [], errors: [] };
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    provider.loadEditor(editorCfg);
+
+    view.webview.postMessage.mockClear();
+    view._simulateVisibilityChange(true);
+    const calls = view.webview.postMessage.mock.calls.map((c: unknown[]) => (c[0] as Record<string, unknown>).command);
+    expect(calls).toContain('editorLoad');
+  });
+
+  it('does not flush state when visibility changes to false (FR-TWE-6)', () => {
+    const editorCfg = { pots: [], buttons: [], leds: [], errors: [] };
+    provider.loadEditor(editorCfg);
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    view.webview.postMessage.mockClear();
+    view._simulateVisibilityChange(false);
+    expect(view.webview.postMessage).not.toHaveBeenCalled();
+  });
+
   it('HTML includes justify-content: center on ctrl-body', () => {
-    panel.createOrReveal();
-    expect(getPanelMock().webview.html).toContain('justify-content: center');
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(view.webview.html).toContain('justify-content: center');
   });
 
   it('HTML includes box-shadow on btn-ce', () => {
-    panel.createOrReveal();
-    expect(getPanelMock().webview.html).toContain('box-shadow: 0 3px 0 #111');
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(view.webview.html).toContain('box-shadow: 0 3px 0 #111');
   });
 });
 

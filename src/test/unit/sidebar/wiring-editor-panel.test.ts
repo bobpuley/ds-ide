@@ -1,113 +1,130 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
-import { WiringEditorPanel } from '../../../sidebar/wiring-editor-panel';
+import { WiringViewProvider } from '../../../sidebar/wiring-editor-panel';
 
-function getPanelMock() {
-  return (vscode.window.createWebviewPanel as ReturnType<typeof vi.fn>).mock.results[0]?.value as {
-    webview: {
-      html: string;
-      postMessage: ReturnType<typeof vi.fn>;
-      onDidReceiveMessage: ReturnType<typeof vi.fn>;
-    };
-    reveal: ReturnType<typeof vi.fn>;
-    dispose: ReturnType<typeof vi.fn>;
-    onDidDispose: ReturnType<typeof vi.fn>;
+function makeWebviewViewMock() {
+  const onDisposeHandlers: Array<() => void> = [];
+  const onVisibilityHandlers: Array<() => void> = [];
+
+  const webview = {
+    html: '',
+    options: {} as vscode.WebviewOptions,
+    onDidReceiveMessage: vi.fn(() => ({ dispose: vi.fn() })),
+    postMessage: vi.fn(),
+    asWebviewUri: vi.fn((uri: unknown) => uri),
+    cspSource: 'vscode-resource:',
   };
+
+  const view = {
+    webview,
+    visible: true,
+    onDidDispose: vi.fn((cb: () => void) => {
+      onDisposeHandlers.push(cb);
+      return { dispose: vi.fn() };
+    }),
+    onDidChangeVisibility: vi.fn((cb: () => void) => {
+      onVisibilityHandlers.push(cb);
+      return { dispose: vi.fn() };
+    }),
+    show: vi.fn(),
+    _simulateDispose: () => onDisposeHandlers.forEach(h => h()),
+    _simulateVisibilityChange: (visible: boolean) => {
+      view.visible = visible;
+      onVisibilityHandlers.forEach(h => h());
+    },
+  };
+
+  return view;
 }
 
-describe('WiringEditorPanel', () => {
+describe('WiringViewProvider', () => {
   let onWirePin: ReturnType<typeof vi.fn>;
   let onUnwirePin: ReturnType<typeof vi.fn>;
-  let editorPanel: WiringEditorPanel;
-  let createWebviewPanelMock: ReturnType<typeof vi.fn>;
+  let provider: WiringViewProvider;
 
   beforeEach(() => {
     vi.clearAllMocks();
     onWirePin   = vi.fn().mockResolvedValue(undefined);
     onUnwirePin = vi.fn().mockResolvedValue(undefined);
-    editorPanel = new WiringEditorPanel(
+    provider = new WiringViewProvider(
       { fsPath: '/ext' } as unknown as vscode.Uri,
       onWirePin, onUnwirePin,
     );
-    createWebviewPanelMock = vscode.window.createWebviewPanel as ReturnType<typeof vi.fn>;
   });
 
-  it('createOrReveal creates a WebviewPanel with correct viewType and title (FR-TWE-2)', () => {
-    editorPanel.createOrReveal();
-    expect(createWebviewPanelMock).toHaveBeenCalledWith(
-      'ds-ide.wiringEditor',
-      'Wiring Editor',
-      vscode.ViewColumn.Beside,
-      expect.objectContaining({ enableScripts: true }),
-    );
+  it('resolveWebviewView sets enableScripts and localResourceRoots on webview options (FR-TWE-2)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(view.webview.options).toMatchObject({
+      enableScripts: true,
+      localResourceRoots: [expect.anything()],
+    });
   });
 
-  it('createOrReveal sets localResourceRoots (FR-ES-1)', () => {
-    editorPanel.createOrReveal();
-    expect(createWebviewPanelMock).toHaveBeenCalledWith(
-      expect.any(String), expect.any(String), expect.anything(),
-      expect.objectContaining({ localResourceRoots: [expect.anything()] }),
-    );
+  it('resolveWebviewView sets HTML containing Daisy Seed Wiring', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(view.webview.html).toContain('Daisy Seed Wiring');
   });
 
-  it('webview HTML contains Daisy Seed Wiring', () => {
-    editorPanel.createOrReveal();
-    expect(getPanelMock().webview.html).toContain('Daisy Seed Wiring');
+  it('resolveWebviewView sets HTML with CSP meta tag and nonce (FR-ES-1)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(view.webview.html).toContain('<meta http-equiv="Content-Security-Policy"');
+    expect(view.webview.html).toContain('nonce-');
   });
 
-  it('webview HTML includes CSP meta tag with nonce (FR-ES-1)', () => {
-    editorPanel.createOrReveal();
-    expect(getPanelMock().webview.html).toContain('<meta http-equiv="Content-Security-Policy"');
-    expect(getPanelMock().webview.html).toContain('nonce-');
-  });
-
-  it('webview HTML script tag has nonce matching CSP (FR-ES-1)', () => {
-    editorPanel.createOrReveal();
-    const html = getPanelMock().webview.html;
+  it('resolveWebviewView sets HTML with script nonce matching CSP (FR-ES-1)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const html = view.webview.html;
     const nonceMatch = html.match(/nonce-([^'";]+)/);
     expect(nonceMatch).toBeTruthy();
     const nonce = nonceMatch![1];
     expect(html).toContain(`<script nonce="${nonce}" src=`);
   });
 
-  it('reveal() called when createOrReveal() is called on already-open panel (FR-TWE-2)', () => {
-    editorPanel.createOrReveal();
-    const mock = getPanelMock();
-    editorPanel.createOrReveal();
-    expect(createWebviewPanelMock).toHaveBeenCalledTimes(1);
-    expect(mock.reveal).toHaveBeenCalled();
+  it('resolveWebviewView registers onDidChangeVisibility on the view (FR-TWE-6)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(view.onDidChangeVisibility).toHaveBeenCalled();
   });
 
-  it('isOpen is true after createOrReveal, false before', () => {
-    expect(editorPanel.isOpen).toBe(false);
-    editorPanel.createOrReveal();
-    expect(editorPanel.isOpen).toBe(true);
+  it('isVisible is true while view is visible, false before resolve', () => {
+    expect(provider.isVisible).toBe(false);
+    const view = makeWebviewViewMock();
+    view.visible = true;
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(provider.isVisible).toBe(true);
   });
 
-  it('isOpen becomes false after panel is disposed', () => {
-    editorPanel.createOrReveal();
-    const disposeCb = getPanelMock().onDidDispose.mock.calls[0]?.[0] as () => void;
-    disposeCb?.();
-    expect(editorPanel.isOpen).toBe(false);
+  it('isVisible becomes false after view is disposed', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    view._simulateDispose();
+    expect(provider.isVisible).toBe(false);
   });
 
   it('calls onWirePin when wirePin message received', async () => {
-    editorPanel.createOrReveal();
-    const handler = getPanelMock().webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => Promise<void>;
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
     await handler({ command: 'wirePin', pinNumber: 15, deviceType: 'pot', id: 'filter' });
     expect(onWirePin).toHaveBeenCalledWith({ pinNumber: 15, deviceType: 'pot', id: 'filter' });
   });
 
   it('calls onUnwirePin when unwirePin message received', async () => {
-    editorPanel.createOrReveal();
-    const handler = getPanelMock().webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => Promise<void>;
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
     await handler({ command: 'unwirePin', pinNumber: 15, id: 'filter' });
     expect(onUnwirePin).toHaveBeenCalledWith(15, 'filter');
   });
 
   it('ignores unknown or malformed messages', async () => {
-    editorPanel.createOrReveal();
-    const handler = getPanelMock().webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => Promise<void>;
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
     await handler(null);
     await handler({ command: 'unknown' });
     expect(onWirePin).not.toHaveBeenCalled();
@@ -115,62 +132,68 @@ describe('WiringEditorPanel', () => {
   });
 
   it('drops wirePin with pinNumber out of range 0–31 (FR-ES-2)', async () => {
-    editorPanel.createOrReveal();
-    const handler = getPanelMock().webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => Promise<void>;
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
     await handler({ command: 'wirePin', pinNumber: 999, deviceType: 'pot', id: 'vol' });
     expect(onWirePin).not.toHaveBeenCalled();
   });
 
   it('drops wirePin with invalid deviceType (FR-ES-2)', async () => {
-    editorPanel.createOrReveal();
-    const handler = getPanelMock().webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => Promise<void>;
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
     await handler({ command: 'wirePin', pinNumber: 15, deviceType: 'motor', id: 'vol' });
     expect(onWirePin).not.toHaveBeenCalled();
   });
 
   it('drops wirePin with invalid id (FR-ES-2)', async () => {
-    editorPanel.createOrReveal();
-    const handler = getPanelMock().webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => Promise<void>;
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
     await handler({ command: 'wirePin', pinNumber: 15, deviceType: 'pot', id: 'foo.bar' });
     expect(onWirePin).not.toHaveBeenCalled();
   });
 
-  it('postWiredPins sends wiredPins message to live-update the panel webview', () => {
-    editorPanel.createOrReveal();
-    const mock = getPanelMock();
-    mock.webview.postMessage.mockClear();
+  it('postWiredPins sends wiredPins message to live-update the webview', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    view.webview.postMessage.mockClear();
     const pins = [{ pinNumber: 15, deviceType: 'pot' as const, id: 'cutoff' }];
-    editorPanel.postWiredPins(pins);
-    expect(mock.webview.postMessage).toHaveBeenCalledWith({ command: 'wiredPins', pins });
+    provider.postWiredPins(pins);
+    expect(view.webview.postMessage).toHaveBeenCalledWith({ command: 'wiredPins', pins });
   });
 
-  it('postWiredPins stores last pins for state restoration (FR-TWE-6)', () => {
+  it('postWiredPins before resolve stores pins for initial flush on resolve (FR-TWE-6)', () => {
     const pins = [{ pinNumber: 15, deviceType: 'pot' as const, id: 'cutoff' }];
-    editorPanel.postWiredPins(pins);
+    provider.postWiredPins(pins);
 
-    // Open panel — should receive the stored pins
-    editorPanel.createOrReveal();
-    const mock = getPanelMock();
-    expect(mock.webview.postMessage).toHaveBeenCalledWith(
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(view.webview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ command: 'wiredPins', pins }),
     );
   });
 
-  it('restores last wired pins after panel close and reopen (FR-TWE-6)', () => {
+  // FR-TWE-6 — state restored when visibility becomes true
+  it('re-sends wiredPins when view becomes visible after being hidden (FR-TWE-6)', () => {
     const pins = [{ pinNumber: 16, deviceType: 'button' as const, id: 'bypass' }];
-    editorPanel.createOrReveal();
-    editorPanel.postWiredPins(pins);
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    provider.postWiredPins(pins);
 
-    // Simulate panel close
-    const disposeCb = getPanelMock().onDidDispose.mock.calls[0]?.[0] as () => void;
-    disposeCb?.();
-    vi.clearAllMocks();
-
-    // Reopen
-    editorPanel.createOrReveal();
-    const newMock = getPanelMock();
-    expect(newMock.webview.postMessage).toHaveBeenCalledWith(
+    view.webview.postMessage.mockClear();
+    view._simulateVisibilityChange(true);
+    expect(view.webview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ command: 'wiredPins', pins }),
     );
+  });
+
+  it('does not re-send wiredPins when visibility changes to false', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    view.webview.postMessage.mockClear();
+    view._simulateVisibilityChange(false);
+    expect(view.webview.postMessage).not.toHaveBeenCalled();
   });
 });
