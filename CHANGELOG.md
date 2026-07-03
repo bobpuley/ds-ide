@@ -5,6 +5,17 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.12.1 — 2026-07-03
+
+**M37 — Extension/IPC Critical Reliability & Packaging** *(FR-EXT-1, FR-EXT-2, FR-PKG-1, FR-CODEGEN-1 — all DoD green)*
+
+- **FR-EXT-1** — `EmulatorManager.deploy()`'s lock-cleanup promise rejection is now observed, so a failed deploy (missing build, emulator crash, socket timeout) never leaks an `unhandledRejection`; added a project-wide vitest `unhandledRejection` guard (`src/test/setup.ts`).
+- **FR-EXT-2** — `killStalePid` verifies the target PID is actually an `effect_emu` process (via `ps -p <pid> -o comm=`) before signaling, and sends SIGTERM with a short escalation to SIGKILL instead of an immediate SIGKILL; sockets and the pid file live under a per-workspace directory (`os.tmpdir()/ds-ide-<hash>`, keyed by buildDir, with a randomized filename) instead of predictable global `/tmp`; activation cleanup is scoped to that directory only, never a global `/tmp` sweep.
+- **FR-PKG-1** — `emulator/**` sources are now included in the packaged `.vsix` (only `emulator/**/build/**` output is excluded); removed the `images/icon.png` reference from `package.json` since no marketplace icon asset exists yet. Also fixed a packaging-hygiene bug found while verifying this milestone: `vsce` wasn't honoring `.gitignore`, so gitignored directories (`.ds-ide/` build cache, `.idea/`, `mockup/`, etc.) were being bundled into the `.vsix` — added the missing `.vscodeignore` exclusions and `scripts/verify-vsix.sh` as a repeatable packaging smoke test.
+- **FR-CODEGEN-1** — The Wiring Editor now generates the canonical libDaisy pattern (`AdcChannelConfig ds_ide_adc_cfg[N]`, indexed `.InitSingle()` calls, `hardware.adc.Init(ds_ide_adc_cfg, N)`) instead of the non-portable variadic call shape; removed the emulator shim's variadic `Init(Args...)` overload that only existed to make the old generated code compile.
+
+---
+
 ## 0.12.0 — 2026-07-03
 
 **M36 — Emulator RT & Memory Safety Critical Fixes** *(FR-RTS-1 through FR-RTS-5 — all DoD green)*
