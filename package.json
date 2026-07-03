@@ -12,7 +12,6 @@
     "Other",
     "Debuggers"
   ],
-  "icon": "images/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/daisy-ide/ds-ide"
@@ -184,7 +183,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
-    "package": "node esbuild.js --production && vsce package --no-dependencies"
+    "package": "node esbuild.js --production && vsce package --no-dependencies",
+    "verify:package": "bash scripts/verify-vsix.sh"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

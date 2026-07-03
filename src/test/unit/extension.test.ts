@@ -48,7 +48,12 @@ vi.mock('../../emulator/manager', () => {
       managerInstances.push(this);
     }
   }
-  return { EmulatorManager: MockEmulatorManager };
+  return {
+    EmulatorManager: MockEmulatorManager,
+    // FR-EXT-2: real implementation is a pure hash of buildDir — safe to reuse
+    // directly rather than re-mocking its internals.
+    workspaceRuntimeDir: (buildDir: string) => `/tmp/ds-ide-mock-${buildDir.length}`,
+  };
 });
 
 // Imported for type inference only — each test describe re-imports dynamically.

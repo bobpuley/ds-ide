@@ -17,14 +17,11 @@ public:
 
 class AdcHandle {
 public:
-    // Initialise the ADC with an array of channel configs (pointer form).
+    // Initialise the ADC with an array of channel configs (pointer form) —
+    // matches real libDaisy's AdcHandle::Init signature exactly (FR-CODEGEN-1).
+    // The emulator ignores cfg/num_channels; pot values are driven by IPC
+    // messages, but the call shape must still compile against real hardware.
     void Init(AdcChannelConfig* cfg, uint8_t num_channels);
-
-    // Variadic form: hardware.adc.Init(cfg1, cfg2, ..., count) — used by
-    // generated init blocks (D23). The emulator ignores all parameters;
-    // pot values are driven by IPC messages.
-    template<typename... Args>
-    void Init(Args...) { /* emulator: ignores, values come from IPC */ }
 
     // Begin continuous conversion.
     void Start();

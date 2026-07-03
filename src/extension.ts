@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { EmulatorManager } from './emulator/manager';
+import { EmulatorManager, workspaceRuntimeDir } from './emulator/manager';
 import { IpcMessage } from './emulator/ipc-client';
 import { ScopePanel } from './webview/scope-panel';
 import { buildForEmulator } from './commands/build';
@@ -106,14 +106,24 @@ export function activate(context: vscode.ExtensionContext): void {
   let activeRecordPath: string | undefined;
   const manager = new EmulatorManager();
 
-  // Remove stale UNIX socket files left by previous crashed sessions (FR-QA).
-  void fs.promises.readdir('/tmp').then((entries) => {
-    for (const entry of entries) {
-      if (entry.startsWith('daisy_emu_') && entry.endsWith('.sock')) {
-        void fs.promises.unlink(`/tmp/${entry}`).catch(() => { /* ignore already-gone */ });
-      }
+  // Remove stale UNIX socket files left by a previous crashed session of
+  // *this* workspace only — scoped to its own runtime directory, never a
+  // global /tmp sweep that could sever another concurrently running VS Code
+  // window's live emulator socket (FR-EXT-2).
+  {
+    const activeFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (activeFolder) {
+      const buildDir = path.join(activeFolder, '.ds-ide', 'build');
+      const runtimeDir = workspaceRuntimeDir(buildDir);
+      void fs.promises.readdir(runtimeDir).then((entries) => {
+        for (const entry of entries) {
+          if (entry.endsWith('.sock')) {
+            void fs.promises.unlink(path.join(runtimeDir, entry)).catch(() => { /* ignore already-gone */ });
+          }
+        }
+      }).catch(() => { /* ignore readdir failure — directory may not exist yet */ });
     }
-  }).catch(() => { /* ignore readdir failure */ });
+  }
 
   // One-time info when multiple workspace folders are present (FR-QA-17).
   const _folders = vscode.workspace.workspaceFolders;

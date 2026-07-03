@@ -19,6 +19,10 @@ const END_MARKER = /^\/\/ ds-ide:controls:end\s*$/;
 const INIT_BEGIN_MARKER = /^\/\/ ds-ide:controls:init:begin\s*$/;
 const INIT_END_MARKER = /^\/\/ ds-ide:controls:init:end\s*$/;
 const ANNOTATION = /\/\/ ds-ide:\s*id=(\S+),\s*kind=(pot|button|led),\s*pin=(\d+)/;
+// Shared AdcChannelConfig array declaration generated for wired pots
+// (FR-CODEGEN-1, see wiring/controls-writer.ts) — infrastructure, not itself
+// a control, so it must not be flagged as an unrecognised annotation.
+const ADC_ARRAY_DECL = /^\s*AdcChannelConfig\s+ds_ide_adc_cfg\[\d+\]\s*;\s*$/;
 
 export function parseControlsConvention(source: string): ConventionParseResult {
   const lines = source.split('\n');
@@ -49,6 +53,7 @@ export function parseControlsConvention(source: string): ConventionParseResult {
   for (let i = beginLine + 1; i < endLine; i++) {
     const line = lines[i]!.replace(/\r$/, '');
     if (line.trim() === '' || BEGIN_MARKER.test(line)) continue;
+    if (ADC_ARRAY_DECL.test(line)) continue;
 
     const m = ANNOTATION.exec(line);
     if (m) {
