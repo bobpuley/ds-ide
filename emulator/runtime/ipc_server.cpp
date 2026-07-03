@@ -7,11 +7,38 @@
 #include <sys/un.h>
 #include <unistd.h>
 #include <cerrno>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <thread>
 
 namespace daisy_emu {
+
+// Publishes `new_wav` as the active WAV data via an atomic pointer swap and
+// safely frees the previously-published WavData (FR-RTS-3). Runs on the IPC
+// dispatch thread, never the RT thread, so it is free to block briefly while
+// waiting for the audio engine to confirm it has moved off the old pointer
+// (wav_data_in_use) before deleting it.
+static void retire_wav_data(const WavData* new_wav) {
+    const WavData* old = g_state.wav_data_ptr.exchange(new_wav, std::memory_order_acq_rel);
+    if (!old) return;
+
+    bool confirmed = false;
+    for (int i = 0; i < 200; ++i) {  // up to ~200 ms
+        if (g_state.wav_data_in_use.load(std::memory_order_acquire) != old) { confirmed = true; break; }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    if (!confirmed) {
+        // Timed out — the engine may not be rendering at all right now (e.g.
+        // transport stopped). Clear wav_data_in_use first so a future
+        // allocation that happens to reuse this address can't be
+        // misidentified as still in flight.
+        const WavData* expected = old;
+        g_state.wav_data_in_use.compare_exchange_strong(expected, static_cast<const WavData*>(nullptr));
+    }
+    delete old;
+}
 
 // ---- Minimal JSON field extraction ------------------------------------------
 // Handles string, number, and one level of nested object values.
@@ -257,8 +284,17 @@ static void dispatch(const std::string& line) {
         if (!path.empty()) {
             auto sr = static_cast<uint32_t>(g_state.sample_rate.load());
             auto bs = static_cast<uint32_t>(g_state.block_size.load());
-            std::lock_guard<std::mutex> lk(g_state.recorder_mutex);
-            g_state.recorder.start(path, sr, bs);
+            bool ok;
+            {
+                std::lock_guard<std::mutex> lk(g_state.recorder_mutex);
+                ok = g_state.recorder.start(path, sr, bs);
+            }
+            // A duplicate recordStart while already active is rejected by
+            // start() rather than crashing (FR-RTS-5); tell the client so it
+            // doesn't believe a second recording started.
+            if (!ok) {
+                emit_event("{\"type\":\"event\",\"kind\":\"record_error\"}");
+            }
         }
     }
     else if (type == "recordStop") {
@@ -315,23 +351,18 @@ static void dispatch(const std::string& line) {
         g_state.wav_loop.store(loop == "true");
 
         if (path.empty()) {
-            {
-                std::lock_guard<std::mutex> lk(g_state.wav_mutex);
-                g_state.wav_data.reset();
-            }
+            retire_wav_data(nullptr);
             g_state.wav_active.store(false);
             g_state.wav_generation.fetch_add(1);
         } else {
-            auto wav = std::make_shared<WavData>();
+            auto* wav = new WavData();
             std::string err;
             if (load_wav_file(path, *wav, err)) {
-                {
-                    std::lock_guard<std::mutex> lk(g_state.wav_mutex);
-                    g_state.wav_data = wav;
-                }
+                retire_wav_data(wav);
                 g_state.wav_generation.fetch_add(1);
                 g_state.wav_active.store(true);
             } else {
+                delete wav;
                 g_state.wav_active.store(false);
                 emit_event("{\"type\":\"event\",\"kind\":\"wav_error\"}");
             }

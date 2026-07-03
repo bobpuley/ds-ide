@@ -10,7 +10,7 @@ Eliminate every real-time-thread safety and memory-safety violation identified i
 
 ## Sprint Tasks
 
-### [ ] fix: Size `inputBufList` for the maximum deliverable frame count (FR-RTS-1)
+### [x] fix: Size `inputBufList` for the maximum deliverable frame count (FR-RTS-1)
 
 `CoreAudioDevice::start()` allocates `inputBufList` for exactly `bufferSize` frames, but CoreAudio's `inNumberFrames` can exceed `bufferSize` under hardware minimum clamping. The render callback's `memset`/`AudioUnitRender` then write past the `malloc`'d buffer.
 
@@ -23,7 +23,7 @@ Eliminate every real-time-thread safety and memory-safety violation identified i
 
 ---
 
-### [ ] fix: Size RT-callback buffers before starting the audio unit, not after (FR-RTS-2)
+### [x] fix: Size RT-callback buffers before starting the audio unit, not after (FR-RTS-2)
 
 `start()`/`start_output_only()` call `AudioOutputUnitStart()` and only afterward resize `in_interleaved`, `out_interleaved`, `silentInput`, `workOut` — buffers the RT callback may already be concurrently reading/writing.
 
@@ -36,7 +36,7 @@ Eliminate every real-time-thread safety and memory-safety violation identified i
 
 ---
 
-### [ ] fix: Move replay audio off the RT thread onto a lock-free SPSC ring (FR-RTS-3)
+### [x] fix: Move replay audio off the RT thread onto a lock-free SPSC ring (FR-RTS-3)
 
 In simulated mode with an output device, `process_one_block` runs inside the CoreAudio callback and calls `SessionPlayer::nextBlock()`, which performs blocking `::read()`/`::lseek()`, heap-allocates a per-block `std::vector<ReplayEvent>`, and can free a multi-MB `WavData` on the RT thread via a `wav_mutex`-guarded `shared_ptr` copy. The IPC thread also holds `player_mutex` across a full-file `countBlocks()` scan.
 
@@ -51,7 +51,7 @@ In simulated mode with an output device, `process_one_block` runs inside the Cor
 
 ---
 
-### [ ] fix: Fix `SessionRecorder::enqueueBlock()` memory-ordering and pre-allocate slots (FR-RTS-4)
+### [x] fix: Fix `SessionRecorder::enqueueBlock()` memory-ordering and pre-allocate slots (FR-RTS-4)
 
 `enqueueBlock()` (RT thread, unlocked) loads `active_` with `memory_order_relaxed`, which does not synchronize with `start()`'s `memory_order_release` store — on Apple Silicon's weak memory model the RT thread can observe `active_ == true` before observing initialized ring-buffer slots. `stop()` can also complete mid-`enqueueBlock`, silently dropping or misfiling blocks.
 
@@ -65,7 +65,7 @@ In simulated mode with an output device, `process_one_block` runs inside the Cor
 
 ---
 
-### [ ] fix: Reject re-entrant `recordStart` instead of crashing (FR-RTS-5)
+### [x] fix: Reject re-entrant `recordStart` instead of crashing (FR-RTS-5)
 
 `SessionRecorder::start()` has no guard against being called while already active — a duplicate `recordStart` IPC message assigns to a still-joinable `drain_thread_`, calling `std::terminate()` and aborting the emulator. The old fd also leaks and the old drain thread corrupts the new file's header before the abort.
 

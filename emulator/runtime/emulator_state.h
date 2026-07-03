@@ -115,20 +115,28 @@ struct EmulatorState {
 
     // v2 (M9): WAV file input. When wav_active is true, the simulated-clock loop
     // feeds wav_data into the input buffer instead of the sine generator.
-    // wav_data is published under wav_mutex by the IPC thread; the audio engine
-    // copies the shared_ptr per block. wav_generation bumps on each (un)load so
-    // the engine can reset its playhead.
+    // wav_generation bumps on each (un)load so the engine can reset its playhead.
+    //
+    // wav_data_ptr / wav_data_in_use replace a wav_mutex + shared_ptr copy on
+    // the RT thread (FR-RTS-3): the IPC thread publishes a new WavData via an
+    // atomic pointer swap (retireWavData() in ipc_server.cpp — release-ordered,
+    // no mutex); the audio engine loads it once per block (acquire) and
+    // republishes the pointer it is currently reading via wav_data_in_use so
+    // the IPC thread can confirm the engine has moved off the old WavData
+    // before deleting it.
     std::atomic<bool>     wav_active{false};
     std::atomic<bool>     wav_loop{false};
     std::atomic<uint64_t> wav_generation{0};
-    std::mutex                       wav_mutex;
-    std::shared_ptr<const WavData>   wav_data;
+    std::atomic<const WavData*> wav_data_ptr{nullptr};
+    std::atomic<const WavData*> wav_data_in_use{nullptr};
 
     // v2 (M14): session recorder and player.
-    // recorder is driven by the audio engine (writeBlock per block) and the IPC
-    // thread (enqueuePot/enqueueButton). player is used by run_simulated as an
-    // input source when replay_active is true.
-    // Both fields are protected by recorder_mutex / player_mutex.
+    // recorder is driven by the audio engine (enqueueBlock per block, RT-safe)
+    // and the IPC thread (enqueuePot/enqueueButton, under recorder_mutex).
+    // player is used by run_simulated as an input source when replay_active is
+    // true; its RT-facing popBlock() (FR-RTS-3) needs no external locking —
+    // player_mutex only guards the non-RT open()/close() lifecycle calls made
+    // from the IPC and engine-management threads.
     std::mutex       recorder_mutex;
     SessionRecorder  recorder;
     std::mutex       player_mutex;
