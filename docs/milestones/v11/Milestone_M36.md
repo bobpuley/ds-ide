@@ -1,7 +1,7 @@
 # M36 — Emulator RT & Memory Safety Critical Fixes
 
 **Version:** 0.12.0
-**Status:** planned
+**Status:** released
 **Source:** 2026-07-02 C/C++ emulator code review — HIGH findings
 
 ## Goal
