@@ -30,7 +30,7 @@
 > **v10 complete** — M34–M35 released (0.10.0–0.11.0), all ACs green.
 > Archived: [`docs/v10/`](v10/).
 
-*v11 milestones not yet planned.*
+*v11–v13 planned — bugfix intake from the 2026-07-02 code reviews, spread by severity tier (v11=HIGH, v12=MEDIUM, v13=LOW), milestones split by subsystem within each version.*
 
 ---
 
@@ -93,6 +93,30 @@ Full registry in [`docs/v9/05_dev-plan.md`](v9/05_dev-plan.md).
 M34 UI Polish: Independent Editors, Always-Visible Audio Settings, Panel Icons · M35 Activity Bar Split: Controls and Wiring as Independent Sidebar Views.
 Full registry in [`docs/v10/05_dev-plan.md`](v10/05_dev-plan.md).
 
-### v11 — planned
+### v11 — planned (HIGH-severity fixes from the 2026-07-02 code reviews)
 
-*(no milestones yet)*
+| ID  | Name | Status          | Version | File |
+|-----|------|-----------------|---------|------|
+| M36 | Emulator RT & Memory Safety Critical Fixes | **in progress** | 0.12.0 | [Milestone_M36.md](milestones/v11/Milestone_M36.md) |
+| M37 | Extension/IPC Critical Reliability & Packaging | **planned**     | 0.12.1 | [Milestone_M37.md](milestones/v11/Milestone_M37.md) |
+
+Source: 2026-07-02 automated code reviews of `./emulator/` (C/C++), `./src/` (Node.js/TS), and `./src/` (VS Code extension) — all HIGH-urgency findings.
+
+### v12 — planned (MEDIUM-severity fixes from the 2026-07-02 code reviews)
+
+| ID  | Name | Status | Version | File |
+|-----|------|--------|---------|------|
+| M38 | Emulator Correctness & Robustness | **planned** | 0.13.0 | [Milestone_M38.md](milestones/v12/Milestone_M38.md) |
+| M39 | IPC & Data Validation Hardening | **planned** | 0.13.1 | [Milestone_M39.md](milestones/v12/Milestone_M39.md) |
+| M40 | Extension UX & Workspace Safety | **planned** | 0.13.2 | [Milestone_M40.md](milestones/v12/Milestone_M40.md) |
+
+Source: 2026-07-02 automated code reviews — all MEDIUM-urgency findings. M38 should land after M36 (both touch `SessionPlayer::nextBlock()`; see `02_assumptions-and-risks.md`).
+
+### v13 — planned (LOW-severity fixes from the 2026-07-02 code reviews)
+
+| ID  | Name | Status | Version | File |
+|-----|------|--------|---------|------|
+| M41 | Emulator Code Quality & Hygiene | **planned** | 0.14.0 | [Milestone_M41.md](milestones/v13/Milestone_M41.md) |
+| M42 | Extension/Tooling Polish | **planned** | 0.14.1 | [Milestone_M42.md](milestones/v13/Milestone_M42.md) |
+
+Source: 2026-07-02 automated code reviews — all LOW-urgency findings.
