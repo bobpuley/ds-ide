@@ -10,7 +10,7 @@ Fix the four HIGH-severity defects that make the extension unreliable or non-fun
 
 ## Sprint Tasks
 
-### [ ] fix: Observe the deploy-lock cleanup promise so failures never leak an unhandled rejection (FR-EXT-1)
+### [x] fix: Observe the deploy-lock cleanup promise so failures never leak an unhandled rejection (FR-EXT-1)
 
 `EmulatorManager.deploy()` clears its coalescing lock via `deployPromise.finally(() => { this.deployLock = null; })`. `.finally()` returns a new promise that rejects whenever `deployPromise` rejects, and nothing observes it — every failed deploy (missing build, emulator crash, socket timeout) produces an `unhandledRejection`.
 
@@ -22,7 +22,7 @@ Fix the four HIGH-severity defects that make the extension unreliable or non-fun
 
 ---
 
-### [ ] fix: Verify process identity before SIGKILL; scope socket cleanup per-workspace (FR-EXT-2)
+### [x] fix: Verify process identity before SIGKILL; scope socket cleanup per-workspace (FR-EXT-2)
 
 `killStalePid` signals whatever PID is recorded in `emu.pid` with `SIGKILL` and no identity check — after PID reuse (e.g. post-reboot) this can kill an arbitrary user process. Separately, activation deletes every `/tmp/daisy_emu_*.sock` it finds, severing other concurrently running VS Code windows' live emulator connections. Socket names are also predictable (`daisy_emu_${Date.now()}.sock`) in world-writable `/tmp`.
 
@@ -37,7 +37,7 @@ Fix the four HIGH-severity defects that make the extension unreliable or non-fun
 
 ---
 
-### [ ] fix: Include `emulator/**` in the packaged `.vsix` and fix the missing icon (FR-PKG-1)
+### [x] fix: Include `emulator/**` in the packaged `.vsix` and fix the missing icon (FR-PKG-1)
 
 `.vscodeignore` excludes `emulator/**` wholesale, so `buildForEmulator`'s `cmake -S <extensionPath>/emulator` has no source directory once installed from a package — every core command (Build for Emulator, Build & Deploy, F5) fails. `package.json` also references a non-existent `images/icon.png`, which fails `vsce package` outright.
 
@@ -51,7 +51,7 @@ Fix the four HIGH-severity defects that make the extension unreliable or non-fun
 
 ---
 
-### [ ] fix: Generate libDaisy-compatible ADC init code; remove the shim-only variadic overload (FR-CODEGEN-1)
+### [x] fix: Generate libDaisy-compatible ADC init code; remove the shim-only variadic overload (FR-CODEGEN-1)
 
 The Wiring Editor emits `hardware.adc.Init(pot1, pot2, ..., N)` — separate variadic arguments — which only compiles against a shim-only catch-all `Init(Args...)` overload. Real libDaisy's `AdcHandle::Init` takes `(AdcChannelConfig* cfg, size_t num_channels)`. Any project with a wired pot fails `ds-ide.buildHardware`.
 

@@ -13,5 +13,21 @@ node_modules/**
 daisy-seed-knowledge/**
 docs/**
 graphify-out/**
-emulator/**
+# emulator/** sources are packaged — buildForEmulator needs them at runtime
+# (FR-PKG-1); only build output directories are excluded.
+emulator/**/build/**
 tests/**
+# vsce does not read .gitignore in this project's packaging setup — these
+# gitignored, non-shipping directories must be listed explicitly or they end
+# up bundled into the .vsix wholesale (found while verifying FR-PKG-1: a
+# stray local .ds-ide/ build cache alone added ~89 MB to the package).
+.ds-ide/**
+examples/**/.ds-ide/**
+examples/**/*.png
+.ds-ide-shim-test/**
+.idea/**
+.claude/**
+mockup/**
+docs/raw/**
+HANDOFF.md
+*.tsbuildinfo

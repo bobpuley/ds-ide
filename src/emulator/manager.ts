@@ -1,4 +1,5 @@
 import * as cp from 'child_process';
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -6,24 +7,59 @@ import { EventEmitter } from 'events';
 import { IpcClient, IpcMessage } from './ipc-client';
 
 const SOCKET_TIMEOUT_MS = 10_000;
+// Grace period between SIGTERM and SIGKILL escalation when reclaiming a
+// stale emulator process (FR-EXT-2).
+const KILL_ESCALATION_MS = 200;
 
 function pidFilePath(buildDir: string): string {
   return path.join(buildDir, 'emu.pid');
 }
 
-async function killStalePid(buildDir: string): Promise<void> {
+// Per-workspace scratch directory for the emulator's IPC socket, keyed by a
+// hash of buildDir (itself unique per project) rather than the project's own
+// (possibly deeply-nested and long) path — UNIX domain socket paths are
+// capped at ~103 bytes, and os.tmpdir() is typically short and fixed-length
+// regardless of where the project lives (FR-EXT-2).
+export function workspaceRuntimeDir(buildDir: string): string {
+  const hash = crypto.createHash('sha256').update(buildDir).digest('hex').slice(0, 10);
+  return path.join(os.tmpdir(), `ds-ide-${hash}`);
+}
+
+// True if `pid` is currently running an effect_emu process. Used to verify
+// identity before signaling a PID recorded in emu.pid, since PIDs are reused
+// by the OS after the original process exits — e.g. across a reboot, where a
+// stale emu.pid could otherwise point at an unrelated, unrecognizable
+// process (FR-EXT-2).
+function isEffectEmuProcess(pid: number, execFileFn: typeof cp.execFile): Promise<boolean> {
+  return new Promise((resolve) => {
+    execFileFn('ps', ['-p', String(pid), '-o', 'comm='], (err, stdout) => {
+      if (err) { resolve(false); return; }
+      resolve(String(stdout).trim().endsWith('effect_emu'));
+    });
+  });
+}
+
+export async function killStalePid(buildDir: string, execFileFn: typeof cp.execFile): Promise<void> {
   const pidFile = pidFilePath(buildDir);
   try {
     const text = await fs.promises.readFile(pidFile, 'utf8');
     const pid = parseInt(text.trim(), 10);
-    if (pid > 0) {
-      process.kill(pid, 'SIGKILL');
-      const deadline = Date.now() + 200;
+    if (pid > 0 && await isEffectEmuProcess(pid, execFileFn)) {
+      // SIGTERM first, escalating to SIGKILL only if the process is still
+      // alive after a short grace period (FR-EXT-2).
+      try { process.kill(pid, 'SIGTERM'); } catch { /* already gone */ }
+      const deadline = Date.now() + KILL_ESCALATION_MS;
+      let alive = true;
       while (Date.now() < deadline) {
-        try { process.kill(pid, 0); } catch { break; }
+        try { process.kill(pid, 0); } catch { alive = false; break; }
         await new Promise<void>((r) => setTimeout(r, 10));
       }
+      if (alive) {
+        try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
+      }
     }
+    // A PID that doesn't identify as effect_emu (reused by an unrelated
+    // process) is left alone entirely — only the stale pid file is cleared.
   } catch { /* pid file absent or process already gone */ }
   try { await fs.promises.unlink(pidFile); } catch { /* ignore */ }
 }
@@ -47,6 +83,7 @@ export interface EmulatorManagerDeps {
   spawn?: typeof cp.spawn;
   ipcClientFactory?: () => IpcClient;
   mkdirSync?: typeof fs.mkdirSync;
+  execFile?: typeof cp.execFile;
 }
 
 export class EmulatorManager extends EventEmitter {
@@ -63,12 +100,14 @@ export class EmulatorManager extends EventEmitter {
   private readonly spawn: typeof cp.spawn;
   private readonly ipcClientFactory: () => IpcClient;
   private readonly mkdirSync: typeof fs.mkdirSync;
+  private readonly execFile: typeof cp.execFile;
 
   constructor(deps: EmulatorManagerDeps = {}) {
     super();
     this.spawn = deps.spawn ?? cp.spawn;
     this.ipcClientFactory = deps.ipcClientFactory ?? (() => new IpcClient());
     this.mkdirSync = deps.mkdirSync ?? fs.mkdirSync;
+    this.execFile = deps.execFile ?? cp.execFile;
   }
 
   async build(opts: BuildOptions, onOutput: (line: string) => void): Promise<void> {
@@ -96,12 +135,17 @@ export class EmulatorManager extends EventEmitter {
     if (this.deployLock) return this.deployLock;
 
     const exePath = path.join(this.buildDir, 'effect_emu');
-    this.socketPath = `/tmp/daisy_emu_${Date.now()}.sock`;
+    // Socket lives under a per-workspace directory with a randomized filename
+    // component, not a predictable global-/tmp path (FR-EXT-2).
+    const runtimeDir = workspaceRuntimeDir(this.buildDir);
+    this.mkdirSync(runtimeDir, { recursive: true, mode: 0o700 });
+    this.socketPath = path.join(runtimeDir, `emu-${crypto.randomBytes(4).toString('hex')}.sock`);
     const socketPath = this.socketPath;
 
     // Kill any process left over from a previous session, waiting up to 200 ms
-    // for it to exit before spawning a new one (FR-EMU-3).
-    const deployPromise = killStalePid(this.buildDir)
+    // for it to exit before spawning a new one (FR-EMU-3). Identity-checked
+    // and SIGTERM-first (FR-EXT-2).
+    const deployPromise = killStalePid(this.buildDir, this.execFile)
       .catch(() => { /* ignore stale-pid errors */ })
       .then(() => {
         this.killExisting();
@@ -160,7 +204,12 @@ export class EmulatorManager extends EventEmitter {
       });
 
     this.deployLock = deployPromise;
-    deployPromise.finally(() => { this.deployLock = null; });
+    // .finally() returns a new promise that adopts deployPromise's rejection.
+    // Nothing else observes that derived promise (callers await deployPromise
+    // itself, returned below), so a failed deploy would otherwise surface as
+    // an unhandledRejection on every failure (FR-EXT-1). The no-op .catch()
+    // observes it without changing deployPromise's own rejection behavior.
+    deployPromise.finally(() => { this.deployLock = null; }).catch(() => { /* observed; see above */ });
     return deployPromise;
   }
 

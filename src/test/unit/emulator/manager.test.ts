@@ -1,7 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
 import * as cp from 'child_process';
-import { EmulatorManager } from '../../../emulator/manager';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { EmulatorManager, workspaceRuntimeDir, killStalePid } from '../../../emulator/manager';
 import { IpcClient } from '../../../emulator/ipc-client';
 
 // ---- Process stub helpers ----
@@ -536,6 +539,210 @@ describe('EmulatorManager', () => {
       );
       // Two sequential deploys: both should succeed
       expect(effectEmuCalls).toHaveLength(2);
+    });
+  });
+
+  describe('deploy() failure does not leak an unhandled rejection (FR-EXT-1)', () => {
+    it('a deploy that fails to spawn does not produce an unhandledRejection', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+
+      const failingSpawn = vi.fn((cmd: string) => {
+        if (cmd === 'cmake') return makeCmakeProcess(0);
+        const proc = new EventEmitter() as EventEmitter & {
+          stdout: EventEmitter & { on: ReturnType<typeof vi.fn> };
+          stderr: EventEmitter & { on: ReturnType<typeof vi.fn> };
+          kill: ReturnType<typeof vi.fn>;
+          pid: number;
+        };
+        proc.kill = vi.fn();
+        proc.pid = 999;
+        proc.stdout = new EventEmitter() as EventEmitter & { on: ReturnType<typeof vi.fn> };
+        proc.stderr = new EventEmitter() as EventEmitter & { on: ReturnType<typeof vi.fn> };
+        setTimeout(() => proc.emit('error', new Error('spawn ENOENT')), 0);
+        return proc;
+      });
+      const failingManager = new EmulatorManager({
+        spawn: failingSpawn as unknown as typeof cp.spawn,
+        ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
+        mkdirSync: mkdirSyncMock,
+      });
+      await failingManager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+
+      const rejectionSpy = vi.fn();
+      process.on('unhandledRejection', rejectionSpy);
+      try {
+        await expect(failingManager.deploy(() => undefined)).rejects.toThrow('spawn ENOENT');
+        // Let the microtask queue drain so any unobserved rejection surfaces.
+        await new Promise((r) => setTimeout(r, 0));
+        expect(rejectionSpy).not.toHaveBeenCalled();
+      } finally {
+        process.off('unhandledRejection', rejectionSpy);
+      }
+    });
+
+    it('deployLock clears after a failed deploy, so a subsequent deploy can proceed', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+
+      let callCount = 0;
+      const flakySpawn = vi.fn((cmd: string) => {
+        if (cmd === 'cmake') return makeCmakeProcess(0);
+        callCount++;
+        if (callCount === 1) {
+          const proc = new EventEmitter() as EventEmitter & {
+            stdout: EventEmitter & { on: ReturnType<typeof vi.fn> };
+            stderr: EventEmitter & { on: ReturnType<typeof vi.fn> };
+            kill: ReturnType<typeof vi.fn>;
+            pid: number;
+          };
+          proc.kill = vi.fn();
+          proc.pid = 999;
+          proc.stdout = new EventEmitter() as EventEmitter & { on: ReturnType<typeof vi.fn> };
+          proc.stderr = new EventEmitter() as EventEmitter & { on: ReturnType<typeof vi.fn> };
+          setTimeout(() => proc.emit('error', new Error('spawn ENOENT')), 0);
+          return proc;
+        }
+        return makeChildProcess(0, '/tmp/daisy_emu_test.sock');
+      });
+      const flakyManager = new EmulatorManager({
+        spawn: flakySpawn as unknown as typeof cp.spawn,
+        ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
+        mkdirSync: mkdirSyncMock,
+      });
+      await flakyManager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+
+      await expect(flakyManager.deploy(() => undefined)).rejects.toThrow('spawn ENOENT');
+      await expect(flakyManager.deploy(() => undefined)).resolves.toBeUndefined();
+    });
+  });
+
+  describe('workspaceRuntimeDir() (FR-EXT-2)', () => {
+    it('returns a stable path for the same buildDir', () => {
+      const buildDir = '/very/deeply/nested/project/root/.ds-ide/build';
+      expect(workspaceRuntimeDir(buildDir)).toBe(workspaceRuntimeDir(buildDir));
+    });
+
+    it('returns distinct paths for distinct buildDirs', () => {
+      const a = workspaceRuntimeDir('/project-a/.ds-ide/build');
+      const b = workspaceRuntimeDir('/project-b/.ds-ide/build');
+      expect(a).not.toBe(b);
+    });
+
+    it('stays short regardless of how deep the project root is (UNIX socket path limit)', () => {
+      const deepRoot = '/Users/someone/' + 'nested/'.repeat(20) + 'my-daisy-project/.ds-ide/build';
+      // A socket filename ("emu-XXXXXXXX.sock", 17 chars) appended to this
+      // directory must stay well under the ~103-byte sockaddr_un.sun_path cap.
+      expect(workspaceRuntimeDir(deepRoot).length + 17).toBeLessThan(100);
+    });
+
+    it('lives under a directory named "ds-ide-<hash>" under os.tmpdir()', () => {
+      const dir = workspaceRuntimeDir('/proj/.ds-ide/build');
+      expect(path.dirname(dir)).toBe(os.tmpdir());
+      expect(path.basename(dir)).toMatch(/^ds-ide-[0-9a-f]+$/);
+    });
+  });
+
+  describe('killStalePid() identity check (FR-EXT-2)', () => {
+    let tmpDir: string;
+
+    beforeEach(async () => {
+      tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ds-ide-killtest-'));
+    });
+
+    afterEach(async () => {
+      await fs.promises.rm(tmpDir, { recursive: true, force: true });
+      vi.restoreAllMocks();
+    });
+
+    function fakeExecFile(commOutput: string) {
+      return vi.fn((_cmd: string, _args: readonly string[], cb: (err: Error | null, stdout: string) => void) => {
+        cb(null, commOutput);
+      });
+    }
+
+    it('does not signal a PID whose process name does not match effect_emu', async () => {
+      await fs.promises.writeFile(path.join(tmpDir, 'emu.pid'), '424242');
+      const execFileMock = fakeExecFile('some_unrelated_process\n');
+      const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
+
+      await killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile);
+
+      expect(killSpy).not.toHaveBeenCalled();
+    });
+
+    it('sends SIGTERM (not immediate SIGKILL) to a verified effect_emu PID', async () => {
+      await fs.promises.writeFile(path.join(tmpDir, 'emu.pid'), '424242');
+      const execFileMock = fakeExecFile('effect_emu\n');
+      // Simulate the process having already exited by the time we check —
+      // every process.kill() call (including the SIGTERM itself and the
+      // liveness poll) throws ESRCH, so no SIGKILL escalation is needed.
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => {
+        throw Object.assign(new Error('ESRCH'), { code: 'ESRCH' });
+      });
+
+      await killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile);
+
+      expect(killSpy).toHaveBeenCalledWith(424242, 'SIGTERM');
+      expect(killSpy).not.toHaveBeenCalledWith(424242, 'SIGKILL');
+    });
+
+    it('clears the stale pid file regardless of identity match', async () => {
+      const pidFile = path.join(tmpDir, 'emu.pid');
+      await fs.promises.writeFile(pidFile, '424242');
+      const execFileMock = fakeExecFile('unrelated\n');
+      vi.spyOn(process, 'kill').mockReturnValue(true);
+
+      await killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile);
+
+      await expect(fs.promises.access(pidFile)).rejects.toThrow();
+    });
+
+    it('is a no-op when no pid file exists', async () => {
+      const execFileMock = fakeExecFile('effect_emu\n');
+      const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
+
+      await expect(killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile)).resolves.toBeUndefined();
+      expect(killSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deploy() socket scoping (FR-EXT-2)', () => {
+    it('places the socket under the per-workspace runtime directory with a randomized name, not a predictable global /tmp path', async () => {
+      await manager.build(
+        { projectRoot: '/proj', effectSrc: '/proj/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+
+      const lastCall = spawnMock.mock.calls[2] as [string, string[]];
+      const socketArg = lastCall[1][0]!;
+      expect(socketArg).not.toMatch(/^\/tmp\/daisy_emu_\d+\.sock$/);
+      expect(socketArg).toContain('ds-ide-');
+      expect(path.basename(socketArg)).toMatch(/^emu-[0-9a-f]{8}\.sock$/);
+    });
+
+    it('creates the runtime directory with restrictive permissions', async () => {
+      await manager.build(
+        { projectRoot: '/proj', effectSrc: '/proj/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+
+      expect(mkdirSyncMock).toHaveBeenCalledWith(
+        expect.stringContaining('ds-ide-'),
+        expect.objectContaining({ recursive: true, mode: 0o700 }),
+      );
     });
   });
 
