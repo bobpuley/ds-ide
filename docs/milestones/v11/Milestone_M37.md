@@ -1,7 +1,7 @@
 # M37 — Extension/IPC Critical Reliability & Packaging
 
 **Version:** 0.12.1
-**Status:** in progress
+**Status:** released
 **Source:** 2026-07-02 Node.js/TypeScript + VS Code extension code reviews — HIGH findings (deduplicated where both reviews independently flagged the same bug)
 
 ## Goal
