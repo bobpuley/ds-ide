@@ -5,6 +5,18 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.12.0 — 2026-07-03
+
+**M36 — Emulator RT & Memory Safety Critical Fixes** *(FR-RTS-1 through FR-RTS-5 — all DoD green)*
+
+- **FR-RTS-1** — `inputBufList` is now sized from the hardware's queried maximum deliverable frame count (`kAudioDevicePropertyBufferFrameSizeRange`), not the requested `bufferSize`; the render callback clamps writes to the allocated capacity as a defense-in-depth backstop.
+- **FR-RTS-2** — RT-callback-visible buffers (`in_interleaved`, `out_interleaved`, `silentInput`, `workOut`) are sized before `AudioOutputUnitStart()` is called instead of being resized afterward while the render callback may already be running.
+- **FR-RTS-3** — Replay audio moved off the RT thread: a dedicated reader thread performs all `.dsrec` file I/O and event parsing into a lock-free SPSC ring; the RT thread only pops pre-decoded blocks via `SessionPlayer::popBlock()` (no syscalls, no mutex, no allocation). WAV playback's `wav_mutex` + `shared_ptr` copy replaced with an atomic pointer swap (`wav_data_ptr` / `wav_data_in_use`), retired only after the engine confirms it has moved on.
+- **FR-RTS-4** — `SessionRecorder::enqueueBlock()` now loads `active_` with `memory_order_acquire`, correctly pairing with `start()`'s release store; ring-buffer slots are pre-allocated once in the constructor instead of being resized in `start()`; an `in_flight_` counter closes the stop/start overlap window so no in-flight block can be silently dropped or misfiled at a session boundary.
+- **FR-RTS-5** — `SessionRecorder::start()` rejects re-entrant calls while already active instead of crashing via a joinable-`std::thread` reassignment; the IPC `recordStart` handler now replies with a `record_error` event on rejection.
+
+---
+
 ## 0.11.0 — 2026-06-30
 
 **M35 — Activity Bar Split: Controls and Wiring as Independent Sidebar Views** *(FR-TWE-1 through FR-TWE-6, FR-ICON-1 through FR-ICON-2 — all DoD green)*
