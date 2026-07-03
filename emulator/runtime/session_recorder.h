@@ -44,8 +44,12 @@ struct PendingEvent {
 
 class SessionRecorder {
 public:
-    // Open file and write header. Pre-allocates audio ring buffer and starts
-    // the drain thread. Returns true on success.
+    // Pre-allocates the audio ring buffer once, for the lifetime of the
+    // object (FR-RTS-4) — start() never resizes it.
+    SessionRecorder();
+
+    // Open file and write header, then start the drain thread. Returns true
+    // on success.
     bool start(const std::string& path, uint32_t sample_rate, uint32_t block_size);
 
     // Enqueue a pot or button event (called from IPC thread).
@@ -77,6 +81,14 @@ private:
     uint32_t block_size_{0};
     std::atomic<bool>     active_{false};
     std::atomic<uint32_t> block_count_{0};
+    // Number of enqueueBlock() calls currently executing (FR-RTS-4). The drain
+    // thread will not consider itself done (and close the file) until this
+    // reaches zero after active_ goes false, closing the stop/start overlap
+    // window: no in-flight write can land after the file is closed, and no
+    // in-flight write can be misattributed to a subsequent start() either,
+    // since stop() cannot return (and unblock a new start()) until drainLoop
+    // — which waits on this same counter — has exited.
+    std::atomic<uint32_t> in_flight_{0};
 
     // Pot/button event queue (IPC thread → drain thread)
     std::mutex               queue_mutex_;

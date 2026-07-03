@@ -13,6 +13,7 @@
 #include "daisy/gpio.h"
 
 #include <cassert>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -474,6 +475,208 @@ static void test_spsc_slot_no_realloc() {
     CHECK(out == "{\"type\":\"event\",\"kind\":\"nan\"}", "push(const char*) delivers correct content");
 }
 
+// ---- FR-RTS-5: duplicate recordStart is rejected, not fatal ---------------
+
+static void test_session_recorder_duplicate_start_rejected() {
+    std::printf("--- FR-RTS-5: duplicate start() is rejected, not fatal ---\n");
+
+    char tmp1[] = "/tmp/test_rec_dup1_XXXXXX";
+    char tmp2[] = "/tmp/test_rec_dup2_XXXXXX";
+    int fd1 = ::mkstemp(tmp1);
+    int fd2 = ::mkstemp(tmp2);
+    if (fd1 < 0 || fd2 < 0) { std::printf("  SKIP  mkstemp failed\n"); return; }
+    ::close(fd1); ::close(fd2);
+
+    SessionRecorder rec;
+    bool first = rec.start(std::string(tmp1), 48000, 64);
+    CHECK(first, "first start() succeeds");
+    CHECK(rec.active(), "active() true after first start()");
+
+    // A duplicate start() while already active must not call std::terminate()
+    // via a joinable-thread reassignment, and must not disturb the running
+    // session's state (FR-RTS-5).
+    bool second = rec.start(std::string(tmp2), 48000, 64);
+    CHECK(!second, "second (duplicate) start() is rejected");
+    CHECK(rec.active(), "still active after rejected duplicate start()");
+
+    std::vector<float> buf(64 * 2, 0.25f);
+    int enqueued = 0;
+    for (int i = 0; i < 5; ++i) if (rec.enqueueBlock(buf.data(), 64)) ++enqueued;
+    CHECK(enqueued == 5, "first recording continues to accept blocks after rejected duplicate");
+
+    rec.stop();
+    CHECK(!rec.active(), "active() false after stop()");
+
+    ::unlink(tmp1);
+    ::unlink(tmp2);
+}
+
+// ---- FR-RTS-4: SessionRecorder rapid start/stop vs. concurrent enqueueBlock -
+
+static void test_session_recorder_start_stop_race() {
+    std::printf("--- FR-RTS-4: SessionRecorder rapid start/stop under concurrent enqueueBlock ---\n");
+
+    SessionRecorder rec;
+    std::atomic<bool> stop_producer{false};
+    std::vector<float> buf(64 * 2, 1.0f);
+
+    // Producer thread hammers enqueueBlock continuously, simulating the RT
+    // thread calling it right across start()/stop() boundaries. Run under
+    // ThreadSanitizer (see tests/emulator-safety/run_tests.sh --tsan) to
+    // verify no data race on active_ / audio_slots_ / in_flight_.
+    std::thread producer([&]() {
+        while (!stop_producer.load(std::memory_order_relaxed)) {
+            rec.enqueueBlock(buf.data(), 64);
+        }
+    });
+
+    char tmp[] = "/tmp/test_rec_race_XXXXXX";
+    for (int cycle = 0; cycle < 100; ++cycle) {
+        int fd = ::mkstemp(tmp);
+        if (fd < 0) continue;
+        ::close(fd);
+        rec.start(std::string(tmp), 48000, 64);
+        std::this_thread::sleep_for(std::chrono::microseconds(200));
+        rec.stop();
+        ::unlink(tmp);
+    }
+
+    stop_producer.store(true, std::memory_order_relaxed);
+    producer.join();
+
+    CHECK(true, "100 rapid start/stop cycles under concurrent enqueueBlock complete "
+               "without crash, hang, or (under TSAN) a reported data race");
+}
+
+// ---- FR-RTS-3: SessionPlayer replay is RT-safe (reader thread + ring) ------
+
+static void push_float(std::vector<uint8_t>& b, float v) {
+    uint8_t bytes[4];
+    std::memcpy(bytes, &v, 4);
+    b.insert(b.end(), bytes, bytes + 4);
+}
+
+static void test_session_player_popblock_basic() {
+    std::printf("--- FR-RTS-3: SessionPlayer popBlock reads all blocks in order ---\n");
+
+    const uint32_t kBlockSize  = 16;
+    const int      kNumBlocks  = 5;
+
+    // Build a .dsrec file: header + kNumBlocks audio blocks (each filled with
+    // a constant equal to its block index) + one pot event before block 2.
+    std::vector<uint8_t> file = make_dsrec_header(48000, kBlockSize);
+    for (int i = 0; i < kNumBlocks; ++i) {
+        if (i == 2) {
+            file.push_back(kRecTypePotEvent);
+            file.push_back(3);            // channel
+            push_float(file, 0.75f);      // value
+        }
+        file.push_back(kRecTypeAudioBlock);
+        for (uint32_t s = 0; s < kBlockSize * 2; ++s)
+            push_float(file, static_cast<float>(i));
+    }
+    file.push_back(kRecTypeEnd);
+
+    char tmp[] = "/tmp/test_play_XXXXXX";
+    int fd = ::mkstemp(tmp);
+    if (fd < 0) { std::printf("  SKIP  mkstemp failed\n"); return; }
+    ::write(fd, file.data(), file.size());
+    ::close(fd);
+
+    SessionPlayer player;
+    uint32_t sr = 0, bs = 0;
+    bool ok = player.open(std::string(tmp), sr, bs);
+    CHECK(ok, "open() succeeds");
+    CHECK(bs == kBlockSize, "block_size read back correctly");
+
+    std::vector<float> buf(kBlockSize * 2);
+    ReplayEvent events[SessionPlayer::kMaxEventsPerSlot];
+    size_t n_events = 0;
+
+    int  blocks_read     = 0;
+    bool saw_pot_event   = false;
+    bool all_blocks_ok   = true;
+    int  guard           = 0;
+    // Poll popBlock() until done(), tolerating transient "reader hasn't
+    // caught up yet" false returns — exactly how the RT thread consumes it.
+    while (!player.done() && guard++ < 200000) {
+        bool got = player.popBlock(buf.data(), kBlockSize, events,
+                                   SessionPlayer::kMaxEventsPerSlot, n_events);
+        if (!got) continue;
+
+        for (size_t e = 0; e < n_events; ++e) {
+            if (events[e].type == kRecTypePotEvent && events[e].channel_or_pin == 3) {
+                CHECK(std::fabs(events[e].value - 0.75f) < 1e-6f,
+                     "pot event value round-trips through the ring");
+                saw_pot_event = true;
+            }
+        }
+        for (uint32_t s = 0; s < kBlockSize * 2; ++s) {
+            if (std::fabs(buf[s] - static_cast<float>(blocks_read)) > 1e-6f) {
+                all_blocks_ok = false;
+                break;
+            }
+        }
+        ++blocks_read;
+    }
+
+    CHECK(blocks_read == kNumBlocks, "all recorded blocks were read back in order");
+    CHECK(all_blocks_ok, "block content matches the recorded block index");
+    CHECK(saw_pot_event, "pot event delivered attached to the correct block");
+    CHECK(player.blocksRead() == static_cast<uint32_t>(kNumBlocks),
+         "blocksRead() matches the number of blocks popped");
+
+    player.close();
+    ::unlink(tmp);
+}
+
+static void test_session_player_popblock_rt_safe_timing() {
+    std::printf("--- FR-RTS-3: SessionPlayer popBlock does not block on I/O ---\n");
+
+    const uint32_t kBlockSize = 256;
+    const int      kNumBlocks = 50;
+
+    std::vector<uint8_t> file = make_dsrec_header(48000, kBlockSize);
+    for (int i = 0; i < kNumBlocks; ++i) {
+        file.push_back(kRecTypeAudioBlock);
+        for (uint32_t s = 0; s < kBlockSize * 2; ++s) push_float(file, 0.f);
+    }
+    file.push_back(kRecTypeEnd);
+
+    char tmp[] = "/tmp/test_play2_XXXXXX";
+    int fd = ::mkstemp(tmp);
+    if (fd < 0) { std::printf("  SKIP  mkstemp failed\n"); return; }
+    ::write(fd, file.data(), file.size());
+    ::close(fd);
+
+    SessionPlayer player;
+    uint32_t sr = 0, bs = 0;
+    bool ok = player.open(std::string(tmp), sr, bs);
+    CHECK(ok, "open() succeeds");
+
+    // Give the reader thread a moment to fill the ring ahead of the RT thread.
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+    std::vector<float> buf(kBlockSize * 2);
+    ReplayEvent events[SessionPlayer::kMaxEventsPerSlot];
+    size_t n_events = 0;
+
+    // Time 100 popBlock calls back-to-back — each must return immediately
+    // regardless of ring state (RT-safe: no syscalls, no mutex, no allocation).
+    auto t0 = std::chrono::steady_clock::now();
+    for (int i = 0; i < 100 && !player.done(); ++i) {
+        player.popBlock(buf.data(), kBlockSize, events,
+                        SessionPlayer::kMaxEventsPerSlot, n_events);
+    }
+    auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+
+    CHECK(elapsed_us < 5000, "100 popBlock calls complete in under 5 ms (no blocking I/O)");
+
+    player.close();
+    ::unlink(tmp);
+}
+
 // ---- main ------------------------------------------------------------------
 
 int main() {
@@ -492,6 +695,10 @@ int main() {
     test_session_recorder_drain_thread();
     test_session_recorder_enqueue_drop_on_full();
     test_session_recorder_no_blocking_on_rt_path();
+    test_session_recorder_start_stop_race();
+    test_session_recorder_duplicate_start_rejected();
+    test_session_player_popblock_basic();
+    test_session_player_popblock_rt_safe_timing();
 
     std::printf("\nResult: %s\n", failures == 0 ? "all passed" : "FAILURES");
     return failures == 0 ? 0 : 1;

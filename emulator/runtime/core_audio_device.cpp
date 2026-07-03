@@ -5,6 +5,7 @@
 #include <AudioToolbox/AudioToolbox.h>
 #include <CoreAudio/CoreAudio.h>
 #include <mach/mach_time.h>
+#include <algorithm>
 #include <cstdlib>
 #include <vector>
 #include <atomic>
@@ -20,6 +21,22 @@ static double compute_mach_ns_per_tick() {
     return static_cast<double>(info.numer) / static_cast<double>(info.denom);
 }
 
+// Returns the maximum frame count `device` can ever be asked to deliver in a
+// single I/O cycle (queried via kAudioDevicePropertyBufferFrameSizeRange), or
+// `fallback` if the device is unknown or the property query fails (FR-RTS-1).
+static UInt32 query_max_buffer_frames(AudioDeviceID device, UInt32 fallback) {
+    if (device == kAudioDeviceUnknown) return fallback;
+    AudioValueRange range{};
+    UInt32 sz = sizeof(range);
+    AudioObjectPropertyAddress a{kAudioDevicePropertyBufferFrameSizeRange,
+                                 kAudioObjectPropertyScopeGlobal,
+                                 kAudioObjectPropertyElementMain};
+    if (AudioObjectGetPropertyData(device, &a, 0, nullptr, &sz, &range) != noErr)
+        return fallback;
+    UInt32 maxFrames = static_cast<UInt32>(range.mMaximum);
+    return maxFrames > fallback ? maxFrames : fallback;
+}
+
 struct CoreAudioDevice::Impl {
     AudioUnit unit{nullptr};
     ProcessFn processBlock;
@@ -33,6 +50,10 @@ struct CoreAudioDevice::Impl {
     // Input buffer list — allocated after querying hardware format, freed in stop().
     // Null in output-only mode.
     AudioBufferList* inputBufList{nullptr};
+    // Frame capacity inputBufList's channel buffers were malloc'd for (FR-RTS-1).
+    // Sized from the hardware's maximum deliverable frame count, not bufferSize;
+    // the render callback clamps to this so it can never write past the allocation.
+    UInt32 inputBufCapacityFrames{0};
 
     // Pre-allocated render callback buffers (AC-38): sized in start(), reused each
     // callback to avoid per-invocation heap allocation on the real-time thread.
@@ -54,21 +75,28 @@ struct CoreAudioDevice::Impl {
                                    AudioBufferList*            ioData) {
         Impl* self = static_cast<Impl*>(inRefCon);
 
+        // Clamp to inputBufList's allocated capacity (FR-RTS-1). inputBufList is
+        // sized in start() for the hardware's maximum deliverable frame count, so
+        // this is normally a no-op; it exists as a defense-in-depth backstop
+        // against writing past the malloc'd buffer if CoreAudio ever delivers
+        // more frames than were queried at start() time.
+        const UInt32 frames32 = std::min(inNumberFrames, self->inputBufCapacityFrames);
+
         // Reset input buffer sizes each callback (AudioUnitRender may update them).
         for (UInt32 b = 0; b < self->inputBufList->mNumberBuffers; ++b) {
             self->inputBufList->mBuffers[b].mDataByteSize =
-                static_cast<UInt32>(inNumberFrames * sizeof(float));
+                static_cast<UInt32>(frames32 * sizeof(float));
             std::memset(self->inputBufList->mBuffers[b].mData, 0,
-                        inNumberFrames * sizeof(float));
+                        frames32 * sizeof(float));
         }
 
         // Pull live input from AUHAL input bus.
         AudioUnitRender(self->unit, ioActionFlags, inTimeStamp, 1 /*input bus*/,
-                        inNumberFrames, self->inputBufList);
+                        frames32, self->inputBufList);
 
         // Build stereo-interleaved input buffer from hardware input (handles mono→stereo).
         // Use pre-allocated member buffers — no heap allocation on the RT thread (AC-38).
-        const size_t frames = static_cast<size_t>(inNumberFrames);
+        const size_t frames = static_cast<size_t>(frames32);
         if (self->in_interleaved.size() < frames * 2)
             self->in_interleaved.assign(frames * 2, 0.f);
         else
@@ -109,7 +137,9 @@ struct CoreAudioDevice::Impl {
         }
         self->latencyMs.store(static_cast<float>(budget_ms * 2.0), std::memory_order_relaxed);
 
-        // Deinterleave effect output → CoreAudio non-interleaved buffers.
+        // Deinterleave effect output → CoreAudio non-interleaved buffers. If the
+        // FR-RTS-1 backstop clamped frames32 below inNumberFrames, zero the
+        // unfilled tail rather than leaving it unwritten.
         if (ioData->mNumberBuffers >= 2) {
             float* outL = static_cast<float*>(ioData->mBuffers[0].mData);
             float* outR = static_cast<float*>(ioData->mBuffers[1].mData);
@@ -117,11 +147,13 @@ struct CoreAudioDevice::Impl {
                 outL[i] = self->out_interleaved[2 * i];
                 outR[i] = self->out_interleaved[2 * i + 1];
             }
+            for (UInt32 i = frames32; i < inNumberFrames; ++i) { outL[i] = 0.f; outR[i] = 0.f; }
         } else if (ioData->mNumberBuffers == 1) {
             float* outMono = static_cast<float*>(ioData->mBuffers[0].mData);
             for (size_t i = 0; i < frames; ++i) {
                 outMono[i] = self->out_interleaved[2 * i];
             }
+            for (UInt32 i = frames32; i < inNumberFrames; ++i) outMono[i] = 0.f;
         }
 
         return noErr;
@@ -185,9 +217,6 @@ bool CoreAudioDevice::start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn 
     impl_->sampleRate   = sampleRate;
     impl_->bufferSize   = bufferSize;
     impl_->processBlock = std::move(processBlock);
-    // Pre-size interleaved render buffers to avoid RT-thread allocation (AC-38).
-    impl_->in_interleaved.assign(static_cast<size_t>(bufferSize) * 2, 0.f);
-    impl_->out_interleaved.assign(static_cast<size_t>(bufferSize) * 2, 0.f);
 
     // Find the AUHAL component.
     AudioComponentDescription desc{};
@@ -212,17 +241,18 @@ bool CoreAudioDevice::start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn 
                          kAudioUnitScope_Output, 1, &zero, sizeof(zero));
 
     // Explicitly set the default INPUT device on bus 1 so we get the microphone,
-    // not the output device's (possibly absent) input channel.
+    // not the output device's (possibly absent) input channel. Captured at
+    // function scope so its buffer-frame-size range can be queried below (FR-RTS-1).
+    AudioDeviceID defaultInputDevice = kAudioDeviceUnknown;
     {
-        AudioDeviceID defaultInput = kAudioDeviceUnknown;
-        UInt32 sz = sizeof(defaultInput);
+        UInt32 sz = sizeof(defaultInputDevice);
         AudioObjectPropertyAddress a{kAudioHardwarePropertyDefaultInputDevice,
                                      kAudioObjectPropertyScopeGlobal,
                                      kAudioObjectPropertyElementMain};
-        AudioObjectGetPropertyData(kAudioObjectSystemObject, &a, 0, nullptr, &sz, &defaultInput);
-        if (defaultInput != kAudioDeviceUnknown) {
+        AudioObjectGetPropertyData(kAudioObjectSystemObject, &a, 0, nullptr, &sz, &defaultInputDevice);
+        if (defaultInputDevice != kAudioDeviceUnknown) {
             AudioUnitSetProperty(impl_->unit, kAudioOutputUnitProperty_CurrentDevice,
-                                 kAudioUnitScope_Global, 1, &defaultInput, sizeof(defaultInput));
+                                 kAudioUnitScope_Global, 1, &defaultInputDevice, sizeof(defaultInputDevice));
         }
     }
 
@@ -249,25 +279,44 @@ bool CoreAudioDevice::start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn 
     if (inFmt.mSampleRate == 0.0) inFmt = outFmt;
     impl_->inputChannels = inFmt.mChannelsPerFrame > 0 ? inFmt.mChannelsPerFrame : 1;
 
-    // Set hardware buffer size on the output device.
+    // Set hardware buffer size on the output device. Captured at function scope
+    // so its buffer-frame-size range can be queried below (FR-RTS-1).
+    AudioDeviceID defaultOutputDevice = kAudioDeviceUnknown;
     {
-        AudioDeviceID defaultOutput = kAudioDeviceUnknown;
-        UInt32 sz = sizeof(defaultOutput);
+        UInt32 sz = sizeof(defaultOutputDevice);
         AudioObjectPropertyAddress a{kAudioHardwarePropertyDefaultOutputDevice,
                                      kAudioObjectPropertyScopeGlobal,
                                      kAudioObjectPropertyElementMain};
-        AudioObjectGetPropertyData(kAudioObjectSystemObject, &a, 0, nullptr, &sz, &defaultOutput);
-        if (defaultOutput != kAudioDeviceUnknown) {
+        AudioObjectGetPropertyData(kAudioObjectSystemObject, &a, 0, nullptr, &sz, &defaultOutputDevice);
+        if (defaultOutputDevice != kAudioDeviceUnknown) {
             UInt32 hwBuf = static_cast<UInt32>(bufferSize);
             AudioObjectPropertyAddress ba{kAudioDevicePropertyBufferFrameSize,
                                           kAudioObjectPropertyScopeGlobal,
                                           kAudioObjectPropertyElementMain};
-            AudioObjectSetPropertyData(defaultOutput, &ba, 0, nullptr, sizeof(hwBuf), &hwBuf);
+            AudioObjectSetPropertyData(defaultOutputDevice, &ba, 0, nullptr, sizeof(hwBuf), &hwBuf);
         }
     }
 
+    // Query the maximum frame count CoreAudio can ever deliver to the render
+    // callback on either device, so inputBufList is sized for the worst case
+    // instead of just the requested bufferSize (FR-RTS-1). A device that clamps
+    // a small requested bufferSize up to a larger hardware minimum would
+    // otherwise cause the render callback to memset/AudioUnitRender past the
+    // malloc'd buffer.
+    UInt32 maxInputFrames = static_cast<UInt32>(bufferSize);
+    maxInputFrames = query_max_buffer_frames(defaultInputDevice, maxInputFrames);
+    maxInputFrames = query_max_buffer_frames(defaultOutputDevice, maxInputFrames);
+    impl_->inputBufCapacityFrames = maxInputFrames;
+
+    // Size RT-callback-visible interleaved buffers from the queried maximum
+    // frame count before starting the audio unit (FR-RTS-2) — the render
+    // callback may begin executing the instant AudioOutputUnitStart() returns,
+    // so these must never be resized while the unit is running.
+    impl_->in_interleaved.assign(static_cast<size_t>(maxInputFrames) * 2, 0.f);
+    impl_->out_interleaved.assign(static_cast<size_t>(maxInputFrames) * 2, 0.f);
+
     // Allocate input buffer list based on the actual hardware channel count.
-    size_t dataBytes = bufferSize * sizeof(float);
+    size_t dataBytes = static_cast<size_t>(maxInputFrames) * sizeof(float);
     uint32_t nBufs = impl_->inputChannels;
     impl_->inputBufList = static_cast<AudioBufferList*>(
         std::malloc(sizeof(AudioBufferList) + (nBufs - 1) * sizeof(AudioBuffer)));
@@ -294,30 +343,10 @@ bool CoreAudioDevice::start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn 
 
     impl_->mach_ns_per_tick = compute_mach_ns_per_tick();
 
+    // RT-callback-visible buffers were already sized above from the queried
+    // maximum frame count, before this call (FR-RTS-2) — no post-start resize.
     if (AudioUnitInitialize(impl_->unit) != noErr) { stop(); return false; }
     if (AudioOutputUnitStart(impl_->unit) != noErr) { stop(); return false; }
-
-    // Re-size interleaved render buffers to the actual hardware frame count so no
-    // assign/resize occurs on the RT thread when a USB device clamps to its minimum.
-    {
-        AudioDeviceID defaultOutput = kAudioDeviceUnknown;
-        UInt32 sz = sizeof(defaultOutput);
-        AudioObjectPropertyAddress a{kAudioHardwarePropertyDefaultOutputDevice,
-                                     kAudioObjectPropertyScopeGlobal,
-                                     kAudioObjectPropertyElementMain};
-        AudioObjectGetPropertyData(kAudioObjectSystemObject, &a, 0, nullptr, &sz, &defaultOutput);
-        if (defaultOutput != kAudioDeviceUnknown) {
-            UInt32 actual = static_cast<UInt32>(bufferSize);
-            UInt32 propSz = sizeof(actual);
-            AudioObjectPropertyAddress ba{kAudioDevicePropertyBufferFrameSize,
-                                          kAudioObjectPropertyScopeGlobal,
-                                          kAudioObjectPropertyElementMain};
-            AudioObjectGetPropertyData(defaultOutput, &ba, 0, nullptr, &propSz, &actual);
-            size_t n = static_cast<size_t>(actual);
-            impl_->in_interleaved.assign(n * 2, 0.f);
-            impl_->out_interleaved.assign(n * 2, 0.f);
-        }
-    }
 
     running_ = true;
     return true;
@@ -330,8 +359,6 @@ bool CoreAudioDevice::start_output_only(uint32_t sampleRate, uint32_t bufferSize
     impl_->sampleRate   = sampleRate;
     impl_->bufferSize   = bufferSize;
     impl_->processBlock = std::move(processBlock);
-    impl_->silentInput.assign(static_cast<size_t>(bufferSize) * 2, 0.f);
-    impl_->workOut.resize(static_cast<size_t>(bufferSize) * 2, 0.f);
 
     AudioComponentDescription desc{};
     desc.componentType         = kAudioUnitType_Output;
@@ -365,22 +392,28 @@ bool CoreAudioDevice::start_output_only(uint32_t sampleRate, uint32_t bufferSize
     AudioUnitSetProperty(impl_->unit, kAudioUnitProperty_StreamFormat,
                          kAudioUnitScope_Input, 0, &outFmt, sizeof(outFmt));
 
-    // Request the preferred hardware buffer size on the default output device.
+    // Request the preferred hardware buffer size on the default output device,
+    // then size RT-callback-visible work buffers from the queried maximum frame
+    // count before starting the audio unit (FR-RTS-2) — no resize once the
+    // callback may be running.
+    AudioDeviceID defaultOutputDevice = kAudioDeviceUnknown;
     {
-        AudioDeviceID defaultOutput = kAudioDeviceUnknown;
-        UInt32 sz = sizeof(defaultOutput);
+        UInt32 sz = sizeof(defaultOutputDevice);
         AudioObjectPropertyAddress a{kAudioHardwarePropertyDefaultOutputDevice,
                                      kAudioObjectPropertyScopeGlobal,
                                      kAudioObjectPropertyElementMain};
-        AudioObjectGetPropertyData(kAudioObjectSystemObject, &a, 0, nullptr, &sz, &defaultOutput);
-        if (defaultOutput != kAudioDeviceUnknown) {
+        AudioObjectGetPropertyData(kAudioObjectSystemObject, &a, 0, nullptr, &sz, &defaultOutputDevice);
+        if (defaultOutputDevice != kAudioDeviceUnknown) {
             UInt32 hwBuf = static_cast<UInt32>(bufferSize);
             AudioObjectPropertyAddress ba{kAudioDevicePropertyBufferFrameSize,
                                           kAudioObjectPropertyScopeGlobal,
                                           kAudioObjectPropertyElementMain};
-            AudioObjectSetPropertyData(defaultOutput, &ba, 0, nullptr, sizeof(hwBuf), &hwBuf);
+            AudioObjectSetPropertyData(defaultOutputDevice, &ba, 0, nullptr, sizeof(hwBuf), &hwBuf);
         }
     }
+    UInt32 maxOutFrames = query_max_buffer_frames(defaultOutputDevice, static_cast<UInt32>(bufferSize));
+    impl_->silentInput.assign(static_cast<size_t>(maxOutFrames) * 2, 0.f);
+    impl_->workOut.resize(static_cast<size_t>(maxOutFrames) * 2, 0.f);
 
     AURenderCallbackStruct cb{};
     cb.inputProc       = Impl::renderCallbackOutputOnly;
@@ -392,29 +425,10 @@ bool CoreAudioDevice::start_output_only(uint32_t sampleRate, uint32_t bufferSize
 
     impl_->mach_ns_per_tick = compute_mach_ns_per_tick();
 
+    // RT-callback-visible buffers were already sized above from the queried
+    // maximum frame count, before this call (FR-RTS-2) — no post-start resize.
     if (AudioUnitInitialize(impl_->unit) != noErr) { stop(); return false; }
     if (AudioOutputUnitStart(impl_->unit) != noErr) { stop(); return false; }
-
-    // Re-size work buffers to the actual hardware frame count.
-    {
-        AudioDeviceID defaultOutput = kAudioDeviceUnknown;
-        UInt32 sz = sizeof(defaultOutput);
-        AudioObjectPropertyAddress a{kAudioHardwarePropertyDefaultOutputDevice,
-                                     kAudioObjectPropertyScopeGlobal,
-                                     kAudioObjectPropertyElementMain};
-        AudioObjectGetPropertyData(kAudioObjectSystemObject, &a, 0, nullptr, &sz, &defaultOutput);
-        if (defaultOutput != kAudioDeviceUnknown) {
-            UInt32 actual = static_cast<UInt32>(bufferSize);
-            UInt32 propSz = sizeof(actual);
-            AudioObjectPropertyAddress ba{kAudioDevicePropertyBufferFrameSize,
-                                          kAudioObjectPropertyScopeGlobal,
-                                          kAudioObjectPropertyElementMain};
-            AudioObjectGetPropertyData(defaultOutput, &ba, 0, nullptr, &propSz, &actual);
-            size_t n = static_cast<size_t>(actual);
-            impl_->silentInput.assign(n * 2, 0.f);
-            impl_->workOut.resize(n * 2, 0.f);
-        }
-    }
 
     running_ = true;
     return true;

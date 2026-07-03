@@ -299,32 +299,42 @@ static void run_simulated(bool use_block,
 
         // --- Input generation: replay (M14) / WAV (M9) / sine ---
         if (g_state.replay_active.load()) {
-            std::vector<ReplayEvent> events;
-            bool got_block;
-            {
-                std::lock_guard<std::mutex> lk(g_state.player_mutex);
-                got_block = g_state.player.nextBlock(in_buf.data(), frames, events);
-            }
+            // RT-safe (FR-RTS-3): popBlock only pops from a pre-filled ring —
+            // no syscalls, no mutex, no heap allocation on this thread.
+            ReplayEvent evbuf[SessionPlayer::kMaxEventsPerSlot];
+            size_t n_events = 0;
+            bool got_block = g_state.player.popBlock(in_buf.data(), frames,
+                                                      evbuf, SessionPlayer::kMaxEventsPerSlot,
+                                                      n_events);
             if (!got_block) {
-                g_state.replay_active.store(false);
-                ipc_send("{\"type\":\"replayDone\"}");
-                return true;
-            }
-            for (const auto& ev : events) {
-                if (ev.type == kRecTypePotEvent) {
-                    if (ev.channel_or_pin < 12)
-                        g_state.pot_values[ev.channel_or_pin].store(ev.value);
-                } else if (ev.type == kRecTypeButtonEvent) {
-                    if (ev.channel_or_pin < EmulatorState::kNumGpioPins)
-                        g_state.button_states[ev.channel_or_pin].store(ev.pressed != 0);
+                if (g_state.player.done()) {
+                    g_state.replay_active.store(false);
+                    ipc_send("{\"type\":\"replayDone\"}");
+                    return true;
+                }
+                // Reader thread hasn't produced the next block yet — output
+                // silence this block rather than blocking the RT thread.
+                std::fill(in_buf.begin(),
+                          in_buf.begin() + static_cast<ptrdiff_t>(frames * 2), 0.f);
+            } else {
+                for (size_t i = 0; i < n_events; ++i) {
+                    const auto& ev = evbuf[i];
+                    if (ev.type == kRecTypePotEvent) {
+                        if (ev.channel_or_pin < 12)
+                            g_state.pot_values[ev.channel_or_pin].store(ev.value);
+                    } else if (ev.type == kRecTypeButtonEvent) {
+                        if (ev.channel_or_pin < EmulatorState::kNumGpioPins)
+                            g_state.button_states[ev.channel_or_pin].store(ev.pressed != 0);
+                    }
                 }
             }
         } else if (g_state.wav_active.load()) {
-            std::shared_ptr<const WavData> wav;
-            {
-                std::lock_guard<std::mutex> lk(g_state.wav_mutex);
-                wav = g_state.wav_data;
-            }
+            // RT-safe (FR-RTS-3): atomic pointer load replaces the wav_mutex +
+            // shared_ptr copy — no mutex, no refcount churn on this thread. The
+            // pointer is published back via wav_data_in_use so the IPC thread
+            // knows when it is safe to free a retired WavData.
+            const WavData* wav = g_state.wav_data_ptr.load(std::memory_order_acquire);
+            g_state.wav_data_in_use.store(wav, std::memory_order_release);
             uint64_t gen = g_state.wav_generation.load();
             if (gen != wav_gen_seen) { wav_gen_seen = gen; wav_pos = 0.0; }
             if (wav && !wav->empty()) {
