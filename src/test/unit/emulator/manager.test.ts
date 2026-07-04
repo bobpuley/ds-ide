@@ -21,12 +21,12 @@ function makeChildProcess(exitCode = 0, socketPath?: string, exitAfterAnnounce =
 
   const stdout = new EventEmitter() as EventEmitter & { on: ReturnType<typeof vi.fn> };
   const stdoutOrigOn = stdout.on.bind(stdout);
-  stdout.on = vi.fn(stdoutOrigOn);
+  (stdout as unknown as Record<string, unknown>)['on'] = vi.fn(stdoutOrigOn);
   proc.stdout = stdout;
 
   const stderr = new EventEmitter() as EventEmitter & { on: ReturnType<typeof vi.fn> };
   const stderrOrigOn = stderr.on.bind(stderr);
-  stderr.on = vi.fn(stderrOrigOn);
+  (stderr as unknown as Record<string, unknown>)['on'] = vi.fn(stderrOrigOn);
   proc.stderr = stderr;
 
   // Simulate async process lifecycle.
@@ -56,12 +56,12 @@ function makeCmakeProcess(exitCode = 0) {
 
   const stdout = new EventEmitter() as EventEmitter & { on: ReturnType<typeof vi.fn> };
   const origOn = stdout.on.bind(stdout);
-  stdout.on = vi.fn(origOn);
+  (stdout as unknown as Record<string, unknown>)['on'] = vi.fn(origOn);
   proc.stdout = stdout;
 
   const stderr = new EventEmitter() as EventEmitter & { on: ReturnType<typeof vi.fn> };
   const seOrigOn = stderr.on.bind(stderr);
-  stderr.on = vi.fn(seOrigOn);
+  (stderr as unknown as Record<string, unknown>)['on'] = vi.fn(seOrigOn);
   proc.stderr = stderr;
 
   setTimeout(() => proc.emit('close', exitCode), 0);
@@ -78,8 +78,8 @@ function makeIpcClient() {
     on: ReturnType<typeof vi.fn>;
   };
   const origOn = client.on.bind(client);
-  client.on = vi.fn(origOn);
-  client.connect    = vi.fn(() => Promise.resolve());
+  (client as unknown as Record<string, unknown>)['on'] = vi.fn(origOn);
+  client.connect    = vi.fn(() => Promise.resolve()) as ReturnType<typeof vi.fn>;
   client.send       = vi.fn();
   client.disconnect = vi.fn();
   return client;
@@ -104,12 +104,12 @@ describe('EmulatorManager', () => {
       }
       // effect_emu spawn — provide socket path
       return makeChildProcess(0, '/tmp/daisy_emu_test.sock');
-    });
+    }) as ReturnType<typeof vi.fn>;
 
     manager = new EmulatorManager({
       spawn: spawnMock as unknown as typeof cp.spawn,
       ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
-      mkdirSync: mkdirSyncMock,
+      mkdirSync: mkdirSyncMock as unknown as typeof fs.mkdirSync,
     });
   });
 
@@ -154,11 +154,11 @@ describe('EmulatorManager', () => {
     });
 
     it('rejects when cmake exits non-zero', async () => {
-      spawnMock = vi.fn(() => makeCmakeProcess(1));
+      spawnMock = vi.fn(() => makeCmakeProcess(1)) as ReturnType<typeof vi.fn>;
       const mgr = new EmulatorManager({
         spawn: spawnMock as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
-        mkdirSync: mkdirSyncMock,
+        mkdirSync: mkdirSyncMock as unknown as typeof fs.mkdirSync,
       });
       await expect(
         mgr.build(
@@ -567,7 +567,7 @@ describe('EmulatorManager', () => {
       const failingManager = new EmulatorManager({
         spawn: failingSpawn as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
-        mkdirSync: mkdirSyncMock,
+        mkdirSync: mkdirSyncMock as unknown as typeof fs.mkdirSync,
       });
       await failingManager.build(
         { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
@@ -615,7 +615,7 @@ describe('EmulatorManager', () => {
       const flakyManager = new EmulatorManager({
         spawn: flakySpawn as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
-        mkdirSync: mkdirSyncMock,
+        mkdirSync: mkdirSyncMock as unknown as typeof fs.mkdirSync,
       });
       await flakyManager.build(
         { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },

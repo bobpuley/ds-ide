@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { EmulatorManager } from '../emulator/manager';
 import { IpcMessage } from '../emulator/ipc-client';
 import { startAudio, stopAudio } from '../commands/transport';
-import { getNumber } from '../ipc/narrow';
+import { getBoolean, getNumber } from '../ipc/narrow';
 
 export interface ControlsPlacement {
   id: string;
@@ -191,8 +191,16 @@ export class ScopePanel {
     this.panel?.webview.postMessage({ command: 'scope', in: msg['in'], out: msg['out'] });
   }
 
+  // Only whitelisted, type-checked fields are forwarded — msg originates from
+  // the emulator's IPC socket and must never be spread verbatim into a
+  // webview postMessage (FR-IPC-2).
   private postStatus(msg: IpcMessage): void {
-    this.panel?.webview.postMessage({ command: 'status', ...msg });
+    this.panel?.webview.postMessage({
+      command: 'status',
+      running: getBoolean(msg, 'running') ?? false,
+      sampleRate: getNumber(msg, 'sampleRate'),
+      blockSize: getNumber(msg, 'blockSize'),
+    });
   }
 
   private postEvent(msg: IpcMessage): void {

@@ -1,7 +1,8 @@
 import * as net from 'net';
 import { EventEmitter } from 'events';
+import { parseIpcMessage, IpcMessage } from '../ipc/narrow';
 
-export type IpcMessage = Record<string, unknown>;
+export type { IpcMessage };
 
 export interface IIpcClient {
   connect(socketPath: string): Promise<void>;
@@ -13,17 +14,33 @@ export interface IIpcClient {
 }
 
 const IPC_MAX_BUFFER = 1 << 20;  // 1 MB receive buffer ceiling
+// A wedged emulator can announce its socket path but never accept the
+// connection; without its own deadline here, connect() would hang forever
+// and wedge the deploy lock along with it (FR-IPC-1).
+const CONNECT_TIMEOUT_MS = 5_000;
 
 export class IpcClient extends EventEmitter implements IIpcClient {
   private socket: net.Socket | null = null;
   private partial = '';
 
-  connect(socketPath: string): Promise<void> {
+  connect(socketPath: string, timeoutMs = CONNECT_TIMEOUT_MS): Promise<void> {
     return new Promise((resolve, reject) => {
       const sock = new net.Socket();
       this.socket = sock;
+      let settled = false;
+
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        sock.destroy();
+        if (this.socket === sock) this.socket = null;
+        reject(new Error(`IPC connect to ${socketPath} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
 
       sock.once('connect', () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
         sock.on('data', (data: Buffer) => this.onData(data));
         sock.on('error', (err: Error) => this.emit('error', err));
         sock.on('close', () => {
@@ -34,7 +51,12 @@ export class IpcClient extends EventEmitter implements IIpcClient {
         resolve();
       });
 
-      sock.once('error', reject);
+      sock.once('error', (err: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(err);
+      });
       sock.connect({ path: socketPath });
     });
   }
@@ -64,11 +86,18 @@ export class IpcClient extends EventEmitter implements IIpcClient {
       const line = this.partial.slice(0, nl).trim();
       this.partial = this.partial.slice(nl + 1);
       if (!line) continue;
+      let parsed: unknown;
       try {
-        const msg = JSON.parse(line) as IpcMessage;
-        this.emit('message', msg);
+        parsed = JSON.parse(line);
       } catch {
-        // ignore malformed lines
+        console.warn(`ds-ide: dropped malformed IPC line (invalid JSON): ${line.slice(0, 200)}`);
+        continue;
+      }
+      const msg = parseIpcMessage(parsed);
+      if (msg) {
+        this.emit('message', msg);
+      } else {
+        console.warn(`ds-ide: dropped IPC message failing schema validation: ${line.slice(0, 200)}`);
       }
     }
   }

@@ -23,7 +23,7 @@ async function buildAndDeployLogic(
 }
 
 describe('buildAndDeployLogic (AC-26)', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => { vi.clearAllMocks(); });
 
   it('calls deploy when build succeeds', async () => {
     const build  = vi.fn().mockResolvedValue(true);
@@ -47,13 +47,13 @@ describe('buildForEmulator return value', () => {
     // detectEffectSrc is tested separately; here we verify the boolean contract
     // using the already-mocked stub.
     vi.mocked(buildMod.buildForEmulator).mockResolvedValue(true);
-    const result = await buildMod.buildForEmulator({} as never, '/ext');
+    const result = await buildMod.buildForEmulator({} as never, '/ext', undefined, {} as never);
     expect(result).toBe(true);
   });
 
   it('returns false on failure', async () => {
     vi.mocked(buildMod.buildForEmulator).mockResolvedValue(false);
-    const result = await buildMod.buildForEmulator({} as never, '/ext');
+    const result = await buildMod.buildForEmulator({} as never, '/ext', undefined, {} as never);
     expect(result).toBe(false);
   });
 });

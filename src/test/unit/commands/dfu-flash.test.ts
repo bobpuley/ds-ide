@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'events';
 import * as vscode from 'vscode';
-import { flashToHardware, findHardwareBin } from '../../../commands/dfu-flash';
+import { flashToHardware, findHardwareBin, DfuFlashDeps } from '../../../commands/dfu-flash';
+
+type ReaddirSyncFn = typeof import('fs').readdirSync;
+type StatSyncFn = typeof import('fs').statSync;
 
 vi.mock('../../../hardware/toolchain', () => ({
   detectDfuUtil: vi.fn().mockResolvedValue('/opt/homebrew/bin/dfu-util'),
@@ -13,19 +16,19 @@ import { detectDfuUtil } from '../../../hardware/toolchain';
 function makeSpawn(exitCode = 0) {
   return vi.fn(() => {
     const proc = new EventEmitter() as ReturnType<typeof import('child_process').spawn>;
-    (proc as unknown as Record<string, unknown>).stdout = new EventEmitter();
-    (proc as unknown as Record<string, unknown>).stderr = new EventEmitter();
+    (proc as unknown as Record<string, unknown>)['stdout'] = new EventEmitter();
+    (proc as unknown as Record<string, unknown>)['stderr'] = new EventEmitter();
     process.nextTick(() => proc.emit('close', exitCode));
     return proc;
   });
 }
 
-function makeFlashDeps(exitCode = 0) {
+function makeFlashDeps(exitCode = 0): DfuFlashDeps {
   return {
     spawn: makeSpawn(exitCode),
     readdirSync: vi.fn(() => ['effect.bin']),
     statSync: vi.fn(() => ({ mtimeMs: 1000 })),
-  };
+  } as unknown as DfuFlashDeps;
 }
 
 describe('flashToHardware()', () => {
@@ -65,7 +68,7 @@ describe('flashToHardware()', () => {
   });
 
   it('shows error and skips flash when no .bin file is found', async () => {
-    const deps = { ...makeFlashDeps(0), readdirSync: vi.fn(() => []) };
+    const deps = { ...makeFlashDeps(0), readdirSync: vi.fn(() => []) } as unknown as DfuFlashDeps;
     await flashToHardware('/project', deps);
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('no .bin file found'),
@@ -116,19 +119,19 @@ describe('flashToHardware()', () => {
 describe('findHardwareBin()', () => {
   it('returns undefined when build/ does not exist', () => {
     const readdirSync = vi.fn(() => { throw new Error('ENOENT'); });
-    expect(findHardwareBin('/project', readdirSync, vi.fn())).toBeUndefined();
+    expect(findHardwareBin('/project', readdirSync as unknown as ReaddirSyncFn, vi.fn() as unknown as StatSyncFn)).toBeUndefined();
   });
 
   it('returns undefined when build/ contains no .bin files', () => {
     const readdirSync = vi.fn(() => ['effect.elf', 'effect.map']);
     const statSync = vi.fn(() => ({ mtimeMs: 0 }));
-    expect(findHardwareBin('/project', readdirSync, statSync)).toBeUndefined();
+    expect(findHardwareBin('/project', readdirSync as unknown as ReaddirSyncFn, statSync as unknown as StatSyncFn)).toBeUndefined();
   });
 
   it('returns the single .bin file path', () => {
     const readdirSync = vi.fn(() => ['effect.bin']);
     const statSync = vi.fn(() => ({ mtimeMs: 1000 }));
-    const result = findHardwareBin('/project', readdirSync, statSync);
+    const result = findHardwareBin('/project', readdirSync as unknown as ReaddirSyncFn, statSync as unknown as StatSyncFn);
     expect(result).toMatch(/effect\.bin$/);
     expect(result).toContain('/project/build/');
   });
@@ -138,7 +141,7 @@ describe('findHardwareBin()', () => {
     const statSync = vi.fn((p: string) => ({
       mtimeMs: (p as string).includes('new.bin') ? 2000 : 500,
     }));
-    const result = findHardwareBin('/project', readdirSync, statSync);
+    const result = findHardwareBin('/project', readdirSync as unknown as ReaddirSyncFn, statSync as unknown as StatSyncFn);
     expect(result).toMatch(/new\.bin$/);
   });
 });

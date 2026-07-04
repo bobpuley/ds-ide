@@ -1,0 +1,29 @@
+// Pure reducer from (pin definitions, wired pins) to per-pin display state
+// for the Wiring Editor's SVG pinout — no DOM access, so it can be
+// unit-tested directly instead of only through a browser (FR-IPC-6).
+import { PinDef, WiredPin } from './wiring-panel';
+
+export type PinDisplayClass = 'pin-pot' | 'pin-button' | 'pin-led' | 'pin-unassigned' | 'pin-adc';
+
+export interface PinDisplayState {
+  pin: number;
+  className: PinDisplayClass;
+  assignedId: string | null;
+}
+
+// Only assignable pins (def.pin !== null) are included — power/special pins
+// have no state transitions.
+export function computePinDisplayStates(pinDefs: PinDef[], wiredPins: WiredPin[]): PinDisplayState[] {
+  const wiredByPin = new Map(wiredPins.map((wp) => [wp.pinNumber, wp]));
+  const states: PinDisplayState[] = [];
+  for (const def of pinDefs) {
+    if (def.pin === null) continue;
+    const wired = wiredByPin.get(def.pin);
+    if (wired) {
+      states.push({ pin: def.pin, className: `pin-${wired.deviceType}`, assignedId: wired.id });
+    } else {
+      states.push({ pin: def.pin, className: def.adc ? 'pin-adc' : 'pin-unassigned', assignedId: null });
+    }
+  }
+  return states;
+}

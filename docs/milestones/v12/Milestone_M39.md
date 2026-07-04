@@ -1,7 +1,7 @@
 # M39 — IPC & Data Validation Hardening
 
 **Version:** 0.13.1
-**Status:** planned
+**Status:** in progress
 **Source:** 2026-07-02 Node.js/TypeScript + VS Code extension code reviews — MEDIUM findings (deduplicated where both reviews independently flagged the same bug)
 
 ## Goal
@@ -10,7 +10,7 @@ Treat the IPC boundary and webview boundary as untrusted in both directions, clo
 
 ## Sprint Tasks
 
-### [ ] fix: Bound the IPC connect phase with a timeout (FR-IPC-1)
+### [x] fix: Bound the IPC connect phase with a timeout (FR-IPC-1)
 
 `deploy()`'s 10s timeout only guards the socket-announcement phase; `resolved = true` is set before `connectIpc()` completes, and `IpcClient.connect()` has no timeout of its own — a wedged emulator that announces its socket but never accepts the connection leaves the coalesced deploy promise (and every subsequent deploy call, since they coalesce on it) pending forever.
 
@@ -23,7 +23,7 @@ Treat the IPC boundary and webview boundary as untrusted in both directions, clo
 
 ---
 
-### [ ] fix: Validate IPC messages at the socket boundary; stop spreading raw messages into webviews (FR-IPC-2)
+### [x] fix: Validate IPC messages at the socket boundary; stop spreading raw messages into webviews (FR-IPC-2)
 
 IPC messages are parsed with bare `JSON.parse` into an untyped record and mostly forwarded unchecked; `postStatus` spreads the entire untrusted message into webview `postMessage` calls, reaching an `innerHTML` sink in the scope webview and an unguarded `.toUpperCase()` call.
 
@@ -37,7 +37,7 @@ IPC messages are parsed with bare `JSON.parse` into an untyped record and mostly
 
 ---
 
-### [ ] fix: Validate `editorSave` webview payload shape; quote serialized ids (FR-IPC-3)
+### [x] fix: Validate `editorSave` webview payload shape; quote serialized ids (FR-IPC-3)
 
 The `editorSave` handler casts the webview payload directly to `ControllerConfig` and feeds it to `serializeControllerConfig`, which dereferences array fields without a shape check. Serialized `id` values are unquoted, so an id containing `:`/`#` silently round-trips to a different id.
 
@@ -51,7 +51,7 @@ The `editorSave` handler casts the webview payload directly to `ControllerConfig
 
 ---
 
-### [ ] fix: Distinguish absent config from unreadable config (FR-IPC-4)
+### [x] fix: Distinguish absent config from unreadable config (FR-IPC-4)
 
 `loadControllerConfig()` treats any read failure — including transient `EACCES`/`EMFILE`/encoding errors — as "no config," returning an empty config that a subsequent save can write back over the user's real file.
 
@@ -64,7 +64,7 @@ The `editorSave` handler casts the webview payload directly to `ControllerConfig
 
 ---
 
-### [ ] fix: Check `applyEdit` results; keep Wiring and Controls views consistent (FR-IPC-5)
+### [x] fix: Check `applyEdit` results; keep Wiring and Controls views consistent (FR-IPC-5)
 
 Wire/unwire handlers ignore the boolean result of `applyEdit` and rebuild Controls Editor state by re-reading the source **from disk**, so the two views disagree until a manual save (or claim success when the edit actually failed). `makeBlockEdit`'s marker search also mis-pairs ranges when a marker line is duplicated.
 
@@ -78,7 +78,7 @@ Wire/unwire handlers ignore the boolean result of `applyEdit` and rebuild Contro
 
 ---
 
-### [ ] fix: Type-check and unit-test the webview scripts (FR-IPC-6)
+### [x] fix: Type-check and unit-test the webview scripts (FR-IPC-6)
 
 All three webview scripts (`controls-webview.ts`, `scope-webview.ts`, `wiring-webview.ts`, ~1,000 lines) opt out of TypeScript with `@ts-nocheck`; `tsconfig.json` also excludes `src/test`, so test-file type errors go unnoticed too.
 
@@ -93,7 +93,7 @@ All three webview scripts (`controls-webview.ts`, `scope-webview.ts`, `wiring-we
 
 ---
 
-### [ ] fix: Extract deploy sequencing into a single coordinator (FR-IPC-7)
+### [x] fix: Extract deploy sequencing into a single coordinator (FR-IPC-7)
 
 `activate()` is a 396-line function; the post-deploy state replay sequence (`sendPotSnapshot`, `sendButtonSnapshot`, `sendSine`, `sendAudioMode`, `sendAudioDevice`, WAV state) exists three times with slight variations, and divergence has already occurred between them.
 

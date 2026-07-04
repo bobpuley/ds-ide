@@ -133,6 +133,33 @@ describe('ScopePanel', () => {
     );
   });
 
+  it('forwards status messages from manager to webview', () => {
+    panel.show();
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { postMessage: ReturnType<typeof vi.fn> };
+    };
+    (manager as unknown as EventEmitter).emit('message', {
+      type: 'status', running: true, sampleRate: 48000, blockSize: 256,
+    });
+    expect(created.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'status', running: true, sampleRate: 48000, blockSize: 256 }),
+    );
+  });
+
+  it('does not forward unwhitelisted fields on a status message to the webview (FR-IPC-2)', () => {
+    panel.show();
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { postMessage: ReturnType<typeof vi.fn> };
+    };
+    (manager as unknown as EventEmitter).emit('message', {
+      type: 'status', running: true, evil: '<img src=x onerror=alert(1)>',
+    });
+    const call = created.webview.postMessage.mock.calls.find(
+      (c: unknown[]) => (c[0] as Record<string, unknown>)['command'] === 'status',
+    );
+    expect(call![0]).not.toHaveProperty('evil');
+  });
+
   it('dispose() cleans up the panel', () => {
     panel.show();
     const created = webviewMock.mock.results[0]?.value as { dispose: ReturnType<typeof vi.fn> };
@@ -143,13 +170,13 @@ describe('ScopePanel', () => {
   it('dispose() removes the manager message listener to prevent leak (FR-EQ-7)', () => {
     // 12 create+dispose cycles on the same manager must not accumulate listeners
     const warnings: string[] = [];
-    const warnSpy = vi.spyOn(process, 'emit').mockImplementation((...args: unknown[]) => {
+    const warnSpy = vi.spyOn(process, 'emit').mockImplementation(((...args: unknown[]) => {
       if (args[0] === 'warning') {
         const w = args[1] as { name?: string };
         if (w?.name === 'MaxListenersExceededWarning') warnings.push(String(w));
       }
       return true;
-    });
+    }) as unknown as typeof process.emit);
 
     const localManager = makeManager();
     for (let i = 0; i < 12; i++) {

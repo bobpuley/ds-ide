@@ -1,13 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
 import * as vscode from 'vscode';
-import path from 'path';
+import * as path from 'path';
 
 vi.mock('fs', () => {
   const promises = {
     readFile: vi.fn(() => Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))),
     access: vi.fn(() => Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))),
     readdir: vi.fn(() => Promise.resolve([])),
+    writeFile: vi.fn(() => Promise.resolve()),
+    stat: vi.fn(() => Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))),
   };
   return {
     default: {
@@ -58,6 +60,7 @@ vi.mock('../../emulator/manager', () => {
 
 // Imported for type inference only — each test describe re-imports dynamically.
 import type { activate as ActivateFn, deactivate as DeactivateFn } from '../../extension';
+import { makeBlockEdit } from '../../extension';
 
 function makeContext(): vscode.ExtensionContext {
   return {
@@ -307,26 +310,26 @@ describe('extension view initialization (FR-CE-9, FR-WE-11)', () => {
     vi.clearAllMocks();
     managerInstances.length = 0;
     fsMock = (await import('fs')) as unknown as Record<string, ReturnType<typeof vi.fn>>;
-    const promisesMock = fsMock['promises'] as Record<string, ReturnType<typeof vi.fn>>;
-    promisesMock['access'].mockImplementation((p: unknown) => {
+    const promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['access']!.mockImplementation((p: unknown) => {
       const fp = String(p);
       if (fp.endsWith('CMakeLists.txt') || fp.endsWith('.cpp')) return Promise.resolve();
       return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
     });
-    promisesMock['readdir'].mockResolvedValue(['effect.cpp']);
-    promisesMock['readFile'].mockImplementation((p: unknown) => {
+    promisesMock['readdir']!.mockResolvedValue(['effect.cpp']);
+    promisesMock['readFile']!.mockImplementation((p: unknown) => {
       const fp = String(p);
       if (fp.endsWith('.cpp')) return Promise.resolve('// ds-ide:controls\n// ds-ide:pot vol 15\n');
       if (fp.endsWith('controllers.yaml')) return Promise.resolve('pots: []\nbuttons: []\nleds: []\n');
       return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
     });
-    (vscode.workspace as unknown as Record<string, unknown>).workspaceFolders = [
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [
       { uri: { fsPath: '/proj' } },
     ];
   });
 
   afterEach(() => {
-    (vscode.workspace as unknown as Record<string, unknown>).workspaceFolders = undefined;
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = undefined;
   });
 
   it('registers onDidSaveTextDocument watcher on activate (FR-CE-9, FR-WE-11)', async () => {
@@ -350,8 +353,8 @@ describe('extension view initialization (FR-CE-9, FR-WE-11)', () => {
     act(ctx);
     const saveCb = (vscode.workspace.onDidSaveTextDocument as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
       ((doc: { uri: { fsPath: string } }) => Promise<void>);
-    const promisesMock = fsMock['promises'] as Record<string, ReturnType<typeof vi.fn>>;
-    promisesMock['readFile'].mockClear();
+    const promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['readFile']!.mockClear();
     await saveCb({ uri: { fsPath: path.join('/proj', 'effect.cpp') } });
     expect(promisesMock['readFile']).toHaveBeenCalledWith(
       expect.stringMatching(/\.cpp$/), expect.anything(),
@@ -364,8 +367,8 @@ describe('extension view initialization (FR-CE-9, FR-WE-11)', () => {
     act(ctx);
     const saveCb = (vscode.workspace.onDidSaveTextDocument as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
       ((doc: { uri: { fsPath: string } }) => Promise<void>);
-    const promisesMock = fsMock['promises'] as Record<string, ReturnType<typeof vi.fn>>;
-    promisesMock['readFile'].mockClear();
+    const promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['readFile']!.mockClear();
     await saveCb({ uri: { fsPath: '/other/unrelated.txt' } });
     expect(promisesMock['readFile']).not.toHaveBeenCalled();
   });
@@ -376,8 +379,8 @@ describe('extension view initialization (FR-CE-9, FR-WE-11)', () => {
     act(ctx);
     const saveCb = (vscode.workspace.onDidSaveTextDocument as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
       ((doc: { uri: { fsPath: string } }) => Promise<void>);
-    const promisesMock = fsMock['promises'] as Record<string, ReturnType<typeof vi.fn>>;
-    promisesMock['readFile'].mockClear();
+    const promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['readFile']!.mockClear();
     await saveCb({ uri: { fsPath: path.join('/proj', 'controllers.yaml') } });
     expect(promisesMock['readFile']).toHaveBeenCalledWith(
       expect.stringMatching(/controllers\.yaml$/), expect.anything(),
@@ -386,10 +389,10 @@ describe('extension view initialization (FR-CE-9, FR-WE-11)', () => {
 
   it('activate() completes setup synchronously without blocking on file reads (AC-66)', async () => {
     const { activate: act } = await import('../../extension');
-    const promisesMock = fsMock['promises'] as Record<string, ReturnType<typeof vi.fn>>;
+    const promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
     // Make file reads never resolve — activate() must still return
-    promisesMock['access'].mockReturnValue(new Promise(() => {}));
-    promisesMock['readFile'].mockReturnValue(new Promise(() => {}));
+    promisesMock['access']!.mockReturnValue(new Promise(() => {}));
+    promisesMock['readFile']!.mockReturnValue(new Promise(() => {}));
     const ctx = makeContext();
     act(ctx);
     // All registrations must be synchronous — even with never-resolving file reads
@@ -398,5 +401,409 @@ describe('extension view initialization (FR-CE-9, FR-WE-11)', () => {
       expect(subs).toContain(r.value);
     }
     expect(subs).toContain((vscode.workspace.onDidSaveTextDocument as ReturnType<typeof vi.fn>).mock.results[0]?.value);
+  });
+});
+
+// ── FR-IPC-4: distinguish absent controllers.yaml from an unreadable one ──
+
+describe('controllers.yaml read robustness (FR-IPC-4)', () => {
+  let fsMock: Record<string, ReturnType<typeof vi.fn>>;
+  let promisesMock: Record<string, ReturnType<typeof vi.fn>>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    managerInstances.length = 0;
+    fsMock = (await import('fs')) as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['access']!.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    promisesMock['readdir']!.mockResolvedValue([]);
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [
+      { uri: { fsPath: '/proj' } },
+    ];
+  });
+
+  afterEach(() => {
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = undefined;
+  });
+
+  async function triggerLoadViaSave(ctx: vscode.ExtensionContext): Promise<void> {
+    const saveCb = (vscode.workspace.onDidSaveTextDocument as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
+      (doc: { uri: { fsPath: string } }) => Promise<void>;
+    await saveCb({ uri: { fsPath: path.join('/proj', 'controllers.yaml') } });
+  }
+
+  function getControlsEditorMessageHandler(): (msg: unknown) => void {
+    const registerCalls = (vscode.window.registerWebviewViewProvider as ReturnType<typeof vi.fn>).mock.calls;
+    const controlsEntry = registerCalls.find((c: unknown[]) => c[0] === 'ds-ide.controlsEditor');
+    const controlsProvider = controlsEntry?.[1] as { resolveWebviewView: (view: unknown) => void };
+    const mockView = {
+      webview: {
+        html: '', options: {},
+        onDidReceiveMessage: vi.fn(() => ({ dispose: vi.fn() })),
+        postMessage: vi.fn(),
+        asWebviewUri: vi.fn((u: unknown) => u),
+        cspSource: '',
+      },
+      visible: true,
+      onDidDispose: vi.fn((_cb: () => void) => ({ dispose: vi.fn() })),
+      onDidChangeVisibility: vi.fn((_cb: () => void) => ({ dispose: vi.fn() })),
+      show: vi.fn(),
+    };
+    controlsProvider.resolveWebviewView(mockView);
+    return (mockView.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => void;
+  }
+
+  it('treats a missing controllers.yaml (ENOENT) as empty, without an unreadable warning', async () => {
+    promisesMock['readFile']!.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await triggerLoadViaSave(ctx);
+    expect(vscode.window.showWarningMessage).not.toHaveBeenCalledWith(
+      expect.stringMatching(/unreadable|could not read/i),
+    );
+  });
+
+  it('surfaces a warning when controllers.yaml read fails with a non-ENOENT error', async () => {
+    promisesMock['readFile']!.mockRejectedValue(Object.assign(new Error('permission denied'), { code: 'EACCES' }));
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await triggerLoadViaSave(ctx);
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      expect.stringMatching(/could not read controllers\.yaml/i),
+    );
+  });
+
+  it('refuses to overwrite controllers.yaml after a non-ENOENT read failure', async () => {
+    promisesMock['readFile']!.mockRejectedValue(Object.assign(new Error('permission denied'), { code: 'EACCES' }));
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await triggerLoadViaSave(ctx);
+
+    const handler = getControlsEditorMessageHandler();
+    promisesMock['writeFile']!.mockClear();
+    handler({ command: 'editorSave', cfg: { pots: [], buttons: [], leds: [], errors: [] } });
+    await Promise.resolve();
+    expect(promisesMock['writeFile']).not.toHaveBeenCalled();
+  });
+
+  it('writes normally once controllers.yaml has been read successfully', async () => {
+    promisesMock['readFile']!.mockImplementation((p: unknown) => {
+      const fp = String(p);
+      if (fp.endsWith('controllers.yaml')) return Promise.resolve('pots: []\nbuttons: []\nleds: []\n');
+      return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    });
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await triggerLoadViaSave(ctx);
+
+    const handler = getControlsEditorMessageHandler();
+    promisesMock['writeFile']!.mockClear();
+    handler({ command: 'editorSave', cfg: { pots: [], buttons: [], leds: [], errors: [] } });
+    await Promise.resolve();
+    expect(promisesMock['writeFile']).toHaveBeenCalledWith(
+      expect.stringMatching(/controllers\.yaml$/), expect.anything(), 'utf8',
+    );
+  });
+});
+
+// ── FR-IPC-5: applyEdit result checking, duplicate-marker safety, view consistency ──
+
+describe('makeBlockEdit duplicate-marker safety (FR-IPC-5)', () => {
+  function makeDoc(text: string): vscode.TextDocument {
+    const lines = text.split('\n');
+    return {
+      lineCount: lines.length,
+      lineAt: (n: number) => ({ range: { end: { line: n, character: lines[n]!.length } } }),
+    } as unknown as vscode.TextDocument;
+  }
+
+  it('falls back to a full-file replacement when the begin marker is duplicated', () => {
+    const oldText = [
+      '// ds-ide:controls:begin',
+      'int a = 1;',
+      '// ds-ide:controls:end',
+      '// ds-ide:controls:begin', // duplicate begin marker
+      'int b = 2;',
+    ].join('\n');
+    const newText = oldText.replace('int a = 1;', 'int a = 2;');
+    const doc = makeDoc(oldText);
+    const edit = makeBlockEdit(doc, { fsPath: '/proj/effect.cpp' } as unknown as vscode.Uri, oldText, newText);
+    const replaceCalls = (edit.replace as ReturnType<typeof vi.fn>).mock.calls;
+    // Full-file fallback: exactly one replace() spanning the whole document,
+    // not a (mis-paired) partial marker-block range.
+    expect(replaceCalls).toHaveLength(1);
+    expect(replaceCalls[0]![2]).toBe(newText);
+  });
+
+  it('falls back to a full-file replacement when the end marker is duplicated', () => {
+    const oldText = [
+      '// ds-ide:controls:begin',
+      'int a = 1;',
+      '// ds-ide:controls:end',
+      '// ds-ide:controls:end', // duplicate end marker
+    ].join('\n');
+    const newText = oldText.replace('int a = 1;', 'int a = 2;');
+    const doc = makeDoc(oldText);
+    const edit = makeBlockEdit(doc, { fsPath: '/proj/effect.cpp' } as unknown as vscode.Uri, oldText, newText);
+    const replaceCalls = (edit.replace as ReturnType<typeof vi.fn>).mock.calls;
+    expect(replaceCalls).toHaveLength(1);
+    expect(replaceCalls[0]![2]).toBe(newText);
+  });
+
+  it('still uses a targeted block replacement when markers are unique', () => {
+    const oldText = [
+      '// ds-ide:controls:begin',
+      'int a = 1;',
+      '// ds-ide:controls:end',
+      '// ds-ide:controls:init:begin',
+      'a.Init();',
+      '// ds-ide:controls:init:end',
+    ].join('\n');
+    const newText = oldText.replace('int a = 1;', 'int a = 2;');
+    const doc = makeDoc(oldText);
+    const edit = makeBlockEdit(doc, { fsPath: '/proj/effect.cpp' } as unknown as vscode.Uri, oldText, newText);
+    const replaceCalls = (edit.replace as ReturnType<typeof vi.fn>).mock.calls;
+    // Both marker pairs are unique and matched — two targeted block
+    // replacements, never a full-file fallback.
+    expect(replaceCalls).toHaveLength(2);
+    for (const call of replaceCalls) {
+      expect(call[2]).not.toBe(newText);
+    }
+  });
+});
+
+describe('wiring edit consistency (FR-IPC-5)', () => {
+  let fsMock: Record<string, ReturnType<typeof vi.fn>>;
+  let promisesMock: Record<string, ReturnType<typeof vi.fn>>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    managerInstances.length = 0;
+    fsMock = (await import('fs')) as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['access']!.mockImplementation((p: unknown) => {
+      const fp = String(p);
+      if (fp.endsWith('CMakeLists.txt') || fp.endsWith('.cpp')) return Promise.resolve();
+      return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    });
+    promisesMock['readdir']!.mockResolvedValue(['effect.cpp']);
+    promisesMock['readFile']!.mockResolvedValue('');
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [
+      { uri: { fsPath: '/proj' } },
+    ];
+    (vscode.workspace.applyEdit as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+  });
+
+  afterEach(() => {
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = undefined;
+  });
+
+  function resolveProvider(viewId: string): { handler: (msg: unknown) => Promise<void> | void; postMessage: ReturnType<typeof vi.fn> } {
+    const registerCalls = (vscode.window.registerWebviewViewProvider as ReturnType<typeof vi.fn>).mock.calls;
+    const entry = registerCalls.find((c: unknown[]) => c[0] === viewId);
+    const provider = entry?.[1] as { resolveWebviewView: (view: unknown) => void };
+    const postMessage = vi.fn();
+    const mockView = {
+      webview: {
+        html: '', options: {},
+        onDidReceiveMessage: vi.fn(() => ({ dispose: vi.fn() })),
+        postMessage,
+        asWebviewUri: vi.fn((u: unknown) => u),
+        cspSource: '',
+      },
+      visible: true,
+      onDidDispose: vi.fn((_cb: () => void) => ({ dispose: vi.fn() })),
+      onDidChangeVisibility: vi.fn((_cb: () => void) => ({ dispose: vi.fn() })),
+      show: vi.fn(),
+    };
+    provider.resolveWebviewView(mockView);
+    const handler = (mockView.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
+      (msg: unknown) => Promise<void> | void;
+    return { handler, postMessage };
+  }
+
+  // activate() kicks off initViewsFromProject() fire-and-forget; let its
+  // fs-backed promise chain fully settle before attaching mock views so its
+  // one-time flush doesn't land in the middle of a test's own assertions.
+  function flushMicrotasks(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  it('does not update either view and shows an error when applyEdit returns false on wire', async () => {
+    (vscode.workspace.applyEdit as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flushMicrotasks();
+    const wiring = resolveProvider('ds-ide.wiringEditor');
+    const controls = resolveProvider('ds-ide.controlsEditor');
+    wiring.postMessage.mockClear();
+    controls.postMessage.mockClear();
+
+    await wiring.handler({ command: 'wirePin', pinNumber: 15, deviceType: 'pot', id: 'vol' });
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringMatching(/wiring edit/i));
+    expect(wiring.postMessage).not.toHaveBeenCalled();
+    expect(controls.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not update either view and shows an error when applyEdit returns false on unwire', async () => {
+    (vscode.workspace.applyEdit as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flushMicrotasks();
+    const wiring = resolveProvider('ds-ide.wiringEditor');
+    const controls = resolveProvider('ds-ide.controlsEditor');
+    wiring.postMessage.mockClear();
+    controls.postMessage.mockClear();
+
+    await wiring.handler({ command: 'unwirePin', pinNumber: 15, id: 'vol' });
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringMatching(/wiring edit/i));
+    expect(wiring.postMessage).not.toHaveBeenCalled();
+    expect(controls.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('saves the document after a successful wire so both views reflect the same state without a manual save', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flushMicrotasks();
+    const wiring = resolveProvider('ds-ide.wiringEditor');
+    const controls = resolveProvider('ds-ide.controlsEditor');
+    wiring.postMessage.mockClear();
+    controls.postMessage.mockClear();
+
+    await wiring.handler({ command: 'wirePin', pinNumber: 15, deviceType: 'pot', id: 'vol' });
+
+    const openDocResults = (vscode.workspace.openTextDocument as ReturnType<typeof vi.fn>).mock.results;
+    const doc = await openDocResults[openDocResults.length - 1]!.value as { save: ReturnType<typeof vi.fn> };
+    expect(doc.save).toHaveBeenCalled();
+    expect(wiring.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'wiredPins' }));
+    expect(controls.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'controlsConfig' }));
+  });
+});
+
+// ── FR-IPC-7: single deploy coordinator, no divergent post-deploy replay ──
+
+describe('deploy sequencing via DeployCoordinator (FR-IPC-7)', () => {
+  let fsMock: Record<string, ReturnType<typeof vi.fn>>;
+  let promisesMock: Record<string, ReturnType<typeof vi.fn>>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    managerInstances.length = 0;
+    fsMock = (await import('fs')) as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['access']!.mockImplementation((p: unknown) => {
+      const fp = String(p);
+      if (fp.endsWith('CMakeLists.txt') || fp.endsWith('.cpp')) return Promise.resolve();
+      return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    });
+    promisesMock['readdir']!.mockResolvedValue(['effect.cpp']);
+    promisesMock['readFile']!.mockImplementation((p: unknown) => {
+      const fp = String(p);
+      if (fp.endsWith('.cpp')) return Promise.resolve('// ds-ide:controls\n// ds-ide:pot vol 15\n');
+      if (fp.endsWith('controllers.yaml')) return Promise.resolve('pots: []\nbuttons: []\nleds: []\n');
+      return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    });
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [
+      { uri: { fsPath: '/proj' } },
+    ];
+  });
+
+  afterEach(() => {
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = undefined;
+  });
+
+  function flush(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  function getCommand(id: string): ((...args: unknown[]) => unknown) | undefined {
+    const calls = (vscode.commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls;
+    return calls.find((c: unknown[]) => c[0] === id)?.[1] as ((...args: unknown[]) => unknown) | undefined;
+  }
+
+  interface ManagerSpies {
+    build: ReturnType<typeof vi.fn>;
+    deploy: ReturnType<typeof vi.fn>;
+    sendPotSnapshot: ReturnType<typeof vi.fn>;
+    sendButtonSnapshot: ReturnType<typeof vi.fn>;
+    sendSine: ReturnType<typeof vi.fn>;
+    sendAudioMode: ReturnType<typeof vi.fn>;
+    sendAudioDevice: ReturnType<typeof vi.fn>;
+  }
+
+  it('ds-ide.deploy replays pot/button/sine/audioMode/audioDevice state after a successful deploy', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flush();
+    const mgr = managerInstances[0]! as unknown as ManagerSpies;
+    const deployCmd = getCommand('ds-ide.deploy')!;
+    await deployCmd();
+    expect(mgr.sendPotSnapshot).toHaveBeenCalled();
+    expect(mgr.sendButtonSnapshot).toHaveBeenCalled();
+    expect(mgr.sendSine).toHaveBeenCalled();
+    expect(mgr.sendAudioMode).toHaveBeenCalled();
+    expect(mgr.sendAudioDevice).toHaveBeenCalled();
+  });
+
+  it('ds-ide.debug replays the same post-deploy state sequence via the shared coordinator', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flush();
+    const mgr = managerInstances[0]! as unknown as ManagerSpies;
+    const debugCmd = getCommand('ds-ide.debug')!;
+    await debugCmd();
+    expect(mgr.sendButtonSnapshot).toHaveBeenCalled();
+    expect(mgr.sendSine).toHaveBeenCalled();
+    expect(mgr.sendAudioMode).toHaveBeenCalled();
+    expect(mgr.sendAudioDevice).toHaveBeenCalled();
+  });
+
+  it('ds-ide.buildAndDeploy builds first, then replays the same post-deploy state sequence', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flush();
+    const mgr = managerInstances[0]! as unknown as ManagerSpies;
+    const cmd = getCommand('ds-ide.buildAndDeploy')!;
+    await cmd();
+    expect(mgr.build).toHaveBeenCalled();
+    expect(mgr.sendPotSnapshot).toHaveBeenCalled();
+    expect(mgr.sendAudioMode).toHaveBeenCalled();
+  });
+
+  it('ds-ide.deploy sets the status bar to deploying, then back to stopped when deploy fails', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flush();
+    const mgr = managerInstances[0]! as unknown as ManagerSpies;
+    mgr.deploy.mockRejectedValueOnce(new Error('boom'));
+    const statusBar = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.results[0]?.value as { text: string };
+    const deployCmd = getCommand('ds-ide.deploy')!;
+    await deployCmd();
+    expect(statusBar.text).toContain('stopped');
+  });
+
+  it('ds-ide.buildAndDeploy does not deploy when the build step fails', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flush();
+    const mgr = managerInstances[0]! as unknown as ManagerSpies;
+    mgr.build.mockRejectedValueOnce(new Error('build failed'));
+    const cmd = getCommand('ds-ide.buildAndDeploy')!;
+    await cmd();
+    expect(mgr.sendPotSnapshot).not.toHaveBeenCalled();
   });
 });

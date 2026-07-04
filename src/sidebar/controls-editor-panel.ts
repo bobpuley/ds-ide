@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
 import { IpcMessage } from '../emulator/ipc-client';
+import { getBoolean, getNumber } from '../ipc/narrow';
 import { ControllerConfig, parseControllerConfig, serializeControllerConfig } from '../controllers/controller-config';
 import { ControlsConfig } from '../webview/scope-panel';
 
@@ -39,10 +40,19 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
         return;
       }
       if (m['command'] === 'editorSave') {
-        const cfg = m['cfg'] as ControllerConfig | undefined;
-        if (cfg) {
-          const validated = parseControllerConfig(serializeControllerConfig(cfg));
-          if (validated.errors.length === 0) this.onEditorSave(validated);
+        const cfg = m['cfg'];
+        if (cfg && typeof cfg === 'object') {
+          // cfg is untrusted webview input — serializeControllerConfig assumes
+          // a well-formed ControllerConfig shape, so a missing/malformed field
+          // (e.g. { pots: [{}] }) throws rather than producing validation
+          // errors. Round trip is guarded so that never reaches the user as
+          // an uncaught exception (FR-IPC-3).
+          try {
+            const validated = parseControllerConfig(serializeControllerConfig(cfg as ControllerConfig));
+            if (validated.errors.length === 0) this.onEditorSave(validated);
+          } catch {
+            void vscode.window.showWarningMessage('ds-ide: could not save controls layout — malformed data from editor.');
+          }
         }
       }
       if (m['command'] === 'pot') {
@@ -78,13 +88,13 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
     this.lastControlsConfig = config;
     void this.view?.webview.postMessage({ command: 'controlsConfig', ...config });
     if (this.lastStatus) {
-      void this.view?.webview.postMessage({ command: 'status', ...this.lastStatus });
+      void this.view?.webview.postMessage(statusPayload(this.lastStatus));
     }
   }
 
   postStatus(msg: IpcMessage): void {
     this.lastStatus = msg;
-    void this.view?.webview.postMessage({ command: 'status', ...msg });
+    void this.view?.webview.postMessage(statusPayload(msg));
   }
 
   postLed(msg: IpcMessage): void {
@@ -104,9 +114,21 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
       void this.view?.webview.postMessage({ command: 'controlsConfig', ...this.lastControlsConfig });
     }
     if (this.lastStatus) {
-      void this.view?.webview.postMessage({ command: 'status', ...this.lastStatus });
+      void this.view?.webview.postMessage(statusPayload(this.lastStatus));
     }
   }
+}
+
+// msg originates from the emulator's IPC socket and must never be spread
+// verbatim into a webview postMessage — only whitelisted, type-checked
+// fields are forwarded (FR-IPC-2).
+function statusPayload(msg: IpcMessage): Record<string, unknown> {
+  return {
+    command: 'status',
+    running: getBoolean(msg, 'running') ?? false,
+    sampleRate: getNumber(msg, 'sampleRate'),
+    blockSize: getNumber(msg, 'blockSize'),
+  };
 }
 
 export const TRUNC_MAX_LEN = 15;

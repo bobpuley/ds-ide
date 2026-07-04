@@ -1,46 +1,57 @@
-// @ts-nocheck
 /// <reference lib="dom" />
+import type { ScopeHostMessage } from './messages';
+
+function el<T extends HTMLElement>(id: string): T {
+  return document.getElementById(id) as T;
+}
 
 const vscode = acquireVsCodeApi();
-const canvas = document.getElementById('scope');
-const ctx = canvas.getContext('2d');
-const specCanvas = document.getElementById('spectrum');
-const specCtx = specCanvas.getContext('2d');
-const statusEl   = document.getElementById('status-text');
-const btnAudioStart = document.getElementById('btn-audio-start');
-const btnAudioStop  = document.getElementById('btn-audio-stop');
-const eventsEl = document.getElementById('events');
-const gettingStarted = document.getElementById('getting-started');
-const sineFreqEl = document.getElementById('sine-freq');
-const sineAmpEl  = document.getElementById('sine-amp');
-const sineAmpValEl = document.getElementById('sine-amp-val');
-const bufferSizeEl = document.getElementById('buffer-size');
-const latencyEl = document.getElementById('latency-display');
-const wavChooseEl = document.getElementById('wav-choose');
-const wavNameEl = document.getElementById('wav-name');
-const wavLoopEl = document.getElementById('wav-loop');
-const outputVolEl = document.getElementById('output-vol');
-const volValEl = document.getElementById('vol-val');
+const canvas = el<HTMLCanvasElement>('scope');
+const ctx = canvas.getContext('2d')!;
+const specCanvas = el<HTMLCanvasElement>('spectrum');
+const specCtx = specCanvas.getContext('2d')!;
+const statusEl   = el<HTMLElement>('status-text');
+const btnAudioStart = el<HTMLButtonElement>('btn-audio-start');
+const btnAudioStop  = el<HTMLButtonElement>('btn-audio-stop');
+const eventsEl = el<HTMLElement>('events');
+const gettingStarted = el<HTMLElement>('getting-started');
+const sineFreqEl = el<HTMLInputElement>('sine-freq');
+const sineAmpEl  = el<HTMLInputElement>('sine-amp');
+const sineAmpValEl = el<HTMLElement>('sine-amp-val');
+const bufferSizeEl = el<HTMLSelectElement>('buffer-size');
+const latencyEl = el<HTMLElement>('latency-display');
+const wavChooseEl = el<HTMLButtonElement>('wav-choose');
+const wavNameEl = el<HTMLElement>('wav-name');
+const wavLoopEl = el<HTMLInputElement>('wav-loop');
+const outputVolEl = el<HTMLInputElement>('output-vol');
+const volValEl = el<HTMLElement>('vol-val');
 
-let lastIn = [], lastOut = [];
-let lastSpecIn = [], lastSpecOut = [], lastBinHz = 0;
-const activeEvents = new Set();
+let lastIn: number[] = [], lastOut: number[] = [];
+let lastSpecIn: number[] = [], lastSpecOut: number[] = [], lastBinHz = 0;
+const activeEvents = new Set<string>();
 let hasStatus = false;
 let xrunCount = 0;
 let lastStatusRunning = false;
 let lastStatusSampleRate = 0;
 let lastStatusBlockSize = 0;
 
-function updateStatusEl() {
+function updateStatusEl(): void {
   if (!statusEl || !hasStatus) return;
   const symbol = lastStatusRunning ? '▶' : '■';
   const color  = lastStatusRunning ? '#4ec94e' : '#f04a4a';
-  statusEl.innerHTML =
-    '<span style="color:' + color + '">' + symbol + '</span>' +
-    '  |  ' + lastStatusSampleRate + ' Hz  |  block ' + lastStatusBlockSize + '  |  xruns: ' + xrunCount;
+  // Built via DOM APIs, never innerHTML — sampleRate/blockSize/xrunCount
+  // originate from the emulator's IPC socket (FR-IPC-2).
+  statusEl.textContent = '';
+  const dot = document.createElement('span');
+  dot.style.color = color;
+  dot.textContent = symbol;
+  statusEl.appendChild(dot);
+  statusEl.appendChild(document.createTextNode(
+    '  |  ' + lastStatusSampleRate + ' Hz  |  block ' + lastStatusBlockSize + '  |  xruns: ' + xrunCount,
+  ));
 }
 
-function showScope() {
+function showScope(): void {
   if (!hasStatus) return;
   canvas.style.display = 'block';
   specCanvas.style.display = 'block';
@@ -48,7 +59,7 @@ function showScope() {
   resize();
 }
 
-function resize() {
+function resize(): void {
   canvas.width  = canvas.clientWidth;
   canvas.height = canvas.clientHeight;
   specCanvas.width  = specCanvas.clientWidth;
@@ -57,7 +68,7 @@ function resize() {
   drawSpectrum();
 }
 
-function draw() {
+function draw(): void {
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = '#1e1e1e';
@@ -73,7 +84,7 @@ function draw() {
   drawWave(lastOut, '#ce9178');
 }
 
-function drawWave(pts, color) {
+function drawWave(pts: number[], color: string): void {
   if (!pts || pts.length < 2) return;
   const W = canvas.width, H = canvas.height;
   ctx.strokeStyle = color;
@@ -81,14 +92,14 @@ function drawWave(pts, color) {
   ctx.beginPath();
   for (let i = 0; i < pts.length; i++) {
     const x = (i / (pts.length - 1)) * W;
-    const y = H / 2 - pts[i] * (H / 2 * 0.9);
+    const y = H / 2 - pts[i]! * (H / 2 * 0.9);
     if (i === 0) ctx.moveTo(x, y);
     else         ctx.lineTo(x, y);
   }
   ctx.stroke();
 }
 
-function drawSpectrum() {
+function drawSpectrum(): void {
   const W = specCanvas.width, H = specCanvas.height;
   specCtx.clearRect(0, 0, W, H);
   specCtx.fillStyle = '#1a1a1a';
@@ -104,7 +115,7 @@ function drawSpectrum() {
   const LEFT = 36, BOTTOM = 16, TOP = 4;
   const plotW = W - LEFT;
   const plotH = H - BOTTOM - TOP;
-  const ampToY = (amp) => TOP + plotH * (1 - amp / peak);
+  const ampToY = (amp: number): number => TOP + plotH * (1 - amp / peak);
   specCtx.font = '9px monospace';
   specCtx.textAlign = 'right';
   let lastDbLabelY = -Infinity;
@@ -127,13 +138,13 @@ function drawSpectrum() {
   specCtx.beginPath();
   specCtx.moveTo(LEFT, TOP + plotH); specCtx.lineTo(W, TOP + plotH);
   specCtx.stroke();
-  function drawSpecLine(fft, color) {
+  function drawSpecLine(fft: number[], color: string): void {
     specCtx.strokeStyle = color;
     specCtx.lineWidth = 1.5;
     specCtx.beginPath();
     for (let i = 0; i < maxBin; i++) {
       const x = LEFT + (i / (maxBin - 1)) * plotW;
-      const y = ampToY(fft[i]);
+      const y = ampToY(fft[i]!);
       if (i === 0) specCtx.moveTo(x, y);
       else         specCtx.lineTo(x, y);
     }
@@ -158,7 +169,7 @@ function drawSpectrum() {
   }
 }
 
-function sendSine() {
+function sendSine(): void {
   const freq = parseFloat(sineFreqEl.value);
   const amplitude = parseFloat(sineAmpEl.value);
   if (!isNaN(freq) && !isNaN(amplitude)) {
@@ -166,7 +177,7 @@ function sendSine() {
   }
 }
 
-function updateSourceGroups(input) {
+function updateSourceGroups(input: string): void {
   const isSine = input === 'sine';
   const isLive = input === 'live';
   const isWav  = input === 'wav';
@@ -176,14 +187,18 @@ function updateSourceGroups(input) {
   document.getElementById('latency-group')?.classList.toggle('emu-hidden', !isLive);
 }
 
-function sendAudioSource() {
-  const srcEl = document.getElementById('audio-source-select');
+function sendAudioSource(): void {
+  const srcEl = document.getElementById('audio-source-select') as HTMLSelectElement | null;
   const input = srcEl ? srcEl.value : 'sine';
   const bufferSize = parseInt(bufferSizeEl?.value || '256', 10);
   const sampleRate = 48000;
   const wavLoop = !!(wavLoopEl && wavLoopEl.checked);
   updateSourceGroups(input);
-  vscode.postMessage({ command: 'audioSource', input, sampleRate, bufferSize, wavLoop });
+  vscode.postMessage({
+    command: 'audioSource',
+    input: input === 'live' || input === 'wav' ? input : 'sine',
+    sampleRate, bufferSize, wavLoop,
+  });
 }
 
 sineFreqEl?.addEventListener('change', sendSine);
@@ -204,7 +219,7 @@ outputVolEl?.addEventListener('input', () => {
 window.addEventListener('resize', resize);
 resize();
 
-window.addEventListener('message', e => {
+window.addEventListener('message', (e: MessageEvent<ScopeHostMessage>) => {
   const msg = e.data;
   if (msg.command === 'scope') {
     lastIn  = msg.in  || [];
@@ -225,12 +240,12 @@ window.addEventListener('message', e => {
     }
   } else if (msg.command === 'wavSelected') {
     if (wavNameEl) wavNameEl.textContent = msg.name || 'no file';
-    const srcEl = document.getElementById('audio-source-select');
+    const srcEl = document.getElementById('audio-source-select') as HTMLSelectElement | null;
     if (srcEl) { srcEl.value = 'wav'; updateSourceGroups('wav'); }
   } else if (msg.command === 'event') {
     if (msg.kind === 'realtime_unavailable') {
       eventsEl.textContent = '⚠ Live input unavailable — check microphone permission. Falling back to sine.';
-      const srcEl = document.getElementById('audio-source-select');
+      const srcEl = document.getElementById('audio-source-select') as HTMLSelectElement | null;
       if (srcEl) { srcEl.value = 'sine'; updateSourceGroups('sine'); }
       return;
     }
@@ -238,8 +253,10 @@ window.addEventListener('message', e => {
       eventsEl.textContent = '⚠ Could not load WAV file — unsupported format or unreadable.';
       return;
     }
-    activeEvents.add(msg.kind.toUpperCase());
-    eventsEl.textContent = [...activeEvents].map(k => '⚠ ' + k).join('  ');
+    if (typeof msg.kind === 'string') {
+      activeEvents.add(msg.kind.toUpperCase());
+      eventsEl.textContent = [...activeEvents].map(k => '⚠ ' + k).join('  ');
+    }
   } else if (msg.command === 'xrun') {
     xrunCount = msg.count || 0;
     updateStatusEl();
@@ -277,15 +294,15 @@ btnAudioStop?.addEventListener('click', () => {
   updateStatusEl();
 });
 
-const recStartBtn   = document.getElementById('rec-start-btn');
-const recStopBtn    = document.getElementById('rec-stop-btn');
-const replayBtn     = document.getElementById('replay-start-btn');
-const recFilenameEl = document.getElementById('rec-filename');
+const recStartBtn   = el<HTMLButtonElement>('rec-start-btn');
+const recStopBtn    = el<HTMLButtonElement>('rec-stop-btn');
+const replayBtn     = el<HTMLButtonElement>('replay-start-btn');
+const recFilenameEl = el<HTMLElement>('rec-filename');
 
 let isRecording = false;
 let isReplaying = false;
 
-function setRecordingState(recording, replaying, fileName) {
+function setRecordingState(recording: boolean, replaying: boolean, fileName?: string | null): void {
   isRecording = recording;
   isReplaying = replaying;
   recStartBtn.disabled  = recording || replaying;

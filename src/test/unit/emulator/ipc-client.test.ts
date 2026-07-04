@@ -12,9 +12,9 @@ function makeSocketStub() {
     destroy: ReturnType<typeof vi.fn>;
     destroyed: boolean;
   };
-  stub.connect  = vi.fn((_opts: unknown, _cb?: () => void) => stub);
-  stub.write    = vi.fn((_data: string) => true);
-  stub.destroy  = vi.fn(() => { stub.destroyed = true; });
+  stub.connect  = vi.fn((_opts: unknown, _cb?: () => void) => stub) as ReturnType<typeof vi.fn>;
+  stub.write    = vi.fn((_data: string) => true) as ReturnType<typeof vi.fn>;
+  stub.destroy  = vi.fn(() => { stub.destroyed = true; }) as ReturnType<typeof vi.fn>;
   stub.destroyed = false;
   return stub;
 }
@@ -43,6 +43,34 @@ describe('IpcClient', () => {
     const promise = client.connect('/tmp/test.sock');
     socketStub.emit('error', new Error('ENOENT'));
     await expect(promise).rejects.toThrow('ENOENT');
+  });
+
+  it('connect rejects within a bounded time when the socket never connects or errors (FR-IPC-1)', async () => {
+    vi.useFakeTimers();
+    try {
+      const client = new IpcClient();
+      const promise = client.connect('/tmp/test.sock', 5_000);
+      const assertion = expect(promise).rejects.toThrow(/timed out/i);
+      await vi.advanceTimersByTimeAsync(5_000);
+      await assertion;
+      expect(socketStub.destroy).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('connect does not reject from a stale timeout after connecting successfully', async () => {
+    vi.useFakeTimers();
+    try {
+      const client = new IpcClient();
+      const promise = client.connect('/tmp/test.sock', 5_000);
+      socketStub.emit('connect');
+      await promise;
+      await vi.advanceTimersByTimeAsync(5_000);
+      // no throw — the connect timer must have been cleared on success
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('send writes JSON + newline to socket', async () => {
@@ -84,10 +112,10 @@ describe('IpcClient', () => {
     const messages: unknown[] = [];
     client.on('message', (m) => messages.push(m));
 
-    socketStub.emit('data', Buffer.from('{"type":"sco'));
+    socketStub.emit('data', Buffer.from('{"type":"xru'));
     expect(messages).toHaveLength(0);
-    socketStub.emit('data', Buffer.from('pe"}\n'));
-    expect(messages).toEqual([{ type: 'scope' }]);
+    socketStub.emit('data', Buffer.from('n","count":2}\n'));
+    expect(messages).toEqual([{ type: 'xrun', count: 2 }]);
   });
 
   it('handles multiple messages in one data chunk', async () => {
@@ -99,8 +127,8 @@ describe('IpcClient', () => {
     const messages: unknown[] = [];
     client.on('message', (m) => messages.push(m));
 
-    socketStub.emit('data', Buffer.from('{"type":"a"}\n{"type":"b"}\n'));
-    expect(messages).toEqual([{ type: 'a' }, { type: 'b' }]);
+    socketStub.emit('data', Buffer.from('{"type":"status","running":true}\n{"type":"xrun","count":1}\n'));
+    expect(messages).toEqual([{ type: 'status', running: true }, { type: 'xrun', count: 1 }]);
   });
 
   it('skips malformed JSON without throwing', async () => {
@@ -111,9 +139,32 @@ describe('IpcClient', () => {
 
     const messages: unknown[] = [];
     client.on('message', (m) => messages.push(m));
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
-    socketStub.emit('data', Buffer.from('not json\n{"type":"ok"}\n'));
-    expect(messages).toEqual([{ type: 'ok' }]);
+    socketStub.emit('data', Buffer.from('not json\n{"type":"replayDone"}\n'));
+    expect(messages).toEqual([{ type: 'replayDone' }]);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringMatching(/malformed IPC line/));
+    warnSpy.mockRestore();
+  });
+
+  it('drops a well-formed JSON message that fails schema validation (FR-IPC-2)', async () => {
+    const client = new IpcClient();
+    const promise = client.connect('/tmp/test.sock');
+    socketStub.emit('connect');
+    await promise;
+
+    const messages: unknown[] = [];
+    client.on('message', (m) => messages.push(m));
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    // Unknown type
+    socketStub.emit('data', Buffer.from('{"type":"unknownEvilType","payload":"<script>x</script>"}\n'));
+    // Known type, wrong field shape
+    socketStub.emit('data', Buffer.from('{"type":"status","running":"not-a-boolean"}\n'));
+
+    expect(messages).toHaveLength(0);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringMatching(/schema validation/));
+    warnSpy.mockRestore();
   });
 
   it('emits disconnect when socket closes', async () => {
@@ -156,7 +207,7 @@ describe('IpcClient', () => {
     // Verify internal buffer is cleared by sending a valid message after the overflow
     const messages: unknown[] = [];
     client.on('message', (m) => messages.push(m));
-    socketStub.emit('data', Buffer.from('{"type":"ok"}\n'));
-    expect(messages).toEqual([{ type: 'ok' }]);
+    socketStub.emit('data', Buffer.from('{"type":"replayDone"}\n'));
+    expect(messages).toEqual([{ type: 'replayDone' }]);
   });
 });

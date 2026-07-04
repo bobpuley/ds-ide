@@ -12,7 +12,7 @@ vi.mock('fs', () => ({
 }));
 
 describe('findEffectSource', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => { vi.clearAllMocks(); });
 
   it('returns the single .cpp file at root', async () => {
     vi.mocked(fs.promises.readdir).mockResolvedValue(['effect.cpp', 'Makefile'] as never);
@@ -65,7 +65,7 @@ describe('findEffectSource', () => {
 });
 
 describe('detectDaisySP', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => { vi.clearAllMocks(); });
 
   it('finds DaisySP/Source at project root', async () => {
     vi.mocked(fs.promises.stat).mockImplementation((p) => {

@@ -153,6 +153,17 @@ describe('ControlsViewProvider', () => {
     expect(onEditorSave).not.toHaveBeenCalled();
   });
 
+  it('does not throw and shows a warning when editorSave cfg has grossly malformed shape (FR-IPC-3)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => void;
+    const warnSpy = vscode.window.showWarningMessage as ReturnType<typeof vi.fn>;
+    warnSpy.mockClear();
+    expect(() => handler({ command: 'editorSave', cfg: { pots: [{}] } })).not.toThrow();
+    expect(onEditorSave).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalled();
+  });
+
   it('ignores malformed messages', () => {
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);
@@ -183,6 +194,27 @@ describe('ControlsViewProvider', () => {
     expect(view.webview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ command: 'status', running: true }),
     );
+  });
+
+  it('does not forward unwhitelisted fields on a status message to the webview (FR-IPC-2)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    view.webview.postMessage.mockClear();
+    provider.postStatus({ type: 'status', running: true, evil: '<img src=x onerror=alert(1)>' });
+    const call = (view.webview.postMessage as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c: unknown[]) => (c[0] as Record<string, unknown>)['command'] === 'status',
+    );
+    expect(call![0]).not.toHaveProperty('evil');
+  });
+
+  it('does not forward unwhitelisted lastStatus fields when flushing on resolve (FR-IPC-2)', () => {
+    provider.postStatus({ type: 'status', running: true, evil: '<img src=x onerror=alert(1)>' });
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const call = (view.webview.postMessage as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c: unknown[]) => (c[0] as Record<string, unknown>)['command'] === 'status',
+    );
+    expect(call![0]).not.toHaveProperty('evil');
   });
 
   it('postLed forwards gpioPin and lit to webview', () => {
@@ -218,7 +250,7 @@ describe('ControlsViewProvider', () => {
 
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);
-    const calls = view.webview.postMessage.mock.calls.map((c: unknown[]) => (c[0] as Record<string, unknown>).command);
+    const calls = view.webview.postMessage.mock.calls.map((c: unknown[]) => (c[0] as Record<string, unknown>)['command']);
     expect(calls).toContain('editorLoad');
     expect(calls).toContain('controlsConfig');
     expect(calls).toContain('status');
@@ -232,7 +264,7 @@ describe('ControlsViewProvider', () => {
 
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);
-    const calls = view.webview.postMessage.mock.calls.map((c: unknown[]) => (c[0] as Record<string, unknown>).command);
+    const calls = view.webview.postMessage.mock.calls.map((c: unknown[]) => (c[0] as Record<string, unknown>)['command']);
     const editorIdx = calls.indexOf('editorLoad');
     const configIdx = calls.indexOf('controlsConfig');
     expect(editorIdx).toBeGreaterThanOrEqual(0);
@@ -262,7 +294,7 @@ describe('ControlsViewProvider', () => {
 
     view.webview.postMessage.mockClear();
     view._simulateVisibilityChange(true);
-    const calls = view.webview.postMessage.mock.calls.map((c: unknown[]) => (c[0] as Record<string, unknown>).command);
+    const calls = view.webview.postMessage.mock.calls.map((c: unknown[]) => (c[0] as Record<string, unknown>)['command']);
     expect(calls).toContain('editorLoad');
   });
 
