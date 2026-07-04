@@ -23,7 +23,7 @@ Treat the IPC boundary and webview boundary as untrusted in both directions, clo
 
 ---
 
-### [ ] fix: Validate IPC messages at the socket boundary; stop spreading raw messages into webviews (FR-IPC-2)
+### [x] fix: Validate IPC messages at the socket boundary; stop spreading raw messages into webviews (FR-IPC-2)
 
 IPC messages are parsed with bare `JSON.parse` into an untyped record and mostly forwarded unchecked; `postStatus` spreads the entire untrusted message into webview `postMessage` calls, reaching an `innerHTML` sink in the scope webview and an unguarded `.toUpperCase()` call.
 

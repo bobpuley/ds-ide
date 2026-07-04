@@ -35,9 +35,16 @@ function updateStatusEl() {
   if (!statusEl || !hasStatus) return;
   const symbol = lastStatusRunning ? '▶' : '■';
   const color  = lastStatusRunning ? '#4ec94e' : '#f04a4a';
-  statusEl.innerHTML =
-    '<span style="color:' + color + '">' + symbol + '</span>' +
-    '  |  ' + lastStatusSampleRate + ' Hz  |  block ' + lastStatusBlockSize + '  |  xruns: ' + xrunCount;
+  // Built via DOM APIs, never innerHTML — sampleRate/blockSize/xrunCount
+  // originate from the emulator's IPC socket (FR-IPC-2).
+  statusEl.textContent = '';
+  const dot = document.createElement('span');
+  dot.style.color = color;
+  dot.textContent = symbol;
+  statusEl.appendChild(dot);
+  statusEl.appendChild(document.createTextNode(
+    '  |  ' + lastStatusSampleRate + ' Hz  |  block ' + lastStatusBlockSize + '  |  xruns: ' + xrunCount,
+  ));
 }
 
 function showScope() {
@@ -238,8 +245,10 @@ window.addEventListener('message', e => {
       eventsEl.textContent = '⚠ Could not load WAV file — unsupported format or unreadable.';
       return;
     }
-    activeEvents.add(msg.kind.toUpperCase());
-    eventsEl.textContent = [...activeEvents].map(k => '⚠ ' + k).join('  ');
+    if (typeof msg.kind === 'string') {
+      activeEvents.add(msg.kind.toUpperCase());
+      eventsEl.textContent = [...activeEvents].map(k => '⚠ ' + k).join('  ');
+    }
   } else if (msg.command === 'xrun') {
     xrunCount = msg.count || 0;
     updateStatusEl();

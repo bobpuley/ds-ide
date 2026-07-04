@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
 import { IpcMessage } from '../emulator/ipc-client';
+import { getBoolean, getNumber } from '../ipc/narrow';
 import { ControllerConfig, parseControllerConfig, serializeControllerConfig } from '../controllers/controller-config';
 import { ControlsConfig } from '../webview/scope-panel';
 
@@ -78,13 +79,13 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
     this.lastControlsConfig = config;
     void this.view?.webview.postMessage({ command: 'controlsConfig', ...config });
     if (this.lastStatus) {
-      void this.view?.webview.postMessage({ command: 'status', ...this.lastStatus });
+      void this.view?.webview.postMessage(statusPayload(this.lastStatus));
     }
   }
 
   postStatus(msg: IpcMessage): void {
     this.lastStatus = msg;
-    void this.view?.webview.postMessage({ command: 'status', ...msg });
+    void this.view?.webview.postMessage(statusPayload(msg));
   }
 
   postLed(msg: IpcMessage): void {
@@ -104,9 +105,21 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
       void this.view?.webview.postMessage({ command: 'controlsConfig', ...this.lastControlsConfig });
     }
     if (this.lastStatus) {
-      void this.view?.webview.postMessage({ command: 'status', ...this.lastStatus });
+      void this.view?.webview.postMessage(statusPayload(this.lastStatus));
     }
   }
+}
+
+// msg originates from the emulator's IPC socket and must never be spread
+// verbatim into a webview postMessage — only whitelisted, type-checked
+// fields are forwarded (FR-IPC-2).
+function statusPayload(msg: IpcMessage): Record<string, unknown> {
+  return {
+    command: 'status',
+    running: getBoolean(msg, 'running') ?? false,
+    sampleRate: getNumber(msg, 'sampleRate'),
+    blockSize: getNumber(msg, 'blockSize'),
+  };
 }
 
 export const TRUNC_MAX_LEN = 15;

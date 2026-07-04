@@ -185,6 +185,27 @@ describe('ControlsViewProvider', () => {
     );
   });
 
+  it('does not forward unwhitelisted fields on a status message to the webview (FR-IPC-2)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    view.webview.postMessage.mockClear();
+    provider.postStatus({ type: 'status', running: true, evil: '<img src=x onerror=alert(1)>' });
+    const call = (view.webview.postMessage as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c: unknown[]) => (c[0] as Record<string, unknown>)['command'] === 'status',
+    );
+    expect(call![0]).not.toHaveProperty('evil');
+  });
+
+  it('does not forward unwhitelisted lastStatus fields when flushing on resolve (FR-IPC-2)', () => {
+    provider.postStatus({ type: 'status', running: true, evil: '<img src=x onerror=alert(1)>' });
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const call = (view.webview.postMessage as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c: unknown[]) => (c[0] as Record<string, unknown>)['command'] === 'status',
+    );
+    expect(call![0]).not.toHaveProperty('evil');
+  });
+
   it('postLed forwards gpioPin and lit to webview', () => {
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);

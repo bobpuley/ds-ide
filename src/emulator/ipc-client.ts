@@ -1,7 +1,8 @@
 import * as net from 'net';
 import { EventEmitter } from 'events';
+import { parseIpcMessage, IpcMessage } from '../ipc/narrow';
 
-export type IpcMessage = Record<string, unknown>;
+export type { IpcMessage };
 
 export interface IIpcClient {
   connect(socketPath: string): Promise<void>;
@@ -85,11 +86,18 @@ export class IpcClient extends EventEmitter implements IIpcClient {
       const line = this.partial.slice(0, nl).trim();
       this.partial = this.partial.slice(nl + 1);
       if (!line) continue;
+      let parsed: unknown;
       try {
-        const msg = JSON.parse(line) as IpcMessage;
-        this.emit('message', msg);
+        parsed = JSON.parse(line);
       } catch {
-        // ignore malformed lines
+        console.warn(`ds-ide: dropped malformed IPC line (invalid JSON): ${line.slice(0, 200)}`);
+        continue;
+      }
+      const msg = parseIpcMessage(parsed);
+      if (msg) {
+        this.emit('message', msg);
+      } else {
+        console.warn(`ds-ide: dropped IPC message failing schema validation: ${line.slice(0, 200)}`);
       }
     }
   }
