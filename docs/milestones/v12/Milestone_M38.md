@@ -1,7 +1,7 @@
 # M38 — Emulator Correctness & Robustness
 
 **Version:** 0.13.0
-**Status:** in progress
+**Status:** released
 **Source:** 2026-07-02 C/C++ emulator code review — MEDIUM findings
 
 > Sequencing note: this milestone should land after M36 (v11) — both touch `SessionPlayer::nextBlock()`, and M36 restructures the replay read path that this milestone's stale-sample fix builds on. See `02_assumptions-and-risks.md`.

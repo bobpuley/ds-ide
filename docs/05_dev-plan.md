@@ -106,7 +106,7 @@ Source: 2026-07-02 automated code reviews of `./emulator/` (C/C++), `./src/` (No
 
 | ID  | Name | Status          | Version | File |
 |-----|------|-----------------|---------|------|
-| M38 | Emulator Correctness & Robustness | **in progress** | 0.13.0 | [Milestone_M38.md](milestones/v12/Milestone_M38.md) |
+| M38 | Emulator Correctness & Robustness | **released** | 0.13.0 | [Milestone_M38.md](milestones/v12/Milestone_M38.md) |
 | M39 | IPC & Data Validation Hardening | **planned**     | 0.13.1 | [Milestone_M39.md](milestones/v12/Milestone_M39.md) |
 | M40 | Extension UX & Workspace Safety | **planned**     | 0.13.2 | [Milestone_M40.md](milestones/v12/Milestone_M40.md) |
 
