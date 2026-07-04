@@ -1,7 +1,7 @@
 # M39 — IPC & Data Validation Hardening
 
 **Version:** 0.13.1
-**Status:** in progress
+**Status:** released
 **Source:** 2026-07-02 Node.js/TypeScript + VS Code extension code reviews — MEDIUM findings (deduplicated where both reviews independently flagged the same bug)
 
 ## Goal
