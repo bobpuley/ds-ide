@@ -5,6 +5,20 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.13.1 — 2026-07-04
+
+**M39 — IPC & Data Validation Hardening** *(FR-IPC-1 through FR-IPC-7 — all DoD green)*
+
+- **FR-IPC-1** — `IpcClient.connect()` now carries its own 5s timeout via a guarded `setTimeout`/`clearTimeout`, so an emulator that announces its socket but never accepts the connection causes `deploy()` to reject within a bounded time instead of hanging forever and wedging the deploy lock for the rest of the session.
+- **FR-IPC-2** — IPC messages are now validated against a per-type narrowing table (`src/ipc/narrow.ts`'s `parseIpcMessage`) at the point they're parsed off the socket; malformed or unrecognized messages are logged and dropped rather than forwarded. `scope-panel.ts` and `controls-editor-panel.ts` no longer spread the raw emulator message into webview `postMessage` calls — only whitelisted, type-checked fields are forwarded. The scope webview's status line is now built via DOM APIs (`textContent`/`createElement`) instead of `innerHTML`, and `.toUpperCase()` on an event `kind` is guarded with a `typeof` check.
+- **FR-IPC-3** — `editorSave`'s webview payload is now processed inside a try/catch so a grossly malformed `cfg` (e.g. `{ pots: [{}] }`) surfaces a warning instead of throwing inside the extension host's message handler; serialized `id` fields for pots/buttons/LEDs now pass through `yamlQuote` (previously only labels were quoted), so an id containing `:` or `#` round-trips intact instead of corrupting the YAML.
+- **FR-IPC-4** — `loadControllerConfig()` now distinguishes `ENOENT` (legitimately no config yet) from any other read error (`EACCES`, `EMFILE`, encoding failures): the latter surfaces a warning and marks the session `controllerConfigUnreadable`, and the Controls Editor's save path refuses to write while that flag is set — a transient read glitch can no longer result in silently overwriting the user's real `controllers.yaml` with an empty one.
+- **FR-IPC-5** — The Wiring Editor's wire/unwire handlers now check `vscode.workspace.applyEdit`'s boolean result and surface a visible error without touching either view when it's `false`; a successful edit is followed by `doc.save()` so the Controls view's disk read reflects the same content the Wiring view already shows, instead of disagreeing until a manual save. `makeBlockEdit`'s marker search now treats a duplicated `begin`/`end` marker line as "not found" (falling back to a full-file replacement) instead of silently pairing the wrong range.
+- **FR-IPC-6** — `@ts-nocheck` removed from all three webview scripts; they type-check under a new `tsconfig.webview.json` (`lib: ["ES2022", "DOM"]`) without leaking DOM globals into the Node-side extension host compilation. Knob geometry (`webview/knob-math.ts`), wiring id allocation/validation (`wiring/id-validation.ts`), and wired-pin display-state (`wiring/wired-pin-state.ts`) are now pure, unit-tested modules instead of inline webview logic. Added a shared discriminated-union message protocol (`webview/messages.ts`) imported by both the extension host and webview bundles. `tsc --noEmit` now covers `src/test` (previously excluded), and the ~95 pre-existing type errors that surfaced across unrelated test files were fixed.
+- **FR-IPC-7** — Extracted a `DeployCoordinator` (owning `performDeploy`, `sendPostDeployState`, and status-bar transitions) and a `SessionState` object (owning `sineState`/`audioSourceState`/`activeRecordPath` persistence) out of `activate()`. `ds-ide.buildAndDeploy`, `ds-ide.deploy`, and `ds-ide.debug` now all call `performDeploy({ build, debug })` on the same coordinator instead of each re-implementing the post-deploy state replay sequence, closing the divergence risk between them.
+
+---
+
 ## 0.13.0 — 2026-07-04
 
 **M38 — Emulator Correctness & Robustness** *(FR-EMU-1 through FR-EMU-8 — all DoD green)*
