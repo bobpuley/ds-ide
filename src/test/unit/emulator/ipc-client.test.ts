@@ -45,6 +45,34 @@ describe('IpcClient', () => {
     await expect(promise).rejects.toThrow('ENOENT');
   });
 
+  it('connect rejects within a bounded time when the socket never connects or errors (FR-IPC-1)', async () => {
+    vi.useFakeTimers();
+    try {
+      const client = new IpcClient();
+      const promise = client.connect('/tmp/test.sock', 5_000);
+      const assertion = expect(promise).rejects.toThrow(/timed out/i);
+      await vi.advanceTimersByTimeAsync(5_000);
+      await assertion;
+      expect(socketStub.destroy).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('connect does not reject from a stale timeout after connecting successfully', async () => {
+    vi.useFakeTimers();
+    try {
+      const client = new IpcClient();
+      const promise = client.connect('/tmp/test.sock', 5_000);
+      socketStub.emit('connect');
+      await promise;
+      await vi.advanceTimersByTimeAsync(5_000);
+      // no throw — the connect timer must have been cleared on success
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('send writes JSON + newline to socket', async () => {
     const client = new IpcClient();
     const promise = client.connect('/tmp/test.sock');

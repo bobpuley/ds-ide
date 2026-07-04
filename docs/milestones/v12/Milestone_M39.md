@@ -1,7 +1,7 @@
 # M39 — IPC & Data Validation Hardening
 
 **Version:** 0.13.1
-**Status:** planned
+**Status:** in progress
 **Source:** 2026-07-02 Node.js/TypeScript + VS Code extension code reviews — MEDIUM findings (deduplicated where both reviews independently flagged the same bug)
 
 ## Goal
@@ -10,7 +10,7 @@ Treat the IPC boundary and webview boundary as untrusted in both directions, clo
 
 ## Sprint Tasks
 
-### [ ] fix: Bound the IPC connect phase with a timeout (FR-IPC-1)
+### [x] fix: Bound the IPC connect phase with a timeout (FR-IPC-1)
 
 `deploy()`'s 10s timeout only guards the socket-announcement phase; `resolved = true` is set before `connectIpc()` completes, and `IpcClient.connect()` has no timeout of its own — a wedged emulator that announces its socket but never accepts the connection leaves the coalesced deploy promise (and every subsequent deploy call, since they coalesce on it) pending forever.
 
