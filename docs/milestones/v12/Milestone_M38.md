@@ -12,7 +12,7 @@ Close the correctness and robustness gaps below HIGH severity: stale samples in 
 
 ## Sprint Tasks
 
-### [ ] fix: Zero-fill short replay block tails; flag rate mismatches (FR-EMU-1)
+### [x] fix: Zero-fill short replay block tails; flag rate mismatches (FR-EMU-1)
 
 `SessionPlayer::nextBlock()` reads `min(frames, block_size_)` but never clears the tail when the recorded block is smaller than the engine's current block size — stale samples from a previous block leak into replay, making "deterministic replay" nondeterministic.
 
@@ -25,7 +25,7 @@ Close the correctness and robustness gaps below HIGH severity: stale samples in 
 
 ---
 
-### [ ] fix: Derive scope/spectrum message budget from `MAX_MSG` (FR-EMU-2)
+### [x] fix: Derive scope/spectrum message budget from `MAX_MSG` (FR-EMU-2)
 
 Scope message size scales with the actual hardware frame count and can reach ~900 kB at 4096 frames/block — 30× `SpscIpcQueue::MAX_MSG` — silently re-enabling RT heap allocation via `slots_[w].msg.assign(m)`.
 
@@ -38,7 +38,7 @@ Scope message size scales with the actual hardware frame count and can reach ~90
 
 ---
 
-### [ ] fix: Check CoreAudio `OSStatus` returns; surface setup and render failures (FR-EMU-3)
+### [x] fix: Check CoreAudio `OSStatus` returns; surface setup and render failures (FR-EMU-3)
 
 Nearly every CoreAudio setup call's return value is discarded, including `AudioUnitRender` itself; the input format is only queried, never reconciled against the engine's sample rate.
 
@@ -51,7 +51,7 @@ Nearly every CoreAudio setup call's return value is discarded, including `AudioU
 
 ---
 
-### [ ] fix: Report recorder write failures instead of silently truncating (FR-EMU-4)
+### [x] fix: Report recorder write failures instead of silently truncating (FR-EMU-4)
 
 `writeBytes()` failures in `flushPending`/`drainLoop` are discarded — on ENOSPC/EIO the drain loop keeps "writing," producing a silently truncated `.dsrec`.
 
@@ -65,7 +65,7 @@ Nearly every CoreAudio setup call's return value is discarded, including `AudioU
 
 ---
 
-### [ ] fix: Validate WAV file magic and enforce a size ceiling before buffering (FR-EMU-5)
+### [x] fix: Validate WAV file magic and enforce a size ceiling before buffering (FR-EMU-5)
 
 `load_wav_file` allocates and reads the entire file before checking the RIFF magic or the sample cap; `fseek`/`ftell` returns are unchecked.
 
@@ -78,7 +78,7 @@ Nearly every CoreAudio setup call's return value is discarded, including `AudioU
 
 ---
 
-### [ ] fix: Harden hand-rolled JSON key lookup and output escaping (FR-EMU-6)
+### [x] fix: Harden hand-rolled JSON key lookup and output escaping (FR-EMU-6)
 
 `json_get` matches keys via substring search, including inside string values; outbound JSON splices `e.what()` unescaped, producing malformed JSON on quote/backslash content.
 
@@ -91,7 +91,7 @@ Nearly every CoreAudio setup call's return value is discarded, including `AudioU
 
 ---
 
-### [ ] fix: Re-read audio configuration each engine loop iteration (FR-EMU-7)
+### [x] fix: Re-read audio configuration each engine loop iteration (FR-EMU-7)
 
 `sample_rate`/`block_size` are captured once at engine start; subsequent `config`/`audioDevice` IPC updates change reported status but not actual engine behavior.
 
@@ -104,7 +104,7 @@ Nearly every CoreAudio setup call's return value is discarded, including `AudioU
 
 ---
 
-### [ ] fix: Ensure recordings survive clean and IDE-initiated process shutdown (FR-EMU-8)
+### [x] fix: Ensure recordings survive clean and IDE-initiated process shutdown (FR-EMU-8)
 
 No `SessionRecorder::stop()` is called on clean exit (destroying a joinable `drain_thread_` aborts via `std::terminate`); there is no SIGINT/SIGTERM handler, so the common IDE-initiated kill always drops the recording's `END` marker plus un-drained blocks.
 

@@ -66,6 +66,12 @@ struct CoreAudioDevice::Impl {
 
     std::atomic<uint32_t> xruns{0};
     std::atomic<float>    latencyMs{0.f};
+    // FR-EMU-3: AudioUnitRender failures, drained alongside xruns.
+    std::atomic<uint32_t> renderErrors{0};
+    // FR-EMU-3: the input hardware's actual queried sample rate (duplex
+    // start() only), for the caller to compare against the engine's
+    // configured rate.
+    double actualInputSampleRate{0.0};
 
     static OSStatus renderCallback(void*                       inRefCon,
                                    AudioUnitRenderActionFlags* ioActionFlags,
@@ -90,9 +96,16 @@ struct CoreAudioDevice::Impl {
                         frames32 * sizeof(float));
         }
 
-        // Pull live input from AUHAL input bus.
-        AudioUnitRender(self->unit, ioActionFlags, inTimeStamp, 1 /*input bus*/,
-                        frames32, self->inputBufList);
+        // Pull live input from AUHAL input bus. A failure here (device
+        // unplugged mid-session, format renegotiation, etc.) previously went
+        // unnoticed — inputBufList retains whatever it held (or the zeroed
+        // buffer from the memset above); count it so it's surfaced instead of
+        // silently producing wrong/stale input (FR-EMU-3).
+        OSStatus render_status = AudioUnitRender(self->unit, ioActionFlags, inTimeStamp,
+                                                  1 /*input bus*/, frames32, self->inputBufList);
+        if (render_status != noErr) {
+            self->renderErrors.fetch_add(1, std::memory_order_relaxed);
+        }
 
         // Build stereo-interleaved input buffer from hardware input (handles mono→stereo).
         // Use pre-allocated member buffers — no heap allocation on the RT thread (AC-38).
@@ -230,15 +243,24 @@ bool CoreAudioDevice::start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn 
         delete impl_; impl_ = nullptr; return false;
     }
 
-    // Enable output on bus 0, enable input on bus 1.
+    // Enable output on bus 0, enable input on bus 1. FR-EMU-3: every setup
+    // OSStatus is now checked — a failure here means the unit isn't in the
+    // I/O configuration the render callback assumes, so bail out rather than
+    // silently continuing with a half-configured AudioUnit.
     UInt32 one = 1, zero = 0;
-    AudioUnitSetProperty(impl_->unit, kAudioOutputUnitProperty_EnableIO,
-                         kAudioUnitScope_Output, 0, &one, sizeof(one));
-    AudioUnitSetProperty(impl_->unit, kAudioOutputUnitProperty_EnableIO,
-                         kAudioUnitScope_Input,  1, &one, sizeof(one));
+    if (AudioUnitSetProperty(impl_->unit, kAudioOutputUnitProperty_EnableIO,
+                             kAudioUnitScope_Output, 0, &one, sizeof(one)) != noErr) {
+        stop(); return false;
+    }
+    if (AudioUnitSetProperty(impl_->unit, kAudioOutputUnitProperty_EnableIO,
+                             kAudioUnitScope_Input, 1, &one, sizeof(one)) != noErr) {
+        stop(); return false;
+    }
     // Disable output side of input bus (required for duplex AUHAL).
-    AudioUnitSetProperty(impl_->unit, kAudioOutputUnitProperty_EnableIO,
-                         kAudioUnitScope_Output, 1, &zero, sizeof(zero));
+    if (AudioUnitSetProperty(impl_->unit, kAudioOutputUnitProperty_EnableIO,
+                             kAudioUnitScope_Output, 1, &zero, sizeof(zero)) != noErr) {
+        stop(); return false;
+    }
 
     // Explicitly set the default INPUT device on bus 1 so we get the microphone,
     // not the output device's (possibly absent) input channel. Captured at
@@ -249,10 +271,16 @@ bool CoreAudioDevice::start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn 
         AudioObjectPropertyAddress a{kAudioHardwarePropertyDefaultInputDevice,
                                      kAudioObjectPropertyScopeGlobal,
                                      kAudioObjectPropertyElementMain};
+        // Querying the default input device itself is best-effort — if it
+        // fails, defaultInputDevice stays kAudioDeviceUnknown and the AUHAL's
+        // own default is used instead (not fatal).
         AudioObjectGetPropertyData(kAudioObjectSystemObject, &a, 0, nullptr, &sz, &defaultInputDevice);
         if (defaultInputDevice != kAudioDeviceUnknown) {
-            AudioUnitSetProperty(impl_->unit, kAudioOutputUnitProperty_CurrentDevice,
-                                 kAudioUnitScope_Global, 1, &defaultInputDevice, sizeof(defaultInputDevice));
+            if (AudioUnitSetProperty(impl_->unit, kAudioOutputUnitProperty_CurrentDevice,
+                                     kAudioUnitScope_Global, 1, &defaultInputDevice,
+                                     sizeof(defaultInputDevice)) != noErr) {
+                stop(); return false;
+            }
         }
     }
 
@@ -267,10 +295,14 @@ bool CoreAudioDevice::start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn 
     outFmt.mBytesPerFrame    = sizeof(float);
     outFmt.mChannelsPerFrame = 2;
     outFmt.mBitsPerChannel   = 32;
-    AudioUnitSetProperty(impl_->unit, kAudioUnitProperty_StreamFormat,
-                         kAudioUnitScope_Input, 0, &outFmt, sizeof(outFmt));
+    if (AudioUnitSetProperty(impl_->unit, kAudioUnitProperty_StreamFormat,
+                             kAudioUnitScope_Input, 0, &outFmt, sizeof(outFmt)) != noErr) {
+        stop(); return false;
+    }
 
     // Query the INPUT hardware's ACTUAL stream format (don't force it — mono mics are common).
+    // This query is best-effort by design (mono mics / devices that don't
+    // support the query are common) — its result is validated below instead.
     AudioStreamBasicDescription inFmt{};
     UInt32 inFmtSize = sizeof(inFmt);
     AudioUnitGetProperty(impl_->unit, kAudioUnitProperty_StreamFormat,
@@ -278,6 +310,10 @@ bool CoreAudioDevice::start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn 
     // If query failed, default to the same as output format.
     if (inFmt.mSampleRate == 0.0) inFmt = outFmt;
     impl_->inputChannels = inFmt.mChannelsPerFrame > 0 ? inFmt.mChannelsPerFrame : 1;
+    // FR-EMU-3: record the actual queried input sample rate so the caller can
+    // compare it against the engine's configured rate and surface a
+    // sample_rate_mismatch event rather than silently resampling wrong.
+    impl_->actualInputSampleRate = inFmt.mSampleRate;
 
     // Set hardware buffer size on the output device. Captured at function scope
     // so its buffer-frame-size range can be queried below (FR-RTS-1).
@@ -287,13 +323,17 @@ bool CoreAudioDevice::start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn 
         AudioObjectPropertyAddress a{kAudioHardwarePropertyDefaultOutputDevice,
                                      kAudioObjectPropertyScopeGlobal,
                                      kAudioObjectPropertyElementMain};
+        // Querying the default output device itself is best-effort, same as above.
         AudioObjectGetPropertyData(kAudioObjectSystemObject, &a, 0, nullptr, &sz, &defaultOutputDevice);
         if (defaultOutputDevice != kAudioDeviceUnknown) {
             UInt32 hwBuf = static_cast<UInt32>(bufferSize);
             AudioObjectPropertyAddress ba{kAudioDevicePropertyBufferFrameSize,
                                           kAudioObjectPropertyScopeGlobal,
                                           kAudioObjectPropertyElementMain};
-            AudioObjectSetPropertyData(defaultOutputDevice, &ba, 0, nullptr, sizeof(hwBuf), &hwBuf);
+            if (AudioObjectSetPropertyData(defaultOutputDevice, &ba, 0, nullptr,
+                                           sizeof(hwBuf), &hwBuf) != noErr) {
+                stop(); return false;
+            }
         }
     }
 
@@ -372,11 +412,16 @@ bool CoreAudioDevice::start_output_only(uint32_t sampleRate, uint32_t bufferSize
     }
 
     // Output-only: enable bus 0 (output), disable bus 1 (input — no mic needed).
+    // FR-EMU-3: check every setup OSStatus, same as start().
     UInt32 one = 1, zero = 0;
-    AudioUnitSetProperty(impl_->unit, kAudioOutputUnitProperty_EnableIO,
-                         kAudioUnitScope_Output, 0, &one,  sizeof(one));
-    AudioUnitSetProperty(impl_->unit, kAudioOutputUnitProperty_EnableIO,
-                         kAudioUnitScope_Input,  1, &zero, sizeof(zero));
+    if (AudioUnitSetProperty(impl_->unit, kAudioOutputUnitProperty_EnableIO,
+                             kAudioUnitScope_Output, 0, &one, sizeof(one)) != noErr) {
+        stop(); return false;
+    }
+    if (AudioUnitSetProperty(impl_->unit, kAudioOutputUnitProperty_EnableIO,
+                             kAudioUnitScope_Input, 1, &zero, sizeof(zero)) != noErr) {
+        stop(); return false;
+    }
 
     // OUTPUT stream format: non-interleaved stereo float32.
     AudioStreamBasicDescription outFmt{};
@@ -389,8 +434,10 @@ bool CoreAudioDevice::start_output_only(uint32_t sampleRate, uint32_t bufferSize
     outFmt.mBytesPerFrame    = sizeof(float);
     outFmt.mChannelsPerFrame = 2;
     outFmt.mBitsPerChannel   = 32;
-    AudioUnitSetProperty(impl_->unit, kAudioUnitProperty_StreamFormat,
-                         kAudioUnitScope_Input, 0, &outFmt, sizeof(outFmt));
+    if (AudioUnitSetProperty(impl_->unit, kAudioUnitProperty_StreamFormat,
+                             kAudioUnitScope_Input, 0, &outFmt, sizeof(outFmt)) != noErr) {
+        stop(); return false;
+    }
 
     // Request the preferred hardware buffer size on the default output device,
     // then size RT-callback-visible work buffers from the queried maximum frame
@@ -402,13 +449,17 @@ bool CoreAudioDevice::start_output_only(uint32_t sampleRate, uint32_t bufferSize
         AudioObjectPropertyAddress a{kAudioHardwarePropertyDefaultOutputDevice,
                                      kAudioObjectPropertyScopeGlobal,
                                      kAudioObjectPropertyElementMain};
+        // Querying the default output device itself is best-effort.
         AudioObjectGetPropertyData(kAudioObjectSystemObject, &a, 0, nullptr, &sz, &defaultOutputDevice);
         if (defaultOutputDevice != kAudioDeviceUnknown) {
             UInt32 hwBuf = static_cast<UInt32>(bufferSize);
             AudioObjectPropertyAddress ba{kAudioDevicePropertyBufferFrameSize,
                                           kAudioObjectPropertyScopeGlobal,
                                           kAudioObjectPropertyElementMain};
-            AudioObjectSetPropertyData(defaultOutputDevice, &ba, 0, nullptr, sizeof(hwBuf), &hwBuf);
+            if (AudioObjectSetPropertyData(defaultOutputDevice, &ba, 0, nullptr,
+                                           sizeof(hwBuf), &hwBuf) != noErr) {
+                stop(); return false;
+            }
         }
     }
     UInt32 maxOutFrames = query_max_buffer_frames(defaultOutputDevice, static_cast<UInt32>(bufferSize));
@@ -461,6 +512,16 @@ uint32_t CoreAudioDevice::drainXruns() {
     return impl_->xruns.exchange(0, std::memory_order_relaxed);
 }
 
+uint32_t CoreAudioDevice::drainRenderErrors() {
+    if (!impl_) return 0;
+    return impl_->renderErrors.exchange(0, std::memory_order_relaxed);
+}
+
+float CoreAudioDevice::queriedInputSampleRate() const {
+    if (!impl_) return 0.f;
+    return static_cast<float>(impl_->actualInputSampleRate);
+}
+
 float CoreAudioDevice::lastLatencyMs() const {
     if (!impl_) return 0.f;
     return impl_->latencyMs.load(std::memory_order_relaxed);
@@ -481,7 +542,9 @@ bool CoreAudioDevice::start_output_only(uint32_t, uint32_t, ProcessFn) { return 
 void CoreAudioDevice::stop() { running_ = false; }
 
 uint32_t CoreAudioDevice::drainXruns() { return 0; }
+uint32_t CoreAudioDevice::drainRenderErrors() { return 0; }
 float    CoreAudioDevice::lastLatencyMs() const { return 0.f; }
+float    CoreAudioDevice::queriedInputSampleRate() const { return 0.f; }
 
 } // namespace daisy_emu
 

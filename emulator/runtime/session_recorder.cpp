@@ -18,6 +18,10 @@ SessionRecorder::SessionRecorder() {
         slot.resize(kMaxFramesPerSlot * 2);  // stereo interleaved
 }
 
+SessionRecorder::~SessionRecorder() {
+    stop();
+}
+
 bool SessionRecorder::writeBytes(const void* data, size_t n) {
     const uint8_t* p = static_cast<const uint8_t*>(data);
     size_t written = 0;
@@ -45,6 +49,7 @@ bool SessionRecorder::start(const std::string& path,
     block_count_.store(0);
     audio_write_idx_.store(0);
     audio_read_idx_.store(0);
+    write_error_.store(false, std::memory_order_relaxed);  // FR-EMU-4: fresh session
     pending_.clear();
 
     // audio_slots_ / frames_in_slot_ were pre-allocated once in the
@@ -120,6 +125,10 @@ bool SessionRecorder::enqueueBlock(const float* in_buf, size_t frames) {
 }
 
 void SessionRecorder::flushPending() {
+    // FR-EMU-4: the fd is already broken (ENOSPC/EIO/...) — don't attempt
+    // further writes, and don't lose track of the error by overwriting it.
+    if (write_error_.load(std::memory_order_relaxed)) return;
+
     std::vector<PendingEvent> batch;
     {
         std::lock_guard<std::mutex> lk(queue_mutex_);
@@ -127,15 +136,24 @@ void SessionRecorder::flushPending() {
     }
     for (const auto& ev : batch) {
         uint8_t type = ev.type;
-        writeBytes(&type, 1);
+        if (!writeBytes(&type, 1)) {
+            write_error_.store(true, std::memory_order_release);
+            return;  // remaining events in this batch are lost, not written past a broken fd
+        }
         if (ev.type == kRecTypePotEvent) {
             uint8_t payload[5];
             payload[0] = ev.channel_or_pin;
             std::memcpy(payload + 1, &ev.value, 4);
-            writeBytes(payload, 5);
+            if (!writeBytes(payload, 5)) {
+                write_error_.store(true, std::memory_order_release);
+                return;
+            }
         } else if (ev.type == kRecTypeButtonEvent) {
             uint8_t payload[2] = { ev.channel_or_pin, ev.pressed };
-            writeBytes(payload, 2);
+            if (!writeBytes(payload, 2)) {
+                write_error_.store(true, std::memory_order_release);
+                return;
+            }
         }
     }
 }
@@ -147,7 +165,12 @@ void SessionRecorder::drainLoop() {
     // already underway when active_ flipped to false always gets flushed
     // here before the file closes, instead of being silently dropped or
     // landing after the file (or a subsequent session's ring) has moved on.
-    while (true) {
+    //
+    // FR-EMU-4: any writeBytes() failure below sets write_error_ and stops
+    // draining — the loop condition and the flush/write call sites all check
+    // it so a broken fd (ENOSPC/EIO) never causes a silently truncated file
+    // that looks like a clean, complete recording.
+    while (!write_error_.load(std::memory_order_acquire)) {
         size_t r = audio_read_idx_.load(std::memory_order_relaxed);
         size_t w = audio_write_idx_.load(std::memory_order_acquire);
 
@@ -167,26 +190,47 @@ void SessionRecorder::drainLoop() {
         // Flush pending pot/button events before this audio block (preserves
         // the .dsrec ordering: events precede the block they were recorded with).
         flushPending();
+        if (write_error_.load(std::memory_order_acquire)) break;
 
         size_t frames = frames_in_slot_[r];
         uint8_t type = kRecTypeAudioBlock;
-        writeBytes(&type, 1);
-        writeBytes(audio_slots_[r].data(), frames * 2 * sizeof(float));
+        bool ok = writeBytes(&type, 1)
+               && writeBytes(audio_slots_[r].data(), frames * 2 * sizeof(float));
+        if (!ok) { write_error_.store(true, std::memory_order_release); break; }
         audio_read_idx_.store((r + 1) % kAudioSlotCount, std::memory_order_release);
     }
 
-    // Flush any final pot/button events that arrived after the last audio block.
-    flushPending();
+    if (!write_error_.load(std::memory_order_acquire)) {
+        // Flush any final pot/button events that arrived after the last audio block.
+        flushPending();
+    }
 
-    // Write END marker and close file (FR-RTS-1: all I/O off the RT thread).
-    uint8_t end = kRecTypeEnd;
-    writeBytes(&end, 1);
+    if (!write_error_.load(std::memory_order_acquire)) {
+        // Write END marker (FR-RTS-1: all I/O off the RT thread) — only when
+        // the session actually completed cleanly.
+        uint8_t end = kRecTypeEnd;
+        if (!writeBytes(&end, 1)) write_error_.store(true, std::memory_order_release);
+    }
+
+    if (write_error_.load(std::memory_order_acquire)) {
+        // The session ended in error — mark inactive so enqueueBlock() and
+        // the IPC pot/button handlers stop feeding a recording that will
+        // never be drained further.
+        active_.store(false, std::memory_order_release);
+    }
+
     ::close(fd_);
     fd_ = -1;
 }
 
 void SessionRecorder::stop() {
-    if (!active_.load(std::memory_order_relaxed)) return;
+    // FR-EMU-4: drainLoop() may have already set active_ false itself (a
+    // write error observed mid-session) while the thread finishes closing
+    // the fd — an early return here on "already inactive" would skip
+    // joining a still-finishing (or just-finished) drain_thread_, leaving it
+    // joinable when this object is later destroyed, which calls
+    // std::terminate(). Always store false (idempotent) and always join if
+    // joinable, regardless of the current active_ value.
     active_.store(false, std::memory_order_release);
     if (drain_thread_.joinable())
         drain_thread_.join();

@@ -180,6 +180,12 @@ bool SessionPlayer::popBlock(float* buf, size_t frames,
 
     size_t to_copy = std::min(frames, slot.frames);
     std::memcpy(buf, slot.audio.data(), to_copy * 2 * sizeof(float));
+    // FR-EMU-1: zero-fill the unread tail when the recorded block is shorter
+    // than the requested frame count, so stale samples from whatever the
+    // caller's buffer previously held never leak into replay output.
+    if (to_copy < frames) {
+        std::memset(buf + to_copy * 2, 0, (frames - to_copy) * 2 * sizeof(float));
+    }
 
     size_t ne = std::min(slot.n_events, max_events);
     for (size_t i = 0; i < ne; ++i) events_out[i] = slot.events[i];

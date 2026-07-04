@@ -1,6 +1,7 @@
 #pragma once
 #include <array>
 #include <atomic>
+#include <cassert>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -35,16 +36,32 @@ struct SpscIpcQueue {
 
     struct alignas(64) Slot { std::string msg; };
 
+    // Counts messages that arrived at push() already larger than MAX_MSG and
+    // had to be truncated (FR-EMU-2) — a regression backstop for any future
+    // producer (scope/spectrum or otherwise) that miscalculates its budget.
+    // Public, like ipc_queue_drops on EmulatorState, so the drain thread can
+    // fold it into the existing periodic drop report.
+    std::atomic<uint32_t> oversize_drops{0};
+
     SpscIpcQueue() {
         for (auto& s : slots_) s.msg.reserve(MAX_MSG);
     }
 
     // Called from RT thread. Returns false if queue is full (message is dropped).
+    // A message larger than MAX_MSG is truncated rather than assigned in full
+    // (FR-EMU-2): slots_ are pre-reserved to exactly MAX_MSG bytes, so an
+    // over-budget assign() would force a heap reallocation on this RT thread.
     bool push(const std::string& m) {
         size_t w    = write_.load(std::memory_order_relaxed);
         size_t next = (w + 1) % CAPACITY;
         if (next == read_.load(std::memory_order_acquire)) return false;
-        slots_[w].msg.assign(m);  // no alloc: capacity pre-reserved in constructor
+        if (m.size() > MAX_MSG) {
+            slots_[w].msg.assign(m, 0, MAX_MSG);
+            oversize_drops.fetch_add(1, std::memory_order_relaxed);
+        } else {
+            slots_[w].msg.assign(m);  // no alloc: capacity pre-reserved in constructor
+        }
+        assert(slots_[w].msg.size() <= MAX_MSG);
         write_.store(next, std::memory_order_release);
         return true;
     }
@@ -55,7 +72,14 @@ struct SpscIpcQueue {
         size_t w    = write_.load(std::memory_order_relaxed);
         size_t next = (w + 1) % CAPACITY;
         if (next == read_.load(std::memory_order_acquire)) return false;
-        slots_[w].msg.assign(m);  // no alloc: capacity pre-reserved in constructor
+        size_t len = std::strlen(m);
+        if (len > MAX_MSG) {
+            slots_[w].msg.assign(m, MAX_MSG);
+            oversize_drops.fetch_add(1, std::memory_order_relaxed);
+        } else {
+            slots_[w].msg.assign(m);  // no alloc: capacity pre-reserved in constructor
+        }
+        assert(slots_[w].msg.size() <= MAX_MSG);
         write_.store(next, std::memory_order_release);
         return true;
     }
@@ -79,6 +103,15 @@ struct EmulatorState {
     // Audio configuration — set via IPC config message or shim calls
     std::atomic<float>  sample_rate{48000.f};
     std::atomic<size_t> block_size{48};
+    // FR-EMU-7: bumped whenever the `config` IPC handler updates sample_rate
+    // or block_size, alongside notifying mode_cv. The active mode loop
+    // (run_simulated/run_realtime in audio_engine.cpp) wakes on this even
+    // when audio_mode itself hasn't changed, so it can return and let the
+    // outer engine loop re-enter it with freshly re-read values — otherwise
+    // a config update would only take effect after the next explicit mode
+    // switch, and the values captured once at run_audio_engine() startup
+    // would silently go stale for the rest of the session.
+    std::atomic<uint64_t> config_generation{0};
 
     // Transport
     std::atomic<bool> transport_running{false};

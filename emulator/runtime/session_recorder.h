@@ -48,6 +48,11 @@ public:
     // object (FR-RTS-4) — start() never resizes it.
     SessionRecorder();
 
+    // FR-EMU-8: calls stop() so a joinable drain_thread_ is always joined
+    // (never std::terminate()s) and any in-progress recording is flushed
+    // with a proper END marker before the object is destroyed.
+    ~SessionRecorder();
+
     // Open file and write header, then start the drain thread. Returns true
     // on success.
     bool start(const std::string& path, uint32_t sample_rate, uint32_t block_size);
@@ -69,6 +74,11 @@ public:
     bool active() const { return active_.load(std::memory_order_relaxed); }
     uint32_t blockCount() const { return block_count_.load(std::memory_order_relaxed); }
 
+    // FR-EMU-4: true once a writeBytes() failure (ENOSPC, EIO, ...) has been
+    // observed in flushPending()/drainLoop() for the current (or most recent)
+    // session. Reset to false at the start of each start().
+    bool hasWriteError() const { return write_error_.load(std::memory_order_relaxed); }
+
 private:
     // Maximum frames per audio slot. Pre-allocated at start() time so
     // the RT thread never calls resize(). 8192 frames covers all practical
@@ -81,6 +91,11 @@ private:
     uint32_t block_size_{0};
     std::atomic<bool>     active_{false};
     std::atomic<uint32_t> block_count_{0};
+    // FR-EMU-4: set by flushPending()/drainLoop() on the first writeBytes()
+    // failure; drainLoop() stops draining (closing the fd) once this is set,
+    // instead of silently continuing to "write" and producing a truncated
+    // file that looks like a clean recording.
+    std::atomic<bool>     write_error_{false};
     // Number of enqueueBlock() calls currently executing (FR-RTS-4). The drain
     // thread will not consider itself done (and close the file) until this
     // reaches zero after active_ goes false, closing the stop/start overlap
