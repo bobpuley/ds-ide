@@ -9,6 +9,7 @@ vi.mock('fs', () => {
     access: vi.fn(() => Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))),
     readdir: vi.fn(() => Promise.resolve([])),
     writeFile: vi.fn(() => Promise.resolve()),
+    stat: vi.fn(() => Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))),
   };
   return {
     default: {
@@ -685,5 +686,124 @@ describe('wiring edit consistency (FR-IPC-5)', () => {
     expect(doc.save).toHaveBeenCalled();
     expect(wiring.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'wiredPins' }));
     expect(controls.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'controlsConfig' }));
+  });
+});
+
+// ── FR-IPC-7: single deploy coordinator, no divergent post-deploy replay ──
+
+describe('deploy sequencing via DeployCoordinator (FR-IPC-7)', () => {
+  let fsMock: Record<string, ReturnType<typeof vi.fn>>;
+  let promisesMock: Record<string, ReturnType<typeof vi.fn>>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    managerInstances.length = 0;
+    fsMock = (await import('fs')) as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['access']!.mockImplementation((p: unknown) => {
+      const fp = String(p);
+      if (fp.endsWith('CMakeLists.txt') || fp.endsWith('.cpp')) return Promise.resolve();
+      return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    });
+    promisesMock['readdir']!.mockResolvedValue(['effect.cpp']);
+    promisesMock['readFile']!.mockImplementation((p: unknown) => {
+      const fp = String(p);
+      if (fp.endsWith('.cpp')) return Promise.resolve('// ds-ide:controls\n// ds-ide:pot vol 15\n');
+      if (fp.endsWith('controllers.yaml')) return Promise.resolve('pots: []\nbuttons: []\nleds: []\n');
+      return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    });
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [
+      { uri: { fsPath: '/proj' } },
+    ];
+  });
+
+  afterEach(() => {
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = undefined;
+  });
+
+  function flush(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  function getCommand(id: string): ((...args: unknown[]) => unknown) | undefined {
+    const calls = (vscode.commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls;
+    return calls.find((c: unknown[]) => c[0] === id)?.[1] as ((...args: unknown[]) => unknown) | undefined;
+  }
+
+  interface ManagerSpies {
+    build: ReturnType<typeof vi.fn>;
+    deploy: ReturnType<typeof vi.fn>;
+    sendPotSnapshot: ReturnType<typeof vi.fn>;
+    sendButtonSnapshot: ReturnType<typeof vi.fn>;
+    sendSine: ReturnType<typeof vi.fn>;
+    sendAudioMode: ReturnType<typeof vi.fn>;
+    sendAudioDevice: ReturnType<typeof vi.fn>;
+  }
+
+  it('ds-ide.deploy replays pot/button/sine/audioMode/audioDevice state after a successful deploy', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flush();
+    const mgr = managerInstances[0]! as unknown as ManagerSpies;
+    const deployCmd = getCommand('ds-ide.deploy')!;
+    await deployCmd();
+    expect(mgr.sendPotSnapshot).toHaveBeenCalled();
+    expect(mgr.sendButtonSnapshot).toHaveBeenCalled();
+    expect(mgr.sendSine).toHaveBeenCalled();
+    expect(mgr.sendAudioMode).toHaveBeenCalled();
+    expect(mgr.sendAudioDevice).toHaveBeenCalled();
+  });
+
+  it('ds-ide.debug replays the same post-deploy state sequence via the shared coordinator', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flush();
+    const mgr = managerInstances[0]! as unknown as ManagerSpies;
+    const debugCmd = getCommand('ds-ide.debug')!;
+    await debugCmd();
+    expect(mgr.sendButtonSnapshot).toHaveBeenCalled();
+    expect(mgr.sendSine).toHaveBeenCalled();
+    expect(mgr.sendAudioMode).toHaveBeenCalled();
+    expect(mgr.sendAudioDevice).toHaveBeenCalled();
+  });
+
+  it('ds-ide.buildAndDeploy builds first, then replays the same post-deploy state sequence', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flush();
+    const mgr = managerInstances[0]! as unknown as ManagerSpies;
+    const cmd = getCommand('ds-ide.buildAndDeploy')!;
+    await cmd();
+    expect(mgr.build).toHaveBeenCalled();
+    expect(mgr.sendPotSnapshot).toHaveBeenCalled();
+    expect(mgr.sendAudioMode).toHaveBeenCalled();
+  });
+
+  it('ds-ide.deploy sets the status bar to deploying, then back to stopped when deploy fails', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flush();
+    const mgr = managerInstances[0]! as unknown as ManagerSpies;
+    mgr.deploy.mockRejectedValueOnce(new Error('boom'));
+    const statusBar = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.results[0]?.value as { text: string };
+    const deployCmd = getCommand('ds-ide.deploy')!;
+    await deployCmd();
+    expect(statusBar.text).toContain('stopped');
+  });
+
+  it('ds-ide.buildAndDeploy does not deploy when the build step fails', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flush();
+    const mgr = managerInstances[0]! as unknown as ManagerSpies;
+    mgr.build.mockRejectedValueOnce(new Error('build failed'));
+    const cmd = getCommand('ds-ide.buildAndDeploy')!;
+    await cmd();
+    expect(mgr.sendPotSnapshot).not.toHaveBeenCalled();
   });
 });

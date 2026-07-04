@@ -93,7 +93,7 @@ All three webview scripts (`controls-webview.ts`, `scope-webview.ts`, `wiring-we
 
 ---
 
-### [ ] fix: Extract deploy sequencing into a single coordinator (FR-IPC-7)
+### [x] fix: Extract deploy sequencing into a single coordinator (FR-IPC-7)
 
 `activate()` is a 396-line function; the post-deploy state replay sequence (`sendPotSnapshot`, `sendButtonSnapshot`, `sendSine`, `sendAudioMode`, `sendAudioDevice`, WAV state) exists three times with slight variations, and divergence has already occurred between them.
 

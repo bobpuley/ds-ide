@@ -104,15 +104,116 @@ async function buildControlsConfig(folder: string, yamlCfg: ControllerConfig): P
   }
 }
 
+// Owns the sine/audio-source/recording state that persists across redeploys
+// within a session, plus its workspaceState persistence (FR-IPC-7).
+class SessionState {
+  sineState: SineParams;
+  audioSourceState: AudioSource;
+  activeRecordPath: string | undefined;
+
+  constructor(private readonly workspaceState: vscode.Memento) {
+    this.sineState = workspaceState.get<SineParams>('ds-ide.sine') ?? { ...SINE_DEFAULTS };
+    this.audioSourceState = {
+      ...AUDIO_SOURCE_DEFAULTS,
+      ...workspaceState.get<Partial<AudioSource>>('ds-ide.audioSource'),
+    };
+  }
+
+  setSine(freq: number, amplitude: number): void {
+    this.sineState = { freq, amplitude };
+    void this.workspaceState.update('ds-ide.sine', this.sineState);
+  }
+
+  setAudioSource(source: Partial<AudioSource>): void {
+    this.audioSourceState = { ...this.audioSourceState, ...source };
+    void this.workspaceState.update('ds-ide.audioSource', this.audioSourceState);
+  }
+}
+
+// Single implementation of build/deploy/debug sequencing and the post-deploy
+// state replay (sendPotSnapshot/sendButtonSnapshot/sendSine/sendAudioMode/
+// sendAudioDevice/WAV), called identically by ds-ide.buildAndDeploy,
+// ds-ide.deploy, and ds-ide.debug so the sequence can no longer diverge
+// between commands (FR-IPC-7).
+class DeployCoordinator {
+  constructor(
+    private readonly manager: EmulatorManager,
+    private readonly statusBar: vscode.StatusBarItem,
+    private readonly potStore: PotStore,
+    private readonly buttonStore: ButtonStore,
+    private readonly session: SessionState,
+    private readonly scopePanel: ScopePanel,
+    private readonly controlsProvider: ControlsViewProvider,
+    private readonly diagnostics: vscode.DiagnosticCollection,
+    private readonly buildChannel: vscode.OutputChannel,
+    private readonly emulatorChannel: vscode.OutputChannel,
+    private readonly extensionPath: string,
+    private readonly loadControllerConfig: () => Promise<ControllerConfig>,
+  ) {}
+
+  private setDeploying(): void {
+    this.statusBar.text = '$(loading~spin) Daisy: deploying…';
+    this.statusBar.tooltip = FIDELITY_CAVEAT;
+  }
+
+  private setStopped(): void {
+    this.statusBar.text = '$(debug-stop) Daisy: stopped';
+    this.statusBar.tooltip = FIDELITY_CAVEAT;
+  }
+
+  sendPostDeployState(): void {
+    this.manager.sendPotSnapshot(this.potStore.getSnapshot());
+    this.manager.sendButtonSnapshot(this.buttonStore.getSnapshot());
+    this.manager.sendSine(this.session.sineState.freq, this.session.sineState.amplitude);
+    const mode = this.session.audioSourceState.input === 'live' ? 'realtime' : 'simulated';
+    this.manager.sendAudioMode(mode);
+    this.manager.sendAudioDevice(this.session.audioSourceState.sampleRate, this.session.audioSourceState.bufferSize);
+    if (this.session.audioSourceState.input === 'wav' && this.session.audioSourceState.wavPath) {
+      this.manager.sendWavFile(this.session.audioSourceState.wavPath, this.session.audioSourceState.wavLoop);
+    }
+  }
+
+  async performDeploy(opts: { build: boolean; debug: boolean }): Promise<boolean> {
+    if (opts.build) {
+      const ok = await buildForEmulator(this.manager, this.extensionPath, this.diagnostics, this.buildChannel);
+      if (!ok) return false;
+    }
+    this.setDeploying();
+    const cfg = await this.loadControllerConfig();
+    this.potStore.setDefaults(cfg.pots);
+    this.buttonStore.setDefaults(cfg.buttons);
+
+    if (opts.debug) {
+      await debugDeploy(
+        this.manager,
+        () => cfg.pots,
+        () => this.scopePanel.show(this.session.sineState, this.session.audioSourceState),
+        () => this.potStore.getSnapshot(),
+        () => this.sendPostDeployState(),
+        this.emulatorChannel,
+      );
+      return true;
+    }
+
+    const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+    this.scopePanel.show(this.session.sineState, this.session.audioSourceState);
+    this.controlsProvider.loadEditor(cfg);
+    this.controlsProvider.postControlsConfig(await buildControlsConfig(folder, cfg));
+    void vscode.commands.executeCommand('workbench.view.extension.ds-ide-controls');
+    const deployed = await deployToEmulator(this.manager, this.emulatorChannel);
+    if (!deployed) {
+      this.setStopped();
+      return false;
+    }
+    this.sendPostDeployState();
+    return true;
+  }
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   const potStore    = new PotStore(context.workspaceState);
   const buttonStore = new ButtonStore(context.workspaceState);
-  let sineState: SineParams = context.workspaceState.get<SineParams>('ds-ide.sine') ?? { ...SINE_DEFAULTS };
-  let audioSourceState: AudioSource = {
-    ...AUDIO_SOURCE_DEFAULTS,
-    ...context.workspaceState.get<Partial<AudioSource>>('ds-ide.audioSource'),
-  };
-  let activeRecordPath: string | undefined;
+  const session = new SessionState(context.workspaceState);
   // Set when the last controllers.yaml read failed for a reason other than
   // "file does not exist" (e.g. EACCES, EMFILE, encoding). While true, saves
   // are refused so a transient read error can't silently overwrite the
@@ -281,19 +382,17 @@ export function activate(context: vscode.ExtensionContext): void {
     context.extensionUri,
     manager,
     (freq, amplitude) => {
-      sineState = { freq, amplitude };
-      void context.workspaceState.update('ds-ide.sine', sineState);
+      session.setSine(freq, amplitude);
     },
     (source) => {
-      audioSourceState = { ...audioSourceState, ...source };
-      void context.workspaceState.update('ds-ide.audioSource', audioSourceState);
+      session.setAudioSource(source);
       const mode = source.input === 'live' ? 'realtime' : 'simulated';
       manager?.sendAudioMode(mode);
       manager?.sendAudioDevice(source.sampleRate, source.bufferSize);
-      if (source.input === 'wav' && audioSourceState.wavPath) {
-        manager?.sendWavFile(audioSourceState.wavPath, audioSourceState.wavLoop);
+      if (source.input === 'wav' && session.audioSourceState.wavPath) {
+        manager?.sendWavFile(session.audioSourceState.wavPath, session.audioSourceState.wavLoop);
       } else {
-        manager?.sendWavFile('', audioSourceState.wavLoop);
+        manager?.sendWavFile('', session.audioSourceState.wavLoop);
       }
     },
     async () => {
@@ -305,11 +404,10 @@ export function activate(context: vscode.ExtensionContext): void {
       const uri = picked?.[0];
       if (!uri) return;
       const wavPath = uri.fsPath;
-      audioSourceState = { ...audioSourceState, input: 'wav', wavPath };
-      void context.workspaceState.update('ds-ide.audioSource', audioSourceState);
+      session.setAudioSource({ input: 'wav', wavPath });
       manager?.sendAudioMode('simulated');
-      manager?.sendAudioDevice(audioSourceState.sampleRate, audioSourceState.bufferSize);
-      manager?.sendWavFile(wavPath, audioSourceState.wavLoop);
+      manager?.sendAudioDevice(session.audioSourceState.sampleRate, session.audioSourceState.bufferSize);
+      manager?.sendWavFile(wavPath, session.audioSourceState.wavLoop);
       scopePanel?.notifyWavSelected(path.basename(wavPath), wavPath);
     },
     async () => {
@@ -319,14 +417,14 @@ export function activate(context: vscode.ExtensionContext): void {
         saveLabel: 'Start Recording',
       });
       if (!uri) return;
-      activeRecordPath = uri.fsPath;
-      manager?.sendRecordStart(activeRecordPath);
-      scopePanel?.notifyRecordingState(true, false, path.basename(activeRecordPath));
+      session.activeRecordPath = uri.fsPath;
+      manager?.sendRecordStart(session.activeRecordPath);
+      scopePanel?.notifyRecordingState(true, false, path.basename(session.activeRecordPath));
     },
     () => {
       manager?.sendRecordStop();
-      scopePanel?.notifyRecordingState(false, false, activeRecordPath ? path.basename(activeRecordPath) : undefined);
-      activeRecordPath = undefined;
+      scopePanel?.notifyRecordingState(false, false, session.activeRecordPath ? path.basename(session.activeRecordPath) : undefined);
+      session.activeRecordPath = undefined;
     },
     async () => {
       const picked = await vscode.window.showOpenDialog({
@@ -376,56 +474,26 @@ export function activate(context: vscode.ExtensionContext): void {
   const debugAdapterFactory = new DaisyDebugAdapterFactory();
   const debugTrackerFactory = new DaisyDebugAdapterTrackerFactory((mode) => manager?.sendAudioMode(mode));
 
-  const startSessionDisposable = vscode.debug.onDidStartDebugSession((session) => {
-    if (session.type === DAISY_DEBUG_TYPE) {
+  const startSessionDisposable = vscode.debug.onDidStartDebugSession((debugSession) => {
+    if (debugSession.type === DAISY_DEBUG_TYPE) {
       statusBar.text = '$(bug) Daisy: debugging';
       statusBar.tooltip = FIDELITY_CAVEAT;
     }
   });
-  const terminateSessionDisposable = vscode.debug.onDidTerminateDebugSession((session) => {
-    if (session.type === DAISY_DEBUG_TYPE) {
+  const terminateSessionDisposable = vscode.debug.onDidTerminateDebugSession((debugSession) => {
+    if (debugSession.type === DAISY_DEBUG_TYPE) {
       statusBar.text = '$(debug-stop) Daisy: stopped';
       statusBar.tooltip = FIDELITY_CAVEAT;
     }
   });
 
-  function sendPostDeployState(): void {
-    manager.sendPotSnapshot(potStore.getSnapshot());
-    manager.sendButtonSnapshot(buttonStore.getSnapshot());
-    manager.sendSine(sineState.freq, sineState.amplitude);
-    const mode = audioSourceState.input === 'live' ? 'realtime' : 'simulated';
-    manager.sendAudioMode(mode);
-    manager.sendAudioDevice(audioSourceState.sampleRate, audioSourceState.bufferSize);
-    if (audioSourceState.input === 'wav' && audioSourceState.wavPath) {
-      manager.sendWavFile(audioSourceState.wavPath, audioSourceState.wavLoop);
-    }
-  }
-
-  async function performBuildAndDeploy(): Promise<boolean> {
-    const ok = await buildForEmulator(manager, context.extensionPath, diagnostics, buildChannel);
-    if (!ok) return false;
-    statusBar.text = '$(loading~spin) Daisy: deploying…';
-    statusBar.tooltip = FIDELITY_CAVEAT;
-    const cfg = await loadControllerConfig();
-    const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-    potStore.setDefaults(cfg.pots);
-    buttonStore.setDefaults(cfg.buttons);
-    scopePanel.show(sineState, audioSourceState);
-    controlsProvider.loadEditor(cfg);
-    controlsProvider.postControlsConfig(await buildControlsConfig(folder, cfg));
-    void vscode.commands.executeCommand('workbench.view.extension.ds-ide-controls');
-    const deployed = await deployToEmulator(manager, emulatorChannel);
-    if (!deployed) {
-      statusBar.text = '$(debug-stop) Daisy: stopped';
-      statusBar.tooltip = FIDELITY_CAVEAT;
-      return false;
-    }
-    sendPostDeployState();
-    return true;
-  }
+  const deployCoordinator = new DeployCoordinator(
+    manager, statusBar, potStore, buttonStore, session, scopePanel, controlsProvider,
+    diagnostics, buildChannel, emulatorChannel, context.extensionPath, loadControllerConfig,
+  );
 
   const runConfigProvider = new DaisyRunConfigurationProvider(
-    performBuildAndDeploy,
+    () => deployCoordinator.performDeploy({ build: true, debug: false }),
     () => manager?.childPid,
   );
 
@@ -498,26 +566,12 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('ds-ide.build', () =>
       buildForEmulator(manager, context.extensionPath, diagnostics, buildChannel),
     ),
-    vscode.commands.registerCommand('ds-ide.buildAndDeploy', performBuildAndDeploy),
-    vscode.commands.registerCommand('ds-ide.deploy', async () => {
-      statusBar.text = '$(loading~spin) Daisy: deploying…';
-      statusBar.tooltip = FIDELITY_CAVEAT;
-      const cfg = await loadControllerConfig();
-      const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-      potStore.setDefaults(cfg.pots);
-      buttonStore.setDefaults(cfg.buttons);
-      scopePanel.show(sineState, audioSourceState);
-      controlsProvider.loadEditor(cfg);
-      controlsProvider.postControlsConfig(await buildControlsConfig(folder, cfg));
-      void vscode.commands.executeCommand('workbench.view.extension.ds-ide-controls');
-      const deployed = await deployToEmulator(manager, emulatorChannel);
-      if (!deployed) {
-        statusBar.text = '$(debug-stop) Daisy: stopped';
-        statusBar.tooltip = FIDELITY_CAVEAT;
-        return;
-      }
-      sendPostDeployState();
-    }),
+    vscode.commands.registerCommand('ds-ide.buildAndDeploy', () =>
+      deployCoordinator.performDeploy({ build: true, debug: false }),
+    ),
+    vscode.commands.registerCommand('ds-ide.deploy', () =>
+      deployCoordinator.performDeploy({ build: false, debug: false }),
+    ),
     vscode.commands.registerCommand('ds-ide.start', () => startAudio(manager)),
     vscode.commands.registerCommand('ds-ide.stop', () => {
       stopAudio(manager);
@@ -540,30 +594,9 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       return flashToHardware(folders[0].uri.fsPath);
     }),
-    vscode.commands.registerCommand('ds-ide.debug', async () => {
-      statusBar.text = '$(loading~spin) Daisy: deploying…';
-      statusBar.tooltip = FIDELITY_CAVEAT;
-      const cfg = await loadControllerConfig();
-      potStore.setDefaults(cfg.pots);
-      buttonStore.setDefaults(cfg.buttons);
-      return debugDeploy(
-        manager,
-        () => cfg.pots,
-        (_defs, _snap) => scopePanel.show(sineState, audioSourceState),
-        () => potStore.getSnapshot(),
-        () => {
-          manager.sendButtonSnapshot(buttonStore.getSnapshot());
-          manager.sendSine(sineState.freq, sineState.amplitude);
-          const mode = audioSourceState.input === 'live' ? 'realtime' : 'simulated';
-          manager.sendAudioMode(mode);
-          manager.sendAudioDevice(audioSourceState.sampleRate, audioSourceState.bufferSize);
-          if (audioSourceState.input === 'wav' && audioSourceState.wavPath) {
-            manager.sendWavFile(audioSourceState.wavPath, audioSourceState.wavLoop);
-          }
-        },
-        emulatorChannel,
-      );
-    }),
+    vscode.commands.registerCommand('ds-ide.debug', () =>
+      deployCoordinator.performDeploy({ build: false, debug: true }),
+    ),
     vscode.commands.registerCommand('ds-ide.createNewEffectProject', createEffectProject),
     { dispose: () => { manager?.dispose(); scopePanel?.dispose(); } },
     startSessionDisposable,
