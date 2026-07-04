@@ -51,7 +51,7 @@ The `editorSave` handler casts the webview payload directly to `ControllerConfig
 
 ---
 
-### [ ] fix: Distinguish absent config from unreadable config (FR-IPC-4)
+### [x] fix: Distinguish absent config from unreadable config (FR-IPC-4)
 
 `loadControllerConfig()` treats any read failure — including transient `EACCES`/`EMFILE`/encoding errors — as "no config," returning an empty config that a subsequent save can write back over the user's real file.
 

@@ -104,6 +104,44 @@ export function activate(context: vscode.ExtensionContext): void {
     ...context.workspaceState.get<Partial<AudioSource>>('ds-ide.audioSource'),
   };
   let activeRecordPath: string | undefined;
+  // Set when the last controllers.yaml read failed for a reason other than
+  // "file does not exist" (e.g. EACCES, EMFILE, encoding). While true, saves
+  // are refused so a transient read error can't silently overwrite the
+  // user's real file with an empty config (FR-IPC-4).
+  let controllerConfigUnreadable = false;
+
+  async function loadControllerConfig(): Promise<ControllerConfig> {
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders?.[0]) {
+      controllerConfigUnreadable = false;
+      return { pots: [], buttons: [], leds: [], errors: [] };
+    }
+    const yamlPath = path.join(folders[0].uri.fsPath, 'controllers.yaml');
+    try {
+      const text = await fs.promises.readFile(yamlPath, 'utf8');
+      controllerConfigUnreadable = false;
+      const cfg = parseControllerConfig(text);
+      for (const e of cfg.errors) {
+        void vscode.window.showWarningMessage(`controllers.yaml: ${e}`);
+      }
+      return cfg;
+    } catch (err) {
+      // ENOENT is a legitimately empty project — anything else (EACCES,
+      // EMFILE, encoding errors, ...) must not be silently treated the same
+      // way, since a subsequent save would overwrite the user's real file
+      // with an empty config (FR-IPC-4).
+      if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
+        controllerConfigUnreadable = false;
+        return { pots: [], buttons: [], leds: [], errors: [] };
+      }
+      controllerConfigUnreadable = true;
+      void vscode.window.showWarningMessage(
+        `ds-ide: could not read controllers.yaml (${(err as NodeJS.ErrnoException)?.code ?? String(err)}) — treating as unreadable, not empty; edits will not be saved until this is resolved.`,
+      );
+      return { pots: [], buttons: [], leds: [], errors: [] };
+    }
+  }
+
   const manager = new EmulatorManager();
 
   // Remove stale UNIX socket files left by a previous crashed session of
@@ -146,6 +184,12 @@ export function activate(context: vscode.ExtensionContext): void {
   const controlsProvider = new ControlsViewProvider(
     context.extensionUri,
     (cfg) => {
+      if (controllerConfigUnreadable) {
+        void vscode.window.showWarningMessage(
+          'ds-ide: controllers.yaml could not be read earlier — refusing to overwrite it until the underlying issue is fixed and the file is reloaded.',
+        );
+        return;
+      }
       const folders = vscode.workspace.workspaceFolders;
       if (!folders?.[0]) return;
       const yamlPath = path.join(folders[0].uri.fsPath, 'controllers.yaml');
@@ -505,20 +549,4 @@ export function activate(context: vscode.ExtensionContext): void {
 
 export function deactivate(): void {
   // disposables are registered in context.subscriptions — VS Code disposes them automatically
-}
-
-async function loadControllerConfig(): Promise<ControllerConfig> {
-  const folders = vscode.workspace.workspaceFolders;
-  if (!folders?.[0]) return { pots: [], buttons: [], leds: [], errors: [] };
-  const yamlPath = path.join(folders[0].uri.fsPath, 'controllers.yaml');
-  try {
-    const text = await fs.promises.readFile(yamlPath, 'utf8');
-    const cfg = parseControllerConfig(text);
-    for (const e of cfg.errors) {
-      void vscode.window.showWarningMessage(`controllers.yaml: ${e}`);
-    }
-    return cfg;
-  } catch {
-    return { pots: [], buttons: [], leds: [], errors: [] };
-  }
 }

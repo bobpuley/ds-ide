@@ -8,6 +8,7 @@ vi.mock('fs', () => {
     readFile: vi.fn(() => Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))),
     access: vi.fn(() => Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))),
     readdir: vi.fn(() => Promise.resolve([])),
+    writeFile: vi.fn(() => Promise.resolve()),
   };
   return {
     default: {
@@ -398,5 +399,111 @@ describe('extension view initialization (FR-CE-9, FR-WE-11)', () => {
       expect(subs).toContain(r.value);
     }
     expect(subs).toContain((vscode.workspace.onDidSaveTextDocument as ReturnType<typeof vi.fn>).mock.results[0]?.value);
+  });
+});
+
+// ── FR-IPC-4: distinguish absent controllers.yaml from an unreadable one ──
+
+describe('controllers.yaml read robustness (FR-IPC-4)', () => {
+  let fsMock: Record<string, ReturnType<typeof vi.fn>>;
+  let promisesMock: Record<string, ReturnType<typeof vi.fn>>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    managerInstances.length = 0;
+    fsMock = (await import('fs')) as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock = fsMock['promises'] as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['access'].mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    promisesMock['readdir'].mockResolvedValue([]);
+    (vscode.workspace as unknown as Record<string, unknown>).workspaceFolders = [
+      { uri: { fsPath: '/proj' } },
+    ];
+  });
+
+  afterEach(() => {
+    (vscode.workspace as unknown as Record<string, unknown>).workspaceFolders = undefined;
+  });
+
+  async function triggerLoadViaSave(ctx: vscode.ExtensionContext): Promise<void> {
+    const saveCb = (vscode.workspace.onDidSaveTextDocument as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
+      (doc: { uri: { fsPath: string } }) => Promise<void>;
+    await saveCb({ uri: { fsPath: path.join('/proj', 'controllers.yaml') } });
+  }
+
+  function getControlsEditorMessageHandler(): (msg: unknown) => void {
+    const registerCalls = (vscode.window.registerWebviewViewProvider as ReturnType<typeof vi.fn>).mock.calls;
+    const controlsEntry = registerCalls.find((c: unknown[]) => c[0] === 'ds-ide.controlsEditor');
+    const controlsProvider = controlsEntry?.[1] as { resolveWebviewView: (view: unknown) => void };
+    const mockView = {
+      webview: {
+        html: '', options: {},
+        onDidReceiveMessage: vi.fn(() => ({ dispose: vi.fn() })),
+        postMessage: vi.fn(),
+        asWebviewUri: vi.fn((u: unknown) => u),
+        cspSource: '',
+      },
+      visible: true,
+      onDidDispose: vi.fn((_cb: () => void) => ({ dispose: vi.fn() })),
+      onDidChangeVisibility: vi.fn((_cb: () => void) => ({ dispose: vi.fn() })),
+      show: vi.fn(),
+    };
+    controlsProvider.resolveWebviewView(mockView);
+    return (mockView.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => void;
+  }
+
+  it('treats a missing controllers.yaml (ENOENT) as empty, without an unreadable warning', async () => {
+    promisesMock['readFile'].mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await triggerLoadViaSave(ctx);
+    expect(vscode.window.showWarningMessage).not.toHaveBeenCalledWith(
+      expect.stringMatching(/unreadable|could not read/i),
+    );
+  });
+
+  it('surfaces a warning when controllers.yaml read fails with a non-ENOENT error', async () => {
+    promisesMock['readFile'].mockRejectedValue(Object.assign(new Error('permission denied'), { code: 'EACCES' }));
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await triggerLoadViaSave(ctx);
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      expect.stringMatching(/could not read controllers\.yaml/i),
+    );
+  });
+
+  it('refuses to overwrite controllers.yaml after a non-ENOENT read failure', async () => {
+    promisesMock['readFile'].mockRejectedValue(Object.assign(new Error('permission denied'), { code: 'EACCES' }));
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await triggerLoadViaSave(ctx);
+
+    const handler = getControlsEditorMessageHandler();
+    promisesMock['writeFile'].mockClear();
+    handler({ command: 'editorSave', cfg: { pots: [], buttons: [], leds: [], errors: [] } });
+    await Promise.resolve();
+    expect(promisesMock['writeFile']).not.toHaveBeenCalled();
+  });
+
+  it('writes normally once controllers.yaml has been read successfully', async () => {
+    promisesMock['readFile'].mockImplementation((p: unknown) => {
+      const fp = String(p);
+      if (fp.endsWith('controllers.yaml')) return Promise.resolve('pots: []\nbuttons: []\nleds: []\n');
+      return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    });
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await triggerLoadViaSave(ctx);
+
+    const handler = getControlsEditorMessageHandler();
+    promisesMock['writeFile'].mockClear();
+    handler({ command: 'editorSave', cfg: { pots: [], buttons: [], leds: [], errors: [] } });
+    await Promise.resolve();
+    expect(promisesMock['writeFile']).toHaveBeenCalledWith(
+      expect.stringMatching(/controllers\.yaml$/), expect.anything(), 'utf8',
+    );
   });
 });
