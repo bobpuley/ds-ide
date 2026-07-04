@@ -352,7 +352,7 @@ export function serializeControllerConfig(cfg: ControllerConfig): string {
   if (cfg.pots.length > 0) {
     lines.push('controllers:');
     for (const p of cfg.pots) {
-      lines.push(`  - id: ${p.id}`);
+      lines.push(`  - id: ${yamlQuote(p.id)}`);
       lines.push(`    label: ${yamlQuote(p.label)}`);
       lines.push(`    adc_channel: ${p.adcChannel}`);
       lines.push(`    range: [${p.range[0]}, ${p.range[1]}]`);
@@ -365,7 +365,7 @@ export function serializeControllerConfig(cfg: ControllerConfig): string {
   if (cfg.buttons.length > 0) {
     lines.push('buttons:');
     for (const b of cfg.buttons) {
-      lines.push(`  - id: ${b.id}`);
+      lines.push(`  - id: ${yamlQuote(b.id)}`);
       lines.push(`    label: ${yamlQuote(b.label)}`);
       lines.push(`    gpio_pin: ${b.gpioPin}`);
       lines.push(`    mode: ${b.mode}`);
@@ -377,7 +377,7 @@ export function serializeControllerConfig(cfg: ControllerConfig): string {
   if (cfg.leds.length > 0) {
     lines.push('leds:');
     for (const l of cfg.leds) {
-      lines.push(`  - id: ${l.id}`);
+      lines.push(`  - id: ${yamlQuote(l.id)}`);
       lines.push(`    label: ${yamlQuote(l.label)}`);
       lines.push(`    gpio_pin: ${l.gpioPin}`);
       if (l.pos) lines.push(`    editor_pos: [${Math.round(l.pos[0])}, ${Math.round(l.pos[1])}]`);

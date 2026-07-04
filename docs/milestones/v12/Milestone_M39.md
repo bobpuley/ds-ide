@@ -37,7 +37,7 @@ IPC messages are parsed with bare `JSON.parse` into an untyped record and mostly
 
 ---
 
-### [ ] fix: Validate `editorSave` webview payload shape; quote serialized ids (FR-IPC-3)
+### [x] fix: Validate `editorSave` webview payload shape; quote serialized ids (FR-IPC-3)
 
 The `editorSave` handler casts the webview payload directly to `ControllerConfig` and feeds it to `serializeControllerConfig`, which dereferences array fields without a shape check. Serialized `id` values are unquoted, so an id containing `:`/`#` silently round-trips to a different id.
 

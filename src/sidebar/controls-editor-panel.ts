@@ -40,10 +40,19 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
         return;
       }
       if (m['command'] === 'editorSave') {
-        const cfg = m['cfg'] as ControllerConfig | undefined;
-        if (cfg) {
-          const validated = parseControllerConfig(serializeControllerConfig(cfg));
-          if (validated.errors.length === 0) this.onEditorSave(validated);
+        const cfg = m['cfg'];
+        if (cfg && typeof cfg === 'object') {
+          // cfg is untrusted webview input — serializeControllerConfig assumes
+          // a well-formed ControllerConfig shape, so a missing/malformed field
+          // (e.g. { pots: [{}] }) throws rather than producing validation
+          // errors. Round trip is guarded so that never reaches the user as
+          // an uncaught exception (FR-IPC-3).
+          try {
+            const validated = parseControllerConfig(serializeControllerConfig(cfg as ControllerConfig));
+            if (validated.errors.length === 0) this.onEditorSave(validated);
+          } catch {
+            void vscode.window.showWarningMessage('ds-ide: could not save controls layout — malformed data from editor.');
+          }
         }
       }
       if (m['command'] === 'pot') {

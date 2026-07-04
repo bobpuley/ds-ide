@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseControllerYaml, parseControllerConfig, serializeControllerConfig } from '../../../controllers/controller-config';
+import { parseControllerYaml, parseControllerConfig, serializeControllerConfig, ControllerConfig } from '../../../controllers/controller-config';
 
 const MINIMAL_VALID = `
 controllers:
@@ -572,5 +572,54 @@ leds:
     const out = serializeControllerConfig(cfg);
     expect(out).not.toContain('controllers:');
     expect(out).toContain('leds:');
+  });
+
+  // FR-IPC-3 — ids containing YAML-syntax characters must round-trip intact.
+  it('quotes a pot id containing a colon so it round-trips intact', () => {
+    const cfg: ControllerConfig = {
+      pots: [{ id: 'foo:bar', label: 'L', adcChannel: 0, range: [0, 1], taper: 'linear', default: 0.5 }],
+      buttons: [], leds: [], errors: [],
+    };
+    const out = serializeControllerConfig(cfg);
+    expect(out).toContain('id: "foo:bar"');
+    const reparsed = parseControllerConfig(out);
+    expect(reparsed.errors).toHaveLength(0);
+    expect(reparsed.pots[0]!.id).toBe('foo:bar');
+  });
+
+  it('quotes a button id containing a hash so it round-trips intact', () => {
+    const cfg: ControllerConfig = {
+      pots: [], leds: [],
+      buttons: [{ id: 'foo#bar', label: 'L', gpioPin: 5, mode: 'momentary', activeLevel: 'low' }],
+      errors: [],
+    };
+    const out = serializeControllerConfig(cfg);
+    expect(out).toContain('id: "foo#bar"');
+    const reparsed = parseControllerConfig(out);
+    expect(reparsed.errors).toHaveLength(0);
+    expect(reparsed.buttons[0]!.id).toBe('foo#bar');
+  });
+
+  it('quotes an led id containing a hash so it round-trips intact', () => {
+    const cfg: ControllerConfig = {
+      pots: [], buttons: [],
+      leds: [{ id: 'foo#bar', label: 'L', gpioPin: 5 }],
+      errors: [],
+    };
+    const out = serializeControllerConfig(cfg);
+    expect(out).toContain('id: "foo#bar"');
+    const reparsed = parseControllerConfig(out);
+    expect(reparsed.errors).toHaveLength(0);
+    expect(reparsed.leds[0]!.id).toBe('foo#bar');
+  });
+
+  it('leaves plain identifier ids unquoted', () => {
+    const cfg: ControllerConfig = {
+      pots: [{ id: 'osc_pitch', label: 'L', adcChannel: 0, range: [0, 1], taper: 'linear', default: 0.5 }],
+      buttons: [], leds: [], errors: [],
+    };
+    const out = serializeControllerConfig(cfg);
+    expect(out).toContain('id: osc_pitch');
+    expect(out).not.toContain('"osc_pitch"');
   });
 });

@@ -153,6 +153,17 @@ describe('ControlsViewProvider', () => {
     expect(onEditorSave).not.toHaveBeenCalled();
   });
 
+  it('does not throw and shows a warning when editorSave cfg has grossly malformed shape (FR-IPC-3)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => void;
+    const warnSpy = vscode.window.showWarningMessage as ReturnType<typeof vi.fn>;
+    warnSpy.mockClear();
+    expect(() => handler({ command: 'editorSave', cfg: { pots: [{}] } })).not.toThrow();
+    expect(onEditorSave).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalled();
+  });
+
   it('ignores malformed messages', () => {
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);
