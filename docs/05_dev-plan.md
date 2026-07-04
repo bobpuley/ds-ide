@@ -93,7 +93,7 @@ Full registry in [`docs/v9/05_dev-plan.md`](v9/05_dev-plan.md).
 M34 UI Polish: Independent Editors, Always-Visible Audio Settings, Panel Icons · M35 Activity Bar Split: Controls and Wiring as Independent Sidebar Views.
 Full registry in [`docs/v10/05_dev-plan.md`](v10/05_dev-plan.md).
 
-### v11 — planned (HIGH-severity fixes from the 2026-07-02 code reviews)
+### v11 (0.12.0–0.12.1) — planned
 
 | ID  | Name | Status          | Version | File |
 |-----|------|-----------------|---------|------|
@@ -102,7 +102,7 @@ Full registry in [`docs/v10/05_dev-plan.md`](v10/05_dev-plan.md).
 
 Source: 2026-07-02 automated code reviews of `./emulator/` (C/C++), `./src/` (Node.js/TS), and `./src/` (VS Code extension) — all HIGH-urgency findings.
 
-### v12 — planned (MEDIUM-severity fixes from the 2026-07-02 code reviews)
+### v12 (0.13.0–0.13.2) — planned
 
 | ID  | Name | Status          | Version | File |
 |-----|------|-----------------|---------|------|
@@ -112,7 +112,7 @@ Source: 2026-07-02 automated code reviews of `./emulator/` (C/C++), `./src/` (No
 
 Source: 2026-07-02 automated code reviews — all MEDIUM-urgency findings. M38 should land after M36 (both touch `SessionPlayer::nextBlock()`; see `02_assumptions-and-risks.md`).
 
-### v13 — planned (LOW-severity fixes from the 2026-07-02 code reviews)
+### v13 (0.14.0–0.14.1) — planned
 
 | ID  | Name | Status | Version | File |
 |-----|------|--------|---------|------|
