@@ -64,7 +64,7 @@ The `editorSave` handler casts the webview payload directly to `ControllerConfig
 
 ---
 
-### [ ] fix: Check `applyEdit` results; keep Wiring and Controls views consistent (FR-IPC-5)
+### [x] fix: Check `applyEdit` results; keep Wiring and Controls views consistent (FR-IPC-5)
 
 Wire/unwire handlers ignore the boolean result of `applyEdit` and rebuild Controls Editor state by re-reading the source **from disk**, so the two views disagree until a manual save (or claim success when the edit actually failed). `makeBlockEdit`'s marker search also mis-pairs ranges when a marker line is duplicated.
 

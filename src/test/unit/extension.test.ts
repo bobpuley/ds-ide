@@ -59,6 +59,7 @@ vi.mock('../../emulator/manager', () => {
 
 // Imported for type inference only — each test describe re-imports dynamically.
 import type { activate as ActivateFn, deactivate as DeactivateFn } from '../../extension';
+import { makeBlockEdit } from '../../extension';
 
 function makeContext(): vscode.ExtensionContext {
   return {
@@ -505,5 +506,184 @@ describe('controllers.yaml read robustness (FR-IPC-4)', () => {
     expect(promisesMock['writeFile']).toHaveBeenCalledWith(
       expect.stringMatching(/controllers\.yaml$/), expect.anything(), 'utf8',
     );
+  });
+});
+
+// ── FR-IPC-5: applyEdit result checking, duplicate-marker safety, view consistency ──
+
+describe('makeBlockEdit duplicate-marker safety (FR-IPC-5)', () => {
+  function makeDoc(text: string): vscode.TextDocument {
+    const lines = text.split('\n');
+    return {
+      lineCount: lines.length,
+      lineAt: (n: number) => ({ range: { end: { line: n, character: lines[n]!.length } } }),
+    } as unknown as vscode.TextDocument;
+  }
+
+  it('falls back to a full-file replacement when the begin marker is duplicated', () => {
+    const oldText = [
+      '// ds-ide:controls:begin',
+      'int a = 1;',
+      '// ds-ide:controls:end',
+      '// ds-ide:controls:begin', // duplicate begin marker
+      'int b = 2;',
+    ].join('\n');
+    const newText = oldText.replace('int a = 1;', 'int a = 2;');
+    const doc = makeDoc(oldText);
+    const edit = makeBlockEdit(doc, { fsPath: '/proj/effect.cpp' } as unknown as vscode.Uri, oldText, newText);
+    const replaceCalls = (edit.replace as ReturnType<typeof vi.fn>).mock.calls;
+    // Full-file fallback: exactly one replace() spanning the whole document,
+    // not a (mis-paired) partial marker-block range.
+    expect(replaceCalls).toHaveLength(1);
+    expect(replaceCalls[0]![2]).toBe(newText);
+  });
+
+  it('falls back to a full-file replacement when the end marker is duplicated', () => {
+    const oldText = [
+      '// ds-ide:controls:begin',
+      'int a = 1;',
+      '// ds-ide:controls:end',
+      '// ds-ide:controls:end', // duplicate end marker
+    ].join('\n');
+    const newText = oldText.replace('int a = 1;', 'int a = 2;');
+    const doc = makeDoc(oldText);
+    const edit = makeBlockEdit(doc, { fsPath: '/proj/effect.cpp' } as unknown as vscode.Uri, oldText, newText);
+    const replaceCalls = (edit.replace as ReturnType<typeof vi.fn>).mock.calls;
+    expect(replaceCalls).toHaveLength(1);
+    expect(replaceCalls[0]![2]).toBe(newText);
+  });
+
+  it('still uses a targeted block replacement when markers are unique', () => {
+    const oldText = [
+      '// ds-ide:controls:begin',
+      'int a = 1;',
+      '// ds-ide:controls:end',
+      '// ds-ide:controls:init:begin',
+      'a.Init();',
+      '// ds-ide:controls:init:end',
+    ].join('\n');
+    const newText = oldText.replace('int a = 1;', 'int a = 2;');
+    const doc = makeDoc(oldText);
+    const edit = makeBlockEdit(doc, { fsPath: '/proj/effect.cpp' } as unknown as vscode.Uri, oldText, newText);
+    const replaceCalls = (edit.replace as ReturnType<typeof vi.fn>).mock.calls;
+    // Both marker pairs are unique and matched — two targeted block
+    // replacements, never a full-file fallback.
+    expect(replaceCalls).toHaveLength(2);
+    for (const call of replaceCalls) {
+      expect(call[2]).not.toBe(newText);
+    }
+  });
+});
+
+describe('wiring edit consistency (FR-IPC-5)', () => {
+  let fsMock: Record<string, ReturnType<typeof vi.fn>>;
+  let promisesMock: Record<string, ReturnType<typeof vi.fn>>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    managerInstances.length = 0;
+    fsMock = (await import('fs')) as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock = fsMock['promises'] as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['access'].mockImplementation((p: unknown) => {
+      const fp = String(p);
+      if (fp.endsWith('CMakeLists.txt') || fp.endsWith('.cpp')) return Promise.resolve();
+      return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    });
+    promisesMock['readdir'].mockResolvedValue(['effect.cpp']);
+    promisesMock['readFile'].mockResolvedValue('');
+    (vscode.workspace as unknown as Record<string, unknown>).workspaceFolders = [
+      { uri: { fsPath: '/proj' } },
+    ];
+    (vscode.workspace.applyEdit as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+  });
+
+  afterEach(() => {
+    (vscode.workspace as unknown as Record<string, unknown>).workspaceFolders = undefined;
+  });
+
+  function resolveProvider(viewId: string): { handler: (msg: unknown) => Promise<void> | void; postMessage: ReturnType<typeof vi.fn> } {
+    const registerCalls = (vscode.window.registerWebviewViewProvider as ReturnType<typeof vi.fn>).mock.calls;
+    const entry = registerCalls.find((c: unknown[]) => c[0] === viewId);
+    const provider = entry?.[1] as { resolveWebviewView: (view: unknown) => void };
+    const postMessage = vi.fn();
+    const mockView = {
+      webview: {
+        html: '', options: {},
+        onDidReceiveMessage: vi.fn(() => ({ dispose: vi.fn() })),
+        postMessage,
+        asWebviewUri: vi.fn((u: unknown) => u),
+        cspSource: '',
+      },
+      visible: true,
+      onDidDispose: vi.fn((_cb: () => void) => ({ dispose: vi.fn() })),
+      onDidChangeVisibility: vi.fn((_cb: () => void) => ({ dispose: vi.fn() })),
+      show: vi.fn(),
+    };
+    provider.resolveWebviewView(mockView);
+    const handler = (mockView.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
+      (msg: unknown) => Promise<void> | void;
+    return { handler, postMessage };
+  }
+
+  // activate() kicks off initViewsFromProject() fire-and-forget; let its
+  // fs-backed promise chain fully settle before attaching mock views so its
+  // one-time flush doesn't land in the middle of a test's own assertions.
+  function flushMicrotasks(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  it('does not update either view and shows an error when applyEdit returns false on wire', async () => {
+    (vscode.workspace.applyEdit as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flushMicrotasks();
+    const wiring = resolveProvider('ds-ide.wiringEditor');
+    const controls = resolveProvider('ds-ide.controlsEditor');
+    wiring.postMessage.mockClear();
+    controls.postMessage.mockClear();
+
+    await wiring.handler({ command: 'wirePin', pinNumber: 15, deviceType: 'pot', id: 'vol' });
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringMatching(/wiring edit/i));
+    expect(wiring.postMessage).not.toHaveBeenCalled();
+    expect(controls.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not update either view and shows an error when applyEdit returns false on unwire', async () => {
+    (vscode.workspace.applyEdit as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flushMicrotasks();
+    const wiring = resolveProvider('ds-ide.wiringEditor');
+    const controls = resolveProvider('ds-ide.controlsEditor');
+    wiring.postMessage.mockClear();
+    controls.postMessage.mockClear();
+
+    await wiring.handler({ command: 'unwirePin', pinNumber: 15, id: 'vol' });
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringMatching(/wiring edit/i));
+    expect(wiring.postMessage).not.toHaveBeenCalled();
+    expect(controls.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('saves the document after a successful wire so both views reflect the same state without a manual save', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flushMicrotasks();
+    const wiring = resolveProvider('ds-ide.wiringEditor');
+    const controls = resolveProvider('ds-ide.controlsEditor');
+    wiring.postMessage.mockClear();
+    controls.postMessage.mockClear();
+
+    await wiring.handler({ command: 'wirePin', pinNumber: 15, deviceType: 'pot', id: 'vol' });
+
+    const openDocResults = (vscode.workspace.openTextDocument as ReturnType<typeof vi.fn>).mock.results;
+    const doc = await openDocResults[openDocResults.length - 1]!.value as { save: ReturnType<typeof vi.fn> };
+    expect(doc.save).toHaveBeenCalled();
+    expect(wiring.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'wiredPins' }));
+    expect(controls.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'controlsConfig' }));
   });
 });

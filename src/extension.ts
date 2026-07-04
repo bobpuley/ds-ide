@@ -36,7 +36,7 @@ async function findEffectSource(folder: string): Promise<string | undefined> {
 
 // Build a WorkspaceEdit that replaces only the marker blocks that changed.
 // Falls back to a full-file replacement when blocks are absent (legacy projects).
-function makeBlockEdit(
+export function makeBlockEdit(
   doc: vscode.TextDocument,
   uri: vscode.Uri,
   oldText: string,
@@ -49,10 +49,19 @@ function makeBlockEdit(
   const oldLines = oldText.split('\n');
   const newLines = newText.split('\n');
 
+  // A marker line that appears more than once can't be paired unambiguously
+  // — findIndex would silently take the first occurrence of each and risk
+  // pairing a begin from one block with an end from another. Treat that as
+  // "not found" so the caller falls back to a full-file replacement instead
+  // of a silently wrong-range edit (FR-IPC-5).
   function findRange(lines: string[], begin: string, end: string): { s: number; e: number } | null {
-    const s = lines.findIndex(l => l.replace(/\r$/, '') === begin);
-    const e = lines.findIndex(l => l.replace(/\r$/, '') === end);
-    return (s !== -1 && e !== -1 && e > s) ? { s, e } : null;
+    const clean = lines.map(l => l.replace(/\r$/, ''));
+    const beginIndices = clean.reduce<number[]>((acc, l, i) => { if (l === begin) acc.push(i); return acc; }, []);
+    const endIndices = clean.reduce<number[]>((acc, l, i) => { if (l === end) acc.push(i); return acc; }, []);
+    if (beginIndices.length !== 1 || endIndices.length !== 1) return null;
+    const [s] = beginIndices;
+    const [e] = endIndices;
+    return e! > s! ? { s: s!, e: e! } : null;
   }
 
   const edit = new vscode.WorkspaceEdit();
@@ -223,7 +232,15 @@ export function activate(context: vscode.ExtensionContext): void {
       const allPots = controlsAfterDecl.filter(c => c.kind === 'pot');
       const newText = insertInitIntoSource(afterDecl, wp.id, wp.deviceType as 'pot' | 'button' | 'led', wp.pinNumber, allPots);
       const edit = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
-      await vscode.workspace.applyEdit(edit);
+      const applied = await vscode.workspace.applyEdit(edit);
+      if (!applied) {
+        void vscode.window.showErrorMessage('ds-ide: wiring edit could not be applied — source file was not changed.');
+        return;
+      }
+      // Saved immediately so buildControlsConfig's disk read below sees the
+      // same content as newText — otherwise the Controls view would disagree
+      // with the Wiring view until the user manually saves (FR-IPC-5).
+      await doc.save();
       const { controls } = parseControlsConvention(newText);
       const pins: WiredPin[] = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
       wiringProvider?.postWiredPins(pins);
@@ -244,7 +261,14 @@ export function activate(context: vscode.ExtensionContext): void {
       const allPots = controlsAfterDecl.filter(c => c.kind === 'pot');
       const newText = removeInitFromSource(afterDecl, id, allPots);
       const edit = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
-      await vscode.workspace.applyEdit(edit);
+      const applied = await vscode.workspace.applyEdit(edit);
+      if (!applied) {
+        void vscode.window.showErrorMessage('ds-ide: wiring edit could not be applied — source file was not changed.');
+        return;
+      }
+      // See the wire handler above (FR-IPC-5): save so the disk read inside
+      // buildControlsConfig matches newText instead of the pre-edit content.
+      await doc.save();
       const { controls } = parseControlsConvention(newText);
       const pins: WiredPin[] = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
       wiringProvider?.postWiredPins(pins);
