@@ -8,6 +8,7 @@
 
 #include "wav_reader.h"
 #include "emulator_state.h"
+#include "ipc_server.h"
 #include "session_player.h"
 #include "session_recorder.h"
 #include "daisy/gpio.h"
@@ -15,11 +16,14 @@
 #include <cassert>
 #include <chrono>
 #include <cmath>
+#include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
 #include <string>
+#include <sys/resource.h>
+#include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
 #include <vector>
@@ -27,6 +31,12 @@
 // ---- Test harness -----------------------------------------------------------
 
 using namespace daisy_emu;
+
+// ipc_server.cpp declares `extern EmulatorState g_state;` (defined normally
+// in main.cpp, which this test binary doesn't link). Provide the one
+// definition this link unit needs so json_get()/json_escape() are testable
+// without linking the whole runtime/effect_main().
+namespace daisy_emu { EmulatorState g_state; }
 
 static int failures = 0;
 #define CHECK(cond, msg) do { \
@@ -94,6 +104,94 @@ static void test_wav_pcm24_sign_extend() {
     CHECK(out.frames() == 2, "pcm24 two frames");
     CHECK(std::fabs(out.samples[0] - (-1.0f)) < 1e-4f, "0x800000 decodes to -1.0");
     CHECK(std::fabs(out.samples[1] - 0.5f) < 1e-4f, "0x400000 decodes to +0.5");
+}
+
+// ---- FR-EMU-5: load_wav_file validates magic + size ceiling before buffering
+
+static void test_load_wav_file_valid_small_file() {
+    std::printf("--- FR-EMU-5: load_wav_file still loads a valid small WAV ---\n");
+
+    std::vector<uint8_t> data;
+    for (int i = 0; i < 8; ++i) push_u16(data, static_cast<uint16_t>(1000 * i));
+    auto wav = make_wav_raw(0x0001, 1, 48000, 16, data);
+
+    char tmp[] = "/tmp/test_smallwav_XXXXXX";
+    int fd = ::mkstemp(tmp);
+    if (fd < 0) { std::printf("  SKIP  mkstemp failed\n"); return; }
+    ::write(fd, wav.data(), wav.size());
+    ::close(fd);
+
+    WavData out;
+    std::string err;
+    bool ok = load_wav_file(std::string(tmp), out, err);
+    CHECK(ok, "load_wav_file loads a valid small WAV");
+    CHECK(out.frames() == 8, "decoded frame count matches the written data");
+
+    ::unlink(tmp);
+}
+
+static void test_load_wav_file_rejects_non_wav() {
+    std::printf("--- FR-EMU-5: load_wav_file rejects a non-WAV file before full buffering ---\n");
+
+    char tmp[] = "/tmp/test_notwav_XXXXXX";
+    int fd = ::mkstemp(tmp);
+    if (fd < 0) { std::printf("  SKIP  mkstemp failed\n"); return; }
+    std::vector<uint8_t> junk(4096, 0x42);  // plausible-size, wrong magic
+    ::write(fd, junk.data(), junk.size());
+    ::close(fd);
+
+    WavData out;
+    std::string err;
+    auto t0 = std::chrono::steady_clock::now();
+    bool ok = load_wav_file(std::string(tmp), out, err);
+    auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+
+    CHECK(!ok, "load_wav_file rejects a file with no RIFF/WAVE magic");
+    CHECK(!err.empty(), "load_wav_file sets an error message for a non-WAV file");
+    CHECK(elapsed_ms < 1000, "rejection is immediate (magic checked before full buffering)");
+
+    ::unlink(tmp);
+}
+
+static void test_load_wav_file_rejects_oversize_file() {
+    std::printf("--- FR-EMU-5: load_wav_file rejects a file over the size ceiling ---\n");
+
+    char tmp[] = "/tmp/test_hugewav_XXXXXX";
+    int fd = ::mkstemp(tmp);
+    if (fd < 0) { std::printf("  SKIP  mkstemp failed\n"); return; }
+
+    // Sparse file: report a size just over the 256 MB ceiling without
+    // actually writing that much data to disk.
+    const long long kOverCeiling = 256LL * 1024 * 1024 + 1024;
+    if (::ftruncate(fd, static_cast<off_t>(kOverCeiling)) != 0) {
+        std::printf("  SKIP  ftruncate to a large sparse size failed\n");
+        ::close(fd);
+        ::unlink(tmp);
+        return;
+    }
+    // Give it valid-looking RIFF/WAVE magic at the start so the ceiling check
+    // (not the magic check) is what's actually being exercised.
+    ::lseek(fd, 0, SEEK_SET);
+    uint8_t header[12] = {
+        'R','I','F','F', 0,0,0,0, 'W','A','V','E'
+    };
+    ::write(fd, header, sizeof(header));
+    ::close(fd);
+
+    WavData out;
+    std::string err;
+    auto t0 = std::chrono::steady_clock::now();
+    bool ok = load_wav_file(std::string(tmp), out, err);
+    auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+
+    CHECK(!ok, "load_wav_file rejects a file over the 256 MB ceiling");
+    CHECK(!err.empty(), "load_wav_file sets an error message for an oversize file");
+    CHECK(elapsed_ms < 1000,
+          "rejection is immediate (size checked via fstat before any buffering)");
+
+    ::unlink(tmp);
 }
 
 // ---- AC-39: SpscIpcQueue basic SPSC correctness ----------------------------
@@ -226,6 +324,131 @@ static void test_scope_cap() {
           "no reallocation beyond pre-reserved capacity");
 }
 
+// ---- FR-EMU-2: scope sample budget derived from MAX_MSG --------------------
+
+// Lightweight copy of the FR-EMU-2 ScopeState (audio_engine.cpp): the sample
+// budget is computed from SpscIpcQueue::MAX_MSG and the decimation step
+// scales with the hardware frame count, instead of a fixed independently-sized
+// constant that a large hardware frame size could blow past (see the
+// production ScopeState in audio_engine.cpp for the authoritative version;
+// this mirrors it exactly so the test tracks real behavior).
+struct TestScopeStateV2 {
+    static constexpr size_t SCOPE_BLOCKS            = 33;
+    static constexpr size_t SCOPE_STEP_BASE_FRAMES  = 256;
+    static constexpr size_t SCOPE_STEP_BASE         = 4;
+    static constexpr size_t kBytesPerValueWorstCase = 16;
+    static constexpr size_t kFixedOverheadBytes     = 128;
+    static constexpr size_t SCOPE_SAMPLES_MAX =
+        (SpscIpcQueue::MAX_MSG - kFixedOverheadBytes) / (3 * kBytesPerValueWorstCase);
+
+    std::vector<float> in, out, out_r;
+    size_t block_count{0};
+
+    TestScopeStateV2() {
+        in.reserve(SCOPE_SAMPLES_MAX);
+        out.reserve(SCOPE_SAMPLES_MAX);
+        out_r.reserve(SCOPE_SAMPLES_MAX);
+    }
+
+    bool accumulate(const std::vector<float>& in_buf,
+                    const std::vector<float>& out_buf,
+                    size_t frames) {
+        size_t step = SCOPE_STEP_BASE;
+        if (frames > SCOPE_STEP_BASE_FRAMES)
+            step = SCOPE_STEP_BASE * frames / SCOPE_STEP_BASE_FRAMES;
+
+        size_t buf_samples = frames * 2;
+        for (size_t i = 0; i < buf_samples; i += step * 2) {
+            if (in.size() >= SCOPE_SAMPLES_MAX) break;
+            in.push_back(in_buf[i]);
+            out.push_back(out_buf[i]);
+            out_r.push_back(out_buf[i + 1]);
+        }
+        ++block_count;
+        if (block_count >= SCOPE_BLOCKS) { block_count = 0; return true; }
+        return false;
+    }
+};
+
+static void test_scope_budget_derived_from_max_msg() {
+    std::printf("--- FR-EMU-2: scope sample budget is derived from MAX_MSG ---\n");
+
+    CHECK(TestScopeStateV2::SCOPE_SAMPLES_MAX > 0,
+          "derived SCOPE_SAMPLES_MAX is positive");
+    CHECK(TestScopeStateV2::SCOPE_SAMPLES_MAX < 65536,
+          "derived budget is tighter than the old fixed 65536 constant "
+          "(it now accounts for MAX_MSG rather than being sized independently)");
+
+    // Worst-case estimated message size for a full accumulation must not
+    // exceed MAX_MSG: 3 channel arrays, each up to SCOPE_SAMPLES_MAX values.
+    size_t worst_case_bytes = TestScopeStateV2::kFixedOverheadBytes
+                            + 3 * TestScopeStateV2::SCOPE_SAMPLES_MAX
+                                * TestScopeStateV2::kBytesPerValueWorstCase;
+    CHECK(worst_case_bytes <= SpscIpcQueue::MAX_MSG,
+          "worst-case estimated scope message size fits within MAX_MSG");
+}
+
+static void test_scope_decimation_scales_with_frame_size() {
+    std::printf("--- FR-EMU-2: decimation step scales up with hardware frame size ---\n");
+
+    // At a large hardware frame size (4096, matching the architecture doc's
+    // worst case), accumulating SCOPE_BLOCKS blocks must never exceed the
+    // derived per-channel sample budget or reallocate past reserved capacity.
+    TestScopeStateV2 scope;
+    const size_t LARGE = 4096;
+    std::vector<float> in_buf(LARGE * 2, 0.1f);
+    std::vector<float> out_buf(LARGE * 2, 0.2f);
+
+    for (size_t i = 0; i < TestScopeStateV2::SCOPE_BLOCKS; ++i) {
+        scope.accumulate(in_buf, out_buf, LARGE);
+    }
+
+    CHECK(scope.in.size() <= TestScopeStateV2::SCOPE_SAMPLES_MAX,
+          "accumulated samples stay within the MAX_MSG-derived budget at 4096 frames/block");
+    CHECK(scope.in.capacity() == TestScopeStateV2::SCOPE_SAMPLES_MAX,
+          "no reallocation beyond pre-reserved capacity at 4096 frames/block");
+
+    // At the reference frame size (256), behavior must match the original
+    // fixed step (no regression for the common case).
+    TestScopeStateV2 scope_baseline;
+    std::vector<float> in_buf_baseline(256 * 2, 0.1f);
+    std::vector<float> out_buf_baseline(256 * 2, 0.2f);
+    scope_baseline.accumulate(in_buf_baseline, out_buf_baseline, 256);
+    CHECK(scope_baseline.in.size() == 256 * 2 / (TestScopeStateV2::SCOPE_STEP_BASE * 2),
+          "at the reference frame size, one block adds frames/SCOPE_STEP_BASE samples");
+}
+
+// ---- FR-EMU-2: SpscIpcQueue::push() truncates oversize messages -----------
+
+static void test_spsc_queue_oversize_truncation() {
+    std::printf("--- FR-EMU-2: SpscIpcQueue::push() truncates over-MAX_MSG messages ---\n");
+
+    SpscIpcQueue q;
+    std::string oversized(SpscIpcQueue::MAX_MSG + 5000, 'z');
+
+    CHECK(q.oversize_drops.load() == 0, "oversize_drops starts at zero");
+    bool ok = q.push(oversized);
+    CHECK(ok, "push() of an oversize message still succeeds (truncated, not rejected)");
+    CHECK(q.oversize_drops.load() == 1, "oversize_drops increments once for the truncated message");
+
+    std::string out;
+    CHECK(q.pop(out), "pop() returns the truncated message");
+    CHECK(out.size() == SpscIpcQueue::MAX_MSG,
+          "truncated message is exactly MAX_MSG bytes — never larger");
+
+    // A message exactly at MAX_MSG must not be counted as oversize.
+    std::string exact(SpscIpcQueue::MAX_MSG, 'a');
+    q.push(exact);
+    CHECK(q.oversize_drops.load() == 1,
+          "a message exactly at MAX_MSG is not counted as an oversize drop");
+
+    // The const char* overload must apply the same truncation + counting.
+    std::string oversized_cstr(SpscIpcQueue::MAX_MSG + 10, 'x');
+    q.push(oversized_cstr.c_str());
+    CHECK(q.oversize_drops.load() == 2,
+          "push(const char*) truncates and counts an oversize message the same way");
+}
+
 // ---- AC-48: GPIO canonical_gpio_index no aliasing -------------------------
 
 static void test_gpio_canonical_index() {
@@ -252,6 +475,74 @@ static void test_gpio_canonical_index() {
           "A6 canonical index within kNumGpioPins");
     CHECK(canonical_gpio_index(A11) < EmulatorState::kNumGpioPins,
           "A11 canonical index within kNumGpioPins");
+}
+
+// ---- FR-EMU-6: json_get() key lookup doesn't match inside string values ----
+
+static void test_json_get_basic_fields() {
+    std::printf("--- FR-EMU-6: json_get() basic string/number/object fields ---\n");
+
+    std::string msg = R"({"type":"config","sampleRate":48000,"blockSize":48})";
+    CHECK(json_get(msg, "type") == "config", "string field extracted correctly");
+    CHECK(json_get(msg, "sampleRate") == "48000", "number field extracted correctly");
+    CHECK(json_get(msg, "blockSize") == "48", "second number field extracted correctly");
+    CHECK(json_get(msg, "missing").empty(), "absent key returns empty string");
+
+    std::string nested = R"({"type":"potSnapshot","values":{"0":0.5,"1":0.3}})";
+    CHECK(json_get(nested, "values") == R"({"0":0.5,"1":0.3})",
+          "nested object value extracted as its raw substring");
+}
+
+static void test_json_get_ignores_key_literal_inside_string_value() {
+    std::printf("--- FR-EMU-6: json_get() key search ignores literal key text inside "
+                "an earlier field's string value ---\n");
+
+    // The "path" field (which comes first) contains the literal escaped text
+    // \"type\": inside its own value — a naive substring search for the key
+    // "type" would match here instead of the real "type" field that follows.
+    std::string msg =
+        R"({"path":"/some/dir/\"type\":odd.wav","type":"wavFile","loop":"false"})";
+
+    CHECK(json_get(msg, "type") == "wavFile",
+          "the real top-level \"type\" field is found, not the fake occurrence "
+          "embedded inside \"path\"'s string value");
+    CHECK(json_get(msg, "path") == "/some/dir/\"type\":odd.wav",
+          "\"path\"'s value is extracted in full (with its escaped quotes decoded), "
+          "and parsing it doesn't get confused by its own embedded key-like text");
+    CHECK(json_get(msg, "loop") == "false",
+          "a field after the tricky string value is still found correctly");
+}
+
+static void test_json_get_malformed_input_terminates() {
+    std::printf("--- FR-EMU-6: json_get() terminates (doesn't hang) on malformed input ---\n");
+
+    CHECK(json_get("", "type").empty(), "empty input returns empty");
+    CHECK(json_get("{", "type").empty(), "unterminated object returns empty");
+    CHECK(json_get(R"({"type)", "type").empty(), "unterminated key string returns empty");
+    CHECK(json_get(R"({"type":"unterminated)", "type").empty(),
+          "unterminated string value returns empty rather than looping forever");
+    CHECK(json_get("not json at all", "type").empty(), "non-JSON input returns empty");
+}
+
+static void test_json_escape_produces_valid_json_content() {
+    std::printf("--- FR-EMU-6: json_escape() escapes quotes/backslashes/control chars ---\n");
+
+    CHECK(json_escape("plain text") == "plain text", "plain text is unchanged");
+    CHECK(json_escape("has \"quotes\"") == "has \\\"quotes\\\"",
+          "double quotes are escaped");
+    CHECK(json_escape("back\\slash") == "back\\\\slash",
+          "backslashes are escaped");
+    CHECK(json_escape("line\nbreak") == "line\\nbreak", "newline is escaped");
+
+    // Exception text containing quotes/backslashes must round-trip through
+    // json_escape() into a value that, embedded in a JSON string literal,
+    // parses back out via json_get() to the original text.
+    std::string exc_text = "bad path: \"C:\\temp\\file\"";
+    std::string escaped = json_escape(exc_text);
+    std::string wire = "{\"type\":\"event\",\"kind\":\"dispatch_error\",\"msg\":\""
+                      + escaped + "\"}";
+    CHECK(json_get(wire, "msg") == exc_text,
+          "escaped exception text round-trips through json_get() to the original string");
 }
 
 // ---- AC-47: SessionPlayer open() rejects oversized block_size --------------
@@ -337,6 +628,7 @@ static void test_session_recorder_drain_thread() {
 
     rec.stop();
     CHECK(!rec.active(), "active() false after stop");
+    CHECK(!rec.hasWriteError(), "hasWriteError() stays false for a normal successful recording");
 
     // Inspect the file: header (16 bytes) + BLOCKS × (1-byte type + FRAMES*2*4 data bytes).
     int rfd = ::open(tmp, O_RDONLY);
@@ -359,6 +651,70 @@ static void test_session_recorder_drain_thread() {
     }
 
     ::unlink(tmp);
+}
+
+// ---- FR-EMU-4: recorder write failures are reported, not silently truncated
+
+static void test_session_recorder_write_error_reported() {
+    std::printf("--- FR-EMU-4: writeBytes failure sets hasWriteError(), stops draining ---\n");
+    std::fflush(stdout);
+
+    char tmp[] = "/tmp/test_rec_fsize_XXXXXX";
+    int fd = ::mkstemp(tmp);
+    if (fd < 0) { std::printf("  SKIP  mkstemp failed\n"); return; }
+    ::close(fd);
+
+    // Portable fault injection: cap RLIMIT_FSIZE so write() fails with EFBIG
+    // shortly after the file crosses a tiny size limit — no real full disk
+    // needed. RLIMIT_FSIZE is process-wide (it would also apply to this test
+    // binary's own stdout once redirected to a log file), and SIGXFSZ's
+    // default action terminates the process, so both are scoped to a forked
+    // child rather than applied to this process.
+    pid_t pid = ::fork();
+    if (pid < 0) {
+        std::printf("  SKIP  fork() failed\n");
+        ::unlink(tmp);
+        return;
+    }
+
+    if (pid == 0) {
+        struct rlimit small_fsize{4096, 4096};
+        ::setrlimit(RLIMIT_FSIZE, &small_fsize);
+        struct sigaction ign{};
+        ign.sa_handler = SIG_IGN;
+        ::sigaction(SIGXFSZ, &ign, nullptr);
+
+        SessionRecorder rec;
+        const size_t FRAMES = 512;  // 512*2*4 = 4096 bytes/block audio payload alone
+        bool started = rec.start(std::string(tmp), 48000, FRAMES);
+
+        std::vector<float> buf(FRAMES * 2, 0.5f);
+        for (int i = 0; i < 50; ++i) rec.enqueueBlock(buf.data(), FRAMES);
+
+        int guard = 0;
+        while (rec.active() && guard++ < 2000)
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+        bool had_error    = rec.hasWriteError();
+        bool now_inactive = !rec.active();
+        rec.stop();  // must be safe even though the drain thread already exited
+
+        int code = (started ? 1 : 0) | (had_error ? 2 : 0) | (now_inactive ? 4 : 0);
+        _exit(code);
+    }
+
+    int status = 0;
+    ::waitpid(pid, &status, 0);
+    ::unlink(tmp);
+
+    CHECK(WIFEXITED(status), "fault-injection child process exited normally (no crash)");
+    int code = WIFEXITED(status) ? WEXITSTATUS(status) : 0;
+    CHECK((code & 1) != 0, "start() succeeds");
+    CHECK((code & 2) != 0,
+          "hasWriteError() becomes true once writeBytes fails past RLIMIT_FSIZE");
+    CHECK((code & 4) != 0,
+          "active() becomes false once the drain thread observes the write error "
+          "(stops feeding a recording that can no longer be drained)");
 }
 
 static void test_session_recorder_enqueue_drop_on_full() {
@@ -630,6 +986,115 @@ static void test_session_player_popblock_basic() {
     ::unlink(tmp);
 }
 
+// ---- FR-EMU-1: short replay blocks are zero-filled, not stale ------------
+
+static void test_session_player_short_block_zero_fill() {
+    std::printf("--- FR-EMU-1: popBlock zero-fills tail of a short recorded block ---\n");
+
+    const uint32_t kBlockSize = 8;
+    const size_t   kReqFrames = 16;  // engine now requests more than was recorded
+
+    std::vector<uint8_t> file = make_dsrec_header(48000, kBlockSize);
+    file.push_back(kRecTypeAudioBlock);
+    for (uint32_t s = 0; s < kBlockSize * 2; ++s) push_float(file, 1.0f);
+    file.push_back(kRecTypeEnd);
+
+    char tmp[] = "/tmp/test_play_short_XXXXXX";
+    int fd = ::mkstemp(tmp);
+    if (fd < 0) { std::printf("  SKIP  mkstemp failed\n"); return; }
+    ::write(fd, file.data(), file.size());
+    ::close(fd);
+
+    SessionPlayer player;
+    uint32_t sr = 0, bs = 0;
+    bool ok = player.open(std::string(tmp), sr, bs);
+    CHECK(ok, "open() succeeds");
+
+    // Poison the buffer so a stale-tail bug would be visible.
+    std::vector<float> buf(kReqFrames * 2, -9.0f);
+    ReplayEvent events[SessionPlayer::kMaxEventsPerSlot];
+    size_t n_events = 0;
+
+    bool got = false;
+    int guard = 0;
+    while (!got && guard++ < 200000) {
+        got = player.popBlock(buf.data(), kReqFrames, events,
+                              SessionPlayer::kMaxEventsPerSlot, n_events);
+    }
+    CHECK(got, "popBlock returns the recorded block");
+
+    bool head_ok = true, tail_zeroed = true;
+    for (uint32_t s = 0; s < kBlockSize * 2; ++s)
+        if (std::fabs(buf[s] - 1.0f) > 1e-6f) head_ok = false;
+    for (size_t s = kBlockSize * 2; s < kReqFrames * 2; ++s)
+        if (buf[s] != 0.f) tail_zeroed = false;
+
+    CHECK(head_ok, "recorded samples are copied into the head of buf");
+    CHECK(tail_zeroed, "unread tail (recorded block shorter than requested) is zero-filled");
+
+    player.close();
+    ::unlink(tmp);
+}
+
+static void test_session_player_replay_deterministic() {
+    std::printf("--- FR-EMU-1: replay of the same .dsrec is bit-for-bit identical across runs ---\n");
+
+    const uint32_t kBlockSize = 8;
+    const size_t   kReqFrames = 16;  // requested frames > recorded block_size
+    const int      kNumBlocks = 6;
+
+    std::vector<uint8_t> file = make_dsrec_header(48000, kBlockSize);
+    for (int i = 0; i < kNumBlocks; ++i) {
+        file.push_back(kRecTypeAudioBlock);
+        for (uint32_t s = 0; s < kBlockSize * 2; ++s)
+            push_float(file, static_cast<float>(i + 1));
+    }
+    file.push_back(kRecTypeEnd);
+
+    char tmp[] = "/tmp/test_play_det_XXXXXX";
+    int fd = ::mkstemp(tmp);
+    if (fd < 0) { std::printf("  SKIP  mkstemp failed\n"); return; }
+    ::write(fd, file.data(), file.size());
+    ::close(fd);
+
+    auto run_replay = [&](std::vector<float>& all_out) {
+        SessionPlayer player;
+        uint32_t sr = 0, bs = 0;
+        player.open(std::string(tmp), sr, bs);
+
+        std::vector<float> buf(kReqFrames * 2);
+        ReplayEvent events[SessionPlayer::kMaxEventsPerSlot];
+        size_t n_events = 0;
+        int guard = 0;
+        while (!player.done() && guard++ < 200000) {
+            // Poison before every call — a correct implementation must not
+            // depend on (or leak) whatever the buffer previously held.
+            std::fill(buf.begin(), buf.end(), -9.0f);
+            if (!player.popBlock(buf.data(), kReqFrames, events,
+                                 SessionPlayer::kMaxEventsPerSlot, n_events))
+                continue;
+            all_out.insert(all_out.end(), buf.begin(), buf.end());
+        }
+        player.close();
+    };
+
+    std::vector<float> run1, run2;
+    run_replay(run1);
+    run_replay(run2);
+
+    CHECK(!run1.empty(), "first replay run produced output");
+    CHECK(run1.size() == run2.size(), "both replay runs produce the same amount of output");
+    bool identical = run1.size() == run2.size();
+    if (identical) {
+        for (size_t i = 0; i < run1.size(); ++i) {
+            if (run1[i] != run2[i]) { identical = false; break; }
+        }
+    }
+    CHECK(identical, "two separate replay runs of the same .dsrec are bit-for-bit identical");
+
+    ::unlink(tmp);
+}
+
 static void test_session_player_popblock_rt_safe_timing() {
     std::printf("--- FR-RTS-3: SessionPlayer popBlock does not block on I/O ---\n");
 
@@ -684,20 +1149,33 @@ int main() {
 
     test_wav_div_by_zero();
     test_wav_pcm24_sign_extend();
+    test_load_wav_file_valid_small_file();
+    test_load_wav_file_rejects_non_wav();
+    test_load_wav_file_rejects_oversize_file();
     test_spsc_queue_basic();
     test_spsc_queue_wrap();
     test_spsc_queue_threaded();
     test_scope_cap();
+    test_scope_budget_derived_from_max_msg();
+    test_scope_decimation_scales_with_frame_size();
+    test_spsc_queue_oversize_truncation();
     test_gpio_canonical_index();
+    test_json_get_basic_fields();
+    test_json_get_ignores_key_literal_inside_string_value();
+    test_json_get_malformed_input_terminates();
+    test_json_escape_produces_valid_json_content();
     test_session_player_open_guard();
     test_spsc_max_msg_size();
     test_spsc_slot_no_realloc();
     test_session_recorder_drain_thread();
+    test_session_recorder_write_error_reported();
     test_session_recorder_enqueue_drop_on_full();
     test_session_recorder_no_blocking_on_rt_path();
     test_session_recorder_start_stop_race();
     test_session_recorder_duplicate_start_rejected();
     test_session_player_popblock_basic();
+    test_session_player_short_block_zero_fill();
+    test_session_player_replay_deterministic();
     test_session_player_popblock_rt_safe_timing();
 
     std::printf("\nResult: %s\n", failures == 0 ? "all passed" : "FAILURES");

@@ -35,6 +35,7 @@ SOURCES=(
     "${RUNTIME_DIR}/wav_reader.cpp"
     "${RUNTIME_DIR}/session_player.cpp"
     "${RUNTIME_DIR}/session_recorder.cpp"
+    "${RUNTIME_DIR}/ipc_server.cpp"
 )
 
 "${CXX}" "${CXXFLAGS[@]}" -pthread -o "${BIN}" "${SOURCES[@]}"

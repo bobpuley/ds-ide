@@ -213,12 +213,25 @@ static void scan_output_and_notify(const std::vector<float>& out_buf, size_t n) 
 // ---- Scope state (shared across modes, reset on mode switch) ----------------
 
 struct ScopeState {
-    static constexpr size_t SCOPE_BLOCKS   = 33;
-    static constexpr size_t SCOPE_STEP     = 4;
-    // Hard cap on accumulated samples per channel — no RT heap reallocation beyond
-    // this point for any block size (AC-40). At SCOPE_STEP=4 and 4096 frames/block,
-    // 33 blocks produce 33*(4096/4)=33792 samples; cap at 64k to give headroom.
-    static constexpr size_t SCOPE_SAMPLES_MAX = 65536;
+    static constexpr size_t SCOPE_BLOCKS = 33;
+
+    // Reference hardware frame size SCOPE_STEP_BASE was originally tuned for
+    // (rt_buffer_size default = 256 — see SpscIpcQueue::MAX_MSG's comment,
+    // sized for the ~76 kB message this combination produces).
+    static constexpr size_t SCOPE_STEP_BASE_FRAMES = 256;
+    static constexpr size_t SCOPE_STEP_BASE        = 4;
+
+    // FR-EMU-2: the per-channel sample budget is derived from
+    // SpscIpcQueue::MAX_MSG instead of being sized independently, so
+    // build_scope_json()'s output can never structurally exceed the SPSC
+    // slot capacity regardless of hardware frame size. kBytesPerValueWorstCase
+    // bounds the widest "%.6g" output plus its separating comma (e.g.
+    // "-1.23046e-05,"); kFixedOverheadBytes covers the surrounding JSON
+    // skeleton (keys, brackets, braces).
+    static constexpr size_t kBytesPerValueWorstCase = 16;
+    static constexpr size_t kFixedOverheadBytes     = 128;
+    static constexpr size_t SCOPE_SAMPLES_MAX =
+        (SpscIpcQueue::MAX_MSG - kFixedOverheadBytes) / (3 * kBytesPerValueWorstCase);
 
     std::vector<float> in, out, out_r;
     std::string json_buf;  // pre-reserved to MAX_MSG — no RT heap allocation (FR-RTS-2)
@@ -242,8 +255,17 @@ struct ScopeState {
     bool accumulate(const std::vector<float>& in_buf,
                     const std::vector<float>& out_buf,
                     size_t frames) {
+        // FR-EMU-2: decimate more aggressively as the hardware frame count
+        // grows past the reference size, so the total samples accumulated
+        // over SCOPE_BLOCKS blocks — and therefore the emitted message size —
+        // stays roughly constant instead of scaling linearly with frames.
+        size_t step = SCOPE_STEP_BASE;
+        if (frames > SCOPE_STEP_BASE_FRAMES) {
+            step = SCOPE_STEP_BASE * frames / SCOPE_STEP_BASE_FRAMES;
+        }
+
         size_t buf_samples = frames * 2;
-        for (size_t i = 0; i < buf_samples; i += SCOPE_STEP * 2) {
+        for (size_t i = 0; i < buf_samples; i += step * 2) {
             if (in.size() >= SCOPE_SAMPLES_MAX) break;  // hard cap — no realloc (AC-40)
             in.push_back(in_buf[i]);
             out.push_back(out_buf[i]);
@@ -277,11 +299,29 @@ static void run_simulated(bool use_block,
     double   wav_pos      = 0.0;
     uint64_t wav_gen_seen = g_state.wav_generation.load();
 
+    // FR-EMU-7: snapshot of config_generation at entry — process_one_block()
+    // and the CoreAudio-wait predicate below both compare against this to
+    // detect a `config` IPC update and return/restart with fresh sample_rate/
+    // block_size instead of running the rest of the session on stale values.
+    uint64_t cfg_gen_seen = g_state.config_generation.load();
+
+    // FR-EMU-4: track the recorder's active() edge so a record_error is
+    // reported once promptly per session rather than either never firing
+    // (checked only at recordStop) or re-firing every block indefinitely.
+    bool recorder_was_active   = false;
+    bool recorder_error_reported = false;
+
     // Process one block of audio: generate input, run effect, emit scope/FFT.
     // Also writes the computed output into out_buf so the caller can forward
     // it to an audio device. Returns false when the simulated mode should exit.
     auto process_one_block = [&](size_t frames) -> bool {
         if (static_cast<AudioMode>(g_state.audio_mode.load()) != AudioMode::Simulated)
+            return false;
+        // FR-EMU-7: a `config` update since this loop was entered — return
+        // so the caller (the fallback silent loop, or the CoreAudio-wait
+        // predicate below) restarts run_simulated() with freshly re-read
+        // sample_rate/block_size rather than continuing on stale values.
+        if (g_state.config_generation.load(std::memory_order_relaxed) != cfg_gen_seen)
             return false;
 
         if (!g_state.transport_running.load()) return true;
@@ -358,6 +398,17 @@ static void run_simulated(bool use_block,
 
         // Record input block (M14 / FR-RTS-1): enqueueBlock is RT-safe (SPSC, no mutex).
         g_state.recorder.enqueueBlock(in_buf.data(), frames);
+
+        // FR-EMU-4: surface a drain-thread write failure (ENOSPC/EIO) promptly
+        // instead of only at the next explicit recordStop. active()'s
+        // false→true edge re-arms reporting for each new recording session.
+        bool rec_active_now = g_state.recorder.active();
+        if (rec_active_now && !recorder_was_active) recorder_error_reported = false;
+        recorder_was_active = rec_active_now;
+        if (g_state.recorder.hasWriteError() && !recorder_error_reported) {
+            recorder_error_reported = true;
+            ipc_send("{\"type\":\"event\",\"kind\":\"record_error\"}");
+        }
 
         std::fill(out_buf.begin(), out_buf.begin() + static_cast<ptrdiff_t>(frames * 2), 0.f);
 
@@ -450,12 +501,13 @@ static void run_simulated(bool use_block,
         return;
     }
 
-    // CoreAudio is driving the loop — wait for mode change or shutdown.
+    // CoreAudio is driving the loop — wait for mode change, config change, or shutdown.
     {
         std::unique_lock<std::mutex> lk(g_state.mode_mutex);
-        g_state.mode_cv.wait(lk, [] {
+        g_state.mode_cv.wait(lk, [cfg_gen_seen] {
             return g_state.shutdown.load()
-                || static_cast<AudioMode>(g_state.audio_mode.load()) != AudioMode::Simulated;
+                || static_cast<AudioMode>(g_state.audio_mode.load()) != AudioMode::Simulated
+                || g_state.config_generation.load(std::memory_order_relaxed) != cfg_gen_seen;
         });
     }
 
@@ -479,6 +531,12 @@ static void run_realtime(bool use_block,
                          std::vector<float>& out_ch0,
                          std::vector<float>& out_ch1) {
     uint32_t buffer_size = static_cast<uint32_t>(g_state.rt_buffer_size.load());
+
+    // FR-EMU-7: see run_simulated()'s cfg_gen_seen for rationale — wakes the
+    // mode_cv wait below on a `config` update even though audio_mode itself
+    // didn't change, so sample_rate (used for FFT bin labeling) is re-read
+    // by the caller on the next entry instead of staying latched.
+    uint64_t cfg_gen_seen = g_state.config_generation.load();
 
     // State captured by the CoreAudio render callback (called on the real-time thread).
     ScopeState scope;
@@ -571,6 +629,16 @@ static void run_realtime(bool use_block,
                     "{\"type\":\"latency\",\"measuredMs\":%.2f}", static_cast<double>(lat_ms));
                 ipc_send(buf);
             }
+            // FR-EMU-3: AudioUnitRender failures, surfaced alongside xruns
+            // rather than silently leaving the render callback's input
+            // unchanged for that block.
+            uint32_t render_errs = device.drainRenderErrors();
+            if (render_errs > 0) {
+                char buf[128];
+                std::snprintf(buf, sizeof(buf),
+                    "{\"type\":\"event\",\"kind\":\"render_error\",\"count\":%u}", render_errs);
+                ipc_send(buf);
+            }
         }
     };
 
@@ -586,12 +654,27 @@ static void run_realtime(bool use_block,
         return;
     }
 
-    // Block this thread until mode changes or shutdown
+    // FR-EMU-3: the input hardware's actual queried sample rate may diverge
+    // from the engine's configured rate (e.g. a device that ignores the
+    // requested format) — surface it instead of silently playing/recording
+    // at the wrong rate.
+    float queried_sr = device.queriedInputSampleRate();
+    if (queried_sr > 0.f && std::fabs(queried_sr - sample_rate) > 0.5f) {
+        char buf[160];
+        std::snprintf(buf, sizeof(buf),
+            "{\"type\":\"event\",\"kind\":\"sample_rate_mismatch\","
+            "\"engineSampleRate\":%.1f,\"deviceSampleRate\":%.1f}",
+            static_cast<double>(sample_rate), static_cast<double>(queried_sr));
+        ipc_send(buf);
+    }
+
+    // Block this thread until mode changes, config changes, or shutdown (FR-EMU-7)
     {
         std::unique_lock<std::mutex> lk(g_state.mode_mutex);
-        g_state.mode_cv.wait(lk, [] {
+        g_state.mode_cv.wait(lk, [cfg_gen_seen] {
             return g_state.shutdown.load()
-                || static_cast<AudioMode>(g_state.audio_mode.load()) != AudioMode::Realtime;
+                || static_cast<AudioMode>(g_state.audio_mode.load()) != AudioMode::Realtime
+                || g_state.config_generation.load(std::memory_order_relaxed) != cfg_gen_seen;
         });
     }
 
@@ -641,7 +724,11 @@ void run_audio_engine() {
                 // Report drop count roughly every 500 ms of idle time.
                 if (idle_ticks >= 1000) {
                     idle_ticks = 0;
-                    uint32_t drops = g_state.ipc_queue_drops.load(std::memory_order_relaxed);
+                    // FR-EMU-2: fold in messages truncated for exceeding MAX_MSG
+                    // alongside queue-full drops — both mean "this message
+                    // didn't reach the client intact."
+                    uint32_t drops = g_state.ipc_queue_drops.load(std::memory_order_relaxed)
+                                   + g_state.ipc_queue.oversize_drops.load(std::memory_order_relaxed);
                     if (drops != last_reported_drops) {
                         last_reported_drops = drops;
                         char buf[80];
@@ -661,8 +748,16 @@ void run_audio_engine() {
     });
 
     // Outer dispatch loop: check mode and run the appropriate inner loop.
-    // Each inner loop returns when mode changes or shutdown is set.
+    // Each inner loop returns when mode changes, config changes, or shutdown
+    // is set (FR-EMU-7).
     while (!g_state.shutdown.load()) {
+        // FR-EMU-7: re-read audio configuration each outer loop iteration so
+        // a `config` IPC update takes effect on the next mode-loop entry
+        // instead of the values captured once at startup silently going
+        // stale for the rest of the session.
+        sample_rate = g_state.sample_rate.load();
+        block_size  = g_state.block_size.load();
+
         AudioMode mode = static_cast<AudioMode>(g_state.audio_mode.load());
 
         if (mode == AudioMode::Simulated) {

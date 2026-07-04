@@ -41,9 +41,21 @@ public:
     // Returns the number of xruns accumulated since the last call and resets the counter.
     uint32_t drainXruns();
 
+    // Returns the number of AudioUnitRender failures accumulated since the
+    // last call and resets the counter (FR-EMU-3). Only incremented by the
+    // duplex render callback (start()) — start_output_only() never calls
+    // AudioUnitRender.
+    uint32_t drainRenderErrors();
+
     // Returns the most recently measured round-trip latency in milliseconds.
     // Updated once per output render callback.
     float lastLatencyMs() const;
+
+    // Returns the input hardware's actual queried sample rate from the most
+    // recent start() call (0 if unavailable or start_output_only() was used) —
+    // for the caller to compare against the engine's configured rate and
+    // surface a sample_rate_mismatch event (FR-EMU-3).
+    float queriedInputSampleRate() const;
 
 private:
 #ifdef __APPLE__

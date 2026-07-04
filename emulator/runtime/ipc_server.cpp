@@ -43,54 +43,122 @@ static void retire_wav_data(const WavData* new_wav) {
 // ---- Minimal JSON field extraction ------------------------------------------
 // Handles string, number, and one level of nested object values.
 // Returns "" when key is absent.
+//
+// FR-EMU-6: walks the top-level object structurally (tracking key/value
+// boundaries) instead of substring-searching for "\"key\":" — the previous
+// substring search could match a key literal that happened to appear inside
+// an unrelated field's *string value* (e.g. a "path" containing the literal
+// text "type":), returning that field's trailing bytes instead of the real
+// top-level value, or missing the real key entirely.
 
-static std::string json_get(const std::string& json, const std::string& key) {
-    std::string needle = "\"" + key + "\":";
-    auto pos = json.find(needle);
+std::string json_get(const std::string& json, const std::string& key) {
+    size_t pos = json.find('{');
     if (pos == std::string::npos) return {};
-    pos += needle.size();
-    while (pos < json.size() && json[pos] == ' ') ++pos;
-    if (pos >= json.size()) return {};
+    ++pos;  // just past the opening brace — top-level object depth 1
 
-    if (json[pos] == '"') {
-        // String value: scan to unescaped closing quote (AC-44: handle \" inside strings).
+    while (pos < json.size()) {
+        while (pos < json.size() && (json[pos] == ' ' || json[pos] == ',')) ++pos;
+        if (pos >= json.size() || json[pos] == '}') break;
+        if (json[pos] != '"') break;  // malformed at this depth — stop rather than misparse
+
+        // Parse this entry's key (honoring \" escapes, same as string values below).
         ++pos;
-        std::string result;
-        while (pos < json.size()) {
-            char c = json[pos];
-            if (c == '\\' && pos + 1 < json.size()) {
-                ++pos;  // skip escape character
-                result += json[pos];
-            } else if (c == '"') {
-                break;
-            } else {
-                result += c;
-            }
+        std::string cur_key;
+        while (pos < json.size() && json[pos] != '"') {
+            if (json[pos] == '\\' && pos + 1 < json.size()) { ++pos; cur_key += json[pos]; }
+            else cur_key += json[pos];
             ++pos;
         }
-        return result;
-    }
-    if (json[pos] == '{') {
-        // Object value: scan to matching closing brace.
-        // Enforce a nesting-depth limit to reject pathological inputs (AC-44).
-        static constexpr size_t MAX_DEPTH = 8;
-        size_t depth = 0, start = pos;
-        while (pos < json.size()) {
-            if (json[pos] == '{') {
-                if (++depth > MAX_DEPTH) return {};  // reject — too deeply nested
-            } else if (json[pos] == '}') {
-                if (--depth == 0) { ++pos; break; }
-            }
+        if (pos >= json.size()) break;  // unterminated key string — malformed
+        ++pos;  // skip closing quote
+
+        while (pos < json.size() && json[pos] == ' ') ++pos;
+        if (pos >= json.size() || json[pos] != ':') break;
+        ++pos;  // skip colon
+        while (pos < json.size() && json[pos] == ' ') ++pos;
+        if (pos >= json.size()) break;
+
+        const bool matched = (cur_key == key);
+        std::string value;
+
+        if (json[pos] == '"') {
+            // String value: scan to unescaped closing quote (AC-44: handle \" inside strings).
+            // Always advances past escapes, even when this isn't the matched
+            // key, so a "type": substring inside a skipped string's content
+            // can never be mistaken for the next entry's key (FR-EMU-6).
             ++pos;
+            bool terminated = false;
+            while (pos < json.size()) {
+                char c = json[pos];
+                if (c == '\\' && pos + 1 < json.size()) {
+                    ++pos;
+                    if (matched) value += json[pos];
+                } else if (c == '"') {
+                    ++pos;
+                    terminated = true;
+                    break;
+                } else {
+                    if (matched) value += c;
+                    ++pos;
+                    continue;
+                }
+                ++pos;
+            }
+            if (!terminated) return {};  // unterminated string — malformed, bail entirely
+        } else if (json[pos] == '{') {
+            // Object value: scan to matching closing brace.
+            // Enforce a nesting-depth limit to reject pathological inputs (AC-44).
+            static constexpr size_t MAX_DEPTH = 8;
+            size_t depth = 0, start = pos;
+            while (pos < json.size()) {
+                if (json[pos] == '{') {
+                    if (++depth > MAX_DEPTH) return {};  // reject — too deeply nested
+                } else if (json[pos] == '}') {
+                    if (--depth == 0) { ++pos; break; }
+                }
+                ++pos;
+            }
+            if (matched) value = json.substr(start, pos - start);
+        } else {
+            // Number / bool / null: scan to delimiter
+            size_t start = pos;
+            while (pos < json.size() && json[pos] != ',' && json[pos] != '}'
+                   && json[pos] != ']' && json[pos] != ' ')
+                ++pos;
+            if (matched) value = json.substr(start, pos - start);
         }
-        return json.substr(start, pos - start);
+
+        if (matched) return value;
     }
-    // Number / bool / null: scan to delimiter
-    auto start = pos;
-    while (pos < json.size() && json[pos] != ',' && json[pos] != '}'
-           && json[pos] != ']' && json[pos] != ' ')
-        ++pos;
-    return json.substr(start, pos - start);
+    return {};
+}
+
+// Escapes a string for embedding inside a JSON string literal (FR-EMU-6):
+// backslash, double-quote, and control characters. Used for any value that
+// isn't already known to be JSON-safe (e.g. exception text) before splicing
+// it into outbound event JSON — without this, quote/backslash content
+// produces malformed JSON on the wire.
+std::string json_escape(const std::string& s) {
+    std::string out;
+    out.reserve(s.size() + 8);
+    for (char c : s) {
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n";  break;
+            case '\r': out += "\\r";  break;
+            case '\t': out += "\\t";  break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    char esc[8];
+                    std::snprintf(esc, sizeof(esc), "\\u%04x", static_cast<unsigned char>(c));
+                    out += esc;
+                } else {
+                    out += c;
+                }
+        }
+    }
+    return out;
 }
 
 // Parse {"0":0.5,"1":0.3} (numbers) or {"28":true,...} (bools) and invoke
@@ -170,6 +238,12 @@ static void dispatch(const std::string& line) {
                 }
             } catch (...) { std::fprintf(stderr, "[daisy-emu] stoul failed: blockSize\n"); }
         }
+        // FR-EMU-7: wake the active mode loop so it re-reads sample_rate/
+        // block_size instead of running the rest of the session on whatever
+        // was captured when run_audio_engine() started (matching the
+        // audioDevice handler's existing mode_cv.notify_all() pattern).
+        g_state.config_generation.fetch_add(1, std::memory_order_relaxed);
+        g_state.mode_cv.notify_all();
     }
     else if (type == "transport") {
         auto action = json_get(line, "action");
@@ -298,8 +372,21 @@ static void dispatch(const std::string& line) {
         }
     }
     else if (type == "recordStop") {
-        std::lock_guard<std::mutex> lk(g_state.recorder_mutex);
-        g_state.recorder.stop();
+        uint32_t blocks;
+        bool had_error;
+        {
+            std::lock_guard<std::mutex> lk(g_state.recorder_mutex);
+            g_state.recorder.stop();
+            blocks     = g_state.recorder.blockCount();
+            had_error  = g_state.recorder.hasWriteError();
+        }
+        // FR-EMU-4: report final status over IPC so the client can tell a
+        // clean stop from one that silently truncated (ENOSPC/EIO mid-session).
+        char buf[128];
+        std::snprintf(buf, sizeof(buf),
+            "{\"type\":\"event\",\"kind\":\"record_stopped\",\"blocks\":%u,\"error\":%s}",
+            blocks, had_error ? "true" : "false");
+        emit_event(buf);
     }
     else if (type == "replayStart") {
         auto path = json_get(line, "path");
@@ -312,6 +399,20 @@ static void dispatch(const std::string& line) {
                 ok = g_state.player.open(path, sr, bs);
             }
             if (ok) {
+                // FR-EMU-1: the recorded header's sample_rate/block_size may
+                // diverge from the engine's current config — tell the client
+                // rather than silently replaying at the wrong rate/framing.
+                auto cur_sr = static_cast<uint32_t>(g_state.sample_rate.load());
+                auto cur_bs = static_cast<uint32_t>(g_state.block_size.load());
+                if (sr != cur_sr || bs != cur_bs) {
+                    char buf[160];
+                    std::snprintf(buf, sizeof(buf),
+                        "{\"type\":\"event\",\"kind\":\"replay_rate_mismatch\","
+                        "\"recordedSampleRate\":%u,\"recordedBlockSize\":%u,"
+                        "\"engineSampleRate\":%u,\"engineBlockSize\":%u}",
+                        sr, bs, cur_sr, cur_bs);
+                    emit_event(buf);
+                }
                 // Ensure simulated mode and stop any active transport before replay
                 {
                     std::lock_guard<std::mutex> lk(g_state.mode_mutex);
@@ -369,7 +470,8 @@ static void dispatch(const std::string& line) {
         }
     }
     } catch (const std::exception& e) {
-        emit_event(std::string("{\"type\":\"event\",\"kind\":\"dispatch_error\",\"msg\":\"") + e.what() + "\"}");
+        emit_event(std::string("{\"type\":\"event\",\"kind\":\"dispatch_error\",\"msg\":\"")
+                   + json_escape(e.what()) + "\"}");
     } catch (...) {
         emit_event("{\"type\":\"event\",\"kind\":\"dispatch_error\",\"msg\":\"unknown exception\"}");
     }

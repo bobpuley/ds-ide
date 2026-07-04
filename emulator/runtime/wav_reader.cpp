@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
+#include <sys/stat.h>
+#include <unistd.h>
 
 namespace daisy_emu {
 
@@ -196,12 +198,60 @@ bool load_wav_file(const std::string& path, WavData& out, std::string& err) {
     std::FILE* f = std::fopen(path.c_str(), "rb");
     if (!f) { err = "cannot open file: " + path; return false; }
 
-    std::fseek(f, 0, SEEK_END);
-    long len = std::ftell(f);
-    std::fseek(f, 0, SEEK_SET);
-    if (len <= 0) { std::fclose(f); err = "empty file: " + path; return false; }
+    // Determine the file size via a checked fstat() (FR-EMU-5) rather than
+    // trusting an unchecked fseek/ftell pair — both are still used (and
+    // checked) below for the actual seeks needed to re-read from the start.
+    struct stat st{};
+    if (::fstat(::fileno(f), &st) != 0) {
+        std::fclose(f);
+        err = "cannot stat file: " + path;
+        return false;
+    }
+    if (st.st_size <= 0) {
+        std::fclose(f);
+        err = "empty file: " + path;
+        return false;
+    }
 
-    std::vector<uint8_t> buf(static_cast<size_t>(len));
+    // Hard size ceiling, enforced before any full-file buffering (FR-EMU-5):
+    // a non-WAV multi-GB file must fail immediately with a bounded-memory
+    // error instead of a multi-GB transient allocation.
+    static constexpr long long kMaxWavFileBytes = 256LL * 1024 * 1024;  // 256 MB
+    if (static_cast<long long>(st.st_size) > kMaxWavFileBytes) {
+        std::fclose(f);
+        char buf[128];
+        std::snprintf(buf, sizeof(buf),
+                      "WAV file too large (%lld bytes, max %lld bytes)",
+                      static_cast<long long>(st.st_size), kMaxWavFileBytes);
+        err = buf;
+        return false;
+    }
+
+    // Validate RIFF/WAVE magic from just the first 12 bytes before buffering
+    // the rest of the file (FR-EMU-5) — parse_wav() re-validates this once
+    // the full buffer is in memory, but that's too late to avoid the
+    // allocation for a large non-WAV file.
+    uint8_t header[12];
+    if (std::fseek(f, 0, SEEK_SET) != 0) {
+        std::fclose(f);
+        err = "seek failed: " + path;
+        return false;
+    }
+    size_t header_read = std::fread(header, 1, sizeof(header), f);
+    if (header_read != sizeof(header)
+        || std::memcmp(header, "RIFF", 4) != 0
+        || std::memcmp(header + 8, "WAVE", 4) != 0) {
+        std::fclose(f);
+        err = "not a RIFF/WAVE file: " + path;
+        return false;
+    }
+
+    if (std::fseek(f, 0, SEEK_SET) != 0) {
+        std::fclose(f);
+        err = "seek failed: " + path;
+        return false;
+    }
+    std::vector<uint8_t> buf(static_cast<size_t>(st.st_size));
     size_t read = std::fread(buf.data(), 1, buf.size(), f);
     std::fclose(f);
     if (read != buf.size()) { err = "short read: " + path; return false; }
