@@ -179,10 +179,10 @@
   "scripts": {
     "compile": "node esbuild.js",
     "compile:watch": "node esbuild.js --watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.webview.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "tsc --noEmit",
+    "lint": "tsc --noEmit && tsc --noEmit -p tsconfig.webview.json",
     "package": "node esbuild.js --production && vsce package --no-dependencies",
     "verify:package": "bash scripts/verify-vsix.sh"
   },

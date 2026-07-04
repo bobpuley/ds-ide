@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
 import { WiringViewProvider } from '../../../sidebar/wiring-editor-panel';
+import type { WirePinHandler, UnwirePinHandler } from '../../../wiring/wiring-panel';
 
 function makeWebviewViewMock() {
   const onDisposeHandlers: Array<() => void> = [];
@@ -48,7 +49,8 @@ describe('WiringViewProvider', () => {
     onUnwirePin = vi.fn().mockResolvedValue(undefined);
     provider = new WiringViewProvider(
       { fsPath: '/ext' } as unknown as vscode.Uri,
-      onWirePin, onUnwirePin,
+      onWirePin as unknown as WirePinHandler,
+      onUnwirePin as unknown as UnwirePinHandler,
     );
   });
 

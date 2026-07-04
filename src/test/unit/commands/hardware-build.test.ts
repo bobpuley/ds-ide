@@ -19,19 +19,19 @@ function makeDiagnostics() {
   } as unknown as vscode.DiagnosticCollection;
 }
 
-function makeSpawn(exitCode = 0, stderr = '') {
+function makeSpawn(exitCode = 0, stderr = ''): typeof import('child_process').spawn {
   return vi.fn(() => {
     const proc = new EventEmitter() as ReturnType<typeof import('child_process').spawn>;
     const stdout = new EventEmitter() as NodeJS.ReadableStream;
     const stderrStream = new EventEmitter() as NodeJS.ReadableStream;
-    (proc as unknown as Record<string, unknown>).stdout = stdout;
-    (proc as unknown as Record<string, unknown>).stderr = stderrStream;
+    (proc as unknown as Record<string, unknown>)['stdout'] = stdout;
+    (proc as unknown as Record<string, unknown>)['stderr'] = stderrStream;
     process.nextTick(() => {
       if (stderr) stderrStream.emit('data', Buffer.from(stderr));
       proc.emit('close', exitCode);
     });
     return proc;
-  });
+  }) as unknown as typeof import('child_process').spawn;
 }
 
 describe('buildForHardware()', () => {
@@ -76,14 +76,14 @@ describe('buildForHardware()', () => {
     const spawn = vi.fn(() => {
       const proc = new EventEmitter() as ReturnType<typeof import('child_process').spawn>;
       const stderr = new EventEmitter() as NodeJS.ReadableStream;
-      (proc as unknown as Record<string, unknown>).stdout = new EventEmitter();
-      (proc as unknown as Record<string, unknown>).stderr = stderr;
+      (proc as unknown as Record<string, unknown>)['stdout'] = new EventEmitter();
+      (proc as unknown as Record<string, unknown>)['stderr'] = stderr;
       process.nextTick(() => {
         stderr.emit('data', Buffer.from(diagnosticLine + '\n'));
         proc.emit('close', 1);
       });
       return proc;
-    });
+    }) as unknown as typeof import('child_process').spawn;
 
     const diagnostics = makeDiagnostics();
     await buildForHardware('/project', diagnostics, { spawn });

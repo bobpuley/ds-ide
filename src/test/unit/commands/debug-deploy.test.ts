@@ -11,8 +11,8 @@ function makeManager(overrides: Partial<{
   sendPotSnapshot: (v: Record<number, number>) => void;
 }> = {}): EmulatorManager {
   const em = new EventEmitter() as unknown as EmulatorManager;
-  (em as unknown as Record<string, unknown>).deploy = overrides.deploy ?? vi.fn(() => Promise.resolve());
-  (em as unknown as Record<string, unknown>).sendPotSnapshot = overrides.sendPotSnapshot ?? vi.fn();
+  (em as unknown as Record<string, unknown>)['deploy'] = overrides.deploy ?? vi.fn(() => Promise.resolve());
+  (em as unknown as Record<string, unknown>)['sendPotSnapshot'] = overrides.sendPotSnapshot ?? vi.fn();
   Object.defineProperty(em, 'childPid', {
     get: () => 'childPid' in overrides ? overrides.childPid : 42,
     configurable: true,

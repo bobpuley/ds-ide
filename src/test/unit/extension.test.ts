@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
 import * as vscode from 'vscode';
-import path from 'path';
+import * as path from 'path';
 
 vi.mock('fs', () => {
   const promises = {
@@ -309,26 +309,26 @@ describe('extension view initialization (FR-CE-9, FR-WE-11)', () => {
     vi.clearAllMocks();
     managerInstances.length = 0;
     fsMock = (await import('fs')) as unknown as Record<string, ReturnType<typeof vi.fn>>;
-    const promisesMock = fsMock['promises'] as Record<string, ReturnType<typeof vi.fn>>;
-    promisesMock['access'].mockImplementation((p: unknown) => {
+    const promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['access']!.mockImplementation((p: unknown) => {
       const fp = String(p);
       if (fp.endsWith('CMakeLists.txt') || fp.endsWith('.cpp')) return Promise.resolve();
       return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
     });
-    promisesMock['readdir'].mockResolvedValue(['effect.cpp']);
-    promisesMock['readFile'].mockImplementation((p: unknown) => {
+    promisesMock['readdir']!.mockResolvedValue(['effect.cpp']);
+    promisesMock['readFile']!.mockImplementation((p: unknown) => {
       const fp = String(p);
       if (fp.endsWith('.cpp')) return Promise.resolve('// ds-ide:controls\n// ds-ide:pot vol 15\n');
       if (fp.endsWith('controllers.yaml')) return Promise.resolve('pots: []\nbuttons: []\nleds: []\n');
       return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
     });
-    (vscode.workspace as unknown as Record<string, unknown>).workspaceFolders = [
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [
       { uri: { fsPath: '/proj' } },
     ];
   });
 
   afterEach(() => {
-    (vscode.workspace as unknown as Record<string, unknown>).workspaceFolders = undefined;
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = undefined;
   });
 
   it('registers onDidSaveTextDocument watcher on activate (FR-CE-9, FR-WE-11)', async () => {
@@ -352,8 +352,8 @@ describe('extension view initialization (FR-CE-9, FR-WE-11)', () => {
     act(ctx);
     const saveCb = (vscode.workspace.onDidSaveTextDocument as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
       ((doc: { uri: { fsPath: string } }) => Promise<void>);
-    const promisesMock = fsMock['promises'] as Record<string, ReturnType<typeof vi.fn>>;
-    promisesMock['readFile'].mockClear();
+    const promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['readFile']!.mockClear();
     await saveCb({ uri: { fsPath: path.join('/proj', 'effect.cpp') } });
     expect(promisesMock['readFile']).toHaveBeenCalledWith(
       expect.stringMatching(/\.cpp$/), expect.anything(),
@@ -366,8 +366,8 @@ describe('extension view initialization (FR-CE-9, FR-WE-11)', () => {
     act(ctx);
     const saveCb = (vscode.workspace.onDidSaveTextDocument as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
       ((doc: { uri: { fsPath: string } }) => Promise<void>);
-    const promisesMock = fsMock['promises'] as Record<string, ReturnType<typeof vi.fn>>;
-    promisesMock['readFile'].mockClear();
+    const promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['readFile']!.mockClear();
     await saveCb({ uri: { fsPath: '/other/unrelated.txt' } });
     expect(promisesMock['readFile']).not.toHaveBeenCalled();
   });
@@ -378,8 +378,8 @@ describe('extension view initialization (FR-CE-9, FR-WE-11)', () => {
     act(ctx);
     const saveCb = (vscode.workspace.onDidSaveTextDocument as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
       ((doc: { uri: { fsPath: string } }) => Promise<void>);
-    const promisesMock = fsMock['promises'] as Record<string, ReturnType<typeof vi.fn>>;
-    promisesMock['readFile'].mockClear();
+    const promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['readFile']!.mockClear();
     await saveCb({ uri: { fsPath: path.join('/proj', 'controllers.yaml') } });
     expect(promisesMock['readFile']).toHaveBeenCalledWith(
       expect.stringMatching(/controllers\.yaml$/), expect.anything(),
@@ -388,10 +388,10 @@ describe('extension view initialization (FR-CE-9, FR-WE-11)', () => {
 
   it('activate() completes setup synchronously without blocking on file reads (AC-66)', async () => {
     const { activate: act } = await import('../../extension');
-    const promisesMock = fsMock['promises'] as Record<string, ReturnType<typeof vi.fn>>;
+    const promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
     // Make file reads never resolve — activate() must still return
-    promisesMock['access'].mockReturnValue(new Promise(() => {}));
-    promisesMock['readFile'].mockReturnValue(new Promise(() => {}));
+    promisesMock['access']!.mockReturnValue(new Promise(() => {}));
+    promisesMock['readFile']!.mockReturnValue(new Promise(() => {}));
     const ctx = makeContext();
     act(ctx);
     // All registrations must be synchronous — even with never-resolving file reads
@@ -413,16 +413,16 @@ describe('controllers.yaml read robustness (FR-IPC-4)', () => {
     vi.clearAllMocks();
     managerInstances.length = 0;
     fsMock = (await import('fs')) as unknown as Record<string, ReturnType<typeof vi.fn>>;
-    promisesMock = fsMock['promises'] as Record<string, ReturnType<typeof vi.fn>>;
-    promisesMock['access'].mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
-    promisesMock['readdir'].mockResolvedValue([]);
-    (vscode.workspace as unknown as Record<string, unknown>).workspaceFolders = [
+    promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['access']!.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    promisesMock['readdir']!.mockResolvedValue([]);
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [
       { uri: { fsPath: '/proj' } },
     ];
   });
 
   afterEach(() => {
-    (vscode.workspace as unknown as Record<string, unknown>).workspaceFolders = undefined;
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = undefined;
   });
 
   async function triggerLoadViaSave(ctx: vscode.ExtensionContext): Promise<void> {
@@ -453,7 +453,7 @@ describe('controllers.yaml read robustness (FR-IPC-4)', () => {
   }
 
   it('treats a missing controllers.yaml (ENOENT) as empty, without an unreadable warning', async () => {
-    promisesMock['readFile'].mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    promisesMock['readFile']!.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
     const { activate: act } = await import('../../extension');
     const ctx = makeContext();
     act(ctx);
@@ -464,7 +464,7 @@ describe('controllers.yaml read robustness (FR-IPC-4)', () => {
   });
 
   it('surfaces a warning when controllers.yaml read fails with a non-ENOENT error', async () => {
-    promisesMock['readFile'].mockRejectedValue(Object.assign(new Error('permission denied'), { code: 'EACCES' }));
+    promisesMock['readFile']!.mockRejectedValue(Object.assign(new Error('permission denied'), { code: 'EACCES' }));
     const { activate: act } = await import('../../extension');
     const ctx = makeContext();
     act(ctx);
@@ -475,21 +475,21 @@ describe('controllers.yaml read robustness (FR-IPC-4)', () => {
   });
 
   it('refuses to overwrite controllers.yaml after a non-ENOENT read failure', async () => {
-    promisesMock['readFile'].mockRejectedValue(Object.assign(new Error('permission denied'), { code: 'EACCES' }));
+    promisesMock['readFile']!.mockRejectedValue(Object.assign(new Error('permission denied'), { code: 'EACCES' }));
     const { activate: act } = await import('../../extension');
     const ctx = makeContext();
     act(ctx);
     await triggerLoadViaSave(ctx);
 
     const handler = getControlsEditorMessageHandler();
-    promisesMock['writeFile'].mockClear();
+    promisesMock['writeFile']!.mockClear();
     handler({ command: 'editorSave', cfg: { pots: [], buttons: [], leds: [], errors: [] } });
     await Promise.resolve();
     expect(promisesMock['writeFile']).not.toHaveBeenCalled();
   });
 
   it('writes normally once controllers.yaml has been read successfully', async () => {
-    promisesMock['readFile'].mockImplementation((p: unknown) => {
+    promisesMock['readFile']!.mockImplementation((p: unknown) => {
       const fp = String(p);
       if (fp.endsWith('controllers.yaml')) return Promise.resolve('pots: []\nbuttons: []\nleds: []\n');
       return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
@@ -500,7 +500,7 @@ describe('controllers.yaml read robustness (FR-IPC-4)', () => {
     await triggerLoadViaSave(ctx);
 
     const handler = getControlsEditorMessageHandler();
-    promisesMock['writeFile'].mockClear();
+    promisesMock['writeFile']!.mockClear();
     handler({ command: 'editorSave', cfg: { pots: [], buttons: [], leds: [], errors: [] } });
     await Promise.resolve();
     expect(promisesMock['writeFile']).toHaveBeenCalledWith(
@@ -583,22 +583,22 @@ describe('wiring edit consistency (FR-IPC-5)', () => {
     vi.clearAllMocks();
     managerInstances.length = 0;
     fsMock = (await import('fs')) as unknown as Record<string, ReturnType<typeof vi.fn>>;
-    promisesMock = fsMock['promises'] as Record<string, ReturnType<typeof vi.fn>>;
-    promisesMock['access'].mockImplementation((p: unknown) => {
+    promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['access']!.mockImplementation((p: unknown) => {
       const fp = String(p);
       if (fp.endsWith('CMakeLists.txt') || fp.endsWith('.cpp')) return Promise.resolve();
       return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
     });
-    promisesMock['readdir'].mockResolvedValue(['effect.cpp']);
-    promisesMock['readFile'].mockResolvedValue('');
-    (vscode.workspace as unknown as Record<string, unknown>).workspaceFolders = [
+    promisesMock['readdir']!.mockResolvedValue(['effect.cpp']);
+    promisesMock['readFile']!.mockResolvedValue('');
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [
       { uri: { fsPath: '/proj' } },
     ];
     (vscode.workspace.applyEdit as ReturnType<typeof vi.fn>).mockResolvedValue(true);
   });
 
   afterEach(() => {
-    (vscode.workspace as unknown as Record<string, unknown>).workspaceFolders = undefined;
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = undefined;
   });
 
   function resolveProvider(viewId: string): { handler: (msg: unknown) => Promise<void> | void; postMessage: ReturnType<typeof vi.fn> } {

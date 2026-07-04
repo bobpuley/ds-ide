@@ -12,9 +12,9 @@ function makeSocketStub() {
     destroy: ReturnType<typeof vi.fn>;
     destroyed: boolean;
   };
-  stub.connect  = vi.fn((_opts: unknown, _cb?: () => void) => stub);
-  stub.write    = vi.fn((_data: string) => true);
-  stub.destroy  = vi.fn(() => { stub.destroyed = true; });
+  stub.connect  = vi.fn((_opts: unknown, _cb?: () => void) => stub) as ReturnType<typeof vi.fn>;
+  stub.write    = vi.fn((_data: string) => true) as ReturnType<typeof vi.fn>;
+  stub.destroy  = vi.fn(() => { stub.destroyed = true; }) as ReturnType<typeof vi.fn>;
   stub.destroyed = false;
   return stub;
 }

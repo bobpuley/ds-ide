@@ -78,7 +78,7 @@ Wire/unwire handlers ignore the boolean result of `applyEdit` and rebuild Contro
 
 ---
 
-### [ ] fix: Type-check and unit-test the webview scripts (FR-IPC-6)
+### [x] fix: Type-check and unit-test the webview scripts (FR-IPC-6)
 
 All three webview scripts (`controls-webview.ts`, `scope-webview.ts`, `wiring-webview.ts`, ~1,000 lines) opt out of TypeScript with `@ts-nocheck`; `tsconfig.json` also excludes `src/test`, so test-file type errors go unnoticed too.
 

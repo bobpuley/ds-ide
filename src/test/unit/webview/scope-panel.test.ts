@@ -170,13 +170,13 @@ describe('ScopePanel', () => {
   it('dispose() removes the manager message listener to prevent leak (FR-EQ-7)', () => {
     // 12 create+dispose cycles on the same manager must not accumulate listeners
     const warnings: string[] = [];
-    const warnSpy = vi.spyOn(process, 'emit').mockImplementation((...args: unknown[]) => {
+    const warnSpy = vi.spyOn(process, 'emit').mockImplementation(((...args: unknown[]) => {
       if (args[0] === 'warning') {
         const w = args[1] as { name?: string };
         if (w?.name === 'MaxListenersExceededWarning') warnings.push(String(w));
       }
       return true;
-    });
+    }) as unknown as typeof process.emit);
 
     const localManager = makeManager();
     for (let i = 0; i < 12; i++) {

@@ -111,10 +111,7 @@ describe('DaisyRunConfigurationProvider', () => {
 describe('DsIdeDebugAdapterDescriptorFactory', () => {
   it('createDebugAdapterDescriptor returns a DebugAdapterInlineImplementation', () => {
     const factory = new DsIdeDebugAdapterDescriptorFactory();
-    const result = factory.createDebugAdapterDescriptor(
-      {} as vscode.DebugSession,
-      undefined,
-    );
+    const result = factory.createDebugAdapterDescriptor();
     expect(result).toBeInstanceOf(vscode.DebugAdapterInlineImplementation);
   });
 });

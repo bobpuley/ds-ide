@@ -250,7 +250,7 @@ describe('ControlsViewProvider', () => {
 
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);
-    const calls = view.webview.postMessage.mock.calls.map((c: unknown[]) => (c[0] as Record<string, unknown>).command);
+    const calls = view.webview.postMessage.mock.calls.map((c: unknown[]) => (c[0] as Record<string, unknown>)['command']);
     expect(calls).toContain('editorLoad');
     expect(calls).toContain('controlsConfig');
     expect(calls).toContain('status');
@@ -264,7 +264,7 @@ describe('ControlsViewProvider', () => {
 
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);
-    const calls = view.webview.postMessage.mock.calls.map((c: unknown[]) => (c[0] as Record<string, unknown>).command);
+    const calls = view.webview.postMessage.mock.calls.map((c: unknown[]) => (c[0] as Record<string, unknown>)['command']);
     const editorIdx = calls.indexOf('editorLoad');
     const configIdx = calls.indexOf('controlsConfig');
     expect(editorIdx).toBeGreaterThanOrEqual(0);
@@ -294,7 +294,7 @@ describe('ControlsViewProvider', () => {
 
     view.webview.postMessage.mockClear();
     view._simulateVisibilityChange(true);
-    const calls = view.webview.postMessage.mock.calls.map((c: unknown[]) => (c[0] as Record<string, unknown>).command);
+    const calls = view.webview.postMessage.mock.calls.map((c: unknown[]) => (c[0] as Record<string, unknown>)['command']);
     expect(calls).toContain('editorLoad');
   });
 

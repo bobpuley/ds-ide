@@ -43,20 +43,20 @@ describe('PIN_DEFS', () => {
 
   it('left-side row 0 is D0 and row 1 is D1 (AC-57 — USB end at top)', () => {
     const left = PIN_DEFS.filter(d => d.side === 'L').sort((a, b) => a.row - b.row);
-    expect(left[0].label).toBe('D0');
-    expect(left[0].pin).toBe(0);
-    expect(left[1].label).toBe('D1');
-    expect(left[1].pin).toBe(1);
+    expect(left[0]!.label).toBe('D0');
+    expect(left[0]!.pin).toBe(0);
+    expect(left[1]!.label).toBe('D1');
+    expect(left[1]!.pin).toBe(1);
   });
 
   it('right-side row 0 is GND, row 1 is VIN, row 2 is 3V3D, row 3 is D30 (AC-57)', () => {
     const right = PIN_DEFS.filter(d => d.side === 'R').sort((a, b) => a.row - b.row);
-    expect(right[0].label).toBe('GND');
-    expect(right[0].pin).toBeNull();
-    expect(right[1].label).toBe('VIN');
-    expect(right[2].label).toBe('3V3D');
-    expect(right[3].label).toBe('D30');
-    expect(right[3].pin).toBe(30);
+    expect(right[0]!.label).toBe('GND');
+    expect(right[0]!.pin).toBeNull();
+    expect(right[1]!.label).toBe('VIN');
+    expect(right[2]!.label).toBe('3V3D');
+    expect(right[3]!.label).toBe('D30');
+    expect(right[3]!.pin).toBe(30);
   });
 
   it('D26 is not ADC-capable and D28 is A11 (AC-57, per Seed_pinout.csv)', () => {

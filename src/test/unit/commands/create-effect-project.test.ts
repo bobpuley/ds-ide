@@ -138,7 +138,7 @@ describe('createEffectProject', () => {
     async function getValidate(): Promise<(v: string) => string | undefined> {
       showInputBox.mockResolvedValue(undefined);
       await createEffectProject();
-      const opts = showInputBox.mock.calls[0][0] as { validateInput: (v: string) => string | undefined };
+      const opts = showInputBox.mock.calls[0]![0] as { validateInput: (v: string) => string | undefined };
       return opts.validateInput;
     }
 

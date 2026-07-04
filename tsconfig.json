@@ -15,5 +15,12 @@
     "tsBuildInfoFile": "./dist/.tsbuildinfo"
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/test"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/webview/controls-webview.ts",
+    "src/webview/scope-webview.ts",
+    "src/webview/wiring-webview.ts",
+    "src/webview/webview-api.d.ts"
+  ]
 }

@@ -17,7 +17,7 @@ export type UnwirePinHandler = (pinNumber: number, id: string) => Promise<void>;
 // adc: true for D15–D25 (A0–A10) and D28 (A11); D26/D27/D29/D30 have no ADC.
 // label: primary display label.
 // aLabel: analog alias (shown for ADC pins).
-interface PinDef {
+export interface PinDef {
   row:    number;
   side:   'L' | 'R';
   pin:    number | null;
