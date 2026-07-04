@@ -98,12 +98,8 @@ Full registry in [`docs/v10/05_dev-plan.md`](v10/05_dev-plan.md).
 
 ### v11 (0.12.0–0.12.1) — archived in `docs/v11/`
 
-| ID  | Name | Status          | Version | File |
-|-----|------|-----------------|---------|------|
-| M36 | Emulator RT & Memory Safety Critical Fixes | **released** | 0.12.0 | [Milestone_M36.md](milestones/v11/Milestone_M36.md) |
-| M37 | Extension/IPC Critical Reliability & Packaging | **released** | 0.12.1 | [Milestone_M37.md](milestones/v11/Milestone_M37.md) |
-
-Source: 2026-07-02 automated code reviews of `./emulator/` (C/C++), `./src/` (Node.js/TS), and `./src/` (VS Code extension) — all HIGH-urgency findings.
+M36 Emulator RT & Memory Safety Critical Fixes · M37 Extension/IPC Critical Reliability & Packaging.
+Full registry in [`docs/v11/05_dev-plan.md`](v11/05_dev-plan.md).
 
 ### v12 (0.13.0–0.13.2) — planned
 
