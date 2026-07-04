@@ -5,6 +5,21 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.13.0 — 2026-07-04
+
+**M38 — Emulator Correctness & Robustness** *(FR-EMU-1 through FR-EMU-8 — all DoD green)*
+
+- **FR-EMU-1** — `SessionPlayer::popBlock()` zero-fills the unread tail when a recorded block is shorter than the requested frame count, instead of leaving stale samples from a previous call in the buffer; `replayStart` now emits a `replay_rate_mismatch` event when the header's `sample_rate`/`block_size` diverge from the engine's current config. Replay of the same `.dsrec` is now bit-for-bit deterministic across runs.
+- **FR-EMU-2** — The scope/spectrum sample budget (`ScopeState::SCOPE_SAMPLES_MAX`) is now derived from `SpscIpcQueue::MAX_MSG` instead of a fixed constant sized for one `rt_buffer_size`; the decimation step scales up with the hardware frame count so message size stays bounded regardless of buffer size. `SpscIpcQueue::push()` truncates (rather than reallocates) any message that still exceeds `MAX_MSG`, counting it via a new `oversize_drops` counter, with a debug assert catching any future regression at the source.
+- **FR-EMU-3** — Every CoreAudio setup `OSStatus` (`EnableIO`, stream format, device selection, buffer-size set) is now checked, failing `start()`/`start_output_only()` cleanly instead of continuing with a half-configured `AudioUnit`. `AudioUnitRender` failures increment an atomic counter surfaced as a `render_error` IPC event alongside xrun reporting; the input hardware's queried sample rate is compared against the engine's configured rate, emitting `sample_rate_mismatch` on divergence.
+- **FR-EMU-4** — `SessionRecorder` write failures (ENOSPC, EIO, ...) now set a `write_error_` flag, stop draining, and are reported via a `record_error` IPC event and `recordStop`'s `record_stopped` status reply, instead of silently producing a truncated `.dsrec` that looks complete.
+- **FR-EMU-5** — `load_wav_file` validates the RIFF/WAVE magic from just the first 12 bytes and enforces a 256 MB size ceiling (via a checked `fstat`) before buffering the rest of the file, so a non-WAV multi-GB file fails immediately with bounded memory use instead of a multi-GB transient allocation.
+- **FR-EMU-6** — `json_get()` now walks the JSON structure instead of substring-searching for `"key":`, so a key literal appearing inside an unrelated field's string value (e.g. a `path` containing `"type":`) can no longer be mistaken for the real key; a new `json_escape()` helper is applied to interpolated output (e.g. exception text) so quotes/backslashes in dynamic content never produce malformed outbound JSON.
+- **FR-EMU-7** — `sample_rate`/`block_size` are now re-read from `g_state` at the top of each outer engine loop iteration; the `config` IPC handler bumps a `config_generation` counter and notifies `mode_cv` (matching `audioDevice`'s existing pattern) so the active mode loop restarts with fresh values — a mid-session `config` update now changes WAV playback rate and FFT bin labeling without requiring a mode toggle.
+- **FR-EMU-8** — `SessionRecorder` gains a destructor that calls `stop()` (so a joinable `drain_thread_` is always joined, never `std::terminate()`s); `main.cpp` installs SIGTERM/SIGINT handlers (an async-signal-safe atomic store) and a dedicated shutdown-watcher thread that flushes/closes any active recording before exiting the process — since the effect's `while(1)` loop is not expected to ever return on its own, this is the only reliable point an IDE-initiated stop (SIGTERM, escalating to SIGKILL) has to finalize an in-progress recording with a clean `END` marker.
+
+---
+
 ## 0.12.1 — 2026-07-03
 
 **M37 — Extension/IPC Critical Reliability & Packaging** *(FR-EXT-1, FR-EXT-2, FR-PKG-1, FR-CODEGEN-1 — all DoD green)*
