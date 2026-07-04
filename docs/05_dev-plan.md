@@ -1,4 +1,4 @@
-# 05 — Development Plan (v11)
+# 05 — Development Plan (v12)
 
 > **v1 complete** — M0–M7 released (0.1.0–0.1.7), all ACs green.
 > Archived: [`docs/v1/`](v1/).
@@ -29,8 +29,11 @@
 >
 > **v10 complete** — M34–M35 released (0.10.0–0.11.0), all ACs green.
 > Archived: [`docs/v10/`](v10/).
+>
+> **v11 complete** — M36–M37 released (0.12.0–0.12.1), all ACs green.
+> Archived: [`docs/v11/`](v11/).
 
-*v11–v13 planned — bugfix intake from the 2026-07-02 code reviews, spread by severity tier (v11=HIGH, v12=MEDIUM, v13=LOW), milestones split by subsystem within each version.*
+*v12–v13 planned — remaining bugfix intake from the 2026-07-02 code reviews (v11's HIGH-severity share shipped; v12=MEDIUM, v13=LOW), milestones split by subsystem within each version.*
 
 ---
 
@@ -93,7 +96,7 @@ Full registry in [`docs/v9/05_dev-plan.md`](v9/05_dev-plan.md).
 M34 UI Polish: Independent Editors, Always-Visible Audio Settings, Panel Icons · M35 Activity Bar Split: Controls and Wiring as Independent Sidebar Views.
 Full registry in [`docs/v10/05_dev-plan.md`](v10/05_dev-plan.md).
 
-### v11 (0.12.0–0.12.1) — planned
+### v11 (0.12.0–0.12.1) — archived in `docs/v11/`
 
 | ID  | Name | Status          | Version | File |
 |-----|------|-----------------|---------|------|

@@ -1,4 +1,4 @@
-# 01 — Input Ideas (v11)
+# 01 — Input Ideas (v12)
 
 > **v1 complete** — ds-ide 0.1.0–0.1.7 (M0–M7), all ACs green. Full v1 ideas archived in
 > [`docs/v1/01_input-ideas.md`](v1/01_input-ideas.md).
@@ -29,56 +29,15 @@
 >
 > **v10 complete** — archived to `docs/v10/` on 2026-06-30. Full v10 ideas archived in
 > [`docs/v10/01_input-ideas.md`](v10/01_input-ideas.md).
+>
+> **v11 complete** — archived to `docs/v11/` on 2026-07-04. Full v11 ideas archived in
+> [`docs/v11/01_input-ideas.md`](v11/01_input-ideas.md).
 
-## v11–v13 Planning — Bug Reports from Code Review (2026-07-02)
+## v12–v13 Planning — Bug Reports from Code Review (2026-07-02)
 
 The three automated code reviews (`docs/06_emulator_review.md`, `docs/06_nodejs_review.md`, `docs/06_vscode_extension_review.md`) produced 46 distinct findings after merging duplicates independently flagged by both the Node.js/TS review and the VS Code extension review (the deploy-lock unhandled rejection, the stale-PID kill, and the unvalidated-IPC-forwarded-to-webview finding each appeared in two reports and are logged once below).
 
 Grouping: spread across three versions by severity tier — **v11 = all HIGH findings**, **v12 = all MEDIUM findings**, **v13 = all LOW findings** — with milestones inside each version split by subsystem (emulator C/C++ vs. extension/IPC TypeScript). This mirrors the v9 bugfix intake, scaled to multiple versions per this intake's instruction to spread tasks across versions.
-
----
-
-### v11 / M36 — Emulator RT & Memory Safety Critical Fixes (emulator HIGH)
-
-- **Bug (HIGH):** Duplex render callback allocates `inputBufList` for exactly `bufferSize` frames, but CoreAudio's `inNumberFrames` can exceed `bufferSize` (hardware minimum clamping) — the callback's `memset`/`AudioUnitRender` write past the `malloc`'d buffer.
-  *Observed:* Heap corruption on the RT thread, reachable via a small `bufferSize` IPC config (as low as 1).
-  *Expected:* `inputBufList` sized for the maximum possible frame count; callback clamps writes to the allocated size.
-
-- **Bug (HIGH):** `start()`/`start_output_only()` call `AudioOutputUnitStart()` and only afterward resize the render callback's work buffers (`in_interleaved`, `out_interleaved`, `silentInput`, `workOut`) — the RT callback can already be running concurrently when the control thread reallocates them.
-  *Observed:* Use-after-free / torn pointer reads on the RT thread; intermittent, load-dependent crash.
-  *Expected:* All callback-visible buffers sized before `AudioOutputUnitStart()`.
-
-- **Bug (HIGH):** In simulated mode with an output device, `process_one_block` runs inside the CoreAudio render callback and performs blocking `::read()`/`::lseek()` via `SessionPlayer::nextBlock()`, heap-allocates a per-block `std::vector<ReplayEvent>`, and can free a multi-MB `WavData` on the RT thread when the IPC thread swaps files under `wav_mutex`. The IPC thread also holds `player_mutex` across a full-file `countBlocks()` scan.
-  *Observed:* Priority inversion, multi-hundred-ms audio dropouts when a replay start coincides with rendering — violates the project's own RT-safety rules.
-  *Expected:* Replay audio fed through a pre-filled lock-free SPSC ring (mirroring `SessionRecorder`); `wav_mutex` + `shared_ptr` copy replaced with atomic pointer swap; work buffers pre-sized before device start.
-
-- **Bug (HIGH):** `SessionRecorder::enqueueBlock()` (RT thread, no lock) loads `active_` with `memory_order_relaxed`, which does not synchronize with the `memory_order_release` store at the end of `start()` — on Apple Silicon's weak memory model, the RT thread can observe `active_ == true` before observing initialized ring-buffer slots and `memcpy` through a stale pointer. `stop()` can also complete mid-`enqueueBlock`, silently dropping or misfiling blocks.
-  *Observed:* Data race (UB); potential crash or corrupted first recording blocks; lost/misfiled blocks at session boundaries.
-  *Expected:* `enqueueBlock()` loads `active_` with `memory_order_acquire`; slot vectors allocated once in the constructor; stop/start overlap closed with a generation counter or `in_use` flag.
-
-- **Bug (HIGH):** `SessionRecorder::start()` does not guard against being called while already active — a duplicate `recordStart` IPC message assigns to a still-joinable `drain_thread_`, which calls `std::terminate()` and aborts the whole emulator process. The old fd also leaks and the old drain thread corrupts the new file's header before the abort.
-  *Observed:* A single duplicate IPC message crashes the emulator and kills the user's debug session.
-  *Expected:* `start()` rejects re-entry (`if (active()) return false;`) with a `record_error` IPC reply; defense-in-depth join-before-assign on `drain_thread_`.
-
----
-
-### v11 / M37 — Extension/IPC Critical Reliability & Packaging (merged HIGH)
-
-- **Bug (HIGH):** `EmulatorManager.deploy()` clears its coalescing lock via `deployPromise.finally(() => { this.deployLock = null; })`. `.finally()` returns a *new* promise whose rejection is never observed — every failed deploy (build not run, emulator crash, socket timeout) produces an unhandled promise rejection in the Extension Host. *(Independently flagged by both the Node.js and VS Code extension reviews.)*
-  *Observed:* `UnhandledPromiseRejection` on every deploy failure — an expected, common path.
-  *Expected:* The derived promise is observed (`.catch(() => {})` or equivalent) so cleanup never leaves a rejected promise dangling.
-
-- **Bug (HIGH):** Stale-process and socket lifecycle has no ownership checks: `killStalePid` sends `SIGKILL` to whatever PID is in `emu.pid` with no verification it's still an `effect_emu` process (PID reuse after reboot can kill an arbitrary user process); on activation the extension deletes *every* `/tmp/daisy_emu_*.sock`, severing other concurrently running VS Code windows' live emulator connections; socket names (`daisy_emu_${Date.now()}.sock`) are predictable in world-writable `/tmp`, enabling local squatting/DoS. `/tmp` is also hardcoded instead of `os.tmpdir()`. *(Independently flagged by both the Node.js and VS Code extension reviews.)*
-  *Observed:* Worst case, an arbitrary user process is force-killed after a reboot; second-window activation breaks the first window's emulator session.
-  *Expected:* PID identity verified (process name/command-line match) before SIGKILL, with SIGTERM-first escalation; sockets live under a per-workspace directory with random names; cleanup scoped to sockets this workspace owns.
-
-- **Bug (HIGH):** `buildForEmulator` resolves the emulator CMake project from `path.join(extensionPath, 'emulator')`, but `.vscodeignore` excludes `emulator/**` from the packaged `.vsix` and nothing copies emulator sources into the package. `package.json` also declares a non-existent `images/icon.png`, so `vsce package` fails outright.
-  *Observed:* Every user installing the published extension gets a build that fails "Build for Emulator" / "Build & Deploy" / F5 debugging — total failure of the core workflow, uncaught by any test (tests run against the repo checkout).
-  *Expected:* `emulator/**` (minus build outputs) included in the package; a packaging smoke test asserts `emulator/CMakeLists.txt` and `dist/extension.js` are present in the `.vsix`; the icon asset exists or the field is removed.
-
-- **Bug (HIGH):** The Wiring Editor generates `hardware.adc.Init(pot1, pot2, ..., N)` — separate variadic arguments — which only compiles against a shim-only catch-all `Init(Args...)` overload added to paper over the mismatch. Real libDaisy's `AdcHandle::Init` takes `(AdcChannelConfig* cfg, size_t num_channels)`, an array pointer.
-  *Observed:* Any project with a wired pot fails `ds-ide.buildHardware` with confusing template/overload errors — breaks the emulator↔hardware parity that is the product's core promise.
-  *Expected:* Generated code declares `AdcChannelConfig ds_ide_adc_cfg[N]`, calls `.InitSingle(...)` per pot, and `hardware.adc.Init(ds_ide_adc_cfg, N)` — the canonical libDaisy pattern; the shim's variadic overload is removed so emulator and hardware compile the same source.
 
 ---
 

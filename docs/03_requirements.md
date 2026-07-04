@@ -1,55 +1,11 @@
-# 03 — Requirements (v11)
+# 03 — Requirements (v12)
 
-> **v10 complete** — all v10 requirements implemented; ACs green.
-> Archived: [`docs/v10/03_requirements.md`](v10/03_requirements.md).
+> **v11 complete** — all v11 requirements implemented; ACs green.
+> Archived: [`docs/v11/03_requirements.md`](v11/03_requirements.md).
 
-## v11–v13 Requirements
+## v12–v13 Requirements
 
 All requirements below are derived from the 2026-07-02 code review findings. See `01_input-ideas.md` for the raw bug list and `02_assumptions-and-risks.md` for the assumptions each requirement corrects.
-
----
-
-### RT-thread & Memory Safety (Emulator — v11 / M36)
-
-**FR-RTS-1 — Duplex render callback never writes past its allocated buffer**
-`inputBufList` must be sized for the maximum frame count CoreAudio can deliver, not the requested `bufferSize`. The render callback must clamp `memset`/`AudioUnitRender` writes to the allocated size.
-AC: setting `bufferSize=1` via IPC on hardware that clamps to a larger minimum produces no heap corruption under ASAN; a debug assert or clamp prevents any write beyond the allocated byte count.
-
-**FR-RTS-2 — RT-callback-visible buffers are sized before the audio unit starts**
-`in_interleaved`, `out_interleaved`, `silentInput`, and `workOut` must be sized from the queried hardware frame count before `AudioOutputUnitStart()`. If a post-start correction is unavoidable, the unit must be stopped, resized, and restarted — never mutated while running.
-AC: TSAN reports no data race between `start()`/`start_output_only()` and the render callbacks across 100 start/stop cycles.
-
-**FR-RTS-3 — Replay audio is fed to the RT thread without blocking I/O, mutex, or heap allocation**
-`SessionPlayer` reads must move off the CoreAudio render callback onto a reader thread, feeding the RT thread through a pre-filled lock-free SPSC ring (mirroring `SessionRecorder`'s existing pattern). `wav_mutex` + `shared_ptr` copy on the RT thread is replaced with an atomic pointer swap; the IPC thread retires old `WavData` only after the engine confirms it has moved on.
-AC: `ca_process` performs no `::read()`, `::lseek()`, mutex lock, or heap allocation when replay is active; starting a replay while audio is rendering produces no xrun on a normally loaded system.
-
-**FR-RTS-4 — `SessionRecorder::enqueueBlock()` synchronizes correctly with `start()`/`stop()`**
-`enqueueBlock()` must load `active_` with `memory_order_acquire`, pairing with the existing `memory_order_release` store at the end of `start()`. Slot vectors are allocated once in the constructor so `start()` never reallocates. The stop/start overlap window is closed with a generation counter or `in_use` flag.
-AC: TSAN reports no data race on `SessionRecorder` state across repeated rapid start/stop cycles on Apple Silicon; no block is silently dropped or misfiled at a stop/start boundary in a scripted 100-cycle test.
-
-**FR-RTS-5 — Duplicate `recordStart` cannot crash the emulator**
-`SessionRecorder::start()` rejects re-entry while already active (`if (active()) return false;`) and replies with a `record_error` IPC event instead of assigning to a joinable `drain_thread_`. Defense-in-depth: guard the thread assignment with `if (drain_thread_.joinable()) drain_thread_.join();`.
-AC: sending two `recordStart` messages back-to-back does not call `std::terminate`; the second message receives a `record_error` reply and the first recording continues uncorrupted.
-
----
-
-### Extension/IPC Critical Reliability & Packaging (v11 / M37)
-
-**FR-EXT-1 — Deploy-lock cleanup never produces an unhandled promise rejection**
-The promise chain that clears `EmulatorManager.deployLock` must observe any rejection from `deployPromise` before it is discarded.
-AC: a deploy that fails (missing build, emulator crash, socket timeout) produces zero `unhandledRejection` events; a vitest `process.on('unhandledRejection', fail)` guard passes across the full deploy test suite.
-
-**FR-EXT-2 — Stale-process and socket cleanup verify ownership before acting**
-`killStalePid` must verify the target PID's process name/command line matches `effect_emu` before signaling, and prefer SIGTERM with a SIGKILL escalation over immediate SIGKILL. Socket cleanup at activation must be scoped to sockets this workspace created (tracked alongside `emu.pid`), never a global `/tmp` sweep. Socket paths live under a per-workspace directory with a randomized filename component, not `/tmp/daisy_emu_${Date.now()}.sock`.
-AC: killing a PID that has been reused by an unrelated process is refused (identity check fails, no signal sent); two concurrent VS Code windows on two different projects both deploy successfully without severing each other's socket.
-
-**FR-PKG-1 — The packaged `.vsix` contains everything the core workflow needs**
-`emulator/**` (excluding build output directories) is included in the packaged extension; `images/icon.png` exists or the `icon` field is removed so `vsce package` succeeds.
-AC: a CI step unzips the produced `.vsix` and asserts `emulator/CMakeLists.txt` and `dist/extension.js` are both present; `npm run package` succeeds without manual intervention.
-
-**FR-CODEGEN-1 — Generated ADC init code compiles against real libDaisy, not just the emulator shim**
-The Wiring Editor generates `AdcChannelConfig ds_ide_adc_cfg[N]; ds_ide_adc_cfg[i].InitSingle(daisy::seed::A<n>); hardware.adc.Init(ds_ide_adc_cfg, N);` — the canonical libDaisy array-pointer pattern. The shim's variadic `Init(Args...)` catch-all overload is removed.
-AC: a project with one or more wired pots passes `ds-ide.buildHardware` (real ARM toolchain compile) without ADC-related errors; `emulator/shim/include/daisy/adc_handle.h` no longer declares a variadic `Init` overload.
 
 ---
 
