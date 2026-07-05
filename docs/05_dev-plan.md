@@ -1,4 +1,4 @@
-# 05 — Development Plan (v12)
+# 05 — Development Plan (v13)
 
 > **v1 complete** — M0–M7 released (0.1.0–0.1.7), all ACs green.
 > Archived: [`docs/v1/`](v1/).
@@ -32,8 +32,11 @@
 >
 > **v11 complete** — M36–M37 released (0.12.0–0.12.1), all ACs green.
 > Archived: [`docs/v11/`](v11/).
+>
+> **v12 complete** — M38–M40 released (0.13.0–0.13.2), all ACs green.
+> Archived: [`docs/v12/`](v12/).
 
-*v12–v13 planned — remaining bugfix intake from the 2026-07-02 code reviews (v11's HIGH-severity share shipped; v12=MEDIUM, v13=LOW), milestones split by subsystem within each version.*
+*v13 planned — remaining bugfix intake from the 2026-07-02 code reviews (v11's HIGH-severity and v12's MEDIUM-severity shares shipped; v13=LOW), milestones split by subsystem within each version.*
 
 ---
 
@@ -101,15 +104,10 @@ Full registry in [`docs/v10/05_dev-plan.md`](v10/05_dev-plan.md).
 M36 Emulator RT & Memory Safety Critical Fixes · M37 Extension/IPC Critical Reliability & Packaging.
 Full registry in [`docs/v11/05_dev-plan.md`](v11/05_dev-plan.md).
 
-### v12 (0.13.0–0.13.2) — planned
+### v12 (0.13.0–0.13.2) — archived in `docs/v12/`
 
-| ID  | Name | Status          | Version | File |
-|-----|------|-----------------|---------|------|
-| M38 | Emulator Correctness & Robustness | **released** | 0.13.0 | [Milestone_M38.md](milestones/v12/Milestone_M38.md) |
-| M39 | IPC & Data Validation Hardening | **released** | 0.13.1 | [Milestone_M39.md](milestones/v12/Milestone_M39.md) |
-| M40 | Extension UX & Workspace Safety | **released** | 0.13.2 | [Milestone_M40.md](milestones/v12/Milestone_M40.md) |
-
-Source: 2026-07-02 automated code reviews — all MEDIUM-urgency findings. M38 should land after M36 (both touch `SessionPlayer::nextBlock()`; see `02_assumptions-and-risks.md`).
+M38 Emulator Correctness & Robustness · M39 IPC & Data Validation Hardening · M40 Extension UX & Workspace Safety.
+Full registry in [`docs/v12/05_dev-plan.md`](v12/05_dev-plan.md).
 
 ### v13 (0.14.0–0.14.1) — planned
 
