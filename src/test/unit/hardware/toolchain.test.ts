@@ -48,7 +48,7 @@ describe('detectArmToolchain()', () => {
 
     const result = await detectArmToolchain(undefined, exists, exec);
     expect(result).toBe('/usr/bin/arm-none-eabi-gcc');
-    expect(exec).toHaveBeenCalledWith(`which ${ARM_GCC_BINARY} 2>/dev/null`);
+    expect(exec).toHaveBeenCalledWith('which', [ARM_GCC_BINARY]);
   });
 
   it('skips which result when the path does not exist on disk', async () => {

@@ -10,7 +10,7 @@ Clear the remaining low-severity extension and tooling findings: a latent webvie
 
 ## Sprint Tasks
 
-### [ ] fix: Split esbuild config for extension vs. webview targets (FR-QA-EXT-1)
+### [x] fix: Split esbuild config for extension vs. webview targets (FR-QA-EXT-1)
 
 `esbuild.js` uses one `platform: 'node'` config for both the extension host and the three webview scripts — currently harmless since webviews have zero imports, but the first import added to a webview script breaks.
 
@@ -20,7 +20,7 @@ Clear the remaining low-severity extension and tooling findings: a latent webvie
 
 ---
 
-### [ ] fix: Make IPC client failures observable (FR-QA-EXT-2)
+### [x] fix: Make IPC client failures observable (FR-QA-EXT-2)
 
 `IpcClient.send()` silently no-ops when the socket is absent/destroyed; malformed JSON lines are silently discarded; a 1MB receive-buffer overflow resets without resynchronizing to the next newline.
 
@@ -30,7 +30,7 @@ Clear the remaining low-severity extension and tooling findings: a latent webvie
 
 ---
 
-### [ ] fix: Constrain the dfu-util success-detection workaround (FR-QA-EXT-3)
+### [x] fix: Constrain the dfu-util success-detection workaround (FR-QA-EXT-3)
 
 `runDfuUtil` treats stdout containing `File downloaded successfully` as success even on non-zero exit — works around a known quirk but is locale/version-fragile.
 
@@ -40,7 +40,7 @@ Clear the remaining low-severity extension and tooling findings: a latent webvie
 
 ---
 
-### [ ] fix: Align the YAML parser's recognized sections with the project scaffold (FR-QA-EXT-4)
+### [x] fix: Align the YAML parser's recognized sections with the project scaffold (FR-QA-EXT-4)
 
 The hand-rolled parser silently skips tab-indented lines and never reads the scaffolded `controls: []` key (it only recognizes `controllers`/`buttons`/`leds`).
 
@@ -50,7 +50,7 @@ The hand-rolled parser silently skips tab-indented lines and never reads the sca
 
 ---
 
-### [ ] fix: Toolchain/type hygiene cleanup (FR-QA-EXT-5)
+### [x] fix: Toolchain/type hygiene cleanup (FR-QA-EXT-5)
 
 Grab-bag: `@types/node ^20` vs. an esbuild target of `node18`; `which` detection via `cp.exec` instead of `execFile`; duplicated knob geometry constants; `hardware-build.ts` creates a fresh output channel when none is passed.
 
@@ -60,7 +60,7 @@ Grab-bag: `@types/node ^20` vs. an esbuild target of `node18`; `which` detection
 
 ---
 
-### [ ] fix: Reconcile marketplace metadata (FR-QA-EXT-6)
+### [x] fix: Reconcile marketplace metadata (FR-QA-EXT-6)
 
 `package.json` still declares `"version": "0.0.1"` against a CHANGELOG through 0.11.0+; the referenced icon doesn't exist; light icon variants are unused; keybindings have no `when`/`enablement` gates.
 
@@ -70,7 +70,7 @@ Grab-bag: `@types/node ^20` vs. an esbuild target of `node18`; `which` detection
 
 ---
 
-### [ ] fix: Replace sync fs calls on command paths; avoid full webview HTML resets (FR-QA-EXT-7)
+### [x] fix: Replace sync fs calls on command paths; avoid full webview HTML resets (FR-QA-EXT-7)
 
 `mkdirSync`, `readdirSync`, `statSync` run in command paths on the Extension Host; `ScopePanel.show()` reassigns `panel.webview.html` on every reveal, discarding scope/spectrum history.
 
@@ -80,7 +80,7 @@ Grab-bag: `@types/node ^20` vs. an esbuild target of `node18`; `which` detection
 
 ---
 
-### [ ] fix: Declare correct `scope` for machine/workspace-specific settings (FR-QA-EXT-8)
+### [x] fix: Declare correct `scope` for machine/workspace-specific settings (FR-QA-EXT-8)
 
 `armToolchainPath` and `effectSource` default to `window` scope though they're machine/workspace-specific paths — Settings Sync can silently apply a desktop toolchain path on a laptop.
 
@@ -90,7 +90,7 @@ Grab-bag: `@types/node ^20` vs. an esbuild target of `node18`; `which` detection
 
 ---
 
-### [ ] fix: Improve debug contribution discoverability and responsiveness (FR-QA-EXT-9)
+### [x] fix: Improve debug contribution discoverability and responsiveness (FR-QA-EXT-9)
 
 `daisy-debug` has no configuration snippets (manual selection dead-ends); the build+deploy step inside `resolveDebugConfiguration` has no progress UI; lldb-dap discovery covers only macOS paths.
 

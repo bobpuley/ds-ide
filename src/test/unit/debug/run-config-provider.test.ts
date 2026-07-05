@@ -105,6 +105,19 @@ describe('DaisyRunConfigurationProvider', () => {
       expect(getEmulatorPid).not.toHaveBeenCalled();
       expect(vscode.debug.startDebugging).not.toHaveBeenCalled();
     });
+
+    it('reports build+deploy progress via withProgress instead of leaving F5 silent (FR-QA-EXT-9)', async () => {
+      const buildAndDeploy = vi.fn(() => Promise.resolve(true));
+      const getEmulatorPid = vi.fn(() => 1234);
+      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid);
+
+      await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG });
+
+      expect(vscode.window.withProgress).toHaveBeenCalledOnce();
+      const [options, task] = (vscode.window.withProgress as ReturnType<typeof vi.fn>).mock.calls[0]!;
+      expect(options).toMatchObject({ location: vscode.ProgressLocation.Notification });
+      expect(typeof task).toBe('function');
+    });
   });
 });
 

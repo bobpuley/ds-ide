@@ -43,7 +43,12 @@ const window = {
   showInputBox: vi.fn(),
   showQuickPick: vi.fn(),
   setStatusBarMessage: vi.fn(() => ({ dispose: vi.fn() })),
+  withProgress: vi.fn((_options: unknown, task: (progress: { report: (v: unknown) => void }) => unknown) =>
+    task({ report: vi.fn() }),
+  ),
 };
+
+const ProgressLocation = { SourceControl: 1, Window: 10, Notification: 15 } as const;
 
 type MockWorkspaceFolder = { uri: { fsPath: string }; name?: string };
 
@@ -169,6 +174,6 @@ class Diagnostic {
 export {
   commands, window, workspace, Uri, ViewColumn,
   DiagnosticSeverity, Position, Range, WorkspaceEdit, Diagnostic,
-  StatusBarAlignment, languages,
+  StatusBarAlignment, ProgressLocation, languages,
   debug, DebugAdapterExecutable, DebugAdapterInlineImplementation, EventEmitter,
 };

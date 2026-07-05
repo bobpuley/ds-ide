@@ -8,16 +8,27 @@ const LLDB_DAP_CANDIDATES = [
   '/Applications/Xcode.app/Contents/Developer/usr/bin/lldb-dap',
 ];
 
+// Debian/Ubuntu LLVM packages (apt.llvm.org and distro repos) install
+// lldb-dap under a version-suffixed name alongside — or instead of — the
+// unversioned symlink. Tried newest-first on PATH via `which` (FR-QA-EXT-9).
+const LLDB_DAP_LINUX_PATH_NAMES = [
+  'lldb-dap',
+  'lldb-dap-20', 'lldb-dap-19', 'lldb-dap-18', 'lldb-dap-17',
+  'lldb-dap-16', 'lldb-dap-15', 'lldb-dap-14',
+];
+
 type Exists = (p: string) => Promise<boolean>;
-type Exec   = (cmd: string) => Promise<string>;
+type Exec   = (cmd: string, args: string[]) => Promise<string>;
 
 const defaultExists: Exists = async (p) => {
   try { await fs.promises.access(p); return true; } catch { return false; }
 };
 
-const defaultExec: Exec = (cmd) =>
+// execFile (not exec) — no shell is involved, so binary/arg strings can't be
+// reinterpreted as shell metacharacters.
+const defaultExec: Exec = (cmd, args) =>
   new Promise<string>((resolve, reject) =>
-    cp.exec(cmd, (err, stdout) => (err ? reject(err) : resolve(stdout)))
+    cp.execFile(cmd, args, (err, stdout) => (err ? reject(err) : resolve(stdout)))
   );
 
 export async function findLldbDap(
@@ -26,9 +37,16 @@ export async function findLldbDap(
 ): Promise<string | undefined> {
   // Prefer xcrun so it respects the active Xcode/CLT selection.
   try {
-    const result = (await exec('xcrun --find lldb-dap 2>/dev/null')).trim();
+    const result = (await exec('xcrun', ['--find', 'lldb-dap'])).trim();
     if (result && await exists(result)) return result;
   } catch { /* xcrun not available or lldb-dap not found */ }
+
+  for (const name of LLDB_DAP_LINUX_PATH_NAMES) {
+    try {
+      const result = (await exec('which', [name])).trim();
+      if (result && await exists(result)) return result;
+    } catch { /* not on PATH under this name */ }
+  }
 
   for (const p of LLDB_DAP_CANDIDATES) {
     if (await exists(p)) return p;

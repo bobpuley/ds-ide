@@ -4,6 +4,12 @@ import { parseIpcMessage, IpcMessage } from '../ipc/narrow';
 
 export type { IpcMessage };
 
+export interface IpcWarning {
+  message: string;
+  /** Running count of this warning category since the client was constructed. */
+  count: number;
+}
+
 export interface IIpcClient {
   connect(socketPath: string): Promise<void>;
   send(msg: IpcMessage): void;
@@ -11,6 +17,7 @@ export interface IIpcClient {
   on(event: 'message', listener: (msg: IpcMessage) => void): this;
   on(event: 'error', listener: (err: Error) => void): this;
   on(event: 'disconnect', listener: () => void): this;
+  on(event: 'warning', listener: (warning: IpcWarning) => void): this;
 }
 
 const IPC_MAX_BUFFER = 1 << 20;  // 1 MB receive buffer ceiling
@@ -22,6 +29,13 @@ const CONNECT_TIMEOUT_MS = 5_000;
 export class IpcClient extends EventEmitter implements IIpcClient {
   private socket: net.Socket | null = null;
   private partial = '';
+  private droppedSendCount = 0;
+  private malformedLineCount = 0;
+
+  private warn(message: string, count: number): void {
+    console.warn(`ds-ide: ${message}`);
+    this.emit('warning', { message, count } satisfies IpcWarning);
+  }
 
   connect(socketPath: string, timeoutMs = CONNECT_TIMEOUT_MS): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -66,7 +80,11 @@ export class IpcClient extends EventEmitter implements IIpcClient {
   }
 
   send(msg: IpcMessage): void {
-    if (!this.socket || this.socket.destroyed) return;
+    if (!this.socket || this.socket.destroyed) {
+      this.droppedSendCount++;
+      this.warn('dropped IPC send — socket not connected', this.droppedSendCount);
+      return;
+    }
     this.socket.write(JSON.stringify(msg) + '\n');
   }
 
@@ -81,9 +99,12 @@ export class IpcClient extends EventEmitter implements IIpcClient {
   private onData(data: Buffer): void {
     this.partial += data.toString('utf8');
     if (this.partial.length > IPC_MAX_BUFFER) {
-      this.partial = '';
+      // Resynchronize to the next newline rather than discarding the whole
+      // buffer — a valid message can arrive in the same chunk right after
+      // the garbage that caused the overflow.
+      const nlIndex = this.partial.indexOf('\n');
+      this.partial = nlIndex === -1 ? '' : this.partial.slice(nlIndex + 1);
       this.emit('error', new Error('IPC receive buffer overflow: message exceeds 1 MB'));
-      return;
     }
     let nl: number;
     while ((nl = this.partial.indexOf('\n')) !== -1) {
@@ -94,14 +115,16 @@ export class IpcClient extends EventEmitter implements IIpcClient {
       try {
         parsed = JSON.parse(line);
       } catch {
-        console.warn(`ds-ide: dropped malformed IPC line (invalid JSON): ${line.slice(0, 200)}`);
+        this.malformedLineCount++;
+        this.warn(`dropped malformed IPC line (invalid JSON): ${line.slice(0, 200)}`, this.malformedLineCount);
         continue;
       }
       const msg = parseIpcMessage(parsed);
       if (msg) {
         this.emit('message', msg);
       } else {
-        console.warn(`ds-ide: dropped IPC message failing schema validation: ${line.slice(0, 200)}`);
+        this.malformedLineCount++;
+        this.warn(`dropped IPC message failing schema validation: ${line.slice(0, 200)}`, this.malformedLineCount);
       }
     }
   }

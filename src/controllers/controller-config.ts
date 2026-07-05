@@ -73,9 +73,13 @@ function parseYamlScalar(raw: string): string | number | [number, number] {
 
 // Parse a controllers.yaml text into raw key-value maps grouped by top-level
 // section (`controllers:`, `buttons:`, `leds:`). Each section maps to a list of
-// item maps, one per `- ` list entry.
-function parseYamlSections(text: string): Record<string, Record<string, unknown>[]> {
+// item maps, one per `- ` list entry. Any non-blank, non-comment line matching
+// none of these shapes (unknown top-level key, content before any section,
+// malformed list item) is reported as a parse error rather than silently
+// dropped (FR-QA-EXT-4).
+function parseYamlSections(text: string): { sections: Record<string, Record<string, unknown>[]>; errors: string[] } {
   const sections: Record<string, Record<string, unknown>[]> = {};
+  const errors: string[] = [];
   let currentSection: string | null = null;
   let current: Record<string, unknown> | null = null;
 
@@ -84,8 +88,10 @@ function parseYamlSections(text: string): Record<string, Record<string, unknown>
     current = null;
   };
 
-  for (const rawLine of text.split('\n')) {
-    const line = rawLine.replace(/\r$/, '');
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!.replace(/\r$/, '');
+    const lineNo = i + 1;
 
     // Skip comment and blank lines
     if (line.trimStart().startsWith('#')) continue;
@@ -100,7 +106,10 @@ function parseYamlSections(text: string): Record<string, Record<string, unknown>
       continue;
     }
 
-    if (!currentSection) continue;
+    if (!currentSection) {
+      errors.push(`line ${lineNo}: unrecognized line outside any section: '${line.trim()}'`);
+      continue;
+    }
 
     // New list item: "  - " (2+ spaces, dash, space)
     const listMatch = line.match(/^(\s{2,})-\s+(.*)/);
@@ -126,11 +135,14 @@ function parseYamlSections(text: string): Record<string, Record<string, unknown>
       const key = kvMatch[2]!;
       const val = kvMatch[3] ?? '';
       current[key] = parseYamlScalar(val);
+      continue;
     }
+
+    errors.push(`line ${lineNo}: unrecognized line: '${line.trim()}'`);
   }
 
   flush();
-  return sections;
+  return { sections, errors };
 }
 
 // Validate the `controllers:` (pots) section.
@@ -324,9 +336,9 @@ function parseLeds(rawItems: Record<string, unknown>[]): { leds: LedDef[]; error
  * Returns all valid ControllerDefs and any errors found. (Backward compatible.)
  */
 export function parseControllerYaml(text: string): ParseResult {
-  const sections = parseYamlSections(text);
+  const { sections, errors: sectionErrors } = parseYamlSections(text);
   const { pots, errors } = parsePots(sections['controllers'] ?? []);
-  return { defs: pots, errors };
+  return { defs: pots, errors: [...sectionErrors, ...errors] };
 }
 
 /**
@@ -334,11 +346,11 @@ export function parseControllerYaml(text: string): ParseResult {
  * buttons (`buttons:`), and LEDs (`leds:`), with all validation errors merged.
  */
 export function parseControllerConfig(text: string): ControllerConfig {
-  const sections = parseYamlSections(text);
+  const { sections, errors: sectionErrors } = parseYamlSections(text);
   const { pots, errors: potErrors } = parsePots(sections['controllers'] ?? []);
   const { buttons, errors: buttonErrors } = parseButtons(sections['buttons'] ?? []);
   const { leds, errors: ledErrors } = parseLeds(sections['leds'] ?? []);
-  return { pots, buttons, leds, errors: [...potErrors, ...buttonErrors, ...ledErrors] };
+  return { pots, buttons, leds, errors: [...sectionErrors, ...potErrors, ...buttonErrors, ...ledErrors] };
 }
 
 /**

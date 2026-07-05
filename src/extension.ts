@@ -586,12 +586,18 @@ export function activate(context: vscode.ExtensionContext): void {
 
   async function initViewsFromProject(): Promise<void> {
     const activeFolder = resolveActiveFolder(context.workspaceState);
-    if (!activeFolder) return;
+    if (!activeFolder) {
+      void vscode.commands.executeCommand('setContext', 'ds-ide.isDaisyProject', false);
+      return;
+    }
     const folder = activeFolder.uri.fsPath;
     const cfg = await loadControllerConfig();
     controlsProvider.loadEditor(cfg);
     controlsProvider.postControlsConfig(await buildControlsConfig(folder, cfg));
     const effectPath = await findEffectSource(folder);
+    // Scopes the ds-ide.* keybindings (package.json) so they don't fire in
+    // unrelated workspaces (FR-QA-EXT-6).
+    void vscode.commands.executeCommand('setContext', 'ds-ide.isDaisyProject', effectPath !== undefined);
     let wiredPins: WiredPin[] = [];
     if (effectPath) {
       try {

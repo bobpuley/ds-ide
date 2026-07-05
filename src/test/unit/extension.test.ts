@@ -419,6 +419,28 @@ describe('extension view initialization (FR-CE-9, FR-WE-11)', () => {
     }
     expect(subs).toContain((vscode.workspace.onDidSaveTextDocument as ReturnType<typeof vi.fn>).mock.results[0]?.value);
   });
+
+  it('sets the ds-ide.isDaisyProject context key to true when an effect source is found (FR-QA-EXT-6)', async () => {
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+
+    await vi.waitFor(() => {
+      expect(vscode.commands.executeCommand).toHaveBeenCalledWith('setContext', 'ds-ide.isDaisyProject', true);
+    });
+  });
+
+  it('sets the ds-ide.isDaisyProject context key to false when no effect source is found (FR-QA-EXT-6)', async () => {
+    const promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['readdir']!.mockResolvedValue([]);
+    promisesMock['access']!.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+
+    await vi.waitFor(() => {
+      expect(vscode.commands.executeCommand).toHaveBeenCalledWith('setContext', 'ds-ide.isDaisyProject', false);
+    });
+  });
 });
 
 // ── FR-IPC-4: distinguish absent controllers.yaml from an unreadable one ──
@@ -605,7 +627,7 @@ describe('controllers.yaml validation notification aggregation (FR-UX-2)', () =>
     await triggerLoadViaSave();
     (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mockClear();
 
-    promisesMock['readFile']!.mockResolvedValue('controllers: []\nbuttons: []\nleds: []\n');
+    promisesMock['readFile']!.mockResolvedValue('controllers:\nbuttons:\nleds:\n');
     await triggerLoadViaSave();
 
     promisesMock['readFile']!.mockResolvedValue(INVALID_YAML);

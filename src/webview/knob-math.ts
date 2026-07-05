@@ -1,13 +1,16 @@
 // Pure geometry for the Controls Editor's pot knob SVG — no DOM access, so it
 // can be unit-tested directly instead of only through a browser (FR-IPC-6).
 
-const CENTER = 26;
 const TRACK_RADIUS = 20;
 const DOT_RADIUS = 14;
 const START_DEG = -225;
 const RANGE_DEG = 270;
 
+// Shared with controls-webview.ts so the SVG markup and its geometry
+// calculations can't drift out of sync.
 export const KNOB_SVG_SIZE = 52;
+export const KNOB_CENTER = 26;
+const CENTER = KNOB_CENTER;
 
 export interface KnobGeometry {
   clampedValue: number;

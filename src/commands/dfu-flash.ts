@@ -6,12 +6,19 @@ import { detectDfuUtil, DFU_UTIL_INSTALL_HINT } from '../hardware/toolchain';
 
 export interface DfuFlashDeps {
   spawn?: typeof cp.spawn;
-  readdirSync?: typeof fs.readdirSync;
-  statSync?: typeof fs.statSync;
+  readdir?: typeof fs.promises.readdir;
+  stat?: typeof fs.promises.stat;
 }
 
 // Daisy Seed DFU flash address (internal flash start).
 const DAISY_DFU_ADDRESS = '0x08000000:leave';
+
+// dfu-util 0.9–0.11 (macOS Homebrew, Debian/Ubuntu apt) exit with this code
+// after a successful ":leave" download because the Daisy Seed resets and
+// disconnects before dfu-util can read back the final USB status — not a
+// real failure. Confirmed against those versions; re-verify if this trips
+// on a dfu-util release outside that range.
+const DFU_LEAVE_QUIRK_EXIT_CODE = 74;
 
 export async function flashToHardware(
   projectRoot: string,
@@ -19,8 +26,8 @@ export async function flashToHardware(
   deps: DfuFlashDeps = {},
 ): Promise<void> {
   const spawnFn = deps.spawn ?? cp.spawn;
-  const readdirSync = deps.readdirSync ?? fs.readdirSync;
-  const statSync = deps.statSync ?? fs.statSync;
+  const readdir = deps.readdir ?? fs.promises.readdir;
+  const stat = deps.stat ?? fs.promises.stat;
 
   const dfuUtil = await detectDfuUtil();
   if (!dfuUtil) {
@@ -30,7 +37,7 @@ export async function flashToHardware(
     return;
   }
 
-  const binPath = findHardwareBin(projectRoot, readdirSync, statSync);
+  const binPath = await findHardwareBin(projectRoot, readdir, stat);
   if (!binPath) {
     void vscode.window.showErrorMessage(
       'ds-ide: no .bin file found in build/. Run "Build for Hardware" first.',
@@ -59,29 +66,32 @@ export async function flashToHardware(
 }
 
 // Find the most recently modified .bin in <projectRoot>/build/.
-export function findHardwareBin(
+export async function findHardwareBin(
   projectRoot: string,
-  readdirSync: typeof fs.readdirSync = fs.readdirSync,
-  statSync: typeof fs.statSync = fs.statSync,
-): string | undefined {
+  readdir: typeof fs.promises.readdir = fs.promises.readdir,
+  stat: typeof fs.promises.stat = fs.promises.stat,
+): Promise<string | undefined> {
   const buildDir = path.join(projectRoot, 'build');
   let entries: string[];
   try {
-    entries = readdirSync(buildDir) as string[];
+    entries = (await readdir(buildDir)) as string[];
   } catch {
     return undefined;
   }
 
-  const bins = entries
-    .filter((e) => e.endsWith('.bin'))
-    .map((e) => {
-      const full = path.join(buildDir, e);
-      try {
-        return { full, mtime: statSync(full).mtimeMs };
-      } catch {
-        return null;
-      }
-    })
+  const candidates = await Promise.all(
+    entries
+      .filter((e) => e.endsWith('.bin'))
+      .map(async (e) => {
+        const full = path.join(buildDir, e);
+        try {
+          return { full, mtime: (await stat(full)).mtimeMs };
+        } catch {
+          return null;
+        }
+      }),
+  );
+  const bins = candidates
     .filter((x): x is { full: string; mtime: number } => x !== null)
     .sort((a, b) => b.mtime - a.mtime);
 
@@ -115,8 +125,13 @@ function runDfuUtil(
     proc.stderr?.on('data', handleData);
     proc.on('error', reject);
     proc.on('close', (code) => {
-      if (code === 0 || downloadSucceeded) resolve();
-      else reject(new Error(`dfu-util exited with code ${code ?? 'null'}`));
+      // The success string is a secondary confirmation only — it never
+      // overrides an unrecognized exit code on its own.
+      if (code === 0 || (code === DFU_LEAVE_QUIRK_EXIT_CODE && downloadSucceeded)) {
+        resolve();
+      } else {
+        reject(new Error(`dfu-util exited with code ${code ?? 'null'}`));
+      }
     });
   });
 }

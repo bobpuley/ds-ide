@@ -110,6 +110,23 @@ controllers:
     });
   });
 
+  describe('unrecognized lines (FR-QA-EXT-4)', () => {
+    it('reports a parse error for a top-level key the parser does not recognize, instead of silently skipping it', () => {
+      const yaml = `controls: []\n`;
+      const { defs, errors } = parseControllerYaml(yaml);
+      expect(defs).toHaveLength(0);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors[0]).toMatch(/unrecognized/i);
+    });
+
+    it('reports a parse error for content preceding any section header', () => {
+      const yaml = `not a valid line\ncontrollers:\n`;
+      const { errors } = parseControllerYaml(yaml);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors[0]).toMatch(/unrecognized/i);
+    });
+  });
+
   describe('duplicate detection (FR-CT-5)', () => {
     it('reports duplicate adc_channel', () => {
       const yaml = `

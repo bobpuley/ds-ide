@@ -94,8 +94,12 @@ export class ScopePanel {
     this.audioSource = audioSource;
 
     if (this.panel) {
+      // Reveal only — reassigning webview.html would reload the page and
+      // discard the scope/spectrum trace history already drawn there
+      // (FR-QA-EXT-7). Post current state instead, the same way a freshly
+      // loaded webview catches up via the 'webviewReady' handshake below.
       this.panel.reveal(vscode.ViewColumn.Two);
-      this.panel.webview.html = this.html();
+      if (this.lastStatusMsg) this.postStatus(this.lastStatusMsg);
       return;
     }
 

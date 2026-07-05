@@ -199,6 +199,33 @@ describe('ScopePanel', () => {
     expect(created.reveal).toHaveBeenCalled();
   });
 
+  it('does not regenerate webview.html on reveal — that would discard scope/spectrum history (FR-QA-EXT-7)', () => {
+    panel.show();
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { html: string; postMessage: ReturnType<typeof vi.fn> };
+    };
+    const htmlAfterFirstShow = created.webview.html;
+
+    panel.show();
+
+    expect(created.webview.html).toBe(htmlAfterFirstShow);
+  });
+
+  it('posts current status via postMessage on reveal instead of relying on a fresh page load (FR-QA-EXT-7)', () => {
+    panel.show();
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { postMessage: ReturnType<typeof vi.fn> };
+    };
+    (manager as unknown as EventEmitter).emit('message', { type: 'status', running: true });
+    created.webview.postMessage.mockClear();
+
+    panel.show();
+
+    expect(created.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'status', running: true }),
+    );
+  });
+
   it('includes fidelity caveat notice in webview HTML (T4.5)', () => {
     panel.show();
     const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
