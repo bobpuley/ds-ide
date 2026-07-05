@@ -50,7 +50,7 @@ The hand-rolled parser silently skips tab-indented lines and never reads the sca
 
 ---
 
-### [ ] fix: Toolchain/type hygiene cleanup (FR-QA-EXT-5)
+### [x] fix: Toolchain/type hygiene cleanup (FR-QA-EXT-5)
 
 Grab-bag: `@types/node ^20` vs. an esbuild target of `node18`; `which` detection via `cp.exec` instead of `execFile`; duplicated knob geometry constants; `hardware-build.ts` creates a fresh output channel when none is passed.
 

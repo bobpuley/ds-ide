@@ -4,7 +4,7 @@ import type { ConventionControl } from '../controllers/controls-convention-parse
 import type { ControlsPlacement } from './scope-panel';
 import type { ControllerConfig, Taper, ButtonMode, ActiveLevel } from '../controllers/controller-config';
 import type { DeviceType } from '../wiring/wiring-panel';
-import { computeKnobGeometry } from './knob-math';
+import { computeKnobGeometry, KNOB_SVG_SIZE, KNOB_CENTER } from './knob-math';
 import { createRafCoalescer } from './raf-coalesce';
 
 interface VsCodeApiForControls {
@@ -115,8 +115,8 @@ function renderConventionCanvas(): void {
 
 function buildKnobSvg(value: number): string {
   const { trackPath, valuePath, dotX, dotY } = computeKnobGeometry(value);
-  return '<svg class="knob-svg" viewBox="0 0 52 52" width="52" height="52">' +
-    '<circle cx="26" cy="26" r="18" fill="#1e1e1e" stroke="#3c3c3c" stroke-width="1.5"/>' +
+  return `<svg class="knob-svg" viewBox="0 0 ${KNOB_SVG_SIZE} ${KNOB_SVG_SIZE}" width="${KNOB_SVG_SIZE}" height="${KNOB_SVG_SIZE}">` +
+    `<circle cx="${KNOB_CENTER}" cy="${KNOB_CENTER}" r="18" fill="#1e1e1e" stroke="#3c3c3c" stroke-width="1.5"/>` +
     '<path d="' + trackPath + '" fill="none" stroke="#3c3c3c" stroke-width="3" stroke-linecap="round"/>' +
     '<path class="knob-value-path" d="' + (valuePath ?? 'M 0 0') + '" fill="none" stroke="#4ec9b0" stroke-width="3" stroke-linecap="round"' + (valuePath ? '' : ' style="display:none"') + '/>' +
     '<circle class="knob-dot" cx="' + dotX.toFixed(2) + '" cy="' + dotY.toFixed(2) + '" r="2.5" fill="#4ec9b0"/>' +

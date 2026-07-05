@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { computeKnobGeometry } from '../../../webview/knob-math';
+import { computeKnobGeometry, KNOB_SVG_SIZE, KNOB_CENTER } from '../../../webview/knob-math';
+
+describe('shared knob geometry constants (FR-QA-EXT-5)', () => {
+  it('centers the knob within its SVG viewport', () => {
+    // controls-webview.ts's <svg viewBox="0 0 {SIZE} {SIZE}"> assumes the
+    // knob is centered — these constants must not drift apart.
+    expect(KNOB_CENTER * 2).toBe(KNOB_SVG_SIZE);
+  });
+});
 
 describe('computeKnobGeometry (FR-IPC-6)', () => {
   it('clamps values above 1 down to 1', () => {

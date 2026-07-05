@@ -15,7 +15,7 @@ describe('findLldbDap()', () => {
 
     const result = await findLldbDap(exists, exec);
     expect(result).toBe('/xcrun/path/lldb-dap');
-    expect(exec).toHaveBeenCalledWith('xcrun --find lldb-dap 2>/dev/null');
+    expect(exec).toHaveBeenCalledWith('xcrun', ['--find', 'lldb-dap']);
   });
 
   it('falls back to CLT path when xcrun fails', async () => {

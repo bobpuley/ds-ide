@@ -25,15 +25,17 @@ export const DFU_UTIL_INSTALL_HINT =
   'Install dfu-util: brew install dfu-util';
 
 type Exists = (p: string) => Promise<boolean>;
-type Exec   = (cmd: string) => Promise<string>;
+type Exec   = (cmd: string, args: string[]) => Promise<string>;
 
 const defaultExists: Exists = async (p) => {
   try { await fs.promises.access(p); return true; } catch { return false; }
 };
 
-const defaultExec: Exec = (cmd) =>
+// execFile (not exec) — no shell is involved, so binary/arg strings can't be
+// reinterpreted as shell metacharacters.
+const defaultExec: Exec = (cmd, args) =>
   new Promise<string>((resolve, reject) =>
-    cp.exec(cmd, (err, stdout) => (err ? reject(err) : resolve(stdout)))
+    cp.execFile(cmd, args, (err, stdout) => (err ? reject(err) : resolve(stdout)))
   );
 
 // Detect arm-none-eabi-gcc.
@@ -52,7 +54,7 @@ export async function detectArmToolchain(
   }
 
   try {
-    const result = (await exec(`which ${ARM_GCC_BINARY} 2>/dev/null`)).trim();
+    const result = (await exec('which', [ARM_GCC_BINARY])).trim();
     if (result && await exists(result)) return result;
   } catch { /* not on PATH */ }
 
@@ -68,7 +70,7 @@ export async function detectDfuUtil(
   exec: Exec = defaultExec,
 ): Promise<string | undefined> {
   try {
-    const result = (await exec(`which ${DFU_UTIL_BINARY} 2>/dev/null`)).trim();
+    const result = (await exec('which', [DFU_UTIL_BINARY])).trim();
     if (result && await exists(result)) return result;
   } catch { /* not on PATH */ }
 
