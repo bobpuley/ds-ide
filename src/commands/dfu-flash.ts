@@ -15,6 +15,7 @@ const DAISY_DFU_ADDRESS = '0x08000000:leave';
 
 export async function flashToHardware(
   projectRoot: string,
+  outputChannel: vscode.OutputChannel,
   deps: DfuFlashDeps = {},
 ): Promise<void> {
   const spawnFn = deps.spawn ?? cp.spawn;
@@ -44,7 +45,7 @@ export async function flashToHardware(
   );
   if (ok !== 'Flash') return;
 
-  const channel = vscode.window.createOutputChannel('Daisy IDE Flash');
+  const channel = outputChannel;
   channel.show();
   channel.appendLine(`Flashing ${path.basename(binPath)} …`);
 

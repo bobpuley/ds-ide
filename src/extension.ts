@@ -285,6 +285,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const buildChannel    = vscode.window.createOutputChannel('Daisy IDE Build');
   const emulatorChannel = vscode.window.createOutputChannel('Daisy IDE Emulator');
   const hardwareChannel = vscode.window.createOutputChannel('Daisy IDE Hardware Build');
+  const flashChannel    = vscode.window.createOutputChannel('Daisy IDE Flash');
 
   const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBar.text = '$(circuit-board) Daisy';
@@ -523,6 +524,7 @@ export function activate(context: vscode.ExtensionContext): void {
     buildChannel,
     emulatorChannel,
     hardwareChannel,
+    flashChannel,
     statusBar,
     vscode.window.registerWebviewViewProvider('ds-ide.controlsEditor', controlsProvider, {
       webviewOptions: { retainContextWhenHidden: true },
@@ -584,7 +586,7 @@ export function activate(context: vscode.ExtensionContext): void {
         void vscode.window.showErrorMessage('ds-ide: no workspace folder open');
         return;
       }
-      return buildForHardware(folders[0].uri.fsPath, diagnostics, {}, hardwareChannel);
+      return buildForHardware(folders[0].uri.fsPath, diagnostics, hardwareChannel);
     }),
     vscode.commands.registerCommand('ds-ide.flash', () => {
       const folders = vscode.workspace.workspaceFolders;
@@ -592,7 +594,7 @@ export function activate(context: vscode.ExtensionContext): void {
         void vscode.window.showErrorMessage('ds-ide: no workspace folder open');
         return;
       }
-      return flashToHardware(folders[0].uri.fsPath);
+      return flashToHardware(folders[0].uri.fsPath, flashChannel);
     }),
     vscode.commands.registerCommand('ds-ide.debug', () =>
       deployCoordinator.performDeploy({ build: false, debug: true }),

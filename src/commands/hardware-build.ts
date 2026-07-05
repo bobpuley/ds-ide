@@ -13,8 +13,8 @@ export interface HardwareBuildDeps {
 export async function buildForHardware(
   projectRoot: string,
   diagnostics: vscode.DiagnosticCollection,
+  outputChannel: vscode.OutputChannel,
   deps: HardwareBuildDeps = {},
-  outputChannel?: vscode.OutputChannel,
 ): Promise<void> {
   const spawnFn = deps.spawn ?? cp.spawn;
 
@@ -28,7 +28,7 @@ export async function buildForHardware(
     return;
   }
 
-  const channel = outputChannel ?? vscode.window.createOutputChannel('Daisy IDE Hardware Build');
+  const channel = outputChannel;
   channel.show();
 
   const parsed: ParsedDiagnostic[] = [];

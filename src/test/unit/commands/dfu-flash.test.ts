@@ -31,6 +31,14 @@ function makeFlashDeps(exitCode = 0): DfuFlashDeps {
   } as unknown as DfuFlashDeps;
 }
 
+function makeChannel(): vscode.OutputChannel {
+  return {
+    appendLine: vi.fn(),
+    show: vi.fn(),
+    dispose: vi.fn(),
+  } as unknown as vscode.OutputChannel;
+}
+
 describe('flashToHardware()', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -41,7 +49,7 @@ describe('flashToHardware()', () => {
 
   it('shows success message when dfu-util exits with code 0', async () => {
     const deps = makeFlashDeps(0);
-    await flashToHardware('/project', deps);
+    await flashToHardware('/project', makeChannel(), deps);
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
       expect.stringContaining('flash succeeded'),
     );
@@ -49,7 +57,7 @@ describe('flashToHardware()', () => {
 
   it('shows error message when dfu-util exits with non-zero code', async () => {
     const deps = makeFlashDeps(1);
-    await flashToHardware('/project', deps);
+    await flashToHardware('/project', makeChannel(), deps);
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('flash failed'),
     );
@@ -59,7 +67,7 @@ describe('flashToHardware()', () => {
     (detectDfuUtil as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
     const deps = makeFlashDeps(0);
 
-    await flashToHardware('/project', deps);
+    await flashToHardware('/project', makeChannel(), deps);
 
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('dfu-util not found'),
@@ -69,7 +77,7 @@ describe('flashToHardware()', () => {
 
   it('shows error and skips flash when no .bin file is found', async () => {
     const deps = { ...makeFlashDeps(0), readdirSync: vi.fn(() => []) } as unknown as DfuFlashDeps;
-    await flashToHardware('/project', deps);
+    await flashToHardware('/project', makeChannel(), deps);
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('no .bin file found'),
     );
@@ -81,7 +89,7 @@ describe('flashToHardware()', () => {
       .mockResolvedValueOnce('Cancel');
     const deps = makeFlashDeps(0);
 
-    await flashToHardware('/project', deps);
+    await flashToHardware('/project', makeChannel(), deps);
 
     expect(deps.spawn).not.toHaveBeenCalled();
     expect(vscode.window.showInformationMessage).not.toHaveBeenCalledWith(
@@ -91,7 +99,7 @@ describe('flashToHardware()', () => {
 
   it('invokes dfu-util with correct Daisy flash arguments', async () => {
     const deps = makeFlashDeps(0);
-    await flashToHardware('/project', deps);
+    await flashToHardware('/project', makeChannel(), deps);
     const call = (deps.spawn as ReturnType<typeof vi.fn>).mock.calls[0]!;
     const args = call[1] as string[];
     expect(call[0]).toBe('/opt/homebrew/bin/dfu-util');
@@ -105,12 +113,22 @@ describe('flashToHardware()', () => {
 
   it('shows the bootloader prompt before flashing', async () => {
     const deps = makeFlashDeps(0);
-    await flashToHardware('/project', deps);
+    await flashToHardware('/project', makeChannel(), deps);
     const calls = (vscode.window.showInformationMessage as ReturnType<typeof vi.fn>).mock.calls;
     const promptCall = calls.find((c: unknown[]) =>
       typeof c[0] === 'string' && (c[0] as string).includes('bootloader'),
     );
     expect(promptCall).toBeDefined();
+  });
+
+  it('reuses the passed-in channel across multiple invocations instead of creating a new one', async () => {
+    const channel = makeChannel();
+    const deps = makeFlashDeps(0);
+    await flashToHardware('/project', channel, deps);
+    await flashToHardware('/project', channel, deps);
+    await flashToHardware('/project', channel, deps);
+    expect(vscode.window.createOutputChannel).not.toHaveBeenCalled();
+    expect(channel.show).toHaveBeenCalledTimes(3);
   });
 });
 

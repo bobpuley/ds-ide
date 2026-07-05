@@ -19,6 +19,14 @@ function makeDiagnostics() {
   } as unknown as vscode.DiagnosticCollection;
 }
 
+function makeChannel(): vscode.OutputChannel {
+  return {
+    appendLine: vi.fn(),
+    show: vi.fn(),
+    dispose: vi.fn(),
+  } as unknown as vscode.OutputChannel;
+}
+
 function makeSpawn(exitCode = 0, stderr = ''): typeof import('child_process').spawn {
   return vi.fn(() => {
     const proc = new EventEmitter() as ReturnType<typeof import('child_process').spawn>;
@@ -44,7 +52,7 @@ describe('buildForHardware()', () => {
 
   it('shows success message when make exits with code 0', async () => {
     const spawn = makeSpawn(0);
-    await buildForHardware('/project', makeDiagnostics(), { spawn });
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
       expect.stringContaining('hardware build succeeded'),
     );
@@ -52,7 +60,7 @@ describe('buildForHardware()', () => {
 
   it('shows error message when make exits with non-zero code', async () => {
     const spawn = makeSpawn(2);
-    await buildForHardware('/project', makeDiagnostics(), { spawn });
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('hardware build failed'),
     );
@@ -62,7 +70,7 @@ describe('buildForHardware()', () => {
     (detectArmToolchain as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
     const spawn = makeSpawn(0);
 
-    await buildForHardware('/project', makeDiagnostics(), { spawn });
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
 
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('arm-none-eabi-gcc not found'),
@@ -86,7 +94,7 @@ describe('buildForHardware()', () => {
     }) as unknown as typeof import('child_process').spawn;
 
     const diagnostics = makeDiagnostics();
-    await buildForHardware('/project', diagnostics, { spawn });
+    await buildForHardware('/project', diagnostics, makeChannel(), { spawn });
 
     expect(diagnostics.clear).toHaveBeenCalled();
     expect(diagnostics.set).toHaveBeenCalled();
@@ -97,15 +105,23 @@ describe('buildForHardware()', () => {
       get: vi.fn((key: string) => key === 'armToolchainPath' ? '/custom/bin' : undefined),
     });
     const spawn = makeSpawn(0);
-    await buildForHardware('/project', makeDiagnostics(), { spawn });
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
     expect(detectArmToolchain).toHaveBeenCalledWith('/custom/bin');
   });
 
   it('invokes make in the project root', async () => {
     const spawn = makeSpawn(0);
-    await buildForHardware('/my/project', makeDiagnostics(), { spawn });
+    await buildForHardware('/my/project', makeDiagnostics(), makeChannel(), { spawn });
     const call = (spawn as ReturnType<typeof vi.fn>).mock.calls[0]!;
     expect(call[0]).toBe('make');
     expect((call[2] as { cwd: string }).cwd).toBe('/my/project');
+  });
+
+  it('reuses the passed-in channel instead of creating a fallback', async () => {
+    const spawn = makeSpawn(0);
+    const channel = makeChannel();
+    await buildForHardware('/project', makeDiagnostics(), channel, { spawn });
+    expect(vscode.window.createOutputChannel).not.toHaveBeenCalled();
+    expect(channel.show).toHaveBeenCalled();
   });
 });

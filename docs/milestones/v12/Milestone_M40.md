@@ -1,7 +1,7 @@
 # M40 — Extension UX & Workspace Safety
 
 **Version:** 0.13.2
-**Status:** planned
+**Status:** in progress
 **Source:** 2026-07-02 VS Code extension code review — MEDIUM findings
 
 ## Goal
@@ -10,7 +10,7 @@ Fix the UX and workspace-safety gaps that erode user trust without being outrigh
 
 ## Sprint Tasks
 
-### [ ] fix: Create output channels once and track them in `context.subscriptions` (FR-UX-1)
+### [x] fix: Create output channels once and track them in `context.subscriptions` (FR-UX-1)
 
 `flashToHardware` creates a new `"Daisy IDE Flash"` channel on every invocation and never disposes it; `buildForHardware` has the same latent fallback.
 
