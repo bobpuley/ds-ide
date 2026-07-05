@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as vscode from 'vscode';
 import { findEffectSource, EffectSourceOutsideWorkspaceError } from '../../../commands/find-effect-source';
 import { buildForEmulator, detectDaisySP } from '../../../commands/build';
@@ -19,6 +19,14 @@ function makeChannel(): vscode.OutputChannel {
     show: vi.fn(),
     dispose: vi.fn(),
   } as unknown as vscode.OutputChannel;
+}
+
+function makeWorkspaceState(): vscode.Memento {
+  return {
+    get: vi.fn(),
+    update: vi.fn(() => Promise.resolve()),
+    keys: () => [],
+  } as unknown as vscode.Memento;
 }
 
 describe('findEffectSource', () => {
@@ -123,7 +131,7 @@ describe('buildForEmulator success notification (FR-UX-2)', () => {
 
   it('relies on the status bar instead of a success toast when the build succeeds', async () => {
     const manager = { build: vi.fn().mockResolvedValue(undefined) } as unknown as EmulatorManager;
-    const ok = await buildForEmulator(manager, '/ext', undefined, makeChannel());
+    const ok = await buildForEmulator(manager, '/ext', undefined, makeChannel(), makeWorkspaceState());
     expect(ok).toBe(true);
     expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
     expect(vscode.window.setStatusBarMessage).toHaveBeenCalledWith(
@@ -134,10 +142,51 @@ describe('buildForEmulator success notification (FR-UX-2)', () => {
 
   it('still shows an error toast when the build fails', async () => {
     const manager = { build: vi.fn().mockRejectedValue(new Error('boom')) } as unknown as EmulatorManager;
-    const ok = await buildForEmulator(manager, '/ext', undefined, makeChannel());
+    const ok = await buildForEmulator(manager, '/ext', undefined, makeChannel(), makeWorkspaceState());
     expect(ok).toBe(false);
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('build failed'),
+    );
+  });
+});
+
+describe('buildForEmulator active folder resolution (FR-UX-4)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(fs.promises.readdir).mockResolvedValue(['effect.cpp'] as never);
+    vi.mocked(fs.promises.stat).mockRejectedValue(new Error('ENOENT'));
+  });
+
+  afterEach(() => {
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = undefined;
+  });
+
+  it('shows an error and does not build when no workspace folder is open', async () => {
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = undefined;
+    const manager = { build: vi.fn() } as unknown as EmulatorManager;
+    const ok = await buildForEmulator(manager, '/ext', undefined, makeChannel(), makeWorkspaceState());
+    expect(ok).toBe(false);
+    expect(manager.build).not.toHaveBeenCalled();
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      expect.stringContaining('no workspace folder open'),
+    );
+  });
+
+  it('builds the persisted active folder rather than always folder 0 in a multi-root workspace', async () => {
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [
+      { uri: { fsPath: '/a' }, name: 'a' },
+      { uri: { fsPath: '/b' }, name: 'b' },
+    ];
+    const manager = { build: vi.fn().mockResolvedValue(undefined) } as unknown as EmulatorManager;
+    const workspaceState = {
+      get: vi.fn(() => '/b'),
+      update: vi.fn(() => Promise.resolve()),
+      keys: () => [],
+    } as unknown as vscode.Memento;
+    await buildForEmulator(manager, '/ext', undefined, makeChannel(), workspaceState);
+    expect(manager.build).toHaveBeenCalledWith(
+      expect.objectContaining({ projectRoot: '/b' }),
+      expect.anything(),
     );
   });
 });

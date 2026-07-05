@@ -47,13 +47,13 @@ describe('buildForEmulator return value', () => {
     // detectEffectSrc is tested separately; here we verify the boolean contract
     // using the already-mocked stub.
     vi.mocked(buildMod.buildForEmulator).mockResolvedValue(true);
-    const result = await buildMod.buildForEmulator({} as never, '/ext', undefined, {} as never);
+    const result = await buildMod.buildForEmulator({} as never, '/ext', undefined, {} as never, {} as never);
     expect(result).toBe(true);
   });
 
   it('returns false on failure', async () => {
     vi.mocked(buildMod.buildForEmulator).mockResolvedValue(false);
-    const result = await buildMod.buildForEmulator({} as never, '/ext', undefined, {} as never);
+    const result = await buildMod.buildForEmulator({} as never, '/ext', undefined, {} as never, {} as never);
     expect(result).toBe(false);
   });
 });

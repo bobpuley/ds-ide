@@ -71,6 +71,11 @@
         "command": "ds-ide.createNewEffectProject",
         "title": "Create New Effect Project",
         "category": "Daisy IDE"
+      },
+      {
+        "command": "ds-ide.selectActiveFolder",
+        "title": "Select Active Workspace Folder",
+        "category": "Daisy IDE"
       }
     ],
     "keybindings": [

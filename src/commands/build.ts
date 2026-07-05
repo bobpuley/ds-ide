@@ -5,19 +5,21 @@ import { EmulatorManager, BuildOptions } from '../emulator/manager';
 import { parseBuildLine, applyDiagnostics, ParsedDiagnostic } from '../diagnostics/build-diagnostics';
 import { detectNonPortableSymbol } from '../diagnostics/non-portable';
 import { findEffectSource } from './find-effect-source';
+import { resolveActiveFolder } from '../workspace/active-folder';
 
 export async function buildForEmulator(
   manager: EmulatorManager,
   extensionPath: string,
   diagnostics: vscode.DiagnosticCollection | undefined,
   outputChannel: vscode.OutputChannel,
+  workspaceState: vscode.Memento,
 ): Promise<boolean> {
-  const folders = vscode.workspace.workspaceFolders;
-  if (!folders || folders.length === 0) {
+  const folder = resolveActiveFolder(workspaceState);
+  if (!folder) {
     void vscode.window.showErrorMessage('ds-ide: no workspace folder open');
     return false;
   }
-  const projectRoot = folders[0]!.uri.fsPath;
+  const projectRoot = folder.uri.fsPath;
 
   const effectSrc = await findEffectSource(projectRoot);
   if (!effectSrc) {

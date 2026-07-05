@@ -1,5 +1,6 @@
 // Minimal vscode API mock for unit tests.
 import { vi } from 'vitest';
+import * as path from 'path';
 
 const commands = {
   registerCommand: vi.fn((_id: string, _handler: (...args: unknown[]) => unknown) => ({
@@ -40,11 +41,25 @@ const window = {
   showOpenDialog: vi.fn(),
   showSaveDialog: vi.fn(),
   showInputBox: vi.fn(),
+  showQuickPick: vi.fn(),
   setStatusBarMessage: vi.fn(() => ({ dispose: vi.fn() })),
 };
 
+type MockWorkspaceFolder = { uri: { fsPath: string }; name?: string };
+
+function findContainingFolder(
+  folders: MockWorkspaceFolder[] | undefined,
+  uri: { fsPath: string },
+): MockWorkspaceFolder | undefined {
+  if (!folders) return undefined;
+  return folders.find((f) => {
+    const root = f.uri.fsPath;
+    return uri.fsPath === root || uri.fsPath.startsWith(root + path.sep);
+  });
+}
+
 const workspace = {
-  workspaceFolders: undefined as undefined | { uri: { fsPath: string } }[],
+  workspaceFolders: undefined as undefined | MockWorkspaceFolder[],
   getConfiguration: vi.fn(() => ({
     get: vi.fn(),
   })),
@@ -56,6 +71,9 @@ const workspace = {
   })),
   applyEdit: vi.fn(async () => true),
   onDidSaveTextDocument: vi.fn((_cb: (doc: { uri: { fsPath: string } }) => void) => ({ dispose: vi.fn() })),
+  getWorkspaceFolder: vi.fn((uri: { fsPath: string }): MockWorkspaceFolder | undefined =>
+    findContainingFolder(workspace.workspaceFolders, uri),
+  ),
   fs: {
     writeFile: vi.fn(async () => undefined),
     createDirectory: vi.fn(async () => undefined),

@@ -26,6 +26,7 @@ import { createEffectProject } from './commands/create-effect-project';
 import * as os from 'os';
 import { getString, getBoolean } from './ipc/narrow';
 import { findEffectSource as _findEffectSource, EffectSourceOutsideWorkspaceError } from './commands/find-effect-source';
+import { resolveActiveFolder, promptSelectActiveFolder } from './workspace/active-folder';
 
 const FIDELITY_CAVEAT =
   'Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget.';
@@ -202,6 +203,7 @@ class DeployCoordinator {
     private readonly emulatorChannel: vscode.OutputChannel,
     private readonly extensionPath: string,
     private readonly loadControllerConfig: () => Promise<ControllerConfig>,
+    private readonly workspaceState: vscode.Memento,
   ) {}
 
   private setDeploying(): void {
@@ -228,7 +230,9 @@ class DeployCoordinator {
 
   async performDeploy(opts: { build: boolean; debug: boolean }): Promise<boolean> {
     if (opts.build) {
-      const ok = await buildForEmulator(this.manager, this.extensionPath, this.diagnostics, this.buildChannel);
+      const ok = await buildForEmulator(
+        this.manager, this.extensionPath, this.diagnostics, this.buildChannel, this.workspaceState,
+      );
       if (!ok) return false;
     }
     this.setDeploying();
@@ -248,7 +252,7 @@ class DeployCoordinator {
       return true;
     }
 
-    const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+    const folder = resolveActiveFolder(this.workspaceState)?.uri.fsPath ?? '';
     this.scopePanel.show(this.session.sineState, this.session.audioSourceState);
     this.controlsProvider.loadEditor(cfg);
     this.controlsProvider.postControlsConfig(await buildControlsConfig(folder, cfg));
@@ -278,12 +282,12 @@ export function activate(context: vscode.ExtensionContext): void {
   let lastControllerConfigErrorsKey: string | undefined;
 
   async function loadControllerConfig(): Promise<ControllerConfig> {
-    const folders = vscode.workspace.workspaceFolders;
-    if (!folders?.[0]) {
+    const folder = resolveActiveFolder(context.workspaceState);
+    if (!folder) {
       controllerConfigUnreadable = false;
       return { pots: [], buttons: [], leds: [], errors: [] };
     }
-    const yamlPath = path.join(folders[0].uri.fsPath, 'controllers.yaml');
+    const yamlPath = path.join(folder.uri.fsPath, 'controllers.yaml');
     try {
       const text = await fs.promises.readFile(yamlPath, 'utf8');
       controllerConfigUnreadable = false;
@@ -325,7 +329,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // global /tmp sweep that could sever another concurrently running VS Code
   // window's live emulator socket (FR-EXT-2).
   {
-    const activeFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const activeFolder = resolveActiveFolder(context.workspaceState)?.uri.fsPath;
     if (activeFolder) {
       const buildDir = path.join(activeFolder, '.ds-ide', 'build');
       const runtimeDir = workspaceRuntimeDir(buildDir);
@@ -339,12 +343,21 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   }
 
-  // One-time info when multiple workspace folders are present (FR-QA-17).
+  // One-time info when multiple workspace folders are present — the active
+  // folder defaults to the persisted choice (or folder 0 until one is made),
+  // and can be changed via the ds-ide.selectActiveFolder command (FR-UX-4).
   const _folders = vscode.workspace.workspaceFolders;
   if (_folders && _folders.length > 1) {
-    void vscode.window.showInformationMessage(
-      `ds-ide: multiple workspace folders detected — operating on '${_folders[0]!.name}'`,
-    );
+    const active = resolveActiveFolder(context.workspaceState);
+    void (async () => {
+      const choice = await vscode.window.showInformationMessage(
+        `ds-ide: multiple workspace folders detected — operating on '${active?.name ?? _folders[0]!.name}'.`,
+        'Select Folder…',
+      );
+      if (choice !== 'Select Folder…') return;
+      const chosen = await promptSelectActiveFolder(context.workspaceState);
+      if (chosen) void initViewsFromProject();
+    })();
   }
 
   const diagnostics = vscode.languages.createDiagnosticCollection('ds-ide');
@@ -367,9 +380,9 @@ export function activate(context: vscode.ExtensionContext): void {
         );
         return;
       }
-      const folders = vscode.workspace.workspaceFolders;
-      if (!folders?.[0]) return;
-      const yamlPath = path.join(folders[0].uri.fsPath, 'controllers.yaml');
+      const folder = resolveActiveFolder(context.workspaceState);
+      if (!folder) return;
+      const yamlPath = path.join(folder.uri.fsPath, 'controllers.yaml');
       void fs.promises.writeFile(yamlPath, serializeControllerConfig(cfg), 'utf8').catch((err: unknown) => {
         void vscode.window.showErrorMessage(`ds-ide: could not write controllers.yaml: ${String(err)}`);
       });
@@ -387,7 +400,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const wiringProvider = new WiringViewProvider(
     context.extensionUri,
     async (wp: WiredPin) => {
-      const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+      const folder = resolveActiveFolder(context.workspaceState)?.uri.fsPath ?? '';
       const effectPath = await findEffectSource(folder);
       if (!effectPath) {
         void vscode.window.showErrorMessage('ds-ide: no effect source file found — set ds-ide.effectSource');
@@ -419,7 +432,7 @@ export function activate(context: vscode.ExtensionContext): void {
       controlsProvider?.postControlsConfig(await buildControlsConfig(folder, cfg));
     },
     async (pinNumber: number, id: string) => {
-      const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+      const folder = resolveActiveFolder(context.workspaceState)?.uri.fsPath ?? '';
       const effectPath = await findEffectSource(folder);
       if (!effectPath) {
         void vscode.window.showErrorMessage('ds-ide: no effect source file found — set ds-ide.effectSource');
@@ -563,6 +576,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const deployCoordinator = new DeployCoordinator(
     manager, statusBar, potStore, buttonStore, session, scopePanel, controlsProvider,
     diagnostics, buildChannel, emulatorChannel, context.extensionPath, loadControllerConfig,
+    context.workspaceState,
   );
 
   const runConfigProvider = new DaisyRunConfigurationProvider(
@@ -571,9 +585,9 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   async function initViewsFromProject(): Promise<void> {
-    const folders = vscode.workspace.workspaceFolders;
-    if (!folders?.[0]) return;
-    const folder = folders[0].uri.fsPath;
+    const activeFolder = resolveActiveFolder(context.workspaceState);
+    if (!activeFolder) return;
+    const folder = activeFolder.uri.fsPath;
     const cfg = await loadControllerConfig();
     controlsProvider.loadEditor(cfg);
     controlsProvider.postControlsConfig(await buildControlsConfig(folder, cfg));
@@ -609,15 +623,22 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.debug.registerDebugAdapterDescriptorFactory(DS_IDE_DEBUG_TYPE, new DsIdeDebugAdapterDescriptorFactory()),
     vscode.debug.registerDebugConfigurationProvider(DS_IDE_DEBUG_TYPE, runConfigProvider),
     vscode.workspace.onDidSaveTextDocument(async (doc) => {
-      const folders = vscode.workspace.workspaceFolders;
-      if (!folders?.[0]) return;
-      const folder = folders[0].uri.fsPath;
+      const activeFolder = resolveActiveFolder(context.workspaceState);
+      if (!activeFolder) return;
+      // Uses real workspace-folder membership (vscode.workspace.getWorkspaceFolder)
+      // rather than a raw path prefix check — a sibling directory that merely
+      // shares a string prefix with the active folder must not false-positive
+      // here (FR-UX-4).
+      const savedFolder = vscode.workspace.getWorkspaceFolder(doc.uri);
+      if (!savedFolder || savedFolder.uri.fsPath !== activeFolder.uri.fsPath) return;
+      const folder = activeFolder.uri.fsPath;
       const saved = doc.uri.fsPath;
       const yamlPath = path.join(folder, 'controllers.yaml');
 
-      // Early exit before any I/O: only proceed for the yaml or a .cpp in the workspace
+      // Early exit before any I/O: only proceed for the yaml or a .cpp — the
+      // getWorkspaceFolder check above already confirmed it's in-folder.
       const isYaml = saved === yamlPath;
-      const mightBeSource = saved.endsWith('.cpp') && saved.startsWith(folder);
+      const mightBeSource = saved.endsWith('.cpp');
       if (!isYaml && !mightBeSource) return;
 
       const cfg = await loadControllerConfig();
@@ -638,7 +659,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
     vscode.commands.registerCommand('ds-ide.build', () =>
-      buildForEmulator(manager, context.extensionPath, diagnostics, buildChannel),
+      buildForEmulator(manager, context.extensionPath, diagnostics, buildChannel, context.workspaceState),
     ),
     vscode.commands.registerCommand('ds-ide.buildAndDeploy', () =>
       deployCoordinator.performDeploy({ build: true, debug: false }),
@@ -653,25 +674,29 @@ export function activate(context: vscode.ExtensionContext): void {
       controlsProvider?.postStatus({ type: 'status', running: false });
     }),
     vscode.commands.registerCommand('ds-ide.buildHardware', () => {
-      const folders = vscode.workspace.workspaceFolders;
-      if (!folders?.[0]) {
+      const folder = resolveActiveFolder(context.workspaceState);
+      if (!folder) {
         void vscode.window.showErrorMessage('ds-ide: no workspace folder open');
         return;
       }
-      return buildForHardware(folders[0].uri.fsPath, diagnostics, hardwareChannel);
+      return buildForHardware(folder.uri.fsPath, diagnostics, hardwareChannel);
     }),
     vscode.commands.registerCommand('ds-ide.flash', () => {
-      const folders = vscode.workspace.workspaceFolders;
-      if (!folders?.[0]) {
+      const folder = resolveActiveFolder(context.workspaceState);
+      if (!folder) {
         void vscode.window.showErrorMessage('ds-ide: no workspace folder open');
         return;
       }
-      return flashToHardware(folders[0].uri.fsPath, flashChannel);
+      return flashToHardware(folder.uri.fsPath, flashChannel);
     }),
     vscode.commands.registerCommand('ds-ide.debug', () =>
       deployCoordinator.performDeploy({ build: false, debug: true }),
     ),
     vscode.commands.registerCommand('ds-ide.createNewEffectProject', createEffectProject),
+    vscode.commands.registerCommand('ds-ide.selectActiveFolder', async () => {
+      const chosen = await promptSelectActiveFolder(context.workspaceState);
+      if (chosen) void initViewsFromProject();
+    }),
     { dispose: () => { manager?.dispose(); scopePanel?.dispose(); } },
     startSessionDisposable,
     terminateSessionDisposable,

@@ -51,7 +51,7 @@ Fix the UX and workspace-safety gaps that erode user trust without being outrigh
 
 ---
 
-### [ ] fix: Route multi-root workspace resolution through proper URI semantics (FR-UX-4)
+### [x] fix: Route multi-root workspace resolution through proper URI semantics (FR-UX-4)
 
 Every workspace-dependent operation hardcodes `workspaceFolders[0]`; the save-listener's "in workspace" check (`saved.startsWith(folder)`) is prefix-unsafe and false-positives sibling directories.
 

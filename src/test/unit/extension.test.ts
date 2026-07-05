@@ -110,6 +110,7 @@ describe('extension', () => {
     expect(registeredIds).toContain('ds-ide.debug');
     expect(registeredIds).toContain('ds-ide.buildHardware');
     expect(registeredIds).toContain('ds-ide.flash');
+    expect(registeredIds).toContain('ds-ide.selectActiveFolder');
     // Removed in M35 — access now via Activity Bar icons
     expect(registeredIds).not.toContain('ds-ide.openControlsEditor');
     expect(registeredIds).not.toContain('ds-ide.openWiringEditor');
@@ -371,6 +372,21 @@ describe('extension view initialization (FR-CE-9, FR-WE-11)', () => {
     const promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
     promisesMock['readFile']!.mockClear();
     await saveCb({ uri: { fsPath: '/other/unrelated.txt' } });
+    expect(promisesMock['readFile']).not.toHaveBeenCalled();
+  });
+
+  it('save cb ignores a sibling directory sharing a string prefix with the active folder (FR-UX-4)', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    const saveCb = (vscode.workspace.onDidSaveTextDocument as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
+      ((doc: { uri: { fsPath: string } }) => Promise<void>);
+    const promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['readFile']!.mockClear();
+    // '/proj-sibling'.startsWith('/proj') is true, but it is not actually
+    // inside the '/proj' workspace folder — a raw prefix check would
+    // false-positive here; vscode.workspace.getWorkspaceFolder must not.
+    await saveCb({ uri: { fsPath: '/proj-sibling/effect.cpp' } });
     expect(promisesMock['readFile']).not.toHaveBeenCalled();
   });
 
@@ -1056,5 +1072,61 @@ describe('deploy sequencing via DeployCoordinator (FR-IPC-7)', () => {
     const cmd = getCommand('ds-ide.buildAndDeploy')!;
     await cmd();
     expect(mgr.sendPotSnapshot).not.toHaveBeenCalled();
+  });
+});
+
+// ── FR-UX-4: multi-root workspace folder selection ──
+
+describe('multi-root workspace folder selection (FR-UX-4)', () => {
+  function makeStatefulContext(): vscode.ExtensionContext {
+    const store: Record<string, unknown> = {};
+    return {
+      subscriptions: [],
+      extensionPath: '/ext',
+      extensionUri: { fsPath: '/ext' },
+      workspaceState: {
+        get: (key: string, defaultValue?: unknown) => (key in store ? store[key] : defaultValue),
+        update: (key: string, value: unknown) => { store[key] = value; return Promise.resolve(); },
+        keys: () => Object.keys(store),
+      },
+    } as unknown as vscode.ExtensionContext;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    managerInstances.length = 0;
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [
+      { uri: { fsPath: '/a' }, name: 'a' },
+      { uri: { fsPath: '/b' }, name: 'b' },
+    ];
+  });
+
+  afterEach(() => {
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = undefined;
+  });
+
+  it('shows an info message naming the currently-active folder, with a Select Folder action', async () => {
+    const { activate: act } = await import('../../extension');
+    act(makeStatefulContext());
+
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining("operating on 'a'"),
+      'Select Folder…',
+    );
+  });
+
+  it('ds-ide.selectActiveFolder persists the chosen folder so it wins on the next resolution', async () => {
+    (vscode.window.showQuickPick as ReturnType<typeof vi.fn>).mockImplementation(
+      async (items: Array<{ folder: { uri: { fsPath: string } } }>) => items[1],
+    );
+    const { activate: act } = await import('../../extension');
+    const ctx = makeStatefulContext();
+    act(ctx);
+
+    const calls = (vscode.commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls;
+    const selectCmd = calls.find((c: unknown[]) => c[0] === 'ds-ide.selectActiveFolder')?.[1] as () => Promise<void>;
+    await selectCmd();
+
+    expect(ctx.workspaceState.get('ds-ide.activeFolder')).toBe('/b');
   });
 });
