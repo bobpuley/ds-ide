@@ -37,7 +37,7 @@ Fix the UX and workspace-safety gaps that erode user trust without being outrigh
 
 ---
 
-### [ ] fix: Contain Wiring Editor edits to the workspace and to marker ranges (FR-UX-3)
+### [x] fix: Contain Wiring Editor edits to the workspace and to marker ranges (FR-UX-3)
 
 `ds-ide.effectSource` accepts an absolute path with no containment check (settable via a committed `.vscode/settings.json`), letting a crafted project redirect edits outside the workspace; `makeBlockEdit` also replaces the **entire document** whenever a marker pair is missing.
 

@@ -25,23 +25,64 @@ import { WiringViewProvider } from './sidebar/wiring-editor-panel';
 import { createEffectProject } from './commands/create-effect-project';
 import * as os from 'os';
 import { getString, getBoolean } from './ipc/narrow';
-import { findEffectSource as _findEffectSource } from './commands/find-effect-source';
+import { findEffectSource as _findEffectSource, EffectSourceOutsideWorkspaceError } from './commands/find-effect-source';
 
 const FIDELITY_CAVEAT =
   'Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget.';
 
 async function findEffectSource(folder: string): Promise<string | undefined> {
-  return _findEffectSource(folder, vscode.workspace.getConfiguration('ds-ide').get<string>('effectSource'));
+  const configured = vscode.workspace.getConfiguration('ds-ide').get<string>('effectSource');
+  try {
+    return await _findEffectSource(folder, configured);
+  } catch (err) {
+    if (err instanceof EffectSourceOutsideWorkspaceError) {
+      void vscode.window.showErrorMessage(
+        `ds-ide: ds-ide.effectSource points outside the workspace folder — refusing to use '${err.resolvedPath}'. Fix the setting to point inside '${err.workspaceRoot}'.`,
+      );
+      return undefined;
+    }
+    throw err;
+  }
+}
+
+// Result of a marker-pair lookup: a unique, well-formed range; 'absent' when
+// neither begin nor end appears at all (a legacy file that has never been
+// wired); or 'ambiguous' for anything else (duplicated markers, or an
+// end-before-begin) — a shape too broken to safely locate (FR-IPC-5).
+type MarkerRange = { s: number; e: number } | 'absent' | 'ambiguous';
+
+function findMarkerRange(lines: string[], begin: string, end: string): MarkerRange {
+  const clean = lines.map(l => l.replace(/\r$/, ''));
+  const beginIndices = clean.reduce<number[]>((acc, l, i) => { if (l === begin) acc.push(i); return acc; }, []);
+  const endIndices = clean.reduce<number[]>((acc, l, i) => { if (l === end) acc.push(i); return acc; }, []);
+  if (beginIndices.length === 0 && endIndices.length === 0) return 'absent';
+  if (beginIndices.length !== 1 || endIndices.length !== 1) return 'ambiguous';
+  const [s] = beginIndices;
+  const [e] = endIndices;
+  return e! > s! ? { s: s!, e: e! } : 'ambiguous';
+}
+
+export interface BlockEditResult {
+  edit: vscode.WorkspaceEdit;
+  // True when at least one marker pair doesn't exist in oldText yet — the
+  // caller must get a one-time user confirmation before applying this edit,
+  // since it appends brand-new marker blocks to a file that had none (FR-UX-3).
+  needsAppendConfirmation: boolean;
 }
 
 // Build a WorkspaceEdit that replaces only the marker blocks that changed.
-// Falls back to a full-file replacement when blocks are absent (legacy projects).
+// Marker pairs already present are edited in place, independent of each
+// other, so an established block's range is never touched just because a
+// *different* block is missing or malformed (FR-UX-3). A marker pair with no
+// prior occurrence at all is appended (flagged via needsAppendConfirmation);
+// a duplicated/malformed marker pair still falls back to a full-file
+// replacement, since its range can't be safely located (FR-IPC-5).
 export function makeBlockEdit(
   doc: vscode.TextDocument,
   uri: vscode.Uri,
   oldText: string,
   newText: string,
-): vscode.WorkspaceEdit {
+): BlockEditResult {
   const MARKERS: Array<[string, string]> = [
     ['// ds-ide:controls:begin',      '// ds-ide:controls:end'],
     ['// ds-ide:controls:init:begin', '// ds-ide:controls:init:end'],
@@ -49,42 +90,54 @@ export function makeBlockEdit(
   const oldLines = oldText.split('\n');
   const newLines = newText.split('\n');
 
-  // A marker line that appears more than once can't be paired unambiguously
-  // — findIndex would silently take the first occurrence of each and risk
-  // pairing a begin from one block with an end from another. Treat that as
-  // "not found" so the caller falls back to a full-file replacement instead
-  // of a silently wrong-range edit (FR-IPC-5).
-  function findRange(lines: string[], begin: string, end: string): { s: number; e: number } | null {
-    const clean = lines.map(l => l.replace(/\r$/, ''));
-    const beginIndices = clean.reduce<number[]>((acc, l, i) => { if (l === begin) acc.push(i); return acc; }, []);
-    const endIndices = clean.reduce<number[]>((acc, l, i) => { if (l === end) acc.push(i); return acc; }, []);
-    if (beginIndices.length !== 1 || endIndices.length !== 1) return null;
-    const [s] = beginIndices;
-    const [e] = endIndices;
-    return e! > s! ? { s: s!, e: e! } : null;
-  }
+  const pairResults = MARKERS.map(([begin, end]) => ({
+    oldR: findMarkerRange(oldLines, begin, end),
+    newR: findMarkerRange(newLines, begin, end),
+  }));
 
   const edit = new vscode.WorkspaceEdit();
-  let allFound = true;
 
-  for (const [begin, end] of MARKERS) {
-    const oldR = findRange(oldLines, begin, end);
-    const newR = findRange(newLines, begin, end);
-    if (!oldR || !newR) { allFound = false; break; }
-
-    const newBlock = newLines.slice(newR.s, newR.e + 1).join('\n');
-    edit.replace(uri, new vscode.Range(
-      new vscode.Position(oldR.s, 0),
-      doc.lineAt(oldR.e).range.end,
-    ), newBlock);
-  }
-
-  if (!allFound) {
-    // Fallback: full-file replacement
+  const anyAmbiguous = pairResults.some(r => r.oldR === 'ambiguous' || r.newR === 'ambiguous');
+  if (anyAmbiguous) {
     edit.replace(uri, new vscode.Range(new vscode.Position(0, 0), doc.lineAt(doc.lineCount - 1).range.end), newText);
+    return { edit, needsAppendConfirmation: false };
   }
 
-  return edit;
+  let needsAppendConfirmation = false;
+  const appendBlocks: string[] = [];
+
+  for (const { oldR, newR } of pairResults) {
+    if (typeof oldR === 'object' && typeof newR === 'object') {
+      const newBlock = newLines.slice(newR.s, newR.e + 1).join('\n');
+      edit.replace(uri, new vscode.Range(
+        new vscode.Position(oldR.s, 0),
+        doc.lineAt(oldR.e).range.end,
+      ), newBlock);
+    } else if (oldR === 'absent' && typeof newR === 'object') {
+      needsAppendConfirmation = true;
+      appendBlocks.push(newLines.slice(newR.s, newR.e + 1).join('\n'));
+    }
+    // oldR present but newR 'absent' does not occur in practice — the
+    // generator (controls-writer.ts) never removes an existing block.
+  }
+
+  if (appendBlocks.length > 0) {
+    edit.insert(uri, doc.lineAt(doc.lineCount - 1).range.end, `\n${appendBlocks.join('\n')}\n`);
+  }
+
+  return { edit, needsAppendConfirmation };
+}
+
+// One-time modal shown the first time a legacy effect source (no ds-ide
+// marker blocks yet) needs them appended — replaces the previous silent
+// full-file replacement fallback (FR-UX-3).
+async function confirmAppendMarkerBlocks(): Promise<boolean> {
+  const choice = await vscode.window.showWarningMessage(
+    'ds-ide: this effect source has no ds-ide marker blocks yet — append them now to enable wiring edits?',
+    { modal: true },
+    'Append',
+  );
+  return choice === 'Append';
 }
 
 async function buildControlsConfig(folder: string, yamlCfg: ControllerConfig): Promise<ControlsConfig> {
@@ -346,7 +399,10 @@ export function activate(context: vscode.ExtensionContext): void {
       const { controls: controlsAfterDecl } = parseControlsConvention(afterDecl);
       const allPots = controlsAfterDecl.filter(c => c.kind === 'pot');
       const newText = insertInitIntoSource(afterDecl, wp.id, wp.deviceType as 'pot' | 'button' | 'led', wp.pinNumber, allPots);
-      const edit = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
+      const { edit, needsAppendConfirmation } = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
+      if (needsAppendConfirmation && !(await confirmAppendMarkerBlocks())) {
+        return;
+      }
       const applied = await vscode.workspace.applyEdit(edit);
       if (!applied) {
         void vscode.window.showErrorMessage('ds-ide: wiring edit could not be applied — source file was not changed.');
@@ -375,7 +431,10 @@ export function activate(context: vscode.ExtensionContext): void {
       const { controls: controlsAfterDecl } = parseControlsConvention(afterDecl);
       const allPots = controlsAfterDecl.filter(c => c.kind === 'pot');
       const newText = removeInitFromSource(afterDecl, id, allPots);
-      const edit = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
+      const { edit, needsAppendConfirmation } = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
+      if (needsAppendConfirmation && !(await confirmAppendMarkerBlocks())) {
+        return;
+      }
       const applied = await vscode.workspace.applyEdit(edit);
       if (!applied) {
         void vscode.window.showErrorMessage('ds-ide: wiring edit could not be applied — source file was not changed.');

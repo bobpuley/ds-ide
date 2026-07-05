@@ -3,6 +3,22 @@ import * as path from 'path';
 
 const EXCLUDED = new Set(['libDaisy', 'DaisySP', 'libdaisy', 'daisysp', '.ds-ide']);
 
+// A committed .vscode/settings.json can set ds-ide.effectSource to any path,
+// absolute or relative-with-traversal — without this check that path would
+// be trusted to redirect wiring edits outside the workspace entirely (FR-UX-3).
+export class EffectSourceOutsideWorkspaceError extends Error {
+  constructor(public readonly resolvedPath: string, public readonly workspaceRoot: string) {
+    super(`ds-ide.effectSource ('${resolvedPath}') resolves outside the workspace folder ('${workspaceRoot}')`);
+    this.name = 'EffectSourceOutsideWorkspaceError';
+  }
+}
+
+function isWithinRoot(candidate: string, root: string): boolean {
+  const resolvedRoot = path.resolve(root);
+  const resolvedCandidate = path.resolve(candidate);
+  return resolvedCandidate === resolvedRoot || resolvedCandidate.startsWith(resolvedRoot + path.sep);
+}
+
 async function findCpp(dir: string): Promise<string | undefined> {
   try {
     const entries = (await fs.promises.readdir(dir)) as string[];
@@ -22,6 +38,9 @@ export async function findEffectSource(
 ): Promise<string | undefined> {
   if (configured) {
     const p = path.isAbsolute(configured) ? configured : path.join(projectRoot, configured);
+    if (!isWithinRoot(p, projectRoot)) {
+      throw new EffectSourceOutsideWorkspaceError(path.resolve(p), path.resolve(projectRoot));
+    }
     try { await fs.promises.access(p); return p; } catch { /* not accessible */ }
   }
   const r1 = await findCpp(projectRoot);

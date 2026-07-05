@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
-import { findEffectSource } from '../../../commands/find-effect-source';
+import { findEffectSource, EffectSourceOutsideWorkspaceError } from '../../../commands/find-effect-source';
 import { buildForEmulator, detectDaisySP } from '../../../commands/build';
 import { EmulatorManager } from '../../../emulator/manager';
 import * as fs from 'fs';
@@ -71,6 +71,26 @@ describe('findEffectSource', () => {
       return Promise.resolve(['src.cpp'] as never);
     });
     expect(await findEffectSource('/proj')).toBe('/proj/root.cpp');
+  });
+
+  it('throws EffectSourceOutsideWorkspaceError for a configured absolute path outside the workspace (FR-UX-3)', async () => {
+    await expect(findEffectSource('/proj', '/etc/passwd')).rejects.toBeInstanceOf(EffectSourceOutsideWorkspaceError);
+    expect(fs.promises.access).not.toHaveBeenCalled();
+  });
+
+  it('throws EffectSourceOutsideWorkspaceError for a configured relative path that escapes via ../ (FR-UX-3)', async () => {
+    await expect(findEffectSource('/proj', '../../etc/passwd')).rejects.toBeInstanceOf(EffectSourceOutsideWorkspaceError);
+    expect(fs.promises.access).not.toHaveBeenCalled();
+  });
+
+  it('accepts a configured absolute path inside the workspace (FR-UX-3)', async () => {
+    vi.mocked(fs.promises.access).mockResolvedValue(undefined);
+    expect(await findEffectSource('/proj', '/proj/nested/effect.cpp')).toBe('/proj/nested/effect.cpp');
+  });
+
+  it('accepts a configured relative path resolving inside the workspace (FR-UX-3)', async () => {
+    vi.mocked(fs.promises.access).mockResolvedValue(undefined);
+    expect(await findEffectSource('/proj', 'nested/effect.cpp')).toBe('/proj/nested/effect.cpp');
   });
 });
 
