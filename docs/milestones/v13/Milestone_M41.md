@@ -70,7 +70,7 @@ The string-value scanner drops the backslash on any escape it doesn't special-ca
 
 ---
 
-### [ ] fix: Add format-string checking and hardware-faithful line endings to `PrintLine` (FR-QA-EMU-7)
+### [x] fix: Add format-string checking and hardware-faithful line endings to `PrintLine` (FR-QA-EMU-7)
 
 No `format(printf, 2, 3)` attribute means mismatched varargs are undetected UB; output emits `\n` where hardware emits `\r\n`.
 

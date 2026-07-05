@@ -69,7 +69,9 @@ void DaisySeed::PrintLine(const char* fmt, ...) {
     va_start(args, fmt);
     std::vprintf(fmt, args);
     va_end(args);
-    std::putchar('\n');
+    // Hardware's UART/USB-CDC logger terminates lines with \r\n, not a bare
+    // \n (FR-QA-EMU-7).
+    std::fputs("\r\n", stdout);
 }
 
 }  // namespace daisy

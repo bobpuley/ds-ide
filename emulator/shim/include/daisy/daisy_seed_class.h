@@ -50,7 +50,10 @@ public:
     void SetLed(bool state);
 
     // Map to the host logger.  Accepts printf-style format string.
-    void PrintLine(const char* fmt, ...);
+    // format(printf, 2, 3): parameter 1 is the implicit `this`, so the format
+    // string is parameter 2 and varargs start at 3 (FR-QA-EMU-7) — lets the
+    // compiler catch a mismatched format/argument pair at the call site.
+    void PrintLine(const char* fmt, ...) __attribute__((format(printf, 2, 3)));
 };
 
 } // namespace daisy
