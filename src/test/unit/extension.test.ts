@@ -45,6 +45,7 @@ vi.mock('../../emulator/manager', () => {
     sendWavFile = vi.fn();
     dispose = vi.fn();
     get childPid() { return 42; }
+    get isConnected() { return true; }
     constructor() {
       super();
       managerInstances.push(this);
@@ -507,6 +508,96 @@ describe('controllers.yaml read robustness (FR-IPC-4)', () => {
     expect(promisesMock['writeFile']).toHaveBeenCalledWith(
       expect.stringMatching(/controllers\.yaml$/), expect.anything(), 'utf8',
     );
+  });
+});
+
+// ── FR-UX-2: aggregate/dedupe controllers.yaml validation-error notifications ──
+
+describe('controllers.yaml validation notification aggregation (FR-UX-2)', () => {
+  let fsMock: Record<string, ReturnType<typeof vi.fn>>;
+  let promisesMock: Record<string, ReturnType<typeof vi.fn>>;
+
+  const INVALID_YAML =
+    'controllers:\n  - id: ""\n    label: ""\n    adc_channel: 0\nbuttons: []\nleds: []\n';
+  const INVALID_YAML_2 =
+    'controllers:\n  - id: "vol"\n    label: ""\n    adc_channel: 0\nbuttons: []\nleds: []\n';
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    managerInstances.length = 0;
+    fsMock = (await import('fs')) as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['access']!.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    promisesMock['readdir']!.mockResolvedValue([]);
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [
+      { uri: { fsPath: '/proj' } },
+    ];
+  });
+
+  afterEach(() => {
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = undefined;
+  });
+
+  async function triggerLoadViaSave(): Promise<void> {
+    const saveCb = (vscode.workspace.onDidSaveTextDocument as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
+      (doc: { uri: { fsPath: string } }) => Promise<void>;
+    await saveCb({ uri: { fsPath: path.join('/proj', 'controllers.yaml') } });
+  }
+
+  it('aggregates multiple validation errors into a single warning toast', async () => {
+    promisesMock['readFile']!.mockResolvedValue(INVALID_YAML);
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    await triggerLoadViaSave();
+
+    const warningCalls = (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mock.calls
+      .filter((c: unknown[]) => typeof c[0] === 'string' && (c[0] as string).includes('controllers.yaml'));
+    expect(warningCalls.length).toBe(1);
+  });
+
+  it('does not repeat the warning toast on a subsequent save with the same error set', async () => {
+    promisesMock['readFile']!.mockResolvedValue(INVALID_YAML);
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    await triggerLoadViaSave();
+    (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mockClear();
+    await triggerLoadViaSave();
+
+    const warningCalls = (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mock.calls
+      .filter((c: unknown[]) => typeof c[0] === 'string' && (c[0] as string).includes('controllers.yaml'));
+    expect(warningCalls.length).toBe(0);
+  });
+
+  it('shows a new warning toast when the error set changes', async () => {
+    promisesMock['readFile']!.mockResolvedValue(INVALID_YAML);
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    await triggerLoadViaSave();
+    (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mockClear();
+    promisesMock['readFile']!.mockResolvedValue(INVALID_YAML_2);
+    await triggerLoadViaSave();
+
+    const warningCalls = (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mock.calls
+      .filter((c: unknown[]) => typeof c[0] === 'string' && (c[0] as string).includes('controllers.yaml'));
+    expect(warningCalls.length).toBe(1);
+  });
+
+  it('resumes warning on the next distinct error set after a clean save in between', async () => {
+    promisesMock['readFile']!.mockResolvedValue(INVALID_YAML);
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    await triggerLoadViaSave();
+    (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mockClear();
+
+    promisesMock['readFile']!.mockResolvedValue('controllers: []\nbuttons: []\nleds: []\n');
+    await triggerLoadViaSave();
+
+    promisesMock['readFile']!.mockResolvedValue(INVALID_YAML);
+    await triggerLoadViaSave();
+
+    const warningCalls = (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mock.calls
+      .filter((c: unknown[]) => typeof c[0] === 'string' && (c[0] as string).includes('controllers.yaml'));
+    expect(warningCalls.length).toBe(1);
   });
 });
 

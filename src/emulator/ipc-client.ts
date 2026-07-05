@@ -61,6 +61,10 @@ export class IpcClient extends EventEmitter implements IIpcClient {
     });
   }
 
+  get connected(): boolean {
+    return this.socket !== null && !this.socket.destroyed;
+  }
+
   send(msg: IpcMessage): void {
     if (!this.socket || this.socket.destroyed) return;
     this.socket.write(JSON.stringify(msg) + '\n');

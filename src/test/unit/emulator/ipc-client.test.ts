@@ -189,6 +189,39 @@ describe('IpcClient', () => {
     expect(socketStub.destroy).toHaveBeenCalledOnce();
   });
 
+  describe('connected (FR-UX-2)', () => {
+    it('is false before connecting', () => {
+      const client = new IpcClient();
+      expect(client.connected).toBe(false);
+    });
+
+    it('is true once connected', async () => {
+      const client = new IpcClient();
+      const promise = client.connect('/tmp/test.sock');
+      socketStub.emit('connect');
+      await promise;
+      expect(client.connected).toBe(true);
+    });
+
+    it('is false after an unexpected socket close', async () => {
+      const client = new IpcClient();
+      const promise = client.connect('/tmp/test.sock');
+      socketStub.emit('connect');
+      await promise;
+      socketStub.emit('close');
+      expect(client.connected).toBe(false);
+    });
+
+    it('is false after explicit disconnect()', async () => {
+      const client = new IpcClient();
+      const promise = client.connect('/tmp/test.sock');
+      socketStub.emit('connect');
+      await promise;
+      client.disconnect();
+      expect(client.connected).toBe(false);
+    });
+  });
+
   it('emits error and clears partial when buffer exceeds 1 MB (FR-EQ-1)', async () => {
     const client = new IpcClient();
     const promise = client.connect('/tmp/test.sock');

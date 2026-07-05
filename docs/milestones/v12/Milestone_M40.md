@@ -23,7 +23,7 @@ Fix the UX and workspace-safety gaps that erode user trust without being outrigh
 
 ---
 
-### [ ] fix: Aggregate and deduplicate notifications; report emulator connection state honestly (FR-UX-2)
+### [x] fix: Aggregate and deduplicate notifications; report emulator connection state honestly (FR-UX-2)
 
 `loadControllerConfig` shows one warning toast per validation error from six-plus call sites, including the save listener that fires on every relevant save; transport commands show unconditional "audio started/stopped" toasts even when no emulator is connected; routine build/deploy successes duplicate the status bar with extra toasts.
 

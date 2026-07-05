@@ -40,6 +40,7 @@ const window = {
   showOpenDialog: vi.fn(),
   showSaveDialog: vi.fn(),
   showInputBox: vi.fn(),
+  setStatusBarMessage: vi.fn(() => ({ dispose: vi.fn() })),
 };
 
 const workspace = {

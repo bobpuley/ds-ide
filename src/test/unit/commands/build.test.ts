@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as vscode from 'vscode';
 import { findEffectSource } from '../../../commands/find-effect-source';
-import { detectDaisySP } from '../../../commands/build';
+import { buildForEmulator, detectDaisySP } from '../../../commands/build';
+import { EmulatorManager } from '../../../emulator/manager';
 import * as fs from 'fs';
 
 vi.mock('fs', () => ({
@@ -10,6 +12,14 @@ vi.mock('fs', () => ({
     access: vi.fn(),
   },
 }));
+
+function makeChannel(): vscode.OutputChannel {
+  return {
+    appendLine: vi.fn(),
+    show: vi.fn(),
+    dispose: vi.fn(),
+  } as unknown as vscode.OutputChannel;
+}
 
 describe('findEffectSource', () => {
   beforeEach(() => { vi.clearAllMocks(); });
@@ -78,5 +88,36 @@ describe('detectDaisySP', () => {
   it('returns undefined when DaisySP not found', async () => {
     vi.mocked(fs.promises.stat).mockRejectedValue(new Error('ENOENT'));
     expect(await detectDaisySP('/proj')).toBeUndefined();
+  });
+});
+
+describe('buildForEmulator success notification (FR-UX-2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [
+      { uri: { fsPath: '/proj' } },
+    ];
+    vi.mocked(fs.promises.readdir).mockResolvedValue(['effect.cpp'] as never);
+    vi.mocked(fs.promises.stat).mockRejectedValue(new Error('ENOENT'));
+  });
+
+  it('relies on the status bar instead of a success toast when the build succeeds', async () => {
+    const manager = { build: vi.fn().mockResolvedValue(undefined) } as unknown as EmulatorManager;
+    const ok = await buildForEmulator(manager, '/ext', undefined, makeChannel());
+    expect(ok).toBe(true);
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+    expect(vscode.window.setStatusBarMessage).toHaveBeenCalledWith(
+      expect.stringContaining('build succeeded'),
+      expect.anything(),
+    );
+  });
+
+  it('still shows an error toast when the build fails', async () => {
+    const manager = { build: vi.fn().mockRejectedValue(new Error('boom')) } as unknown as EmulatorManager;
+    const ok = await buildForEmulator(manager, '/ext', undefined, makeChannel());
+    expect(ok).toBe(false);
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      expect.stringContaining('build failed'),
+    );
   });
 });

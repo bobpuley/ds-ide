@@ -50,7 +50,10 @@ export async function buildForEmulator(
   try {
     await manager.build(opts, onLine);
     if (diagnostics) applyDiagnostics(diagnostics, parsed, projectRoot);
-    void vscode.window.showInformationMessage('ds-ide: build succeeded');
+    // Routine success relies on the status bar, not a toast — a toast per
+    // successful build/deploy drowns out the genuinely actionable warnings
+    // this milestone aggregates elsewhere (FR-UX-2).
+    vscode.window.setStatusBarMessage('$(check) ds-ide: build succeeded', 3000);
     return true;
   } catch (err) {
     if (diagnostics) applyDiagnostics(diagnostics, parsed, projectRoot);

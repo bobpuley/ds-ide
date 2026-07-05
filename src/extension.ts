@@ -219,6 +219,10 @@ export function activate(context: vscode.ExtensionContext): void {
   // are refused so a transient read error can't silently overwrite the
   // user's real file with an empty config (FR-IPC-4).
   let controllerConfigUnreadable = false;
+  // Tracks the last-warned validation error set so repeated saves with the
+  // same unresolved errors don't re-toast on every keystroke-triggered save —
+  // only a genuinely new or changed error set produces a new warning (FR-UX-2).
+  let lastControllerConfigErrorsKey: string | undefined;
 
   async function loadControllerConfig(): Promise<ControllerConfig> {
     const folders = vscode.workspace.workspaceFolders;
@@ -231,8 +235,17 @@ export function activate(context: vscode.ExtensionContext): void {
       const text = await fs.promises.readFile(yamlPath, 'utf8');
       controllerConfigUnreadable = false;
       const cfg = parseControllerConfig(text);
-      for (const e of cfg.errors) {
-        void vscode.window.showWarningMessage(`controllers.yaml: ${e}`);
+      if (cfg.errors.length > 0) {
+        const key = cfg.errors.join('\n');
+        if (key !== lastControllerConfigErrorsKey) {
+          lastControllerConfigErrorsKey = key;
+          const summary = cfg.errors.length === 1
+            ? cfg.errors[0]
+            : `${cfg.errors.length} issues found — ${cfg.errors[0]}`;
+          void vscode.window.showWarningMessage(`ds-ide: controllers.yaml: ${summary}`);
+        }
+      } else {
+        lastControllerConfigErrorsKey = undefined;
       }
       return cfg;
     } catch (err) {
