@@ -154,7 +154,7 @@
     "debuggers": [
       {
         "type": "daisy-debug",
-        "label": "Daisy Debug",
+        "label": "Daisy Debug (internal — attach-only, started by DS-IDE launch configurations)",
         "languages": ["c", "cpp"],
         "configurationAttributes": {
           "attach": {

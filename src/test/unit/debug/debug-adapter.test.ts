@@ -53,6 +53,30 @@ describe('findLldbDap()', () => {
     const result = await findLldbDap(exists, exec);
     expect(result).toBe('/Library/Developer/CommandLineTools/usr/bin/lldb-dap');
   });
+
+  it('falls back to plain "which lldb-dap" when xcrun is unavailable (Linux) (FR-QA-EXT-9)', async () => {
+    const exec = vi.fn((cmd: string, args: string[]) => {
+      if (cmd === 'xcrun') return Promise.reject(new Error('xcrun: command not found'));
+      if (cmd === 'which' && args[0] === 'lldb-dap') return Promise.resolve('/usr/bin/lldb-dap\n');
+      return Promise.reject(new Error('not found'));
+    });
+    const exists = vi.fn(() => Promise.resolve(true));
+
+    const result = await findLldbDap(exists, exec);
+    expect(result).toBe('/usr/bin/lldb-dap');
+  });
+
+  it('falls back to a versioned lldb-dap-<N> binary on PATH when the unversioned name is absent (FR-QA-EXT-9)', async () => {
+    const exec = vi.fn((cmd: string, args: string[]) => {
+      if (cmd === 'xcrun') return Promise.reject(new Error('xcrun: command not found'));
+      if (cmd === 'which' && args[0] === 'lldb-dap-18') return Promise.resolve('/usr/bin/lldb-dap-18\n');
+      return Promise.reject(new Error('not found'));
+    });
+    const exists = vi.fn(() => Promise.resolve(true));
+
+    const result = await findLldbDap(exists, exec);
+    expect(result).toBe('/usr/bin/lldb-dap-18');
+  });
 });
 
 describe('DaisyDebugAdapterFactory', () => {

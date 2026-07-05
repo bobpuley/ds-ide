@@ -90,7 +90,7 @@ Grab-bag: `@types/node ^20` vs. an esbuild target of `node18`; `which` detection
 
 ---
 
-### [ ] fix: Improve debug contribution discoverability and responsiveness (FR-QA-EXT-9)
+### [x] fix: Improve debug contribution discoverability and responsiveness (FR-QA-EXT-9)
 
 `daisy-debug` has no configuration snippets (manual selection dead-ends); the build+deploy step inside `resolveDebugConfiguration` has no progress UI; lldb-dap discovery covers only macOS paths.
 

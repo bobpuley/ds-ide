@@ -21,7 +21,12 @@ export class DaisyRunConfigurationProvider implements vscode.DebugConfigurationP
     _folder: vscode.WorkspaceFolder | undefined,
     config: vscode.DebugConfiguration,
   ): Promise<vscode.DebugConfiguration | undefined> {
-    const ok = await this.onBuildAndDeploy();
+    // F5 otherwise sits silent for however long the cmake build + deploy
+    // takes, with no indication anything is happening (FR-QA-EXT-9).
+    const ok = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: 'ds-ide: building and deploying…' },
+      () => this.onBuildAndDeploy(),
+    );
     if (!ok) return undefined;
 
     if (config['noDebug']) return undefined;

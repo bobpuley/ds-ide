@@ -65,3 +65,13 @@ describe('machine/workspace-specific setting scopes (FR-QA-EXT-8)', () => {
     expect(props['ds-ide.armToolchainPath'].markdownDescription).toMatch(/machine/i);
   });
 });
+
+describe('debug contribution discoverability (FR-QA-EXT-9)', () => {
+  const debuggers: Array<{ type: string; label: string }> = pkg.contributes?.debuggers ?? [];
+
+  it('marks daisy-debug as internal/attach-only in its label, since it is never user-selected', () => {
+    const daisyDebug = debuggers.find(d => d.type === 'daisy-debug');
+    expect(daisyDebug).toBeDefined();
+    expect(daisyDebug!.label).toMatch(/internal/i);
+  });
+});
