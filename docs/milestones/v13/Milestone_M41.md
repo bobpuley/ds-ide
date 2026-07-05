@@ -30,7 +30,7 @@ Clear the remaining low-severity emulator findings: a fabricated latency metric,
 
 ---
 
-### [ ] fix: Make `StartAudio` registration reflect the most recent call (FR-QA-EMU-3)
+### [x] fix: Make `StartAudio` registration reflect the most recent call (FR-QA-EMU-3)
 
 Both `StartAudio` overloads set their own pointer without clearing the other; `use_block` is latched once for the process lifetime.
 

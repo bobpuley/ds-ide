@@ -183,8 +183,12 @@ struct EmulatorState {
     // Audio callbacks — exactly one is set by shim StartAudio(), read by audio engine.
     // Interleaved form (v1.0): InterleavingAudioCallback — flat L/R array.
     // Block/non-interleaved form (v1.1): AudioCallback — per-channel pointer array.
-    daisy::AudioHandle::InterleavingAudioCallback interleaving_cb{nullptr};
-    daisy::AudioHandle::AudioCallback             block_cb{nullptr};
+    // atomic (FR-QA-EMU-3): each StartAudio() overload nulls the other pointer,
+    // and the audio engine re-reads both per block so a StartAudio() call made
+    // after the engine has already started is picked up on the next block
+    // instead of being latched to whichever overload ran first.
+    std::atomic<daisy::AudioHandle::InterleavingAudioCallback> interleaving_cb{nullptr};
+    std::atomic<daisy::AudioHandle::AudioCallback>             block_cb{nullptr};
     std::mutex              callback_mutex;
     std::condition_variable callback_cv;
     bool                    callback_set{false};

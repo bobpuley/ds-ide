@@ -282,8 +282,7 @@ struct ScopeState {
 
 // ---- Simulated mode loop ----------------------------------------------------
 
-static void run_simulated(bool use_block,
-                          float sample_rate,
+static void run_simulated(float sample_rate,
                           size_t block_size,
                           std::vector<float>& in_buf,
                           std::vector<float>& out_buf,
@@ -412,7 +411,12 @@ static void run_simulated(bool use_block,
 
         std::fill(out_buf.begin(), out_buf.begin() + static_cast<ptrdiff_t>(frames * 2), 0.f);
 
-        if (use_block) {
+        // FR-QA-EMU-3: re-read both callback pointers each block instead of
+        // latching a single overload for the process lifetime, so a
+        // StartAudio() call made after the engine has already started takes
+        // effect on the next block rather than being ignored.
+        auto block_cb = g_state.block_cb.load(std::memory_order_relaxed);
+        if (block_cb) {
             for (size_t i = 0; i < frames; ++i) {
                 in_ch0[i] = in_buf[2 * i];
                 in_ch1[i] = in_buf[2 * i + 1];
@@ -422,14 +426,15 @@ static void run_simulated(bool use_block,
 
             const float* in_ptrs[2]  = { in_ch0.data(), in_ch1.data() };
             float*       out_ptrs[2] = { out_ch0.data(), out_ch1.data() };
-            g_state.block_cb(in_ptrs, out_ptrs, frames);
+            block_cb(in_ptrs, out_ptrs, frames);
 
             for (size_t i = 0; i < frames; ++i) {
                 out_buf[2 * i]     = out_ch0[i];
                 out_buf[2 * i + 1] = out_ch1[i];
             }
         } else {
-            g_state.interleaving_cb(in_buf.data(), out_buf.data(), frames * 2);
+            auto interleaving_cb = g_state.interleaving_cb.load(std::memory_order_relaxed);
+            if (interleaving_cb) interleaving_cb(in_buf.data(), out_buf.data(), frames * 2);
         }
 
         scan_output_and_notify(out_buf, frames * 2);
@@ -524,8 +529,7 @@ static void run_simulated(bool use_block,
 
 // ---- Real-time mode loop ----------------------------------------------------
 
-static void run_realtime(bool use_block,
-                         float sample_rate,
+static void run_realtime(float sample_rate,
                          std::vector<float>& in_ch0,
                          std::vector<float>& in_ch1,
                          std::vector<float>& out_ch0,
@@ -572,7 +576,10 @@ static void run_realtime(bool use_block,
             return;
         }
 
-        if (use_block) {
+        // FR-QA-EMU-3: re-read both callback pointers each block (see
+        // run_simulated()'s processBlock lambda for rationale).
+        auto block_cb = g_state.block_cb.load(std::memory_order_relaxed);
+        if (block_cb) {
             for (size_t i = 0; i < frames; ++i) {
                 local_in_ch0[i] = in_buf[2 * i];
                 local_in_ch1[i] = in_buf[2 * i + 1];
@@ -582,14 +589,15 @@ static void run_realtime(bool use_block,
 
             const float* in_ptrs[2]  = { local_in_ch0.data(), local_in_ch1.data() };
             float*       out_ptrs[2] = { local_out_ch0.data(), local_out_ch1.data() };
-            g_state.block_cb(in_ptrs, out_ptrs, frames);
+            block_cb(in_ptrs, out_ptrs, frames);
 
             for (size_t i = 0; i < frames; ++i) {
                 out_buf[2 * i]     = local_out_ch0[i];
                 out_buf[2 * i + 1] = local_out_ch1[i];
             }
         } else {
-            g_state.interleaving_cb(in_buf.data(), out_buf.data(), frames * 2);
+            auto interleaving_cb = g_state.interleaving_cb.load(std::memory_order_relaxed);
+            if (interleaving_cb) interleaving_cb(in_buf.data(), out_buf.data(), frames * 2);
         }
 
         scan_output_and_notify(out_buf, frames * 2);
@@ -694,8 +702,6 @@ void run_audio_engine() {
     }
     if (g_state.shutdown.load()) return;
 
-    const bool use_block = (g_state.block_cb != nullptr);
-
     float  sample_rate = g_state.sample_rate.load();
     size_t block_size  = g_state.block_size.load();
     size_t max_size    = std::max(block_size, static_cast<size_t>(g_state.rt_buffer_size.load()));
@@ -761,10 +767,10 @@ void run_audio_engine() {
         AudioMode mode = static_cast<AudioMode>(g_state.audio_mode.load());
 
         if (mode == AudioMode::Simulated) {
-            run_simulated(use_block, sample_rate, block_size,
+            run_simulated(sample_rate, block_size,
                           in_buf, out_buf, in_ch0, in_ch1, out_ch0, out_ch1);
         } else {
-            run_realtime(use_block, sample_rate, in_ch0, in_ch1, out_ch0, out_ch1);
+            run_realtime(sample_rate, in_ch0, in_ch1, out_ch0, out_ch1);
         }
     }
 
