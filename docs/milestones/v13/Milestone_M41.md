@@ -40,7 +40,7 @@ Both `StartAudio` overloads set their own pointer without clearing the other; `u
 
 ---
 
-### [ ] fix: Eliminate cumulative scheduler drift in `System::Delay` (FR-QA-EMU-4)
+### [x] fix: Eliminate cumulative scheduler drift in `System::Delay` (FR-QA-EMU-4)
 
 `Delay(ms)` sleeps 1ms at a time in a loop; scheduler overshoot compounds per iteration.
 
