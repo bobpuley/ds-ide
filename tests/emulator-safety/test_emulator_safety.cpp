@@ -571,6 +571,42 @@ static void test_json_get_malformed_input_terminates() {
     CHECK(json_get("not json at all", "type").empty(), "non-JSON input returns empty");
 }
 
+// ---- FR-QA-EMU-6: json_get() decodes standard JSON escape sequences --------
+
+static void test_json_get_decodes_standard_escapes() {
+    std::printf("--- FR-QA-EMU-6: json_get() decodes standard escape sequences ---\n");
+
+    std::string msg = R"({"path":"line1\nline2\ttab\r\b\f\"quote\"\\backslash\/slash"})";
+    std::string expected = "line1\nline2\ttab\r\b\f\"quote\"\\backslash/slash";
+    CHECK(json_get(msg, "path") == expected,
+          "\\n \\t \\r \\b \\f \\\" \\\\ \\/ all decode to their real characters "
+          "instead of dropping the backslash");
+}
+
+static void test_json_get_decodes_unicode_escape() {
+    std::printf("--- FR-QA-EMU-6: json_get() decodes \\uXXXX escapes ---\n");
+
+    // A = 'A' (single-byte UTF-8).
+    const char* ascii_json = "{\"msg\":\"\\u0041BC\"}";
+    CHECK(json_get(ascii_json, "msg") == "ABC",
+          "a \\u escape in the ASCII range decodes to its literal character");
+
+    // U+00E9 ('e' with acute accent), UTF-8: 0xC3 0xA9.
+    std::string msg = "{\"msg\":\"caf\\u00e9\"}";
+    std::string expected = "caf\xC3\xA9";
+    CHECK(json_get(msg, "msg") == expected,
+          "a \\u escape above the ASCII range decodes to the correct UTF-8 bytes");
+}
+
+static void test_json_get_rejects_malformed_unicode_escape() {
+    std::printf("--- FR-QA-EMU-6: json_get() rejects a malformed \\u escape ---\n");
+
+    CHECK(json_get(R"({"msg":"bad\u12"})", "msg").empty(),
+          "a \\u escape with fewer than 4 hex digits is rejected");
+    CHECK(json_get(R"({"msg":"bad\uZZZZ"})", "msg").empty(),
+          "a \\u escape with non-hex digits is rejected");
+}
+
 static void test_json_escape_produces_valid_json_content() {
     std::printf("--- FR-EMU-6: json_escape() escapes quotes/backslashes/control chars ---\n");
 
@@ -1212,6 +1248,9 @@ int main() {
     test_json_get_basic_fields();
     test_json_get_ignores_key_literal_inside_string_value();
     test_json_get_malformed_input_terminates();
+    test_json_get_decodes_standard_escapes();
+    test_json_get_decodes_unicode_escape();
+    test_json_get_rejects_malformed_unicode_escape();
     test_json_escape_produces_valid_json_content();
     test_session_player_open_guard();
     test_spsc_max_msg_size();

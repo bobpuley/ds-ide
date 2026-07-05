@@ -60,7 +60,7 @@ The `pot`/`potSnapshot` handlers store any float, including negatives, `>1`, `Na
 
 ---
 
-### [ ] fix: Decode standard JSON escape sequences in `json_get` (FR-QA-EMU-6)
+### [x] fix: Decode standard JSON escape sequences in `json_get` (FR-QA-EMU-6)
 
 The string-value scanner drops the backslash on any escape it doesn't special-case (`\n` → `n`, `\uXXXX` → `uXXXX`).
 
