@@ -212,7 +212,7 @@ export class ScopePanel {
   }
 
   private postLatency(msg: IpcMessage): void {
-    this.panel?.webview.postMessage({ command: 'latency', measuredMs: msg['measuredMs'] });
+    this.panel?.webview.postMessage({ command: 'latency', estimatedMs: msg['estimatedMs'] });
   }
 
   private postLed(msg: IpcMessage): void {

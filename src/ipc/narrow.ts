@@ -60,9 +60,9 @@ const NARROWERS: Record<string, Narrower> = {
     return { type: 'xrun', count };
   },
   latency: (obj) => {
-    const measuredMs = getNumber(obj, 'measuredMs');
-    if (measuredMs === undefined) return undefined;
-    return { type: 'latency', measuredMs };
+    const estimatedMs = getNumber(obj, 'estimatedMs');
+    if (estimatedMs === undefined) return undefined;
+    return { type: 'latency', estimatedMs };
   },
   led: (obj) => {
     const gpioPin = getNumber(obj, 'gpioPin');

@@ -380,9 +380,9 @@ describe('ScopePanel', () => {
     const created = webviewMock.mock.results[0]?.value as {
       webview: { postMessage: ReturnType<typeof vi.fn> };
     };
-    (manager as unknown as EventEmitter).emit('message', { type: 'latency', measuredMs: 10.5 });
+    (manager as unknown as EventEmitter).emit('message', { type: 'latency', estimatedMs: 10.5 });
     expect(created.webview.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ command: 'latency', measuredMs: 10.5 }),
+      expect.objectContaining({ command: 'latency', estimatedMs: 10.5 }),
     );
   });
 

@@ -626,7 +626,7 @@ static void run_realtime(bool use_block,
             if (lat_ms > 0.f) {
                 char buf[128];
                 std::snprintf(buf, sizeof(buf),
-                    "{\"type\":\"latency\",\"measuredMs\":%.2f}", static_cast<double>(lat_ms));
+                    "{\"type\":\"latency\",\"estimatedMs\":%.2f}", static_cast<double>(lat_ms));
                 ipc_send(buf);
             }
             // FR-EMU-3: AudioUnitRender failures, surfaced alongside xruns

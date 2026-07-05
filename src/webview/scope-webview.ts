@@ -261,7 +261,7 @@ window.addEventListener('message', (e: MessageEvent<ScopeHostMessage>) => {
     xrunCount = msg.count || 0;
     updateStatusEl();
   } else if (msg.command === 'latency') {
-    const ms = msg.measuredMs;
+    const ms = msg.estimatedMs;
     if (latencyEl) latencyEl.textContent = 'latency: ' + (ms ? ms.toFixed(1) + ' ms' : '—');
   } else if (msg.command === 'led') {
     document.querySelectorAll('.vled-dot[data-pin="' + msg.gpioPin + '"]').forEach(dot => {

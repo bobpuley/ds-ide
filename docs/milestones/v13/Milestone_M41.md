@@ -10,7 +10,7 @@ Clear the remaining low-severity emulator findings: a fabricated latency metric,
 
 ## Sprint Tasks
 
-### [ ] fix: Report real or honestly-labeled audio latency (FR-QA-EMU-1)
+### [x] fix: Report real or honestly-labeled audio latency (FR-QA-EMU-1)
 
 `lastLatencyMs()` reports `budget_ms * 2.0` under the field name `measuredMs` — a synthetic constant, not a measurement.
 
