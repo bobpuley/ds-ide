@@ -9,7 +9,9 @@ export async function deployToEmulator(
 
   try {
     await manager.deploy((line) => outputChannel.appendLine(line));
-    void vscode.window.showInformationMessage('ds-ide: emulator running');
+    // Routine success relies on the status bar (which already transitions to
+    // "running" once the emulator's first status event arrives) — an
+    // additional toast here would just duplicate that signal (FR-UX-2).
     return true;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

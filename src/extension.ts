@@ -25,23 +25,65 @@ import { WiringViewProvider } from './sidebar/wiring-editor-panel';
 import { createEffectProject } from './commands/create-effect-project';
 import * as os from 'os';
 import { getString, getBoolean } from './ipc/narrow';
-import { findEffectSource as _findEffectSource } from './commands/find-effect-source';
+import { findEffectSource as _findEffectSource, EffectSourceOutsideWorkspaceError } from './commands/find-effect-source';
+import { resolveActiveFolder, promptSelectActiveFolder } from './workspace/active-folder';
 
 const FIDELITY_CAVEAT =
   'Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget.';
 
 async function findEffectSource(folder: string): Promise<string | undefined> {
-  return _findEffectSource(folder, vscode.workspace.getConfiguration('ds-ide').get<string>('effectSource'));
+  const configured = vscode.workspace.getConfiguration('ds-ide').get<string>('effectSource');
+  try {
+    return await _findEffectSource(folder, configured);
+  } catch (err) {
+    if (err instanceof EffectSourceOutsideWorkspaceError) {
+      void vscode.window.showErrorMessage(
+        `ds-ide: ds-ide.effectSource points outside the workspace folder — refusing to use '${err.resolvedPath}'. Fix the setting to point inside '${err.workspaceRoot}'.`,
+      );
+      return undefined;
+    }
+    throw err;
+  }
+}
+
+// Result of a marker-pair lookup: a unique, well-formed range; 'absent' when
+// neither begin nor end appears at all (a legacy file that has never been
+// wired); or 'ambiguous' for anything else (duplicated markers, or an
+// end-before-begin) — a shape too broken to safely locate (FR-IPC-5).
+type MarkerRange = { s: number; e: number } | 'absent' | 'ambiguous';
+
+function findMarkerRange(lines: string[], begin: string, end: string): MarkerRange {
+  const clean = lines.map(l => l.replace(/\r$/, ''));
+  const beginIndices = clean.reduce<number[]>((acc, l, i) => { if (l === begin) acc.push(i); return acc; }, []);
+  const endIndices = clean.reduce<number[]>((acc, l, i) => { if (l === end) acc.push(i); return acc; }, []);
+  if (beginIndices.length === 0 && endIndices.length === 0) return 'absent';
+  if (beginIndices.length !== 1 || endIndices.length !== 1) return 'ambiguous';
+  const [s] = beginIndices;
+  const [e] = endIndices;
+  return e! > s! ? { s: s!, e: e! } : 'ambiguous';
+}
+
+export interface BlockEditResult {
+  edit: vscode.WorkspaceEdit;
+  // True when at least one marker pair doesn't exist in oldText yet — the
+  // caller must get a one-time user confirmation before applying this edit,
+  // since it appends brand-new marker blocks to a file that had none (FR-UX-3).
+  needsAppendConfirmation: boolean;
 }
 
 // Build a WorkspaceEdit that replaces only the marker blocks that changed.
-// Falls back to a full-file replacement when blocks are absent (legacy projects).
+// Marker pairs already present are edited in place, independent of each
+// other, so an established block's range is never touched just because a
+// *different* block is missing or malformed (FR-UX-3). A marker pair with no
+// prior occurrence at all is appended (flagged via needsAppendConfirmation);
+// a duplicated/malformed marker pair still falls back to a full-file
+// replacement, since its range can't be safely located (FR-IPC-5).
 export function makeBlockEdit(
   doc: vscode.TextDocument,
   uri: vscode.Uri,
   oldText: string,
   newText: string,
-): vscode.WorkspaceEdit {
+): BlockEditResult {
   const MARKERS: Array<[string, string]> = [
     ['// ds-ide:controls:begin',      '// ds-ide:controls:end'],
     ['// ds-ide:controls:init:begin', '// ds-ide:controls:init:end'],
@@ -49,42 +91,54 @@ export function makeBlockEdit(
   const oldLines = oldText.split('\n');
   const newLines = newText.split('\n');
 
-  // A marker line that appears more than once can't be paired unambiguously
-  // — findIndex would silently take the first occurrence of each and risk
-  // pairing a begin from one block with an end from another. Treat that as
-  // "not found" so the caller falls back to a full-file replacement instead
-  // of a silently wrong-range edit (FR-IPC-5).
-  function findRange(lines: string[], begin: string, end: string): { s: number; e: number } | null {
-    const clean = lines.map(l => l.replace(/\r$/, ''));
-    const beginIndices = clean.reduce<number[]>((acc, l, i) => { if (l === begin) acc.push(i); return acc; }, []);
-    const endIndices = clean.reduce<number[]>((acc, l, i) => { if (l === end) acc.push(i); return acc; }, []);
-    if (beginIndices.length !== 1 || endIndices.length !== 1) return null;
-    const [s] = beginIndices;
-    const [e] = endIndices;
-    return e! > s! ? { s: s!, e: e! } : null;
-  }
+  const pairResults = MARKERS.map(([begin, end]) => ({
+    oldR: findMarkerRange(oldLines, begin, end),
+    newR: findMarkerRange(newLines, begin, end),
+  }));
 
   const edit = new vscode.WorkspaceEdit();
-  let allFound = true;
 
-  for (const [begin, end] of MARKERS) {
-    const oldR = findRange(oldLines, begin, end);
-    const newR = findRange(newLines, begin, end);
-    if (!oldR || !newR) { allFound = false; break; }
-
-    const newBlock = newLines.slice(newR.s, newR.e + 1).join('\n');
-    edit.replace(uri, new vscode.Range(
-      new vscode.Position(oldR.s, 0),
-      doc.lineAt(oldR.e).range.end,
-    ), newBlock);
-  }
-
-  if (!allFound) {
-    // Fallback: full-file replacement
+  const anyAmbiguous = pairResults.some(r => r.oldR === 'ambiguous' || r.newR === 'ambiguous');
+  if (anyAmbiguous) {
     edit.replace(uri, new vscode.Range(new vscode.Position(0, 0), doc.lineAt(doc.lineCount - 1).range.end), newText);
+    return { edit, needsAppendConfirmation: false };
   }
 
-  return edit;
+  let needsAppendConfirmation = false;
+  const appendBlocks: string[] = [];
+
+  for (const { oldR, newR } of pairResults) {
+    if (typeof oldR === 'object' && typeof newR === 'object') {
+      const newBlock = newLines.slice(newR.s, newR.e + 1).join('\n');
+      edit.replace(uri, new vscode.Range(
+        new vscode.Position(oldR.s, 0),
+        doc.lineAt(oldR.e).range.end,
+      ), newBlock);
+    } else if (oldR === 'absent' && typeof newR === 'object') {
+      needsAppendConfirmation = true;
+      appendBlocks.push(newLines.slice(newR.s, newR.e + 1).join('\n'));
+    }
+    // oldR present but newR 'absent' does not occur in practice — the
+    // generator (controls-writer.ts) never removes an existing block.
+  }
+
+  if (appendBlocks.length > 0) {
+    edit.insert(uri, doc.lineAt(doc.lineCount - 1).range.end, `\n${appendBlocks.join('\n')}\n`);
+  }
+
+  return { edit, needsAppendConfirmation };
+}
+
+// One-time modal shown the first time a legacy effect source (no ds-ide
+// marker blocks yet) needs them appended — replaces the previous silent
+// full-file replacement fallback (FR-UX-3).
+async function confirmAppendMarkerBlocks(): Promise<boolean> {
+  const choice = await vscode.window.showWarningMessage(
+    'ds-ide: this effect source has no ds-ide marker blocks yet — append them now to enable wiring edits?',
+    { modal: true },
+    'Append',
+  );
+  return choice === 'Append';
 }
 
 async function buildControlsConfig(folder: string, yamlCfg: ControllerConfig): Promise<ControlsConfig> {
@@ -149,6 +203,7 @@ class DeployCoordinator {
     private readonly emulatorChannel: vscode.OutputChannel,
     private readonly extensionPath: string,
     private readonly loadControllerConfig: () => Promise<ControllerConfig>,
+    private readonly workspaceState: vscode.Memento,
   ) {}
 
   private setDeploying(): void {
@@ -175,7 +230,9 @@ class DeployCoordinator {
 
   async performDeploy(opts: { build: boolean; debug: boolean }): Promise<boolean> {
     if (opts.build) {
-      const ok = await buildForEmulator(this.manager, this.extensionPath, this.diagnostics, this.buildChannel);
+      const ok = await buildForEmulator(
+        this.manager, this.extensionPath, this.diagnostics, this.buildChannel, this.workspaceState,
+      );
       if (!ok) return false;
     }
     this.setDeploying();
@@ -195,7 +252,7 @@ class DeployCoordinator {
       return true;
     }
 
-    const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+    const folder = resolveActiveFolder(this.workspaceState)?.uri.fsPath ?? '';
     this.scopePanel.show(this.session.sineState, this.session.audioSourceState);
     this.controlsProvider.loadEditor(cfg);
     this.controlsProvider.postControlsConfig(await buildControlsConfig(folder, cfg));
@@ -219,20 +276,33 @@ export function activate(context: vscode.ExtensionContext): void {
   // are refused so a transient read error can't silently overwrite the
   // user's real file with an empty config (FR-IPC-4).
   let controllerConfigUnreadable = false;
+  // Tracks the last-warned validation error set so repeated saves with the
+  // same unresolved errors don't re-toast on every keystroke-triggered save —
+  // only a genuinely new or changed error set produces a new warning (FR-UX-2).
+  let lastControllerConfigErrorsKey: string | undefined;
 
   async function loadControllerConfig(): Promise<ControllerConfig> {
-    const folders = vscode.workspace.workspaceFolders;
-    if (!folders?.[0]) {
+    const folder = resolveActiveFolder(context.workspaceState);
+    if (!folder) {
       controllerConfigUnreadable = false;
       return { pots: [], buttons: [], leds: [], errors: [] };
     }
-    const yamlPath = path.join(folders[0].uri.fsPath, 'controllers.yaml');
+    const yamlPath = path.join(folder.uri.fsPath, 'controllers.yaml');
     try {
       const text = await fs.promises.readFile(yamlPath, 'utf8');
       controllerConfigUnreadable = false;
       const cfg = parseControllerConfig(text);
-      for (const e of cfg.errors) {
-        void vscode.window.showWarningMessage(`controllers.yaml: ${e}`);
+      if (cfg.errors.length > 0) {
+        const key = cfg.errors.join('\n');
+        if (key !== lastControllerConfigErrorsKey) {
+          lastControllerConfigErrorsKey = key;
+          const summary = cfg.errors.length === 1
+            ? cfg.errors[0]
+            : `${cfg.errors.length} issues found — ${cfg.errors[0]}`;
+          void vscode.window.showWarningMessage(`ds-ide: controllers.yaml: ${summary}`);
+        }
+      } else {
+        lastControllerConfigErrorsKey = undefined;
       }
       return cfg;
     } catch (err) {
@@ -259,7 +329,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // global /tmp sweep that could sever another concurrently running VS Code
   // window's live emulator socket (FR-EXT-2).
   {
-    const activeFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const activeFolder = resolveActiveFolder(context.workspaceState)?.uri.fsPath;
     if (activeFolder) {
       const buildDir = path.join(activeFolder, '.ds-ide', 'build');
       const runtimeDir = workspaceRuntimeDir(buildDir);
@@ -273,18 +343,28 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   }
 
-  // One-time info when multiple workspace folders are present (FR-QA-17).
+  // One-time info when multiple workspace folders are present — the active
+  // folder defaults to the persisted choice (or folder 0 until one is made),
+  // and can be changed via the ds-ide.selectActiveFolder command (FR-UX-4).
   const _folders = vscode.workspace.workspaceFolders;
   if (_folders && _folders.length > 1) {
-    void vscode.window.showInformationMessage(
-      `ds-ide: multiple workspace folders detected — operating on '${_folders[0]!.name}'`,
-    );
+    const active = resolveActiveFolder(context.workspaceState);
+    void (async () => {
+      const choice = await vscode.window.showInformationMessage(
+        `ds-ide: multiple workspace folders detected — operating on '${active?.name ?? _folders[0]!.name}'.`,
+        'Select Folder…',
+      );
+      if (choice !== 'Select Folder…') return;
+      const chosen = await promptSelectActiveFolder(context.workspaceState);
+      if (chosen) void initViewsFromProject();
+    })();
   }
 
   const diagnostics = vscode.languages.createDiagnosticCollection('ds-ide');
   const buildChannel    = vscode.window.createOutputChannel('Daisy IDE Build');
   const emulatorChannel = vscode.window.createOutputChannel('Daisy IDE Emulator');
   const hardwareChannel = vscode.window.createOutputChannel('Daisy IDE Hardware Build');
+  const flashChannel    = vscode.window.createOutputChannel('Daisy IDE Flash');
 
   const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBar.text = '$(circuit-board) Daisy';
@@ -300,9 +380,9 @@ export function activate(context: vscode.ExtensionContext): void {
         );
         return;
       }
-      const folders = vscode.workspace.workspaceFolders;
-      if (!folders?.[0]) return;
-      const yamlPath = path.join(folders[0].uri.fsPath, 'controllers.yaml');
+      const folder = resolveActiveFolder(context.workspaceState);
+      if (!folder) return;
+      const yamlPath = path.join(folder.uri.fsPath, 'controllers.yaml');
       void fs.promises.writeFile(yamlPath, serializeControllerConfig(cfg), 'utf8').catch((err: unknown) => {
         void vscode.window.showErrorMessage(`ds-ide: could not write controllers.yaml: ${String(err)}`);
       });
@@ -320,7 +400,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const wiringProvider = new WiringViewProvider(
     context.extensionUri,
     async (wp: WiredPin) => {
-      const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+      const folder = resolveActiveFolder(context.workspaceState)?.uri.fsPath ?? '';
       const effectPath = await findEffectSource(folder);
       if (!effectPath) {
         void vscode.window.showErrorMessage('ds-ide: no effect source file found — set ds-ide.effectSource');
@@ -332,7 +412,10 @@ export function activate(context: vscode.ExtensionContext): void {
       const { controls: controlsAfterDecl } = parseControlsConvention(afterDecl);
       const allPots = controlsAfterDecl.filter(c => c.kind === 'pot');
       const newText = insertInitIntoSource(afterDecl, wp.id, wp.deviceType as 'pot' | 'button' | 'led', wp.pinNumber, allPots);
-      const edit = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
+      const { edit, needsAppendConfirmation } = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
+      if (needsAppendConfirmation && !(await confirmAppendMarkerBlocks())) {
+        return;
+      }
       const applied = await vscode.workspace.applyEdit(edit);
       if (!applied) {
         void vscode.window.showErrorMessage('ds-ide: wiring edit could not be applied — source file was not changed.');
@@ -349,7 +432,7 @@ export function activate(context: vscode.ExtensionContext): void {
       controlsProvider?.postControlsConfig(await buildControlsConfig(folder, cfg));
     },
     async (pinNumber: number, id: string) => {
-      const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+      const folder = resolveActiveFolder(context.workspaceState)?.uri.fsPath ?? '';
       const effectPath = await findEffectSource(folder);
       if (!effectPath) {
         void vscode.window.showErrorMessage('ds-ide: no effect source file found — set ds-ide.effectSource');
@@ -361,7 +444,10 @@ export function activate(context: vscode.ExtensionContext): void {
       const { controls: controlsAfterDecl } = parseControlsConvention(afterDecl);
       const allPots = controlsAfterDecl.filter(c => c.kind === 'pot');
       const newText = removeInitFromSource(afterDecl, id, allPots);
-      const edit = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
+      const { edit, needsAppendConfirmation } = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
+      if (needsAppendConfirmation && !(await confirmAppendMarkerBlocks())) {
+        return;
+      }
       const applied = await vscode.workspace.applyEdit(edit);
       if (!applied) {
         void vscode.window.showErrorMessage('ds-ide: wiring edit could not be applied — source file was not changed.');
@@ -490,6 +576,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const deployCoordinator = new DeployCoordinator(
     manager, statusBar, potStore, buttonStore, session, scopePanel, controlsProvider,
     diagnostics, buildChannel, emulatorChannel, context.extensionPath, loadControllerConfig,
+    context.workspaceState,
   );
 
   const runConfigProvider = new DaisyRunConfigurationProvider(
@@ -498,9 +585,9 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   async function initViewsFromProject(): Promise<void> {
-    const folders = vscode.workspace.workspaceFolders;
-    if (!folders?.[0]) return;
-    const folder = folders[0].uri.fsPath;
+    const activeFolder = resolveActiveFolder(context.workspaceState);
+    if (!activeFolder) return;
+    const folder = activeFolder.uri.fsPath;
     const cfg = await loadControllerConfig();
     controlsProvider.loadEditor(cfg);
     controlsProvider.postControlsConfig(await buildControlsConfig(folder, cfg));
@@ -523,6 +610,7 @@ export function activate(context: vscode.ExtensionContext): void {
     buildChannel,
     emulatorChannel,
     hardwareChannel,
+    flashChannel,
     statusBar,
     vscode.window.registerWebviewViewProvider('ds-ide.controlsEditor', controlsProvider, {
       webviewOptions: { retainContextWhenHidden: true },
@@ -535,15 +623,22 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.debug.registerDebugAdapterDescriptorFactory(DS_IDE_DEBUG_TYPE, new DsIdeDebugAdapterDescriptorFactory()),
     vscode.debug.registerDebugConfigurationProvider(DS_IDE_DEBUG_TYPE, runConfigProvider),
     vscode.workspace.onDidSaveTextDocument(async (doc) => {
-      const folders = vscode.workspace.workspaceFolders;
-      if (!folders?.[0]) return;
-      const folder = folders[0].uri.fsPath;
+      const activeFolder = resolveActiveFolder(context.workspaceState);
+      if (!activeFolder) return;
+      // Uses real workspace-folder membership (vscode.workspace.getWorkspaceFolder)
+      // rather than a raw path prefix check — a sibling directory that merely
+      // shares a string prefix with the active folder must not false-positive
+      // here (FR-UX-4).
+      const savedFolder = vscode.workspace.getWorkspaceFolder(doc.uri);
+      if (!savedFolder || savedFolder.uri.fsPath !== activeFolder.uri.fsPath) return;
+      const folder = activeFolder.uri.fsPath;
       const saved = doc.uri.fsPath;
       const yamlPath = path.join(folder, 'controllers.yaml');
 
-      // Early exit before any I/O: only proceed for the yaml or a .cpp in the workspace
+      // Early exit before any I/O: only proceed for the yaml or a .cpp — the
+      // getWorkspaceFolder check above already confirmed it's in-folder.
       const isYaml = saved === yamlPath;
-      const mightBeSource = saved.endsWith('.cpp') && saved.startsWith(folder);
+      const mightBeSource = saved.endsWith('.cpp');
       if (!isYaml && !mightBeSource) return;
 
       const cfg = await loadControllerConfig();
@@ -564,7 +659,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
     vscode.commands.registerCommand('ds-ide.build', () =>
-      buildForEmulator(manager, context.extensionPath, diagnostics, buildChannel),
+      buildForEmulator(manager, context.extensionPath, diagnostics, buildChannel, context.workspaceState),
     ),
     vscode.commands.registerCommand('ds-ide.buildAndDeploy', () =>
       deployCoordinator.performDeploy({ build: true, debug: false }),
@@ -579,25 +674,29 @@ export function activate(context: vscode.ExtensionContext): void {
       controlsProvider?.postStatus({ type: 'status', running: false });
     }),
     vscode.commands.registerCommand('ds-ide.buildHardware', () => {
-      const folders = vscode.workspace.workspaceFolders;
-      if (!folders?.[0]) {
+      const folder = resolveActiveFolder(context.workspaceState);
+      if (!folder) {
         void vscode.window.showErrorMessage('ds-ide: no workspace folder open');
         return;
       }
-      return buildForHardware(folders[0].uri.fsPath, diagnostics, {}, hardwareChannel);
+      return buildForHardware(folder.uri.fsPath, diagnostics, hardwareChannel);
     }),
     vscode.commands.registerCommand('ds-ide.flash', () => {
-      const folders = vscode.workspace.workspaceFolders;
-      if (!folders?.[0]) {
+      const folder = resolveActiveFolder(context.workspaceState);
+      if (!folder) {
         void vscode.window.showErrorMessage('ds-ide: no workspace folder open');
         return;
       }
-      return flashToHardware(folders[0].uri.fsPath);
+      return flashToHardware(folder.uri.fsPath, flashChannel);
     }),
     vscode.commands.registerCommand('ds-ide.debug', () =>
       deployCoordinator.performDeploy({ build: false, debug: true }),
     ),
     vscode.commands.registerCommand('ds-ide.createNewEffectProject', createEffectProject),
+    vscode.commands.registerCommand('ds-ide.selectActiveFolder', async () => {
+      const chosen = await promptSelectActiveFolder(context.workspaceState);
+      if (chosen) void initViewsFromProject();
+    }),
     { dispose: () => { manager?.dispose(); scopePanel?.dispose(); } },
     startSessionDisposable,
     terminateSessionDisposable,

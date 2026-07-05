@@ -282,6 +282,15 @@ export class EmulatorManager extends EventEmitter {
     return this.childProcess?.pid;
   }
 
+  // Reflects the IpcClient's own live socket state, not just whether we still
+  // hold a reference to it — an unexpected disconnect clears the client's
+  // socket internally but the 'disconnect' handler above does not null out
+  // this.ipcClient, so callers must check the underlying connection honestly
+  // rather than trusting a stale reference (FR-UX-2).
+  get isConnected(): boolean {
+    return this.ipcClient?.connected ?? false;
+  }
+
   dispose(): void {
     this.killExisting();
     this.ipcClient?.disconnect();

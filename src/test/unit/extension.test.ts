@@ -45,6 +45,7 @@ vi.mock('../../emulator/manager', () => {
     sendWavFile = vi.fn();
     dispose = vi.fn();
     get childPid() { return 42; }
+    get isConnected() { return true; }
     constructor() {
       super();
       managerInstances.push(this);
@@ -109,6 +110,7 @@ describe('extension', () => {
     expect(registeredIds).toContain('ds-ide.debug');
     expect(registeredIds).toContain('ds-ide.buildHardware');
     expect(registeredIds).toContain('ds-ide.flash');
+    expect(registeredIds).toContain('ds-ide.selectActiveFolder');
     // Removed in M35 — access now via Activity Bar icons
     expect(registeredIds).not.toContain('ds-ide.openControlsEditor');
     expect(registeredIds).not.toContain('ds-ide.openWiringEditor');
@@ -373,6 +375,21 @@ describe('extension view initialization (FR-CE-9, FR-WE-11)', () => {
     expect(promisesMock['readFile']).not.toHaveBeenCalled();
   });
 
+  it('save cb ignores a sibling directory sharing a string prefix with the active folder (FR-UX-4)', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    const saveCb = (vscode.workspace.onDidSaveTextDocument as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
+      ((doc: { uri: { fsPath: string } }) => Promise<void>);
+    const promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['readFile']!.mockClear();
+    // '/proj-sibling'.startsWith('/proj') is true, but it is not actually
+    // inside the '/proj' workspace folder — a raw prefix check would
+    // false-positive here; vscode.workspace.getWorkspaceFolder must not.
+    await saveCb({ uri: { fsPath: '/proj-sibling/effect.cpp' } });
+    expect(promisesMock['readFile']).not.toHaveBeenCalled();
+  });
+
   it('save cb reads controllers.yaml when yaml file is saved (FR-CE-9)', async () => {
     const { activate: act } = await import('../../extension');
     const ctx = makeContext();
@@ -510,6 +527,96 @@ describe('controllers.yaml read robustness (FR-IPC-4)', () => {
   });
 });
 
+// ── FR-UX-2: aggregate/dedupe controllers.yaml validation-error notifications ──
+
+describe('controllers.yaml validation notification aggregation (FR-UX-2)', () => {
+  let fsMock: Record<string, ReturnType<typeof vi.fn>>;
+  let promisesMock: Record<string, ReturnType<typeof vi.fn>>;
+
+  const INVALID_YAML =
+    'controllers:\n  - id: ""\n    label: ""\n    adc_channel: 0\nbuttons: []\nleds: []\n';
+  const INVALID_YAML_2 =
+    'controllers:\n  - id: "vol"\n    label: ""\n    adc_channel: 0\nbuttons: []\nleds: []\n';
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    managerInstances.length = 0;
+    fsMock = (await import('fs')) as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['access']!.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    promisesMock['readdir']!.mockResolvedValue([]);
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [
+      { uri: { fsPath: '/proj' } },
+    ];
+  });
+
+  afterEach(() => {
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = undefined;
+  });
+
+  async function triggerLoadViaSave(): Promise<void> {
+    const saveCb = (vscode.workspace.onDidSaveTextDocument as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
+      (doc: { uri: { fsPath: string } }) => Promise<void>;
+    await saveCb({ uri: { fsPath: path.join('/proj', 'controllers.yaml') } });
+  }
+
+  it('aggregates multiple validation errors into a single warning toast', async () => {
+    promisesMock['readFile']!.mockResolvedValue(INVALID_YAML);
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    await triggerLoadViaSave();
+
+    const warningCalls = (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mock.calls
+      .filter((c: unknown[]) => typeof c[0] === 'string' && (c[0] as string).includes('controllers.yaml'));
+    expect(warningCalls.length).toBe(1);
+  });
+
+  it('does not repeat the warning toast on a subsequent save with the same error set', async () => {
+    promisesMock['readFile']!.mockResolvedValue(INVALID_YAML);
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    await triggerLoadViaSave();
+    (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mockClear();
+    await triggerLoadViaSave();
+
+    const warningCalls = (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mock.calls
+      .filter((c: unknown[]) => typeof c[0] === 'string' && (c[0] as string).includes('controllers.yaml'));
+    expect(warningCalls.length).toBe(0);
+  });
+
+  it('shows a new warning toast when the error set changes', async () => {
+    promisesMock['readFile']!.mockResolvedValue(INVALID_YAML);
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    await triggerLoadViaSave();
+    (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mockClear();
+    promisesMock['readFile']!.mockResolvedValue(INVALID_YAML_2);
+    await triggerLoadViaSave();
+
+    const warningCalls = (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mock.calls
+      .filter((c: unknown[]) => typeof c[0] === 'string' && (c[0] as string).includes('controllers.yaml'));
+    expect(warningCalls.length).toBe(1);
+  });
+
+  it('resumes warning on the next distinct error set after a clean save in between', async () => {
+    promisesMock['readFile']!.mockResolvedValue(INVALID_YAML);
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    await triggerLoadViaSave();
+    (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mockClear();
+
+    promisesMock['readFile']!.mockResolvedValue('controllers: []\nbuttons: []\nleds: []\n');
+    await triggerLoadViaSave();
+
+    promisesMock['readFile']!.mockResolvedValue(INVALID_YAML);
+    await triggerLoadViaSave();
+
+    const warningCalls = (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mock.calls
+      .filter((c: unknown[]) => typeof c[0] === 'string' && (c[0] as string).includes('controllers.yaml'));
+    expect(warningCalls.length).toBe(1);
+  });
+});
+
 // ── FR-IPC-5: applyEdit result checking, duplicate-marker safety, view consistency ──
 
 describe('makeBlockEdit duplicate-marker safety (FR-IPC-5)', () => {
@@ -531,7 +638,7 @@ describe('makeBlockEdit duplicate-marker safety (FR-IPC-5)', () => {
     ].join('\n');
     const newText = oldText.replace('int a = 1;', 'int a = 2;');
     const doc = makeDoc(oldText);
-    const edit = makeBlockEdit(doc, { fsPath: '/proj/effect.cpp' } as unknown as vscode.Uri, oldText, newText);
+    const { edit } = makeBlockEdit(doc, { fsPath: '/proj/effect.cpp' } as unknown as vscode.Uri, oldText, newText);
     const replaceCalls = (edit.replace as ReturnType<typeof vi.fn>).mock.calls;
     // Full-file fallback: exactly one replace() spanning the whole document,
     // not a (mis-paired) partial marker-block range.
@@ -548,7 +655,7 @@ describe('makeBlockEdit duplicate-marker safety (FR-IPC-5)', () => {
     ].join('\n');
     const newText = oldText.replace('int a = 1;', 'int a = 2;');
     const doc = makeDoc(oldText);
-    const edit = makeBlockEdit(doc, { fsPath: '/proj/effect.cpp' } as unknown as vscode.Uri, oldText, newText);
+    const { edit } = makeBlockEdit(doc, { fsPath: '/proj/effect.cpp' } as unknown as vscode.Uri, oldText, newText);
     const replaceCalls = (edit.replace as ReturnType<typeof vi.fn>).mock.calls;
     expect(replaceCalls).toHaveLength(1);
     expect(replaceCalls[0]![2]).toBe(newText);
@@ -565,7 +672,7 @@ describe('makeBlockEdit duplicate-marker safety (FR-IPC-5)', () => {
     ].join('\n');
     const newText = oldText.replace('int a = 1;', 'int a = 2;');
     const doc = makeDoc(oldText);
-    const edit = makeBlockEdit(doc, { fsPath: '/proj/effect.cpp' } as unknown as vscode.Uri, oldText, newText);
+    const { edit } = makeBlockEdit(doc, { fsPath: '/proj/effect.cpp' } as unknown as vscode.Uri, oldText, newText);
     const replaceCalls = (edit.replace as ReturnType<typeof vi.fn>).mock.calls;
     // Both marker pairs are unique and matched — two targeted block
     // replacements, never a full-file fallback.
@@ -573,6 +680,86 @@ describe('makeBlockEdit duplicate-marker safety (FR-IPC-5)', () => {
     for (const call of replaceCalls) {
       expect(call[2]).not.toBe(newText);
     }
+  });
+});
+
+// ── FR-UX-3: append-with-confirmation for files with no marker blocks yet ──
+
+describe('makeBlockEdit append-with-confirmation (FR-UX-3)', () => {
+  function makeDoc(text: string): vscode.TextDocument {
+    const lines = text.split('\n');
+    return {
+      lineCount: lines.length,
+      lineAt: (n: number) => ({ range: { end: { line: n, character: lines[n]!.length } } }),
+    } as unknown as vscode.TextDocument;
+  }
+
+  it('flags needsAppendConfirmation and inserts (not full-file-replaces) when no marker blocks exist yet', () => {
+    const oldText = 'int a = 1;\nvoid Process() {}\n';
+    const newText = [
+      'int a = 1;',
+      'void Process() {}',
+      '// ds-ide:controls:begin',
+      '// ds-ide: id=vol, kind=pot, pin=15',
+      '// ds-ide:controls:end',
+      '',
+    ].join('\n');
+    const doc = makeDoc(oldText);
+    const { edit, needsAppendConfirmation } = makeBlockEdit(
+      doc, { fsPath: '/proj/effect.cpp' } as unknown as vscode.Uri, oldText, newText,
+    );
+    expect(needsAppendConfirmation).toBe(true);
+    expect(edit.replace).not.toHaveBeenCalled();
+    expect(edit.insert).toHaveBeenCalledOnce();
+    const insertedText = (edit.insert as ReturnType<typeof vi.fn>).mock.calls[0]![2] as string;
+    expect(insertedText).toContain('// ds-ide:controls:begin');
+    expect(insertedText).toContain('// ds-ide:controls:end');
+  });
+
+  it('does not flag needsAppendConfirmation once marker blocks already exist', () => {
+    const oldText = [
+      '// ds-ide:controls:begin',
+      '// ds-ide: id=vol, kind=pot, pin=15',
+      '// ds-ide:controls:end',
+    ].join('\n');
+    const newText = oldText.replace('pin=15', 'pin=16');
+    const doc = makeDoc(oldText);
+    const { needsAppendConfirmation } = makeBlockEdit(
+      doc, { fsPath: '/proj/effect.cpp' } as unknown as vscode.Uri, oldText, newText,
+    );
+    expect(needsAppendConfirmation).toBe(false);
+  });
+
+  it('only touches the newly-appended block, leaving an already-established block untouched, when one pair exists and the other does not', () => {
+    const oldText = [
+      '// ds-ide:controls:begin',
+      '// ds-ide: id=vol, kind=pot, pin=15',
+      '// ds-ide:controls:end',
+    ].join('\n');
+    const newText = [
+      '// ds-ide:controls:begin',
+      '// ds-ide: id=vol, kind=pot, pin=15',
+      '// ds-ide:controls:end',
+      '// ds-ide:controls:init:begin',
+      '  hardware.adc.Init(ds_ide_adc_cfg, 1);',
+      '// ds-ide:controls:init:end',
+      '',
+    ].join('\n');
+    const doc = makeDoc(oldText);
+    const { edit, needsAppendConfirmation } = makeBlockEdit(
+      doc, { fsPath: '/proj/effect.cpp' } as unknown as vscode.Uri, oldText, newText,
+    );
+    expect(needsAppendConfirmation).toBe(true);
+    // The established decl block gets exactly one targeted, in-place replace
+    // at its own already-correct range — never a full-file rewrite that would
+    // also touch unrelated lines just because the *other* (init) block is
+    // missing. The missing init block is appended via insert(), not replace().
+    expect(edit.replace).toHaveBeenCalledOnce();
+    const replaceCall = (edit.replace as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(replaceCall[2]).toBe(oldText); // decl block content is unchanged
+    expect(edit.insert).toHaveBeenCalledOnce();
+    const insertedText = (edit.insert as ReturnType<typeof vi.fn>).mock.calls[0]![2] as string;
+    expect(insertedText).toContain('// ds-ide:controls:init:begin');
   });
 });
 
@@ -596,6 +783,10 @@ describe('wiring edit consistency (FR-IPC-5)', () => {
       { uri: { fsPath: '/proj' } },
     ];
     (vscode.workspace.applyEdit as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    // The fixture effect.cpp is empty (no marker blocks yet), so every wire/
+    // unwire edit in this suite needs the FR-UX-3 append confirmation — the
+    // user is assumed to accept it unless a test overrides this.
+    (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mockResolvedValue('Append');
   });
 
   afterEach(() => {
@@ -686,6 +877,82 @@ describe('wiring edit consistency (FR-IPC-5)', () => {
     expect(doc.save).toHaveBeenCalled();
     expect(wiring.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'wiredPins' }));
     expect(controls.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'controlsConfig' }));
+  });
+
+  it('asks for confirmation before appending marker blocks to a file that has none, and shows the modal option (FR-UX-3)', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flushMicrotasks();
+    const wiring = resolveProvider('ds-ide.wiringEditor');
+    await wiring.handler({ command: 'wirePin', pinNumber: 15, deviceType: 'pot', id: 'vol' });
+
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      expect.stringContaining('marker blocks'),
+      expect.objectContaining({ modal: true }),
+      'Append',
+    );
+  });
+
+  it('does not apply the edit when the user declines the append-marker-blocks confirmation (FR-UX-3)', async () => {
+    (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flushMicrotasks();
+    const wiring = resolveProvider('ds-ide.wiringEditor');
+    const controls = resolveProvider('ds-ide.controlsEditor');
+    wiring.postMessage.mockClear();
+    controls.postMessage.mockClear();
+
+    await wiring.handler({ command: 'wirePin', pinNumber: 15, deviceType: 'pot', id: 'vol' });
+
+    expect(vscode.workspace.applyEdit).not.toHaveBeenCalled();
+    expect(wiring.postMessage).not.toHaveBeenCalled();
+    expect(controls.postMessage).not.toHaveBeenCalled();
+  });
+});
+
+// ── FR-UX-3: a configured effectSource outside the workspace is refused ──
+
+describe('effectSource containment (FR-UX-3)', () => {
+  let fsMock: Record<string, ReturnType<typeof vi.fn>>;
+  let promisesMock: Record<string, ReturnType<typeof vi.fn>>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    managerInstances.length = 0;
+    fsMock = (await import('fs')) as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['access']!.mockResolvedValue(undefined);
+    promisesMock['readdir']!.mockResolvedValue([]);
+    promisesMock['readFile']!.mockResolvedValue('');
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [
+      { uri: { fsPath: '/proj' } },
+    ];
+    (vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>).mockReturnValue({
+      get: vi.fn((key: string) => key === 'effectSource' ? '/etc/passwd' : undefined),
+    });
+  });
+
+  afterEach(() => {
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = undefined;
+  });
+
+  function flushMicrotasks(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  it('shows an actionable error instead of silently using an effectSource path outside the workspace', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flushMicrotasks();
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      expect.stringMatching(/effectSource.*outside the workspace/i),
+    );
+    expect(promisesMock['access']).not.toHaveBeenCalled();
   });
 });
 
@@ -805,5 +1072,61 @@ describe('deploy sequencing via DeployCoordinator (FR-IPC-7)', () => {
     const cmd = getCommand('ds-ide.buildAndDeploy')!;
     await cmd();
     expect(mgr.sendPotSnapshot).not.toHaveBeenCalled();
+  });
+});
+
+// ── FR-UX-4: multi-root workspace folder selection ──
+
+describe('multi-root workspace folder selection (FR-UX-4)', () => {
+  function makeStatefulContext(): vscode.ExtensionContext {
+    const store: Record<string, unknown> = {};
+    return {
+      subscriptions: [],
+      extensionPath: '/ext',
+      extensionUri: { fsPath: '/ext' },
+      workspaceState: {
+        get: (key: string, defaultValue?: unknown) => (key in store ? store[key] : defaultValue),
+        update: (key: string, value: unknown) => { store[key] = value; return Promise.resolve(); },
+        keys: () => Object.keys(store),
+      },
+    } as unknown as vscode.ExtensionContext;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    managerInstances.length = 0;
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [
+      { uri: { fsPath: '/a' }, name: 'a' },
+      { uri: { fsPath: '/b' }, name: 'b' },
+    ];
+  });
+
+  afterEach(() => {
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = undefined;
+  });
+
+  it('shows an info message naming the currently-active folder, with a Select Folder action', async () => {
+    const { activate: act } = await import('../../extension');
+    act(makeStatefulContext());
+
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining("operating on 'a'"),
+      'Select Folder…',
+    );
+  });
+
+  it('ds-ide.selectActiveFolder persists the chosen folder so it wins on the next resolution', async () => {
+    (vscode.window.showQuickPick as ReturnType<typeof vi.fn>).mockImplementation(
+      async (items: Array<{ folder: { uri: { fsPath: string } } }>) => items[1],
+    );
+    const { activate: act } = await import('../../extension');
+    const ctx = makeStatefulContext();
+    act(ctx);
+
+    const calls = (vscode.commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls;
+    const selectCmd = calls.find((c: unknown[]) => c[0] === 'ds-ide.selectActiveFolder')?.[1] as () => Promise<void>;
+    await selectCmd();
+
+    expect(ctx.workspaceState.get('ds-ide.activeFolder')).toBe('/b');
   });
 });

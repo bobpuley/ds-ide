@@ -1,7 +1,7 @@
 # M40 — Extension UX & Workspace Safety
 
 **Version:** 0.13.2
-**Status:** planned
+**Status:** in progress
 **Source:** 2026-07-02 VS Code extension code review — MEDIUM findings
 
 ## Goal
@@ -10,7 +10,7 @@ Fix the UX and workspace-safety gaps that erode user trust without being outrigh
 
 ## Sprint Tasks
 
-### [ ] fix: Create output channels once and track them in `context.subscriptions` (FR-UX-1)
+### [x] fix: Create output channels once and track them in `context.subscriptions` (FR-UX-1)
 
 `flashToHardware` creates a new `"Daisy IDE Flash"` channel on every invocation and never disposes it; `buildForHardware` has the same latent fallback.
 
@@ -23,7 +23,7 @@ Fix the UX and workspace-safety gaps that erode user trust without being outrigh
 
 ---
 
-### [ ] fix: Aggregate and deduplicate notifications; report emulator connection state honestly (FR-UX-2)
+### [x] fix: Aggregate and deduplicate notifications; report emulator connection state honestly (FR-UX-2)
 
 `loadControllerConfig` shows one warning toast per validation error from six-plus call sites, including the save listener that fires on every relevant save; transport commands show unconditional "audio started/stopped" toasts even when no emulator is connected; routine build/deploy successes duplicate the status bar with extra toasts.
 
@@ -37,7 +37,7 @@ Fix the UX and workspace-safety gaps that erode user trust without being outrigh
 
 ---
 
-### [ ] fix: Contain Wiring Editor edits to the workspace and to marker ranges (FR-UX-3)
+### [x] fix: Contain Wiring Editor edits to the workspace and to marker ranges (FR-UX-3)
 
 `ds-ide.effectSource` accepts an absolute path with no containment check (settable via a committed `.vscode/settings.json`), letting a crafted project redirect edits outside the workspace; `makeBlockEdit` also replaces the **entire document** whenever a marker pair is missing.
 
@@ -51,7 +51,7 @@ Fix the UX and workspace-safety gaps that erode user trust without being outrigh
 
 ---
 
-### [ ] fix: Route multi-root workspace resolution through proper URI semantics (FR-UX-4)
+### [x] fix: Route multi-root workspace resolution through proper URI semantics (FR-UX-4)
 
 Every workspace-dependent operation hardcodes `workspaceFolders[0]`; the save-listener's "in workspace" check (`saved.startsWith(folder)`) is prefix-unsafe and false-positives sibling directories.
 
@@ -65,7 +65,7 @@ Every workspace-dependent operation hardcodes `workspaceFolders[0]`; the save-li
 
 ---
 
-### [ ] fix: Debounce `workspaceState` persistence for real-time control drags (FR-UX-5)
+### [x] fix: Debounce `workspaceState` persistence for real-time control drags (FR-UX-5)
 
 Dragging a Controls-webview knob posts a `pot` message on every mousemove (~60–120 Hz); each message triggers a full `workspaceState` read-modify-write persisted write plus an IPC send with no throttling.
 

@@ -76,12 +76,14 @@ function makeIpcClient() {
     send: ReturnType<typeof vi.fn>;
     disconnect: ReturnType<typeof vi.fn>;
     on: ReturnType<typeof vi.fn>;
+    connected: boolean;
   };
   const origOn = client.on.bind(client);
   (client as unknown as Record<string, unknown>)['on'] = vi.fn(origOn);
-  client.connect    = vi.fn(() => Promise.resolve()) as ReturnType<typeof vi.fn>;
+  client.connected  = true;
+  client.connect    = vi.fn(() => { client.connected = true; return Promise.resolve(); }) as ReturnType<typeof vi.fn>;
   client.send       = vi.fn();
-  client.disconnect = vi.fn();
+  client.disconnect = vi.fn(() => { client.connected = false; }) as ReturnType<typeof vi.fn>;
   return client;
 }
 
@@ -779,6 +781,46 @@ describe('EmulatorManager', () => {
       // The intentionalDisconnect flag is false here, so it should propagate.
       ipcClientStub.emit('disconnect');
       expect(disconnectSpy).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('isConnected (FR-UX-2)', () => {
+    it('is false before any deploy', () => {
+      expect(manager.isConnected).toBe(false);
+    });
+
+    it('is true after a successful deploy', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      expect(manager.isConnected).toBe(true);
+    });
+
+    it('honestly reflects an unexpected disconnect (crash) even though the client reference is retained', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      expect(manager.isConnected).toBe(true);
+
+      // Simulate the real IpcClient's socket 'close' handler: it flips its own
+      // connected state to false before emitting 'disconnect'.
+      ipcClientStub.connected = false;
+      ipcClientStub.emit('disconnect');
+      expect(manager.isConnected).toBe(false);
+    });
+
+    it('is false after dispose()', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      manager.dispose();
+      expect(manager.isConnected).toBe(false);
     });
   });
 });

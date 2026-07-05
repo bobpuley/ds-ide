@@ -14,6 +14,7 @@ function makeManager() {
     sendAudioDevice: vi.fn(),
     sendButtonSnapshot: vi.fn(),
     sendOutputVolume: vi.fn(),
+    isConnected: true,
   }) as unknown as EmulatorManager;
 }
 

@@ -5,6 +5,7 @@ import type { ControlsPlacement } from './scope-panel';
 import type { ControllerConfig, Taper, ButtonMode, ActiveLevel } from '../controllers/controller-config';
 import type { DeviceType } from '../wiring/wiring-panel';
 import { computeKnobGeometry } from './knob-math';
+import { createRafCoalescer } from './raf-coalesce';
 
 interface VsCodeApiForControls {
   postMessage(msg: ControlsWebviewMessage): void;
@@ -185,12 +186,20 @@ function buildConventionCard(ctrl: ConventionControl, pos: [number, number]): HT
       kStartVal = parseFloat(knobWrap.dataset['value'] || '0');
       e.preventDefault();
     });
+    // Raw mousemove can fire well above the display refresh rate; coalescing
+    // to one update per animation frame keeps the DOM write + IPC postMessage
+    // at a smooth, bounded rate instead of one of each per native event
+    // (FR-UX-5). The extension-host side (PotStore) separately debounces its
+    // own workspaceState persistence — this only bounds the webview's work.
+    const flushKnobMove = createRafCoalescer<number>((targetValue) => {
+      const newVal = updateKnobPaths(knobWrap, targetValue);
+      knobWrap.dataset['value'] = String(newVal);
+      vscode.postMessage({ command: 'pot', channel: adcCh, value: newVal });
+    }, (cb) => requestAnimationFrame(cb));
     const onKnobMove = (e: Event): void => {
       if (!kDrag) return;
       const delta = (kStartY - (e as MouseEvent).clientY) / 100;
-      const newVal = updateKnobPaths(knobWrap, kStartVal + delta);
-      knobWrap.dataset['value'] = String(newVal);
-      vscode.postMessage({ command: 'pot', channel: adcCh, value: newVal });
+      flushKnobMove(kStartVal + delta);
     };
     const onKnobUp = (): void => { kDrag = false; };
     _addDocListener('mousemove', onKnobMove);
