@@ -5,6 +5,21 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.13.3 — 2026-07-05
+
+**M41 — Emulator Code Quality & Hygiene** *(FR-QA-EMU-1 through FR-QA-EMU-8 — all DoD green)*
+
+- **FR-QA-EMU-1** — `lastLatencyMs()`'s IPC field is renamed from `measuredMs` to `estimatedMs` (extension host, webview, and narrowing table updated to match) since the reported value is `budget_ms * 2.0`, a synthetic estimate rather than an actual measurement.
+- **FR-QA-EMU-2** — `CoreAudioDevice::Impl` is now owned via `std::unique_ptr<Impl>` instead of a raw `Impl*`; copy constructor/assignment are explicitly deleted, closing a latent double-free-on-copy risk.
+- **FR-QA-EMU-3** — Each `DaisySeed::StartAudio()` overload now nulls the other overload's callback pointer; both pointers are `std::atomic` and re-read once per audio block instead of latching a single overload for the process lifetime; a repeated `StartAudio()` call emits a `start_audio_repeated` warning event.
+- **FR-QA-EMU-4** — `System::Delay(ms)` now computes an absolute deadline up front and sleeps to `min(deadline, now + 1ms)` per iteration, instead of a fixed 1ms-per-iteration loop whose per-call scheduler overshoot compounded once per iteration (measured ~25% drift over a 200ms delay on this machine).
+- **FR-QA-EMU-5** — The `pot`/`potSnapshot` IPC handlers now clamp to `[0, 1]` and reject non-finite (`NaN`/`Inf`) values via a shared `clamp_pot_value()` helper, matching `outputVolume`'s existing clamp behavior.
+- **FR-QA-EMU-6** — `json_get()`'s string-value scanner now translates the standard JSON escape set (`\n \t \r \b \f \" \\ \/`) and decodes `\uXXXX` to UTF-8 (rejecting a malformed escape), instead of dropping the backslash and keeping the literal character that followed it.
+- **FR-QA-EMU-7** — `DaisySeed::PrintLine`'s declaration gains `__attribute__((format(printf, 2, 3)))` so a mismatched format/argument pair is caught at compile time; output now emits `\r\n` to match hardware's UART/USB-CDC logger.
+- **FR-QA-EMU-8** — Shim + runtime sources moved into their own `runtime_shim_obj` CMake object library built at `-O2 -g` (the effect object stays at `-O0 -g` for fast iteration); `-Wextra -Wshadow` added to both targets, with no warnings surfacing across the example effect corpus.
+
+---
+
 ## 0.13.2 — 2026-07-05
 
 **M40 — Extension UX & Workspace Safety** *(FR-UX-1 through FR-UX-5 — all DoD green)*
