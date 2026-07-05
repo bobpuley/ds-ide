@@ -90,6 +90,35 @@ describe('IpcClient', () => {
     expect(() => client.send({ type: 'test' })).not.toThrow();
   });
 
+  it('emits a counted warning when send is dropped because the socket is absent (FR-QA-EXT-2)', () => {
+    const client = new IpcClient();
+    const warnings: Array<{ message: string; count: number }> = [];
+    client.on('warning', (w) => warnings.push(w));
+
+    client.send({ type: 'test' });
+    client.send({ type: 'test' });
+
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]!.count).toBe(1);
+    expect(warnings[1]!.count).toBe(2);
+    expect(warnings[0]!.message).toMatch(/dropped/i);
+  });
+
+  it('emits a counted warning when send is dropped because the socket is destroyed (FR-QA-EXT-2)', async () => {
+    const client = new IpcClient();
+    const promise = client.connect('/tmp/test.sock');
+    socketStub.emit('connect');
+    await promise;
+    socketStub.destroyed = true;
+
+    const warnings: Array<{ message: string; count: number }> = [];
+    client.on('warning', (w) => warnings.push(w));
+    client.send({ type: 'test' });
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]!.count).toBe(1);
+  });
+
   it('emits message for each complete JSON line received', async () => {
     const client = new IpcClient();
     const promise = client.connect('/tmp/test.sock');
@@ -144,6 +173,24 @@ describe('IpcClient', () => {
     socketStub.emit('data', Buffer.from('not json\n{"type":"replayDone"}\n'));
     expect(messages).toEqual([{ type: 'replayDone' }]);
     expect(warnSpy).toHaveBeenCalledWith(expect.stringMatching(/malformed IPC line/));
+    warnSpy.mockRestore();
+  });
+
+  it('emits a counted warning event for malformed JSON lines (FR-QA-EXT-2)', async () => {
+    const client = new IpcClient();
+    const promise = client.connect('/tmp/test.sock');
+    socketStub.emit('connect');
+    await promise;
+
+    const warnings: Array<{ message: string; count: number }> = [];
+    client.on('warning', (w) => warnings.push(w));
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    socketStub.emit('data', Buffer.from('not json\nalso not json\n'));
+
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]!.count).toBe(1);
+    expect(warnings[1]!.count).toBe(2);
     warnSpy.mockRestore();
   });
 
@@ -241,6 +288,28 @@ describe('IpcClient', () => {
     const messages: unknown[] = [];
     client.on('message', (m) => messages.push(m));
     socketStub.emit('data', Buffer.from('{"type":"replayDone"}\n'));
+    expect(messages).toEqual([{ type: 'replayDone' }]);
+  });
+
+  it('resynchronizes to the next newline on overflow instead of discarding a trailing valid message (FR-QA-EXT-2)', async () => {
+    const client = new IpcClient();
+    const promise = client.connect('/tmp/test.sock');
+    socketStub.emit('connect');
+    await promise;
+
+    const errors: Error[] = [];
+    client.on('error', (e) => errors.push(e));
+    const messages: unknown[] = [];
+    client.on('message', (m) => messages.push(m));
+
+    // Garbage well past the 1 MB ceiling, followed by a newline and a valid message
+    // in the *same* chunk — the valid tail must survive the overflow reset.
+    const garbage = Buffer.alloc((1 << 20) + 1, 0x41);
+    const tail = Buffer.from('\n{"type":"replayDone"}\n');
+    socketStub.emit('data', Buffer.concat([garbage, tail]));
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.message).toMatch(/overflow/i);
     expect(messages).toEqual([{ type: 'replayDone' }]);
   });
 });

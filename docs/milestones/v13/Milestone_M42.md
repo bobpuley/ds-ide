@@ -20,7 +20,7 @@ Clear the remaining low-severity extension and tooling findings: a latent webvie
 
 ---
 
-### [ ] fix: Make IPC client failures observable (FR-QA-EXT-2)
+### [x] fix: Make IPC client failures observable (FR-QA-EXT-2)
 
 `IpcClient.send()` silently no-ops when the socket is absent/destroyed; malformed JSON lines are silently discarded; a 1MB receive-buffer overflow resets without resynchronizing to the next newline.
 
