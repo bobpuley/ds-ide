@@ -80,7 +80,7 @@ No `format(printf, 2, 3)` attribute means mismatched varargs are undetected UB; 
 
 ---
 
-### [ ] fix: Build the runtime at `-O2` with stronger warnings (FR-QA-EMU-8)
+### [x] fix: Build the runtime at `-O2` with stronger warnings (FR-QA-EMU-8)
 
 Both the effect object and the entire runtime compile at `-O0 -g` with only `-Wall`.
 
