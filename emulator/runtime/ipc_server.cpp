@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <cerrno>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -51,6 +52,41 @@ static void retire_wav_data(const WavData* new_wav) {
 // text "type":), returning that field's trailing bytes instead of the real
 // top-level value, or missing the real key entirely.
 
+// Decodes a \uXXXX escape's 4 hex digits (pos points just past the 'u') into
+// a code point and appends its UTF-8 encoding to `out` (FR-QA-EMU-6).
+// Advances `pos` past the 4 hex digits and returns true, or leaves `pos`
+// unchanged and returns false if fewer than 4 hex digits are present.
+// Surrogate pairs (code points beyond the Basic Multilingual Plane) are not
+// reconstructed — a lone surrogate is encoded as its raw 3-byte UTF-8 form —
+// since IPC payloads on this channel are limited to config/path strings that
+// don't need astral-plane characters (a real JSON tokenizer would be an
+// architecture change; this is the minimum fix for the reported gap).
+static bool decode_u_escape(const std::string& json, size_t& pos, std::string& out, bool matched) {
+    if (pos + 4 > json.size()) return false;
+    uint32_t code = 0;
+    for (size_t i = 0; i < 4; ++i) {
+        char c = json[pos + i];
+        code <<= 4;
+        if (c >= '0' && c <= '9') code |= static_cast<uint32_t>(c - '0');
+        else if (c >= 'a' && c <= 'f') code |= static_cast<uint32_t>(c - 'a' + 10);
+        else if (c >= 'A' && c <= 'F') code |= static_cast<uint32_t>(c - 'A' + 10);
+        else return false;
+    }
+    pos += 4;
+    if (!matched) return true;
+    if (code <= 0x7F) {
+        out += static_cast<char>(code);
+    } else if (code <= 0x7FF) {
+        out += static_cast<char>(0xC0 | (code >> 6));
+        out += static_cast<char>(0x80 | (code & 0x3F));
+    } else {
+        out += static_cast<char>(0xE0 | (code >> 12));
+        out += static_cast<char>(0x80 | ((code >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (code & 0x3F));
+    }
+    return true;
+}
+
 std::string json_get(const std::string& json, const std::string& key) {
     size_t pos = json.find('{');
     if (pos == std::string::npos) return {};
@@ -91,8 +127,33 @@ std::string json_get(const std::string& json, const std::string& key) {
             while (pos < json.size()) {
                 char c = json[pos];
                 if (c == '\\' && pos + 1 < json.size()) {
-                    ++pos;
-                    if (matched) value += json[pos];
+                    // FR-QA-EMU-6: translate the standard JSON escape set
+                    // instead of dropping the backslash and keeping the
+                    // literal character after it.
+                    ++pos;  // move to the escape-type character
+                    char esc = json[pos];
+                    switch (esc) {
+                        case '"':  if (matched) value += '"';  ++pos; break;
+                        case '\\': if (matched) value += '\\'; ++pos; break;
+                        case '/':  if (matched) value += '/';  ++pos; break;
+                        case 'n':  if (matched) value += '\n'; ++pos; break;
+                        case 't':  if (matched) value += '\t'; ++pos; break;
+                        case 'r':  if (matched) value += '\r'; ++pos; break;
+                        case 'b':  if (matched) value += '\b'; ++pos; break;
+                        case 'f':  if (matched) value += '\f'; ++pos; break;
+                        case 'u':
+                            ++pos;  // move past 'u' to the first hex digit
+                            if (!decode_u_escape(json, pos, value, matched))
+                                return {};  // malformed \u escape — reject
+                            break;
+                        default:
+                            // Unrecognized escape — pass the character
+                            // through as-is (lenient).
+                            if (matched) value += esc;
+                            ++pos;
+                            break;
+                    }
+                    continue;
                 } else if (c == '"') {
                     ++pos;
                     terminated = true;
@@ -102,7 +163,6 @@ std::string json_get(const std::string& json, const std::string& key) {
                     ++pos;
                     continue;
                 }
-                ++pos;
             }
             if (!terminated) return {};  // unterminated string — malformed, bail entirely
         } else if (json[pos] == '{') {
@@ -161,6 +221,19 @@ std::string json_escape(const std::string& s) {
     return out;
 }
 
+// Clamps a pot value to [0, 1] into `out` and returns true, or leaves `out`
+// untouched and returns false if `v` is NaN/Inf (FR-QA-EMU-5) — matching
+// outputVolume's existing clamp behavior, plus rejecting non-finite input
+// that a plain `< 0.f` / `> 1.f` comparison would silently let through
+// (NaN compares false against both bounds).
+static bool clamp_pot_value(float v, float& out) {
+    if (!std::isfinite(v)) return false;
+    if (v < 0.f) v = 0.f;
+    if (v > 1.f) v = 1.f;
+    out = v;
+    return true;
+}
+
 // Parse {"0":0.5,"1":0.3} (numbers) or {"28":true,...} (bools) and invoke
 // cb(key, rawValueString) for each entry. The caller interprets the value.
 static void parse_kv_object(const std::string& obj,
@@ -206,7 +279,7 @@ static void emit_event(const std::string& msg) {
 
 // ---- Message dispatch -------------------------------------------------------
 
-static void dispatch(const std::string& line) {
+void dispatch(const std::string& line) {
     try {
     std::string type = json_get(line, "type");
     if (type.empty()) return;
@@ -269,12 +342,17 @@ static void dispatch(const std::string& line) {
             try {
                 int c = std::stoi(ch);
                 if (c >= 0 && c < 12) {
-                    float v = std::stof(val);
-                    g_state.pot_values[c].store(v);
-                    // Hold recorder_mutex across active() check + enqueue to close TOCTOU (AC-46).
-                    std::lock_guard<std::mutex> lk(g_state.recorder_mutex);
-                    if (g_state.recorder.active())
-                        g_state.recorder.enqueuePot(static_cast<uint8_t>(c), v);
+                    // FR-QA-EMU-5: clamp to [0,1] and reject NaN/Inf, matching
+                    // outputVolume's clamp behavior — a non-finite or wildly
+                    // out-of-range pot value must never reach effect code.
+                    float v;
+                    if (clamp_pot_value(std::stof(val), v)) {
+                        g_state.pot_values[c].store(v);
+                        // Hold recorder_mutex across active() check + enqueue to close TOCTOU (AC-46).
+                        std::lock_guard<std::mutex> lk(g_state.recorder_mutex);
+                        if (g_state.recorder.active())
+                            g_state.recorder.enqueuePot(static_cast<uint8_t>(c), v);
+                    }
                 }
             } catch (...) { std::fprintf(stderr, "[daisy-emu] stoi/stof failed: pot\n"); }
         }
@@ -284,7 +362,11 @@ static void dispatch(const std::string& line) {
         if (!obj.empty()) {
             parse_kv_object(obj, [](int c, const std::string& v) {
                 if (c >= 0 && c < 12) {
-                    try { g_state.pot_values[c].store(std::stof(v)); } catch (...) {}
+                    try {
+                        float clamped;
+                        if (clamp_pot_value(std::stof(v), clamped))
+                            g_state.pot_values[c].store(clamped);
+                    } catch (...) {}
                 }
             });
         }

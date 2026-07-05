@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <functional>
+#include <memory>
 
 namespace daisy_emu {
 
@@ -24,6 +25,12 @@ public:
 
     CoreAudioDevice();
     ~CoreAudioDevice();
+
+    // Impl is heap-owned via unique_ptr; copying would otherwise yield two
+    // owners of the same Impl and a double `delete` when both destruct
+    // (FR-QA-EMU-2).
+    CoreAudioDevice(const CoreAudioDevice&)            = delete;
+    CoreAudioDevice& operator=(const CoreAudioDevice&) = delete;
 
     // Start duplex I/O (mic + speakers). Requires microphone permission.
     // Returns true on success.
@@ -60,7 +67,7 @@ public:
 private:
 #ifdef __APPLE__
     struct Impl;
-    Impl* impl_{nullptr};
+    std::unique_ptr<Impl> impl_;
 #endif
     bool running_{false};
 };

@@ -220,13 +220,13 @@ struct CoreAudioDevice::Impl {
 CoreAudioDevice::CoreAudioDevice() {}
 
 CoreAudioDevice::~CoreAudioDevice() {
-    stop();  // stop() already calls delete impl_ and sets impl_ = nullptr (AC-50)
+    stop();  // stop() already resets impl_ (AC-50)
 }
 
 bool CoreAudioDevice::start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn processBlock) {
     if (running_) stop();
 
-    impl_ = new Impl();
+    impl_ = std::make_unique<Impl>();
     impl_->sampleRate   = sampleRate;
     impl_->bufferSize   = bufferSize;
     impl_->processBlock = std::move(processBlock);
@@ -237,10 +237,10 @@ bool CoreAudioDevice::start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn 
     desc.componentSubType      = kAudioUnitSubType_HALOutput;
     desc.componentManufacturer = kAudioUnitManufacturer_Apple;
     AudioComponent comp = AudioComponentFindNext(nullptr, &desc);
-    if (!comp) { delete impl_; impl_ = nullptr; return false; }
+    if (!comp) { impl_.reset(); return false; }
 
     if (AudioComponentInstanceNew(comp, &impl_->unit) != noErr) {
-        delete impl_; impl_ = nullptr; return false;
+        impl_.reset(); return false;
     }
 
     // Enable output on bus 0, enable input on bus 1. FR-EMU-3: every setup
@@ -375,7 +375,7 @@ bool CoreAudioDevice::start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn 
     // Set the output render callback.
     AURenderCallbackStruct cb{};
     cb.inputProc       = Impl::renderCallback;
-    cb.inputProcRefCon = impl_;
+    cb.inputProcRefCon = impl_.get();
     if (AudioUnitSetProperty(impl_->unit, kAudioUnitProperty_SetRenderCallback,
                              kAudioUnitScope_Input, 0, &cb, sizeof(cb)) != noErr) {
         stop(); return false;
@@ -395,7 +395,7 @@ bool CoreAudioDevice::start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn 
 bool CoreAudioDevice::start_output_only(uint32_t sampleRate, uint32_t bufferSize, ProcessFn processBlock) {
     if (running_) stop();
 
-    impl_ = new Impl();
+    impl_ = std::make_unique<Impl>();
     impl_->sampleRate   = sampleRate;
     impl_->bufferSize   = bufferSize;
     impl_->processBlock = std::move(processBlock);
@@ -405,10 +405,10 @@ bool CoreAudioDevice::start_output_only(uint32_t sampleRate, uint32_t bufferSize
     desc.componentSubType      = kAudioUnitSubType_HALOutput;
     desc.componentManufacturer = kAudioUnitManufacturer_Apple;
     AudioComponent comp = AudioComponentFindNext(nullptr, &desc);
-    if (!comp) { delete impl_; impl_ = nullptr; return false; }
+    if (!comp) { impl_.reset(); return false; }
 
     if (AudioComponentInstanceNew(comp, &impl_->unit) != noErr) {
-        delete impl_; impl_ = nullptr; return false;
+        impl_.reset(); return false;
     }
 
     // Output-only: enable bus 0 (output), disable bus 1 (input — no mic needed).
@@ -468,7 +468,7 @@ bool CoreAudioDevice::start_output_only(uint32_t sampleRate, uint32_t bufferSize
 
     AURenderCallbackStruct cb{};
     cb.inputProc       = Impl::renderCallbackOutputOnly;
-    cb.inputProcRefCon = impl_;
+    cb.inputProcRefCon = impl_.get();
     if (AudioUnitSetProperty(impl_->unit, kAudioUnitProperty_SetRenderCallback,
                              kAudioUnitScope_Input, 0, &cb, sizeof(cb)) != noErr) {
         stop(); return false;
@@ -502,8 +502,7 @@ void CoreAudioDevice::stop() {
         std::free(impl_->inputBufList);
         impl_->inputBufList = nullptr;
     }
-    delete impl_;
-    impl_ = nullptr;
+    impl_.reset();
     running_ = false;
 }
 

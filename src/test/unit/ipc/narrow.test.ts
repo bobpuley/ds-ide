@@ -48,7 +48,7 @@ describe('parseIpcMessage (FR-IPC-2)', () => {
   });
 
   it('accepts a well-formed latency message', () => {
-    expect(parseIpcMessage({ type: 'latency', measuredMs: 12.5 })).toEqual({ type: 'latency', measuredMs: 12.5 });
+    expect(parseIpcMessage({ type: 'latency', estimatedMs: 12.5 })).toEqual({ type: 'latency', estimatedMs: 12.5 });
   });
 
   it('accepts a well-formed led message', () => {

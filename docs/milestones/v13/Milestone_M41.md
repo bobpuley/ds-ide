@@ -10,7 +10,7 @@ Clear the remaining low-severity emulator findings: a fabricated latency metric,
 
 ## Sprint Tasks
 
-### [ ] fix: Report real or honestly-labeled audio latency (FR-QA-EMU-1)
+### [x] fix: Report real or honestly-labeled audio latency (FR-QA-EMU-1)
 
 `lastLatencyMs()` reports `budget_ms * 2.0` under the field name `measuredMs` — a synthetic constant, not a measurement.
 
@@ -20,7 +20,7 @@ Clear the remaining low-severity emulator findings: a fabricated latency metric,
 
 ---
 
-### [ ] fix: Replace `CoreAudioDevice`'s raw owning pointer with `unique_ptr` (FR-QA-EMU-2)
+### [x] fix: Replace `CoreAudioDevice`'s raw owning pointer with `unique_ptr` (FR-QA-EMU-2)
 
 `Impl*` has no deleted copy/move; copying a started device would yield two owners and a double `delete`.
 
@@ -30,7 +30,7 @@ Clear the remaining low-severity emulator findings: a fabricated latency metric,
 
 ---
 
-### [ ] fix: Make `StartAudio` registration reflect the most recent call (FR-QA-EMU-3)
+### [x] fix: Make `StartAudio` registration reflect the most recent call (FR-QA-EMU-3)
 
 Both `StartAudio` overloads set their own pointer without clearing the other; `use_block` is latched once for the process lifetime.
 
@@ -40,7 +40,7 @@ Both `StartAudio` overloads set their own pointer without clearing the other; `u
 
 ---
 
-### [ ] fix: Eliminate cumulative scheduler drift in `System::Delay` (FR-QA-EMU-4)
+### [x] fix: Eliminate cumulative scheduler drift in `System::Delay` (FR-QA-EMU-4)
 
 `Delay(ms)` sleeps 1ms at a time in a loop; scheduler overshoot compounds per iteration.
 
@@ -50,7 +50,7 @@ Both `StartAudio` overloads set their own pointer without clearing the other; `u
 
 ---
 
-### [ ] fix: Clamp and validate pot values from IPC (FR-QA-EMU-5)
+### [x] fix: Clamp and validate pot values from IPC (FR-QA-EMU-5)
 
 The `pot`/`potSnapshot` handlers store any float, including negatives, `>1`, `NaN`, `Inf` — unlike `outputVolume`, which clamps.
 
@@ -60,7 +60,7 @@ The `pot`/`potSnapshot` handlers store any float, including negatives, `>1`, `Na
 
 ---
 
-### [ ] fix: Decode standard JSON escape sequences in `json_get` (FR-QA-EMU-6)
+### [x] fix: Decode standard JSON escape sequences in `json_get` (FR-QA-EMU-6)
 
 The string-value scanner drops the backslash on any escape it doesn't special-case (`\n` → `n`, `\uXXXX` → `uXXXX`).
 
@@ -70,7 +70,7 @@ The string-value scanner drops the backslash on any escape it doesn't special-ca
 
 ---
 
-### [ ] fix: Add format-string checking and hardware-faithful line endings to `PrintLine` (FR-QA-EMU-7)
+### [x] fix: Add format-string checking and hardware-faithful line endings to `PrintLine` (FR-QA-EMU-7)
 
 No `format(printf, 2, 3)` attribute means mismatched varargs are undetected UB; output emits `\n` where hardware emits `\r\n`.
 
@@ -80,7 +80,7 @@ No `format(printf, 2, 3)` attribute means mismatched varargs are undetected UB; 
 
 ---
 
-### [ ] fix: Build the runtime at `-O2` with stronger warnings (FR-QA-EMU-8)
+### [x] fix: Build the runtime at `-O2` with stronger warnings (FR-QA-EMU-8)
 
 Both the effect object and the entire runtime compile at `-O0 -g` with only `-Wall`.
 

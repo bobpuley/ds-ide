@@ -88,7 +88,9 @@ endif()
 
 # ---- Effect object -----------------------------------------------------------
 # Compiled with -Dmain=effect_main so the effect's main() is renamed.
-# The runtime's main() is the real entry point.
+# The runtime's main() is the real entry point. Stays at -O0 -g (fast
+# incremental rebuilds while iterating on effect code); -Wextra -Wshadow
+# added for stronger warnings (FR-QA-EMU-8).
 
 add_library(effect_obj OBJECT "${EFFECT_SRC}")
 target_include_directories(effect_obj PRIVATE
@@ -97,16 +99,30 @@ target_include_directories(effect_obj PRIVATE
 )
 target_compile_definitions(effect_obj PRIVATE main=effect_main)
 target_compile_options(effect_obj PRIVATE
-    -O0 -g -Wall -Wno-unused-parameter -Wno-unused-variable
+    -O0 -g -Wall -Wextra -Wshadow -Wno-unused-parameter -Wno-unused-variable
+)
+
+# ---- Runtime + shim object library --------------------------------------------
+# Built at -O2 -g (FR-QA-EMU-8): this is fixed emulator infrastructure, not
+# code under active per-effect iteration, so it can afford the optimization
+# time and benefits from running closer to real-world timing. -Wextra
+# -Wshadow added alongside effect_obj's.
+
+add_library(runtime_shim_obj OBJECT ${SHIM_SRC} ${RUNTIME_SRC})
+target_include_directories(runtime_shim_obj PRIVATE
+    "${CMAKE_SOURCE_DIR}/shim/include"
+    "${CMAKE_SOURCE_DIR}/runtime"
+)
+target_compile_options(runtime_shim_obj PRIVATE
+    -O2 -g -Wall -Wextra -Wshadow -Wno-unused-parameter
 )
 
 # ---- Main executable ---------------------------------------------------------
 
 add_executable(effect_emu
     $<TARGET_OBJECTS:effect_obj>
-    ${SHIM_SRC}
+    $<TARGET_OBJECTS:runtime_shim_obj>
     ${DAISYSP_SRC}
-    ${RUNTIME_SRC}
 )
 
 target_include_directories(effect_emu PRIVATE

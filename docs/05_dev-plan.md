@@ -113,7 +113,7 @@ Full registry in [`docs/v12/05_dev-plan.md`](v12/05_dev-plan.md).
 
 | ID  | Name | Status | Version | File |
 |-----|------|--------|---------|------|
-| M41 | Emulator Code Quality & Hygiene | **planned** | 0.13.3 | [Milestone_M41.md](milestones/v13/Milestone_M41.md) |
+| M41 | Emulator Code Quality & Hygiene | **in progress** | 0.13.3 | [Milestone_M41.md](milestones/v13/Milestone_M41.md) |
 | M42 | Extension/Tooling Polish | **planned** | 0.13.4 | [Milestone_M42.md](milestones/v13/Milestone_M42.md) |
 
 Source: 2026-07-02 automated code reviews — all LOW-urgency findings.

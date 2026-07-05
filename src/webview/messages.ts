@@ -14,7 +14,7 @@ export type ScopeHostMessage =
   | { command: 'wavSelected'; name: string }
   | { command: 'event'; kind: string }
   | { command: 'xrun'; count: number }
-  | { command: 'latency'; measuredMs?: number }
+  | { command: 'latency'; estimatedMs?: number }
   | { command: 'led'; gpioPin: number; lit: boolean }
   | { command: 'spectrum'; in_fft: number[]; out_fft: number[]; binHz: number }
   | { command: 'recordingState'; recording: boolean; replaying: boolean; fileName?: string | null }
