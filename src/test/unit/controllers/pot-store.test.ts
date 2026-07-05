@@ -1,23 +1,23 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type * as vscode from 'vscode';
 import { PotStore } from '../../../controllers/pot-store';
 import type { ControllerDef } from '../../../controllers/controller-config';
 
-function makeMockMemento(): vscode.Memento {
+function makeMockMemento(): vscode.Memento & { update: ReturnType<typeof vi.fn> } {
   const store = new Map<string, unknown>();
   return {
     get<T>(key: string, defaultValue?: T): T {
       const v = store.get(key);
       return (v !== undefined ? v : defaultValue) as T;
     },
-    update(key: string, value: unknown): Thenable<void> {
+    update: vi.fn((key: string, value: unknown): Thenable<void> => {
       store.set(key, value);
       return Promise.resolve();
-    },
+    }),
     keys(): readonly string[] {
       return [...store.keys()];
     },
-  } as unknown as vscode.Memento;
+  } as unknown as vscode.Memento & { update: ReturnType<typeof vi.fn> };
 }
 
 const DEF_0: ControllerDef = {
@@ -39,12 +39,17 @@ const DEF_1: ControllerDef = {
 };
 
 describe('PotStore', () => {
-  let memento: vscode.Memento;
+  let memento: vscode.Memento & { update: ReturnType<typeof vi.fn> };
   let store: PotStore;
 
   beforeEach(() => {
+    vi.useFakeTimers();
     memento = makeMockMemento();
     store = new PotStore(memento);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   describe('getAll()', () => {
@@ -113,6 +118,55 @@ describe('PotStore', () => {
 
     it('returns empty object when nothing stored', () => {
       expect(store.getSnapshot()).toEqual({});
+    });
+  });
+
+  describe('debounced persistence (FR-UX-5)', () => {
+    it('does not call workspaceState.update synchronously on set()', () => {
+      store.set(0, 0.5);
+      expect(memento.update).not.toHaveBeenCalled();
+    });
+
+    it('flushes to workspaceState ~250ms after the last set() call', () => {
+      store.set(0, 0.5);
+      vi.advanceTimersByTime(249);
+      expect(memento.update).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(memento.update).toHaveBeenCalledOnce();
+      expect(memento.update).toHaveBeenCalledWith('ds-ide.potValues', { 0: 0.5 });
+    });
+
+    it('resets the flush timer on each new set() call, coalescing a burst into a single write', () => {
+      // Simulate a continuous 5-second drag: a set() call every 10ms (~500 calls).
+      for (let t = 0; t < 5000; t += 10) {
+        store.set(0, t / 5000);
+        vi.advanceTimersByTime(10);
+      }
+      // No flush yet — the timer keeps resetting as long as calls keep arriving.
+      expect(memento.update).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(250);
+      // Exactly one flush once the burst goes idle — comfortably under the
+      // "~20 workspaceState.update calls for a 5s drag" budget.
+      expect(memento.update).toHaveBeenCalledOnce();
+    });
+
+    it('getAll() reflects the latest dragged value immediately, even before the debounced flush fires', () => {
+      store.set(0, 0.5);
+      store.set(0, 0.9);
+      expect(store.getAll()[0]).toBe(0.9);
+      expect(memento.update).not.toHaveBeenCalled();
+    });
+
+    it('getSnapshot() reflects the latest value immediately for post-deploy replay, independent of the pending flush', () => {
+      store.set(0, 0.5);
+      store.set(0, 0.42);
+      expect(store.getSnapshot()[0]).toBe(0.42);
+    });
+
+    it('setDefaults() flushes immediately rather than waiting on the debounce', () => {
+      store.setDefaults([DEF_0]);
+      expect(memento.update).toHaveBeenCalledOnce();
+      expect(memento.update).toHaveBeenCalledWith('ds-ide.potValues', { 0: 0.5 });
     });
   });
 });

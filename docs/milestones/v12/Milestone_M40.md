@@ -65,7 +65,7 @@ Every workspace-dependent operation hardcodes `workspaceFolders[0]`; the save-li
 
 ---
 
-### [ ] fix: Debounce `workspaceState` persistence for real-time control drags (FR-UX-5)
+### [x] fix: Debounce `workspaceState` persistence for real-time control drags (FR-UX-5)
 
 Dragging a Controls-webview knob posts a `pot` message on every mousemove (~60–120 Hz); each message triggers a full `workspaceState` read-modify-write persisted write plus an IPC send with no throttling.
 
