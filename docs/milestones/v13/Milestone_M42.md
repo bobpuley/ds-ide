@@ -60,7 +60,7 @@ Grab-bag: `@types/node ^20` vs. an esbuild target of `node18`; `which` detection
 
 ---
 
-### [ ] fix: Reconcile marketplace metadata (FR-QA-EXT-6)
+### [x] fix: Reconcile marketplace metadata (FR-QA-EXT-6)
 
 `package.json` still declares `"version": "0.0.1"` against a CHANGELOG through 0.11.0+; the referenced icon doesn't exist; light icon variants are unused; keybindings have no `when`/`enablement` gates.
 

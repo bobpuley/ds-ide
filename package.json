@@ -2,9 +2,10 @@
   "name": "ds-ide",
   "displayName": "Daisy Seed IDE",
   "description": "Develop, test, and debug Daisy Seed audio effects without physical hardware.",
-  "version": "0.0.1",
+  "version": "0.13.3",
   "publisher": "daisy-ide",
   "license": "MIT",
+  "icon": "media/ds-ide-icon.png",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -82,22 +83,26 @@
       {
         "command": "ds-ide.build",
         "key": "ctrl+shift+alt+b",
-        "mac": "cmd+shift+alt+b"
+        "mac": "cmd+shift+alt+b",
+        "when": "ds-ide.isDaisyProject"
       },
       {
         "command": "ds-ide.deploy",
         "key": "ctrl+shift+alt+d",
-        "mac": "cmd+shift+alt+d"
+        "mac": "cmd+shift+alt+d",
+        "when": "ds-ide.isDaisyProject"
       },
       {
         "command": "ds-ide.start",
         "key": "ctrl+shift+alt+r",
-        "mac": "cmd+shift+alt+r"
+        "mac": "cmd+shift+alt+r",
+        "when": "ds-ide.isDaisyProject"
       },
       {
         "command": "ds-ide.stop",
         "key": "ctrl+shift+alt+s",
-        "mac": "cmd+shift+alt+s"
+        "mac": "cmd+shift+alt+s",
+        "when": "ds-ide.isDaisyProject"
       }
     ],
     "viewsContainers": {
