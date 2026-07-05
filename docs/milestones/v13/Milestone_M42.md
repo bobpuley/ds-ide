@@ -10,7 +10,7 @@ Clear the remaining low-severity extension and tooling findings: a latent webvie
 
 ## Sprint Tasks
 
-### [ ] fix: Split esbuild config for extension vs. webview targets (FR-QA-EXT-1)
+### [x] fix: Split esbuild config for extension vs. webview targets (FR-QA-EXT-1)
 
 `esbuild.js` uses one `platform: 'node'` config for both the extension host and the three webview scripts — currently harmless since webviews have zero imports, but the first import added to a webview script breaks.
 
