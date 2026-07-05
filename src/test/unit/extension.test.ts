@@ -605,7 +605,7 @@ describe('controllers.yaml validation notification aggregation (FR-UX-2)', () =>
     await triggerLoadViaSave();
     (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mockClear();
 
-    promisesMock['readFile']!.mockResolvedValue('controllers: []\nbuttons: []\nleds: []\n');
+    promisesMock['readFile']!.mockResolvedValue('controllers:\nbuttons:\nleds:\n');
     await triggerLoadViaSave();
 
     promisesMock['readFile']!.mockResolvedValue(INVALID_YAML);

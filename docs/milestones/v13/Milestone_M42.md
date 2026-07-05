@@ -40,7 +40,7 @@ Clear the remaining low-severity extension and tooling findings: a latent webvie
 
 ---
 
-### [ ] fix: Align the YAML parser's recognized sections with the project scaffold (FR-QA-EXT-4)
+### [x] fix: Align the YAML parser's recognized sections with the project scaffold (FR-QA-EXT-4)
 
 The hand-rolled parser silently skips tab-indented lines and never reads the scaffolded `controls: []` key (it only recognizes `controllers`/`buttons`/`leds`).
 

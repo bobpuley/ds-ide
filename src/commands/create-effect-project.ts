@@ -46,7 +46,7 @@ project(${name})
 `;
 }
 
-const controllersYaml = `controls: []\n`;
+const controllersYaml = `controllers:\n`;
 
 function readmeTemplate(name: string): string {
   return `# ${name}

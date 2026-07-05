@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createEffectProject } from '../../../commands/create-effect-project';
+import { parseControllerConfig } from '../../../controllers/controller-config';
 import * as vscode from 'vscode';
 
 // vscode is resolved via the alias in vitest.config.ts to src/__mocks__/vscode.ts.
@@ -87,7 +88,7 @@ describe('createEffectProject', () => {
     expect(content).toContain('project(myEffect)');
   });
 
-  it('controllers.yaml contains empty controls list', async () => {
+  it('controllers.yaml uses the `controllers:` key the parser reads (FR-QA-EXT-4)', async () => {
     setupHappyPath();
     await createEffectProject();
 
@@ -95,7 +96,11 @@ describe('createEffectProject', () => {
     const yamlCall = calls.find(c => c[0].fsPath.endsWith('controllers.yaml'));
     expect(yamlCall).toBeDefined();
     const content = Buffer.from(yamlCall![1]).toString('utf8');
-    expect(content).toContain('controls: []');
+    expect(content).toContain('controllers:');
+
+    const parsed = parseControllerConfig(content);
+    expect(parsed.errors).toHaveLength(0);
+    expect(parsed.pots).toHaveLength(0);
   });
 
   it('aborts silently when user cancels name input', async () => {
