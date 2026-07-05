@@ -20,7 +20,7 @@ Clear the remaining low-severity emulator findings: a fabricated latency metric,
 
 ---
 
-### [ ] fix: Replace `CoreAudioDevice`'s raw owning pointer with `unique_ptr` (FR-QA-EMU-2)
+### [x] fix: Replace `CoreAudioDevice`'s raw owning pointer with `unique_ptr` (FR-QA-EMU-2)
 
 `Impl*` has no deleted copy/move; copying a started device would yield two owners and a double `delete`.
 
