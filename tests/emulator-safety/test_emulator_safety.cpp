@@ -477,6 +477,53 @@ static void test_gpio_canonical_index() {
           "A11 canonical index within kNumGpioPins");
 }
 
+// ---- FR-QA-EMU-5: pot/potSnapshot IPC handlers clamp + reject non-finite ---
+
+static void test_pot_clamps_and_rejects_nonfinite() {
+    std::printf("--- FR-QA-EMU-5: \"pot\" handler clamps to [0,1] and rejects non-finite ---\n");
+
+    for (auto& v : g_state.pot_values) v.store(0.f);
+
+    dispatch(R"({"type":"pot","channel":0,"value":0.5})");
+    CHECK(std::fabs(g_state.pot_values[0].load() - 0.5f) < 1e-6f,
+          "an in-range value is stored as-is");
+
+    dispatch(R"({"type":"pot","channel":1,"value":-3.0})");
+    CHECK(g_state.pot_values[1].load() == 0.f, "a negative value clamps to 0");
+
+    dispatch(R"({"type":"pot","channel":2,"value":7.5})");
+    CHECK(g_state.pot_values[2].load() == 1.f, "a value above 1 clamps to 1");
+
+    g_state.pot_values[3].store(0.42f);
+    dispatch(R"({"type":"pot","channel":3,"value":NaN})");
+    CHECK(g_state.pot_values[3].load() == 0.42f,
+          "a NaN value is rejected — the previous value is left in place");
+
+    g_state.pot_values[4].store(0.11f);
+    dispatch(R"({"type":"pot","channel":4,"value":Infinity})");
+    CHECK(g_state.pot_values[4].load() == 0.11f,
+          "an Infinity value is rejected — the previous value is left in place");
+
+    g_state.pot_values[5].store(0.77f);
+    dispatch(R"({"type":"pot","channel":5,"value":-Infinity})");
+    CHECK(g_state.pot_values[5].load() == 0.77f,
+          "a -Infinity value is rejected — the previous value is left in place");
+}
+
+static void test_pot_snapshot_clamps_and_rejects_nonfinite() {
+    std::printf("--- FR-QA-EMU-5: \"potSnapshot\" handler clamps to [0,1] and rejects non-finite ---\n");
+
+    for (auto& v : g_state.pot_values) v.store(0.f);
+
+    dispatch(R"({"type":"potSnapshot","values":{"0":0.25,"1":-5,"2":9,"3":NaN}})");
+    CHECK(std::fabs(g_state.pot_values[0].load() - 0.25f) < 1e-6f,
+          "an in-range snapshot value is stored as-is");
+    CHECK(g_state.pot_values[1].load() == 0.f, "a negative snapshot value clamps to 0");
+    CHECK(g_state.pot_values[2].load() == 1.f, "an over-range snapshot value clamps to 1");
+    CHECK(g_state.pot_values[3].load() == 0.f,
+          "a NaN snapshot value is rejected — the (reset) prior value is left in place");
+}
+
 // ---- FR-EMU-6: json_get() key lookup doesn't match inside string values ----
 
 static void test_json_get_basic_fields() {
@@ -1160,6 +1207,8 @@ int main() {
     test_scope_decimation_scales_with_frame_size();
     test_spsc_queue_oversize_truncation();
     test_gpio_canonical_index();
+    test_pot_clamps_and_rejects_nonfinite();
+    test_pot_snapshot_clamps_and_rejects_nonfinite();
     test_json_get_basic_fields();
     test_json_get_ignores_key_literal_inside_string_value();
     test_json_get_malformed_input_terminates();

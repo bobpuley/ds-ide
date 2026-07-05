@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <cerrno>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -161,6 +162,19 @@ std::string json_escape(const std::string& s) {
     return out;
 }
 
+// Clamps a pot value to [0, 1] into `out` and returns true, or leaves `out`
+// untouched and returns false if `v` is NaN/Inf (FR-QA-EMU-5) — matching
+// outputVolume's existing clamp behavior, plus rejecting non-finite input
+// that a plain `< 0.f` / `> 1.f` comparison would silently let through
+// (NaN compares false against both bounds).
+static bool clamp_pot_value(float v, float& out) {
+    if (!std::isfinite(v)) return false;
+    if (v < 0.f) v = 0.f;
+    if (v > 1.f) v = 1.f;
+    out = v;
+    return true;
+}
+
 // Parse {"0":0.5,"1":0.3} (numbers) or {"28":true,...} (bools) and invoke
 // cb(key, rawValueString) for each entry. The caller interprets the value.
 static void parse_kv_object(const std::string& obj,
@@ -206,7 +220,7 @@ static void emit_event(const std::string& msg) {
 
 // ---- Message dispatch -------------------------------------------------------
 
-static void dispatch(const std::string& line) {
+void dispatch(const std::string& line) {
     try {
     std::string type = json_get(line, "type");
     if (type.empty()) return;
@@ -269,12 +283,17 @@ static void dispatch(const std::string& line) {
             try {
                 int c = std::stoi(ch);
                 if (c >= 0 && c < 12) {
-                    float v = std::stof(val);
-                    g_state.pot_values[c].store(v);
-                    // Hold recorder_mutex across active() check + enqueue to close TOCTOU (AC-46).
-                    std::lock_guard<std::mutex> lk(g_state.recorder_mutex);
-                    if (g_state.recorder.active())
-                        g_state.recorder.enqueuePot(static_cast<uint8_t>(c), v);
+                    // FR-QA-EMU-5: clamp to [0,1] and reject NaN/Inf, matching
+                    // outputVolume's clamp behavior — a non-finite or wildly
+                    // out-of-range pot value must never reach effect code.
+                    float v;
+                    if (clamp_pot_value(std::stof(val), v)) {
+                        g_state.pot_values[c].store(v);
+                        // Hold recorder_mutex across active() check + enqueue to close TOCTOU (AC-46).
+                        std::lock_guard<std::mutex> lk(g_state.recorder_mutex);
+                        if (g_state.recorder.active())
+                            g_state.recorder.enqueuePot(static_cast<uint8_t>(c), v);
+                    }
                 }
             } catch (...) { std::fprintf(stderr, "[daisy-emu] stoi/stof failed: pot\n"); }
         }
@@ -284,7 +303,11 @@ static void dispatch(const std::string& line) {
         if (!obj.empty()) {
             parse_kv_object(obj, [](int c, const std::string& v) {
                 if (c >= 0 && c < 12) {
-                    try { g_state.pot_values[c].store(std::stof(v)); } catch (...) {}
+                    try {
+                        float clamped;
+                        if (clamp_pot_value(std::stof(v), clamped))
+                            g_state.pot_values[c].store(clamped);
+                    } catch (...) {}
                 }
             });
         }

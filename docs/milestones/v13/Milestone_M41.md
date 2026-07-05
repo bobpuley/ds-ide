@@ -50,7 +50,7 @@ Both `StartAudio` overloads set their own pointer without clearing the other; `u
 
 ---
 
-### [ ] fix: Clamp and validate pot values from IPC (FR-QA-EMU-5)
+### [x] fix: Clamp and validate pot values from IPC (FR-QA-EMU-5)
 
 The `pot`/`potSnapshot` handlers store any float, including negatives, `>1`, `NaN`, `Inf` — unlike `outputVolume`, which clamps.
 

@@ -19,4 +19,9 @@ std::string json_get(const std::string& json, const std::string& key);
 // Escapes a string for embedding inside a JSON string literal (quotes,
 // backslashes, and control characters).
 std::string json_escape(const std::string& s);
+
+// Exposed (non-static) for unit testing (FR-QA-EMU-5) — otherwise only
+// called internally, once per received line, by run_ipc_server()'s client
+// loop. Parses one JSON line and applies its effect to g_state.
+void dispatch(const std::string& line);
 }  // namespace daisy_emu
