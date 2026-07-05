@@ -1,4 +1,4 @@
-# 05 — Development Plan (v13)
+# 05 — Development Plan (v14)
 
 > **v1 complete** — M0–M7 released (0.1.0–0.1.7), all ACs green.
 > Archived: [`docs/v1/`](v1/).
@@ -35,8 +35,11 @@
 >
 > **v12 complete** — M38–M40 released (0.13.0–0.13.2), all ACs green.
 > Archived: [`docs/v12/`](v12/).
+>
+> **v13 complete** — M41–M42 released (0.13.3–0.13.4), all ACs green.
+> Archived: [`docs/v13/`](v13/).
 
-*v13 planned — remaining bugfix intake from the 2026-07-02 code reviews (v11's HIGH-severity and v12's MEDIUM-severity shares shipped; v13=LOW), milestones split by subsystem within each version.*
+*v14 milestones not yet planned.*
 
 ---
 
@@ -109,11 +112,11 @@ Full registry in [`docs/v11/05_dev-plan.md`](v11/05_dev-plan.md).
 M38 Emulator Correctness & Robustness · M39 IPC & Data Validation Hardening · M40 Extension UX & Workspace Safety.
 Full registry in [`docs/v12/05_dev-plan.md`](v12/05_dev-plan.md).
 
-### v13 (0.13.3–0.13.4) — released
+### v13 (0.13.3–0.13.4) — archived in `docs/v13/`
 
-| ID  | Name | Status       | Version | File |
-|-----|------|--------------|---------|------|
-| M41 | Emulator Code Quality & Hygiene | **released** | 0.13.3 | [Milestone_M41.md](milestones/v13/Milestone_M41.md) |
-| M42 | Extension/Tooling Polish | **released** | 0.13.4 | [Milestone_M42.md](milestones/v13/Milestone_M42.md) |
+M41 Emulator Code Quality & Hygiene · M42 Extension/Tooling Polish.
+Full registry in [`docs/v13/05_dev-plan.md`](v13/05_dev-plan.md).
 
-Source: 2026-07-02 automated code reviews — all LOW-urgency findings.
+### v14 — planned
+
+*(no milestones yet)*
