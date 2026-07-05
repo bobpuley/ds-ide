@@ -52,3 +52,16 @@ describe('package.json marketplace metadata (FR-QA-EXT-6)', () => {
     }
   });
 });
+
+describe('machine/workspace-specific setting scopes (FR-QA-EXT-8)', () => {
+  const props = pkg.contributes?.configuration?.properties ?? {};
+
+  it('declares armToolchainPath as machine-overridable, not window/Settings-Sync scope', () => {
+    expect(props['ds-ide.armToolchainPath'].scope).toBe('machine-overridable');
+  });
+
+  it('documents effectSource\'s scope/resolution order and armToolchainPath\'s machine scope', () => {
+    expect(props['ds-ide.effectSource'].markdownDescription).toMatch(/scope/i);
+    expect(props['ds-ide.armToolchainPath'].markdownDescription).toMatch(/machine/i);
+  });
+});

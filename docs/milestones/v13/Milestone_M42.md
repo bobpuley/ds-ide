@@ -80,7 +80,7 @@ Grab-bag: `@types/node ^20` vs. an esbuild target of `node18`; `which` detection
 
 ---
 
-### [ ] fix: Declare correct `scope` for machine/workspace-specific settings (FR-QA-EXT-8)
+### [x] fix: Declare correct `scope` for machine/workspace-specific settings (FR-QA-EXT-8)
 
 `armToolchainPath` and `effectSource` default to `window` scope though they're machine/workspace-specific paths — Settings Sync can silently apply a desktop toolchain path on a laptop.
 

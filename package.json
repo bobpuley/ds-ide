@@ -141,12 +141,13 @@
         "ds-ide.effectSource": {
           "type": "string",
           "default": "",
-          "description": "Path to the effect .cpp file, relative to project root or absolute. Leave empty for auto-detection."
+          "markdownDescription": "Path to the effect `.cpp` file, relative to project root or absolute. Leave empty for auto-detection.\n\nResolved with `window` scope (not per-folder): in a multi-root workspace, set this at the workspace level, not per-folder — a per-folder value is read without a resource context and will not take effect."
         },
         "ds-ide.armToolchainPath": {
           "type": "string",
           "default": "",
-          "description": "Path to the ARM embedded toolchain binary or its bin/ directory. Leave empty for auto-detection."
+          "scope": "machine-overridable",
+          "markdownDescription": "Path to the ARM embedded toolchain binary or its `bin/` directory. Leave empty for auto-detection.\n\nMachine-specific — excluded from Settings Sync so a toolchain path from one machine can't silently apply on another; a workspace can still override it for that project."
         }
       }
     },
