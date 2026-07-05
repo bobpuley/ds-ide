@@ -1,7 +1,7 @@
 # M40 — Extension UX & Workspace Safety
 
 **Version:** 0.13.2
-**Status:** in progress
+**Status:** released
 **Source:** 2026-07-02 VS Code extension code review — MEDIUM findings
 
 ## Goal

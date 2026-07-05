@@ -5,6 +5,18 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.13.2 — 2026-07-05
+
+**M40 — Extension UX & Workspace Safety** *(FR-UX-1 through FR-UX-5 — all DoD green)*
+
+- **FR-UX-1** — `flashToHardware` and `buildForHardware` now require an `OutputChannel` created once in `activate()` and registered in `context.subscriptions`, instead of `flashToHardware` creating a new `"Daisy IDE Flash"` channel (and never disposing it) on every invocation.
+- **FR-UX-2** — `controllers.yaml` validation errors are aggregated into a single warning and deduplicated across saves with an unchanged error set, instead of one toast per error from six-plus call sites. `EmulatorManager.isConnected` (backed by a new `IpcClient.connected` getter that reflects the live socket, not just a retained reference) lets transport commands warn instead of showing a false "started"/"stopped" toast when no emulator is connected. Routine build/deploy success now relies on the status bar (`setStatusBarMessage` for build) instead of an additional toast.
+- **FR-UX-3** — `findEffectSource` rejects a configured `ds-ide.effectSource` path that resolves outside the workspace folder (`EffectSourceOutsideWorkspaceError`), surfaced as an actionable error instead of silently redirecting wiring edits. `makeBlockEdit` now edits each marker pair independently — an already-established block's range is never touched just because a different block is missing — and appending marker blocks to a file that has none now requires a one-time modal confirmation instead of a silent full-file replace.
+- **FR-UX-4** — Every workspace-dependent operation previously hardcoded `workspaceFolders[0]`; a new `src/workspace/active-folder.ts` centralizes project-root resolution (`resolveActiveFolder`, `promptSelectActiveFolder`), and a new `ds-ide.selectActiveFolder` command lets the user choose which folder ds-ide operates on in a multi-root workspace, persisted in `workspaceState`. The save-listener's "in workspace" check now uses `vscode.workspace.getWorkspaceFolder(doc.uri)` instead of a raw `startsWith`, so a sibling directory sharing a path prefix with the active folder no longer false-positives.
+- **FR-UX-5** — Dragging a Controls-webview knob posted a `pot` message per mousemove (~60–120Hz), each one triggering a full `workspaceState` read-modify-write. `PotStore` now keeps a live in-memory cache (so `getSnapshot()` replay always sees the latest value) and debounces the persisted write to ~250ms after the last drag update. A new `src/webview/raf-coalesce.ts` helper coalesces the webview's mousemove handling to at most one DOM update + IPC send per animation frame.
+
+---
+
 ## 0.13.1 — 2026-07-04
 
 **M39 — IPC & Data Validation Hardening** *(FR-IPC-1 through FR-IPC-7 — all DoD green)*

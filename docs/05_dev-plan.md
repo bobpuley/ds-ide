@@ -107,7 +107,7 @@ Full registry in [`docs/v11/05_dev-plan.md`](v11/05_dev-plan.md).
 |-----|------|-----------------|---------|------|
 | M38 | Emulator Correctness & Robustness | **released** | 0.13.0 | [Milestone_M38.md](milestones/v12/Milestone_M38.md) |
 | M39 | IPC & Data Validation Hardening | **released** | 0.13.1 | [Milestone_M39.md](milestones/v12/Milestone_M39.md) |
-| M40 | Extension UX & Workspace Safety | **in progress** | 0.13.2 | [Milestone_M40.md](milestones/v12/Milestone_M40.md) |
+| M40 | Extension UX & Workspace Safety | **released** | 0.13.2 | [Milestone_M40.md](milestones/v12/Milestone_M40.md) |
 
 Source: 2026-07-02 automated code reviews — all MEDIUM-urgency findings. M38 should land after M36 (both touch `SessionPlayer::nextBlock()`; see `02_assumptions-and-risks.md`).
 
