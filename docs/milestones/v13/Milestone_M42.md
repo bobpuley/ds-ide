@@ -30,7 +30,7 @@ Clear the remaining low-severity extension and tooling findings: a latent webvie
 
 ---
 
-### [ ] fix: Constrain the dfu-util success-detection workaround (FR-QA-EXT-3)
+### [x] fix: Constrain the dfu-util success-detection workaround (FR-QA-EXT-3)
 
 `runDfuUtil` treats stdout containing `File downloaded successfully` as success even on non-zero exit — works around a known quirk but is locale/version-fragile.
 

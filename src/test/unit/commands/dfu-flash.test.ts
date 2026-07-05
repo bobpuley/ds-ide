@@ -13,19 +13,23 @@ vi.mock('../../../hardware/toolchain', () => ({
 
 import { detectDfuUtil } from '../../../hardware/toolchain';
 
-function makeSpawn(exitCode = 0) {
+function makeSpawn(exitCode = 0, stdoutLines: string[] = []) {
   return vi.fn(() => {
     const proc = new EventEmitter() as ReturnType<typeof import('child_process').spawn>;
-    (proc as unknown as Record<string, unknown>)['stdout'] = new EventEmitter();
+    const stdout = new EventEmitter();
+    (proc as unknown as Record<string, unknown>)['stdout'] = stdout;
     (proc as unknown as Record<string, unknown>)['stderr'] = new EventEmitter();
-    process.nextTick(() => proc.emit('close', exitCode));
+    process.nextTick(() => {
+      for (const line of stdoutLines) stdout.emit('data', Buffer.from(`${line}\n`));
+      proc.emit('close', exitCode);
+    });
     return proc;
   });
 }
 
-function makeFlashDeps(exitCode = 0): DfuFlashDeps {
+function makeFlashDeps(exitCode = 0, stdoutLines: string[] = []): DfuFlashDeps {
   return {
-    spawn: makeSpawn(exitCode),
+    spawn: makeSpawn(exitCode, stdoutLines),
     readdirSync: vi.fn(() => ['effect.bin']),
     statSync: vi.fn(() => ({ mtimeMs: 1000 })),
   } as unknown as DfuFlashDeps;
@@ -57,6 +61,30 @@ describe('flashToHardware()', () => {
 
   it('shows error message when dfu-util exits with non-zero code', async () => {
     const deps = makeFlashDeps(1);
+    await flashToHardware('/project', makeChannel(), deps);
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      expect.stringContaining('flash failed'),
+    );
+  });
+
+  it('shows success when dfu-util exits 74 with the known "leave DFU mode" output (FR-QA-EXT-3)', async () => {
+    const deps = makeFlashDeps(74, ['File downloaded successfully']);
+    await flashToHardware('/project', makeChannel(), deps);
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining('flash succeeded'),
+    );
+  });
+
+  it('shows error when dfu-util exits 74 without the success output (FR-QA-EXT-3)', async () => {
+    const deps = makeFlashDeps(74, []);
+    await flashToHardware('/project', makeChannel(), deps);
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      expect.stringContaining('flash failed'),
+    );
+  });
+
+  it('shows error on an unrecognized non-zero exit code even if the success string appears (FR-QA-EXT-3)', async () => {
+    const deps = makeFlashDeps(1, ['File downloaded successfully']);
     await flashToHardware('/project', makeChannel(), deps);
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('flash failed'),

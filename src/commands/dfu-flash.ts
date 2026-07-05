@@ -13,6 +13,13 @@ export interface DfuFlashDeps {
 // Daisy Seed DFU flash address (internal flash start).
 const DAISY_DFU_ADDRESS = '0x08000000:leave';
 
+// dfu-util 0.9–0.11 (macOS Homebrew, Debian/Ubuntu apt) exit with this code
+// after a successful ":leave" download because the Daisy Seed resets and
+// disconnects before dfu-util can read back the final USB status — not a
+// real failure. Confirmed against those versions; re-verify if this trips
+// on a dfu-util release outside that range.
+const DFU_LEAVE_QUIRK_EXIT_CODE = 74;
+
 export async function flashToHardware(
   projectRoot: string,
   outputChannel: vscode.OutputChannel,
@@ -115,8 +122,13 @@ function runDfuUtil(
     proc.stderr?.on('data', handleData);
     proc.on('error', reject);
     proc.on('close', (code) => {
-      if (code === 0 || downloadSucceeded) resolve();
-      else reject(new Error(`dfu-util exited with code ${code ?? 'null'}`));
+      // The success string is a secondary confirmation only — it never
+      // overrides an unrecognized exit code on its own.
+      if (code === 0 || (code === DFU_LEAVE_QUIRK_EXIT_CODE && downloadSucceeded)) {
+        resolve();
+      } else {
+        reject(new Error(`dfu-util exited with code ${code ?? 'null'}`));
+      }
     });
   });
 }
