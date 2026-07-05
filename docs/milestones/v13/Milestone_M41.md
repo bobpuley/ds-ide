@@ -1,7 +1,7 @@
 # M41 — Emulator Code Quality & Hygiene
 
 **Version:** 0.13.3
-**Status:** planned
+**Status:** released
 **Source:** 2026-07-02 C/C++ emulator code review — LOW findings
 
 ## Goal
