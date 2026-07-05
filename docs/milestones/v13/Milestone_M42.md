@@ -70,7 +70,7 @@ Grab-bag: `@types/node ^20` vs. an esbuild target of `node18`; `which` detection
 
 ---
 
-### [ ] fix: Replace sync fs calls on command paths; avoid full webview HTML resets (FR-QA-EXT-7)
+### [x] fix: Replace sync fs calls on command paths; avoid full webview HTML resets (FR-QA-EXT-7)
 
 `mkdirSync`, `readdirSync`, `statSync` run in command paths on the Extension Host; `ScopePanel.show()` reassigns `panel.webview.html` on every reveal, discarding scope/spectrum history.
 

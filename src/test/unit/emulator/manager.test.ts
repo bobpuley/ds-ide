@@ -90,14 +90,14 @@ function makeIpcClient() {
 describe('EmulatorManager', () => {
   let spawnMock: ReturnType<typeof vi.fn>;
   let ipcClientStub: ReturnType<typeof makeIpcClient>;
-  let mkdirSyncMock: ReturnType<typeof vi.fn>;
+  let mkdirMock: ReturnType<typeof vi.fn>;
   let manager: EmulatorManager;
   let cmakeCallCount: number;
 
   beforeEach(() => {
     cmakeCallCount = 0;
     ipcClientStub = makeIpcClient();
-    mkdirSyncMock = vi.fn();
+    mkdirMock = vi.fn().mockResolvedValue(undefined);
 
     spawnMock = vi.fn((cmd: string) => {
       if (cmd === 'cmake') {
@@ -111,7 +111,7 @@ describe('EmulatorManager', () => {
     manager = new EmulatorManager({
       spawn: spawnMock as unknown as typeof cp.spawn,
       ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
-      mkdirSync: mkdirSyncMock as unknown as typeof fs.mkdirSync,
+      mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
     });
   });
 
@@ -149,7 +149,7 @@ describe('EmulatorManager', () => {
         { projectRoot: '/proj', effectSrc: '/proj/e.cpp', emulatorSrc: '/ext/emulator' },
         () => undefined,
       );
-      expect(mkdirSyncMock).toHaveBeenCalledWith(
+      expect(mkdirMock).toHaveBeenCalledWith(
         expect.stringContaining('.ds-ide'),
         { recursive: true },
       );
@@ -160,7 +160,7 @@ describe('EmulatorManager', () => {
       const mgr = new EmulatorManager({
         spawn: spawnMock as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
-        mkdirSync: mkdirSyncMock as unknown as typeof fs.mkdirSync,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
       });
       await expect(
         mgr.build(
@@ -569,7 +569,7 @@ describe('EmulatorManager', () => {
       const failingManager = new EmulatorManager({
         spawn: failingSpawn as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
-        mkdirSync: mkdirSyncMock as unknown as typeof fs.mkdirSync,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
       });
       await failingManager.build(
         { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
@@ -617,7 +617,7 @@ describe('EmulatorManager', () => {
       const flakyManager = new EmulatorManager({
         spawn: flakySpawn as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
-        mkdirSync: mkdirSyncMock as unknown as typeof fs.mkdirSync,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
       });
       await flakyManager.build(
         { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
@@ -741,7 +741,7 @@ describe('EmulatorManager', () => {
       );
       await manager.deploy(() => undefined);
 
-      expect(mkdirSyncMock).toHaveBeenCalledWith(
+      expect(mkdirMock).toHaveBeenCalledWith(
         expect.stringContaining('ds-ide-'),
         expect.objectContaining({ recursive: true, mode: 0o700 }),
       );

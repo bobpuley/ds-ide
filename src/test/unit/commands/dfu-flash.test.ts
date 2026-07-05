@@ -3,8 +3,8 @@ import { EventEmitter } from 'events';
 import * as vscode from 'vscode';
 import { flashToHardware, findHardwareBin, DfuFlashDeps } from '../../../commands/dfu-flash';
 
-type ReaddirSyncFn = typeof import('fs').readdirSync;
-type StatSyncFn = typeof import('fs').statSync;
+type ReaddirFn = typeof import('fs').promises.readdir;
+type StatFn = typeof import('fs').promises.stat;
 
 vi.mock('../../../hardware/toolchain', () => ({
   detectDfuUtil: vi.fn().mockResolvedValue('/opt/homebrew/bin/dfu-util'),
@@ -30,8 +30,8 @@ function makeSpawn(exitCode = 0, stdoutLines: string[] = []) {
 function makeFlashDeps(exitCode = 0, stdoutLines: string[] = []): DfuFlashDeps {
   return {
     spawn: makeSpawn(exitCode, stdoutLines),
-    readdirSync: vi.fn(() => ['effect.bin']),
-    statSync: vi.fn(() => ({ mtimeMs: 1000 })),
+    readdir: vi.fn(() => Promise.resolve(['effect.bin'])),
+    stat: vi.fn(() => Promise.resolve({ mtimeMs: 1000 })),
   } as unknown as DfuFlashDeps;
 }
 
@@ -104,7 +104,7 @@ describe('flashToHardware()', () => {
   });
 
   it('shows error and skips flash when no .bin file is found', async () => {
-    const deps = { ...makeFlashDeps(0), readdirSync: vi.fn(() => []) } as unknown as DfuFlashDeps;
+    const deps = { ...makeFlashDeps(0), readdir: vi.fn(() => Promise.resolve([])) } as unknown as DfuFlashDeps;
     await flashToHardware('/project', makeChannel(), deps);
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('no .bin file found'),
@@ -163,31 +163,31 @@ describe('flashToHardware()', () => {
 // ── findHardwareBin ───────────────────────────────────────────────────────────
 
 describe('findHardwareBin()', () => {
-  it('returns undefined when build/ does not exist', () => {
-    const readdirSync = vi.fn(() => { throw new Error('ENOENT'); });
-    expect(findHardwareBin('/project', readdirSync as unknown as ReaddirSyncFn, vi.fn() as unknown as StatSyncFn)).toBeUndefined();
+  it('returns undefined when build/ does not exist', async () => {
+    const readdir = vi.fn(() => Promise.reject(new Error('ENOENT')));
+    await expect(findHardwareBin('/project', readdir as unknown as ReaddirFn, vi.fn() as unknown as StatFn)).resolves.toBeUndefined();
   });
 
-  it('returns undefined when build/ contains no .bin files', () => {
-    const readdirSync = vi.fn(() => ['effect.elf', 'effect.map']);
-    const statSync = vi.fn(() => ({ mtimeMs: 0 }));
-    expect(findHardwareBin('/project', readdirSync as unknown as ReaddirSyncFn, statSync as unknown as StatSyncFn)).toBeUndefined();
+  it('returns undefined when build/ contains no .bin files', async () => {
+    const readdir = vi.fn(() => Promise.resolve(['effect.elf', 'effect.map']));
+    const stat = vi.fn(() => Promise.resolve({ mtimeMs: 0 }));
+    await expect(findHardwareBin('/project', readdir as unknown as ReaddirFn, stat as unknown as StatFn)).resolves.toBeUndefined();
   });
 
-  it('returns the single .bin file path', () => {
-    const readdirSync = vi.fn(() => ['effect.bin']);
-    const statSync = vi.fn(() => ({ mtimeMs: 1000 }));
-    const result = findHardwareBin('/project', readdirSync as unknown as ReaddirSyncFn, statSync as unknown as StatSyncFn);
+  it('returns the single .bin file path', async () => {
+    const readdir = vi.fn(() => Promise.resolve(['effect.bin']));
+    const stat = vi.fn(() => Promise.resolve({ mtimeMs: 1000 }));
+    const result = await findHardwareBin('/project', readdir as unknown as ReaddirFn, stat as unknown as StatFn);
     expect(result).toMatch(/effect\.bin$/);
     expect(result).toContain('/project/build/');
   });
 
-  it('returns the most recently modified .bin when multiple exist', () => {
-    const readdirSync = vi.fn(() => ['old.bin', 'new.bin']);
-    const statSync = vi.fn((p: string) => ({
+  it('returns the most recently modified .bin when multiple exist', async () => {
+    const readdir = vi.fn(() => Promise.resolve(['old.bin', 'new.bin']));
+    const stat = vi.fn((p: string) => Promise.resolve({
       mtimeMs: (p as string).includes('new.bin') ? 2000 : 500,
     }));
-    const result = findHardwareBin('/project', readdirSync as unknown as ReaddirSyncFn, statSync as unknown as StatSyncFn);
+    const result = await findHardwareBin('/project', readdir as unknown as ReaddirFn, stat as unknown as StatFn);
     expect(result).toMatch(/new\.bin$/);
   });
 });

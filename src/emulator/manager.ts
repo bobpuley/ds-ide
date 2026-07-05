@@ -82,7 +82,7 @@ export interface BuildOptions {
 export interface EmulatorManagerDeps {
   spawn?: typeof cp.spawn;
   ipcClientFactory?: () => IpcClient;
-  mkdirSync?: typeof fs.mkdirSync;
+  mkdir?: typeof fs.promises.mkdir;
   execFile?: typeof cp.execFile;
 }
 
@@ -99,20 +99,20 @@ export class EmulatorManager extends EventEmitter {
 
   private readonly spawn: typeof cp.spawn;
   private readonly ipcClientFactory: () => IpcClient;
-  private readonly mkdirSync: typeof fs.mkdirSync;
+  private readonly mkdir: typeof fs.promises.mkdir;
   private readonly execFile: typeof cp.execFile;
 
   constructor(deps: EmulatorManagerDeps = {}) {
     super();
     this.spawn = deps.spawn ?? cp.spawn;
     this.ipcClientFactory = deps.ipcClientFactory ?? (() => new IpcClient());
-    this.mkdirSync = deps.mkdirSync ?? fs.mkdirSync;
+    this.mkdir = deps.mkdir ?? fs.promises.mkdir;
     this.execFile = deps.execFile ?? cp.execFile;
   }
 
   async build(opts: BuildOptions, onOutput: (line: string) => void): Promise<void> {
     this.buildDir = path.join(opts.projectRoot, '.ds-ide', 'build');
-    this.mkdirSync(this.buildDir, { recursive: true });
+    await this.mkdir(this.buildDir, { recursive: true });
 
     const configureArgs = [
       '-S', opts.emulatorSrc,
@@ -138,70 +138,75 @@ export class EmulatorManager extends EventEmitter {
     // Socket lives under a per-workspace directory with a randomized filename
     // component, not a predictable global-/tmp path (FR-EXT-2).
     const runtimeDir = workspaceRuntimeDir(this.buildDir);
-    this.mkdirSync(runtimeDir, { recursive: true, mode: 0o700 });
-    this.socketPath = path.join(runtimeDir, `emu-${crypto.randomBytes(4).toString('hex')}.sock`);
-    const socketPath = this.socketPath;
 
-    // Kill any process left over from a previous session, waiting up to 200 ms
-    // for it to exit before spawning a new one (FR-EMU-3). Identity-checked
-    // and SIGTERM-first (FR-EXT-2).
-    const deployPromise = killStalePid(this.buildDir, this.execFile)
-      .catch(() => { /* ignore stale-pid errors */ })
-      .then(() => {
-        this.killExisting();
+    // mkdir (not mkdirSync) so this doesn't block the Extension Host; the
+    // deployLock below is still assigned synchronously so concurrent deploy()
+    // calls coalesce onto the same promise regardless (FR-QA-EXT-7).
+    const deployPromise = this.mkdir(runtimeDir, { recursive: true, mode: 0o700 }).then(() => {
+      this.socketPath = path.join(runtimeDir, `emu-${crypto.randomBytes(4).toString('hex')}.sock`);
+      const socketPath = this.socketPath;
 
-        const child = this.spawn(exePath, [socketPath], { stdio: ['ignore', 'pipe', 'pipe'] });
-        this.childProcess = child;
+      // Kill any process left over from a previous session, waiting up to 200 ms
+      // for it to exit before spawning a new one (FR-EMU-3). Identity-checked
+      // and SIGTERM-first (FR-EXT-2).
+      return killStalePid(this.buildDir, this.execFile)
+        .catch(() => { /* ignore stale-pid errors */ })
+        .then(() => {
+          this.killExisting();
 
-        return new Promise<void>((resolve, reject) => {
-          let resolved = false;
-          const timeout = setTimeout(() => {
-            if (!resolved) {
-              reject(new Error(`Emulator did not announce socket path within ${SOCKET_TIMEOUT_MS / 1000}s`));
-            }
-          }, SOCKET_TIMEOUT_MS);
+          const child = this.spawn(exePath, [socketPath], { stdio: ['ignore', 'pipe', 'pipe'] });
+          this.childProcess = child;
 
-          const onStdout = (data: Buffer): void => {
-            const text = data.toString('utf8');
-            for (const line of text.split('\n')) {
-              const trimmed = line.trim();
-              if (!trimmed) continue;
-              onOutput(trimmed);
-              const match = trimmed.match(/^DAISY_EMU_SOCKET:(.+)$/);
-              if (match && !resolved) {
+          return new Promise<void>((resolve, reject) => {
+            let resolved = false;
+            const timeout = setTimeout(() => {
+              if (!resolved) {
+                reject(new Error(`Emulator did not announce socket path within ${SOCKET_TIMEOUT_MS / 1000}s`));
+              }
+            }, SOCKET_TIMEOUT_MS);
+
+            const onStdout = (data: Buffer): void => {
+              const text = data.toString('utf8');
+              for (const line of text.split('\n')) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                onOutput(trimmed);
+                const match = trimmed.match(/^DAISY_EMU_SOCKET:(.+)$/);
+                if (match && !resolved) {
+                  resolved = true;
+                  clearTimeout(timeout);
+                  // Persist PID so a future session can clean up this process
+                  if (child.pid !== undefined) void writePid(this.buildDir, child.pid);
+                  void this.connectIpc(match[1]!).then(resolve).catch(reject);
+                }
+              }
+            };
+
+            const onError = (err: Error): void => {
+              if (!resolved) {
                 resolved = true;
                 clearTimeout(timeout);
-                // Persist PID so a future session can clean up this process
-                if (child.pid !== undefined) void writePid(this.buildDir, child.pid);
-                void this.connectIpc(match[1]!).then(resolve).catch(reject);
+                reject(err);
               }
-            }
-          };
+            };
 
-          const onError = (err: Error): void => {
-            if (!resolved) {
-              resolved = true;
-              clearTimeout(timeout);
-              reject(err);
-            }
-          };
-
-          child.stdout?.on('data', onStdout);
-          child.stderr?.on('data', (data: Buffer) => onOutput(data.toString('utf8').trim()));
-          child.on('error', onError);
-          child.on('close', (code) => {
-            void clearPid(this.buildDir);
-            if (!resolved) {
-              resolved = true;
-              clearTimeout(timeout);
-              reject(new Error(`Emulator exited with code ${code ?? 'null'} before socket ready`));
-            }
-            // Guard: only clear the reference if it still points to this child,
-            // not to a new child spawned by a subsequent deploy.
-            if (this.childProcess === child) this.childProcess = null;
+            child.stdout?.on('data', onStdout);
+            child.stderr?.on('data', (data: Buffer) => onOutput(data.toString('utf8').trim()));
+            child.on('error', onError);
+            child.on('close', (code) => {
+              void clearPid(this.buildDir);
+              if (!resolved) {
+                resolved = true;
+                clearTimeout(timeout);
+                reject(new Error(`Emulator exited with code ${code ?? 'null'} before socket ready`));
+              }
+              // Guard: only clear the reference if it still points to this child,
+              // not to a new child spawned by a subsequent deploy.
+              if (this.childProcess === child) this.childProcess = null;
+            });
           });
         });
-      });
+    });
 
     this.deployLock = deployPromise;
     // .finally() returns a new promise that adopts deployPromise's rejection.
