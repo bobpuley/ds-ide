@@ -1,7 +1,7 @@
 # M42 — Extension/Tooling Polish
 
 **Version:** 0.13.4
-**Status:** planned
+**Status:** released
 **Source:** 2026-07-02 Node.js/TypeScript + VS Code extension code reviews — LOW findings
 
 ## Goal

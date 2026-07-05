@@ -5,6 +5,22 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.13.4 — 2026-07-05
+
+**M42 — Extension/Tooling Polish** *(FR-QA-EXT-1 through FR-QA-EXT-9 — all DoD green)*
+
+- **FR-QA-EXT-1** — `esbuild.js` splits into two build configs — extension (`platform: 'node'`, `format: 'cjs'`, `external: ['vscode']`) and webviews (`platform: 'browser'`, `format: 'iife'`) — so the first import added to a webview script no longer risks a Node-platform bundle misresolving it.
+- **FR-QA-EXT-2** — `IpcClient` emits a counted `warning` event on dropped sends and malformed/schema-invalid lines instead of silently no-op'ing; receive-buffer overflow now resynchronizes to the next newline instead of discarding a trailing valid message.
+- **FR-QA-EXT-3** — `runDfuUtil`'s non-zero-exit success path now only fires for dfu-util's known exit-74-after-`:leave` quirk, and only when the success string also confirms it — an arbitrary non-zero exit no longer masquerades as success.
+- **FR-QA-EXT-4** — Unrecognized top-level YAML keys and other unparseable lines now produce a parse error instead of being silently skipped; the scaffolded `controllers.yaml` uses the `controllers:` key the parser actually reads (was `controls: []`).
+- **FR-QA-EXT-5** — `@types/node` pinned to `^18` to match esbuild's `node18` target; `which`/`xcrun` detection switched from `cp.exec` to `cp.execFile`; the knob SVG size/center constants are shared between `knob-math.ts` and `controls-webview.ts` instead of duplicated as literals.
+- **FR-QA-EXT-6** — `package.json` version synced to the CHANGELOG; a marketplace icon asset was added; the unused controls/wiring editor `-light.svg` icon variants (dead — `viewsContainers` only supports one themed icon) were deleted; `ds-ide.*` keybindings are gated behind a new `ds-ide.isDaisyProject` context key.
+- **FR-QA-EXT-7** — `EmulatorManager.build()`/`deploy()` use `fs.promises.mkdir` instead of `mkdirSync`; `dfu-flash`'s `findHardwareBin()` uses `fs.promises.readdir`/`stat`; `ScopePanel.show()` on an already-open panel no longer reassigns `webview.html` (which wiped scope/spectrum trace history) — it reveals the panel and posts the last known status instead.
+- **FR-QA-EXT-8** — `armToolchainPath` is now `"scope": "machine-overridable"` so Settings Sync can't carry one machine's toolchain path onto another; both `armToolchainPath` and `effectSource` gain a `markdownDescription`.
+- **FR-QA-EXT-9** — `daisy-debug`'s label now reads as internal/attach-only; `resolveDebugConfiguration()`'s build+deploy step reports progress via `vscode.window.withProgress`; lldb-dap discovery extends to `which lldb-dap` and versioned Debian/Ubuntu binary names on PATH.
+
+---
+
 ## 0.13.3 — 2026-07-05
 
 **M41 — Emulator Code Quality & Hygiene** *(FR-QA-EMU-1 through FR-QA-EMU-8 — all DoD green)*

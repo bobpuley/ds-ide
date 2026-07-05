@@ -109,11 +109,11 @@ Full registry in [`docs/v11/05_dev-plan.md`](v11/05_dev-plan.md).
 M38 Emulator Correctness & Robustness · M39 IPC & Data Validation Hardening · M40 Extension UX & Workspace Safety.
 Full registry in [`docs/v12/05_dev-plan.md`](v12/05_dev-plan.md).
 
-### v13 (0.13.3–0.13.4) — planned
+### v13 (0.13.3–0.13.4) — released
 
-| ID  | Name | Status | Version | File |
-|-----|------|--------|---------|------|
+| ID  | Name | Status       | Version | File |
+|-----|------|--------------|---------|------|
 | M41 | Emulator Code Quality & Hygiene | **released** | 0.13.3 | [Milestone_M41.md](milestones/v13/Milestone_M41.md) |
-| M42 | Extension/Tooling Polish | **planned** | 0.13.4 | [Milestone_M42.md](milestones/v13/Milestone_M42.md) |
+| M42 | Extension/Tooling Polish | **released** | 0.13.4 | [Milestone_M42.md](milestones/v13/Milestone_M42.md) |
 
 Source: 2026-07-02 automated code reviews — all LOW-urgency findings.
