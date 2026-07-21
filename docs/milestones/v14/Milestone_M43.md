@@ -17,7 +17,7 @@ refactor is provable before anything depends on it.
 
 ## Sprint Tasks
 
-### [ ] feat: generate the pin/signal table from the Rev4 pinout CSV (FR-DEV-3)
+### [x] feat: generate the pin/signal table from the Rev4 pinout CSV (FR-DEV-3)
 
 `PIN_DEFS` in `wiring-panel.ts` is hand-maintained and has drifted twice (v7 pinout accuracy fix,
 v9 D28 ADC mapping correction). v14 roughly triples it by adding per-pin bus signal names, where a
