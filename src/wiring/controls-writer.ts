@@ -29,17 +29,21 @@ const SHARED_CODEGEN_KIND: DeviceKind = 'pot';
 // and edit it (FR-CODEGEN-1). A device with no declaredClassName in the
 // registry gets the marker-comment form; every other device gets a named
 // instance line.
-export function declarationLine(id: string, kind: DeviceKind, pin: number): string {
+// pins (FR-DEV-8) is present only for a 'pins'-attachment device (e.g.
+// rgbled's r/g/b channels) — appended to the annotation comment so
+// parseControlsConvention recovers the full pin list, not just the primary one.
+export function declarationLine(id: string, kind: DeviceKind, pin: number, pins?: number[]): string {
+  const suffix = pins ? `, pins=${pins.join(',')}` : '';
   const className = REGISTRY[kind]!.declaredClassName;
   if (className === null) {
-    return `// ds-ide: id=${id}, kind=${kind}, pin=${pin}`;
+    return `// ds-ide: id=${id}, kind=${kind}, pin=${pin}${suffix}`;
   }
-  return `${className} ${id}; // ds-ide: id=${id}, kind=${kind}, pin=${pin}`;
+  return `${className} ${id}; // ds-ide: id=${id}, kind=${kind}, pin=${pin}${suffix}`;
 }
 
 // Pure: insert declaration into source text. Returns modified text.
-export function insertIntoSource(source: string, id: string, kind: DeviceKind, pin: number): string {
-  const decl  = declarationLine(id, kind, pin);
+export function insertIntoSource(source: string, id: string, kind: DeviceKind, pin: number, pins?: number[]): string {
+  const decl  = declarationLine(id, kind, pin, pins);
   const codegen = REGISTRY[kind]!.codegen;
   const lines  = source.split('\n');
   const endIdx = lines.findIndex(l => l.replace(/\r$/, '') === END);
@@ -113,8 +117,19 @@ export function removeFromSource(source: string, id: string): string {
 
 // ── Init block ────────────────────────────────────────────────────────────────
 
-function initLine(id: string, kind: DeviceKind, pin: number): string {
-  return `  ${id}.Init(daisy::seed::D${pin}, ${REGISTRY[kind]!.initArgs});`;
+// A device whose Init() takes no second argument (initArgs: null, e.g.
+// toggle's Switch3 — FR-DEV-7) emits a bare single-pin call rather than a
+// trailing `, null`. A 'pins'-attachment device (e.g. rgbled — FR-DEV-8)
+// ignores initArgs entirely and instead emits one daisy::seed::D<pin> per
+// entry in `pins` — its Init() takes N pins directly, no extra arg.
+function initLine(id: string, kind: DeviceKind, pin: number, pins?: number[]): string {
+  if (REGISTRY[kind]!.attachmentKind === 'pins' && pins && pins.length > 0) {
+    return `  ${id}.Init(${pins.map(p => `daisy::seed::D${p}`).join(', ')});`;
+  }
+  const args = REGISTRY[kind]!.initArgs;
+  return args === null
+    ? `  ${id}.Init(daisy::seed::D${pin});`
+    : `  ${id}.Init(daisy::seed::D${pin}, ${args});`;
 }
 
 // Rebuild the init-block body: independent-device (non-shared) lines as
@@ -151,9 +166,10 @@ export function insertInitIntoSource(
   kind: DeviceKind,
   pin: number,
   allPots: Array<{ id: string; pin: number }>,
+  pins?: number[],
 ): string {
   const hasCodegen = REGISTRY[kind]!.codegen !== undefined;
-  const newNonSharedLine = hasCodegen ? null : initLine(id, kind, pin);
+  const newNonSharedLine = hasCodegen ? null : initLine(id, kind, pin, pins);
   const lines = source.split('\n');
 
   const initBegIdx = lines.findIndex(l => l.replace(/\r$/, '') === INIT_BEGIN);

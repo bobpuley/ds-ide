@@ -5,6 +5,8 @@ import { getBoolean, getNumber } from '../ipc/narrow';
 import { ControllerConfig, parseControllerConfig, serializeControllerConfig } from '../controllers/controller-config';
 import { ControlsConfig } from '../webview/scope-panel';
 import { REGISTRY, registryIds } from '../devices/registry';
+import { TOGGLE_POSITIONS } from '../devices/codegen/toggle';
+import { ENCODER_POSITION_MODULUS } from '../devices/codegen/encoder';
 
 export class ControlsViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
@@ -17,6 +19,8 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
     private readonly onEditorSave: (cfg: ControllerConfig) => void,
     private readonly onPotChange: (channel: number, value: number) => void,
     private readonly onButtonChange: (gpioPin: number, pressed: boolean) => void,
+    private readonly onToggleChange: (gpioPin: number, position: number) => void,
+    private readonly onEncoderChange: (gpioPin: number, position: number) => void,
   ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -67,6 +71,14 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
       if (m['command'] === 'button' && typeof m['gpioPin'] === 'number' && typeof m['pressed'] === 'boolean') {
         this.onButtonChange(m['gpioPin'], m['pressed']);
       }
+      if (m['command'] === 'toggle' && typeof m['gpioPin'] === 'number' && typeof m['position'] === 'number' &&
+          Number.isInteger(m['position']) && m['position'] >= 0 && m['position'] < TOGGLE_POSITIONS) {
+        this.onToggleChange(m['gpioPin'], m['position']);
+      }
+      if (m['command'] === 'encoder' && typeof m['gpioPin'] === 'number' && typeof m['position'] === 'number' &&
+          Number.isInteger(m['position']) && m['position'] >= 0 && m['position'] < ENCODER_POSITION_MODULUS) {
+        this.onEncoderChange(m['gpioPin'], m['position']);
+      }
     });
 
     webviewView.onDidChangeVisibility(() => {
@@ -100,6 +112,12 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
 
   postLed(msg: IpcMessage): void {
     void this.view?.webview.postMessage({ command: 'led', gpioPin: msg['gpioPin'], lit: msg['lit'] });
+  }
+
+  postRgbLed(msg: IpcMessage): void {
+    void this.view?.webview.postMessage({
+      command: 'rgbLed', gpioPin: msg['gpioPin'], r: msg['r'], g: msg['g'], b: msg['b'],
+    });
   }
 
   loadEditor(cfg: ControllerConfig): void {
@@ -219,8 +237,13 @@ ${ctrlCardCssRules()}
     .knob-value { color: #b5cea8; font-size: 10px; font-family: monospace; min-width: 36px; text-align: center; }
     .btn-ce { background: #4a4a4a; border: 1px solid #666; border-radius: 6px; padding: 7px; cursor: pointer; box-shadow: 0 3px 0 #111; transition: box-shadow 0.06s, transform 0.06s, background 0.06s; flex-shrink: 0; user-select: none; }
     .btn-ce[aria-pressed="true"] { box-shadow: none; transform: translateY(3px); background: #0e639c; border-color: #1177bb; }
+    .tgl-ce { background: #4a4a4a; border: 1px solid #666; border-radius: 4px; padding: 5px 10px; cursor: pointer; color: #d4d4d4; font-family: monospace; font-size: 12px; flex-shrink: 0; user-select: none; }
+    .tgl-ce:hover { background: #5a5a5a; }
     .vled-dot { width: 12px; height: 12px; border-radius: 50%; background: #3c3c3c; border: 1px solid #555; box-shadow: none; display: inline-block; }
     .vled-dot.vled-lit { background: #f04a4a; border-color: #ff6a6a; box-shadow: 0 0 6px 1px #f04a4a; }
+    .vrgb-dot { width: 14px; height: 14px; border-radius: 50%; background: #000; border: 1px solid #555; display: inline-block; }
+    .enc-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: ns-resize; user-select: none; padding: 2px 4px; }
+    .enc-value { color: #dcdcaa; font-size: 10px; font-family: monospace; min-width: 24px; text-align: center; }
     .section-label { color: #9cdcfe; align-self: center; }
   </style>
 </head>

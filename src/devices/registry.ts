@@ -69,6 +69,13 @@ export interface DeviceDescriptor {
    * is handled entirely by declaredClassName + initArgs.
    */
   codegen?: SharedCodegenStrategy;
+  /**
+   * Required for attachmentKind 'pins' (FR-DEV-8) — how many pins one
+   * instance occupies (e.g. rgbled: 3, for r/g/b). Lets the Wiring Editor's
+   * auto-adjacent-pin allocator (multi-pin-alloc.ts) stay generic rather than
+   * hardcoding a device's pin count.
+   */
+  pinCount?: number;
 }
 
 // The enumerable literal-type source of truth. REGISTRY itself stays a
@@ -76,7 +83,7 @@ export interface DeviceDescriptor {
 // plain, freely-indexable runtime object — the architecture is a compiled-in
 // registry, not a plugin system, but tests exercising "adding a registry
 // entry" (FR-DEV-2's own acceptance bullet) need to do that by assignment.
-export const DEVICE_TYPES = ['pot', 'button', 'led'] as const;
+export const DEVICE_TYPES = ['pot', 'button', 'led', 'toggle', 'rgbled', 'encoder'] as const;
 
 export type DeviceType = typeof DEVICE_TYPES[number];
 
@@ -111,6 +118,52 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     declaredClassName: 'Led',
     attachmentKind: 'pin',
     initArgs: 'false',
+  },
+  // FR-DEV-7: first exerciser of the 'multi-position' primitive and the
+  // first pin-attached, non-shared-codegen device whose Init() takes no
+  // second argument (initArgs: null) — see controls-writer.ts's initLine().
+  toggle: {
+    id: 'toggle',
+    label: 'Toggle',
+    primitive: 'multi-position',
+    accentColor: '#c586c0',
+    pinFill: '#3a1a4a',
+    declaredClassName: 'Switch3',
+    attachmentKind: 'pin',
+    initArgs: null,
+  },
+  // FR-DEV-8: first registry entry owning multiple pins under one instance —
+  // Init() takes 3 pins directly (see controls-writer.ts's initLine()), so
+  // initArgs is unused (null) rather than describing a shape it doesn't have.
+  rgbled: {
+    id: 'rgbled',
+    label: 'RGB LED',
+    primitive: 'indicator',
+    accentColor: '#ce9178',
+    pinFill: '#4a2a1a',
+    declaredClassName: 'RgbLed',
+    attachmentKind: 'pins',
+    initArgs: null,
+    pinCount: 3,
+  },
+  // FR-DEV-9: A/B quadrature pins plus a click pin (reusing the button
+  // pin-state array for click — see emulator/shim/src/encoder.cpp), all
+  // auto-allocated together like rgbled. Value semantics differ from every
+  // other device: `value` on the wire is an accumulated position, not a
+  // level — the shim derives per-callback deltas (Increment()) by diffing
+  // against the previous read, confirming the M43 assumption in
+  // 02_assumptions-and-risks.md that this fits controlValue{id,value}
+  // without a new message kind.
+  encoder: {
+    id: 'encoder',
+    label: 'Encoder',
+    primitive: 'delta',
+    accentColor: '#dcdcaa',
+    pinFill: '#4a4a1a',
+    declaredClassName: 'Encoder',
+    attachmentKind: 'pins',
+    initArgs: null,
+    pinCount: 3,
   },
 };
 

@@ -12,10 +12,13 @@ import { DaisyRunConfigurationProvider, DsIdeDebugAdapterDescriptorFactory, DS_I
 import { parseControllerConfig, serializeControllerConfig, ControllerConfig } from './controllers/controller-config';
 import { parseControlsConvention } from './controllers/controls-convention-parser';
 import { ControlsConfig, ControlsPlacement } from './webview/scope-panel';
-import { WiredPin, DeviceType } from './wiring/wiring-panel';
+import { WiredPin, DeviceType, PIN_DEFS, expandToWiredPins } from './wiring/wiring-panel';
 import { insertIntoSource, removeFromSource, insertInitIntoSource, removeInitFromSource } from './wiring/controls-writer';
+import { allocateAdjacentPins } from './wiring/multi-pin-alloc';
+import { REGISTRY } from './devices/registry';
 import { PotStore } from './controllers/pot-store';
 import { ButtonStore } from './controllers/button-store';
+import { ToggleStore } from './controllers/toggle-store';
 import { DaisyDebugAdapterFactory, DaisyDebugAdapterTrackerFactory } from './debug/debug-adapter';
 import { buildForHardware } from './commands/hardware-build';
 import { flashToHardware } from './commands/dfu-flash';
@@ -195,6 +198,7 @@ class DeployCoordinator {
     private readonly statusBar: vscode.StatusBarItem,
     private readonly potStore: PotStore,
     private readonly buttonStore: ButtonStore,
+    private readonly toggleStore: ToggleStore,
     private readonly session: SessionState,
     private readonly scopePanel: ScopePanel,
     private readonly controlsProvider: ControlsViewProvider,
@@ -217,7 +221,9 @@ class DeployCoordinator {
   }
 
   sendPostDeployState(): void {
-    this.manager.sendControlSnapshot(this.potStore.getSnapshot(), this.buttonStore.getSnapshot());
+    this.manager.sendControlSnapshot(
+      this.potStore.getSnapshot(), this.buttonStore.getSnapshot(), this.toggleStore.getSnapshot(),
+    );
     this.manager.sendSine(this.session.sineState.freq, this.session.sineState.amplitude);
     const mode = this.session.audioSourceState.input === 'live' ? 'realtime' : 'simulated';
     this.manager.sendAudioMode(mode);
@@ -239,6 +245,14 @@ class DeployCoordinator {
     this.potStore.setDefaults(cfg.pots);
     this.buttonStore.setDefaults(cfg.buttons);
 
+    // Toggle instances aren't declared in controllers.yaml (no ToggleDef —
+    // see docs/milestones/v14/Milestone_M44.md's scope note); their pins are
+    // recovered from the code annotation convention instead (FR-DEV-7).
+    const folder = resolveActiveFolder(this.workspaceState)?.uri.fsPath ?? '';
+    const controlsConfig = await buildControlsConfig(folder, cfg);
+    const togglePins = controlsConfig.controls.filter(c => c.kind === 'toggle').map(c => c.pin);
+    this.toggleStore.setDefaults(togglePins);
+
     if (opts.debug) {
       await debugDeploy(
         this.manager,
@@ -251,10 +265,9 @@ class DeployCoordinator {
       return true;
     }
 
-    const folder = resolveActiveFolder(this.workspaceState)?.uri.fsPath ?? '';
     this.scopePanel.show(this.session.sineState, this.session.audioSourceState);
     this.controlsProvider.loadEditor(cfg);
-    this.controlsProvider.postControlsConfig(await buildControlsConfig(folder, cfg));
+    this.controlsProvider.postControlsConfig(controlsConfig);
     void vscode.commands.executeCommand('workbench.view.extension.ds-ide-controls');
     const deployed = await deployToEmulator(this.manager, this.emulatorChannel);
     if (!deployed) {
@@ -269,6 +282,7 @@ class DeployCoordinator {
 export function activate(context: vscode.ExtensionContext): void {
   const potStore    = new PotStore(context.workspaceState);
   const buttonStore = new ButtonStore(context.workspaceState);
+  const toggleStore = new ToggleStore(context.workspaceState);
   const session = new SessionState(context.workspaceState);
   // Set when the last controllers.yaml read failed for a reason other than
   // "file does not exist" (e.g. EACCES, EMFILE, encoding). While true, saves
@@ -394,6 +408,13 @@ export function activate(context: vscode.ExtensionContext): void {
       buttonStore?.set(gpioPin, pressed);
       manager?.sendButton(gpioPin, pressed);
     },
+    (gpioPin, position) => {
+      toggleStore?.set(gpioPin, position);
+      manager?.sendToggle(gpioPin, position);
+    },
+    (gpioPin, position) => {
+      manager?.sendEncoder(gpioPin, position);
+    },
   );
 
   const wiringProvider = new WiringViewProvider(
@@ -407,10 +428,29 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
       const oldText = doc.getText();
-      const afterDecl = insertIntoSource(oldText, wp.id, wp.deviceType as 'pot' | 'button' | 'led', wp.pinNumber);
+
+      // FR-DEV-8: a 'pins'-attachment device (rgbled) auto-claims its
+      // remaining pins from the nearest free ones after the clicked pin,
+      // rather than requiring a redesigned multi-pin picker in the popup.
+      const pinCount = REGISTRY[wp.deviceType]!.pinCount;
+      let pins: number[] | undefined;
+      if (pinCount !== undefined) {
+        const { controls: existingControls } = parseControlsConvention(oldText);
+        const occupied = new Set(existingControls.flatMap(c => c.pins ?? [c.pin]));
+        const allocated = allocateAdjacentPins(wp.pinNumber, pinCount, PIN_DEFS, occupied);
+        if (!allocated) {
+          void vscode.window.showErrorMessage(
+            `ds-ide: not enough free pins after D${wp.pinNumber} to wire a ${REGISTRY[wp.deviceType]!.label} (needs ${pinCount}).`,
+          );
+          return;
+        }
+        pins = allocated;
+      }
+
+      const afterDecl = insertIntoSource(oldText, wp.id, wp.deviceType, wp.pinNumber, pins);
       const { controls: controlsAfterDecl } = parseControlsConvention(afterDecl);
       const allPots = controlsAfterDecl.filter(c => c.kind === 'pot');
-      const newText = insertInitIntoSource(afterDecl, wp.id, wp.deviceType as 'pot' | 'button' | 'led', wp.pinNumber, allPots);
+      const newText = insertInitIntoSource(afterDecl, wp.id, wp.deviceType, wp.pinNumber, allPots, pins);
       const { edit, needsAppendConfirmation } = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
       if (needsAppendConfirmation && !(await confirmAppendMarkerBlocks())) {
         return;
@@ -425,8 +465,8 @@ export function activate(context: vscode.ExtensionContext): void {
       // with the Wiring view until the user manually saves (FR-IPC-5).
       await doc.save();
       const { controls } = parseControlsConvention(newText);
-      const pins: WiredPin[] = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
-      wiringProvider?.postWiredPins(pins);
+      const wiredPinList: WiredPin[] = expandToWiredPins(controls);
+      wiringProvider?.postWiredPins(wiredPinList);
       const cfg = await loadControllerConfig();
       controlsProvider?.postControlsConfig(await buildControlsConfig(folder, cfg));
     },
@@ -456,8 +496,8 @@ export function activate(context: vscode.ExtensionContext): void {
       // buildControlsConfig matches newText instead of the pre-edit content.
       await doc.save();
       const { controls } = parseControlsConvention(newText);
-      const pins: WiredPin[] = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
-      wiringProvider?.postWiredPins(pins);
+      const wiredPinList: WiredPin[] = expandToWiredPins(controls);
+      wiringProvider?.postWiredPins(wiredPinList);
       const cfg = await loadControllerConfig();
       controlsProvider?.postControlsConfig(await buildControlsConfig(folder, cfg));
     },
@@ -546,6 +586,9 @@ export function activate(context: vscode.ExtensionContext): void {
     if (msg['type'] === 'led') {
       controlsProvider?.postLed(msg);
     }
+    if (msg['type'] === 'rgbLed') {
+      controlsProvider?.postRgbLed(msg);
+    }
   });
 
   manager.on('disconnect', () => {
@@ -573,7 +616,7 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   const deployCoordinator = new DeployCoordinator(
-    manager, statusBar, potStore, buttonStore, session, scopePanel, controlsProvider,
+    manager, statusBar, potStore, buttonStore, toggleStore, session, scopePanel, controlsProvider,
     diagnostics, buildChannel, emulatorChannel, context.extensionPath, loadControllerConfig,
     context.workspaceState,
   );
@@ -602,7 +645,7 @@ export function activate(context: vscode.ExtensionContext): void {
       try {
         const text = await fs.promises.readFile(effectPath, 'utf8');
         const { controls } = parseControlsConvention(text);
-        wiredPins = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
+        wiredPins = expandToWiredPins(controls);
       } catch { /* file unreadable — leave wiredPins empty */ }
     }
     wiringProvider.postWiredPins(wiredPins);
@@ -657,7 +700,12 @@ export function activate(context: vscode.ExtensionContext): void {
           try {
             const text = await fs.promises.readFile(effectPath, 'utf8');
             const { controls } = parseControlsConvention(text);
-            pins = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
+            // Reuses the same expansion as the wirePin/unwirePin handlers
+            // above (FR-DEV-8/9) — this listener re-fires on the doc.save()
+            // those handlers themselves trigger, and previously used a
+            // single-pin mapping that clobbered a multi-pin instance's
+            // display down to one highlighted pin right after wiring it.
+            pins = expandToWiredPins(controls);
           } catch { /* unreadable */ }
           wiringProvider.postWiredPins(pins);
         }

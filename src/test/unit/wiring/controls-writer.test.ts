@@ -7,6 +7,7 @@ import {
   removeInitFromSource,
   pinToAdcChannel,
 } from '../../../wiring/controls-writer';
+import { parseControlsConvention } from '../../../controllers/controls-convention-parser';
 
 // ── declarationLine ──────────────────────────────────────────────────────────
 
@@ -24,6 +25,21 @@ describe('declarationLine', () => {
   it('generates led declaration', () => {
     expect(declarationLine('led1', 'led', 23))
       .toBe('Led led1; // ds-ide: id=led1, kind=led, pin=23');
+  });
+
+  it('generates toggle declaration (FR-DEV-7)', () => {
+    expect(declarationLine('sw1', 'toggle', 5))
+      .toBe('Switch3 sw1; // ds-ide: id=sw1, kind=toggle, pin=5');
+  });
+
+  it('generates rgbled declaration with a pins= suffix carrying all three pins (FR-DEV-8)', () => {
+    expect(declarationLine('rgb1', 'rgbled', 5, [5, 6, 7]))
+      .toBe('RgbLed rgb1; // ds-ide: id=rgb1, kind=rgbled, pin=5, pins=5,6,7');
+  });
+
+  it('generates encoder declaration with a pins= suffix carrying A/B/click (FR-DEV-9)', () => {
+    expect(declarationLine('enc1', 'encoder', 5, [5, 6, 7]))
+      .toBe('Encoder enc1; // ds-ide: id=enc1, kind=encoder, pin=5, pins=5,6,7');
   });
 });
 
@@ -76,6 +92,78 @@ describe('insertIntoSource — block present', () => {
   it('does not declare a separate AdcChannelConfig per pot', () => {
     const result = insertIntoSource(WITH_BLOCK, 'pot2', 'pot', 16);
     expect(result).not.toMatch(/AdcChannelConfig\s+pot2\s*;/);
+  });
+});
+
+describe('insertIntoSource / removeFromSource — toggle (FR-DEV-7)', () => {
+  it('inserts a toggle declaration', () => {
+    const result = insertIntoSource(WITH_BLOCK, 'sw1', 'toggle', 5);
+    expect(result).toContain('Switch3 sw1; // ds-ide: id=sw1, kind=toggle, pin=5');
+  });
+
+  it('removes a toggle declaration by id, preserving others', () => {
+    const withToggle = insertIntoSource(WITH_BLOCK, 'sw1', 'toggle', 5);
+    const result = removeFromSource(withToggle, 'sw1');
+    expect(result).not.toContain('id=sw1');
+    expect(result).toContain('id=vol');
+  });
+});
+
+describe('insertIntoSource / removeFromSource — rgbled three-pin (FR-DEV-8)', () => {
+  it('inserts an rgbled declaration carrying all three pins', () => {
+    const result = insertIntoSource(WITH_BLOCK, 'rgb1', 'rgbled', 5, [5, 6, 7]);
+    expect(result).toContain('RgbLed rgb1; // ds-ide: id=rgb1, kind=rgbled, pin=5, pins=5,6,7');
+  });
+
+  it('a single removeFromSource(id) removes the whole three-pin declaration (releases all three)', () => {
+    const withRgb = insertIntoSource(WITH_BLOCK, 'rgb1', 'rgbled', 5, [5, 6, 7]);
+    const result = removeFromSource(withRgb, 'rgb1');
+    expect(result).not.toContain('id=rgb1');
+    expect(result).toContain('id=vol');
+  });
+
+  it('parseControlsConvention recovers the full pins list for an rgbled instance', () => {
+    const withRgb = insertIntoSource(WITH_BLOCK, 'rgb1', 'rgbled', 5, [5, 6, 7]);
+    const { controls } = parseControlsConvention(withRgb);
+    const rgb = controls.find(c => c.id === 'rgb1')!;
+    expect(rgb.pin).toBe(5);
+    expect(rgb.pins).toEqual([5, 6, 7]);
+  });
+});
+
+describe('insertInitIntoSource — rgbled three-pin Init (FR-DEV-8)', () => {
+  it('emits Init() with three D-pin args and no extra initArgs', () => {
+    const src = [
+      '// ds-ide:controls:begin',
+      'RgbLed rgb1; // ds-ide: id=rgb1, kind=rgbled, pin=5, pins=5,6,7',
+      '// ds-ide:controls:end',
+    ].join('\n');
+    const result = insertInitIntoSource(src, 'rgb1', 'rgbled', 5, [], [5, 6, 7]);
+    expect(result).toContain('  rgb1.Init(daisy::seed::D5, daisy::seed::D6, daisy::seed::D7);');
+  });
+});
+
+describe('insertIntoSource / removeFromSource / insertInitIntoSource — encoder (FR-DEV-9)', () => {
+  it('inserts an encoder declaration carrying A/B/click pins', () => {
+    const result = insertIntoSource(WITH_BLOCK, 'enc1', 'encoder', 5, [5, 6, 7]);
+    expect(result).toContain('Encoder enc1; // ds-ide: id=enc1, kind=encoder, pin=5, pins=5,6,7');
+  });
+
+  it('emits Init() with three D-pin args (A, B, click) and no extra initArgs', () => {
+    const src = [
+      '// ds-ide:controls:begin',
+      'Encoder enc1; // ds-ide: id=enc1, kind=encoder, pin=5, pins=5,6,7',
+      '// ds-ide:controls:end',
+    ].join('\n');
+    const result = insertInitIntoSource(src, 'enc1', 'encoder', 5, [], [5, 6, 7]);
+    expect(result).toContain('  enc1.Init(daisy::seed::D5, daisy::seed::D6, daisy::seed::D7);');
+  });
+
+  it('a single removeFromSource(id) releases all three pins together', () => {
+    const withEnc = insertIntoSource(WITH_BLOCK, 'enc1', 'encoder', 5, [5, 6, 7]);
+    const result = removeFromSource(withEnc, 'enc1');
+    expect(result).not.toContain('id=enc1');
+    expect(result).toContain('id=vol');
   });
 });
 
@@ -251,6 +339,16 @@ describe('insertInitIntoSource — init block absent', () => {
     ].join('\n');
     const result = insertInitIntoSource(src, 'led1', 'led', 23, []);
     expect(result).toContain('  led1.Init(daisy::seed::D23, false);');
+  });
+
+  it('toggle: writes a bare single-arg Init (initArgs: null — FR-DEV-7)', () => {
+    const src = [
+      '// ds-ide:controls:begin',
+      'Switch3 sw1; // ds-ide: id=sw1, kind=toggle, pin=5',
+      '// ds-ide:controls:end',
+    ].join('\n');
+    const result = insertInitIntoSource(src, 'sw1', 'toggle', 5, []);
+    expect(result).toContain('  sw1.Init(daisy::seed::D5);');
   });
 });
 

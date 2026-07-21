@@ -115,6 +115,21 @@ describe('WiringViewProvider', () => {
     expect(onWirePin).toHaveBeenCalledWith({ pinNumber: 15, deviceType: 'pot', id: 'filter' });
   });
 
+  // Regression test: this deviceType check used to be a hardcoded
+  // 'pot'|'button'|'led' whitelist that silently dropped every M44 device
+  // (toggle/rgbled/encoder never reached onWirePin, with no error shown —
+  // FR-DEV-2 requires enumerating the registry instead).
+  it.each(['toggle', 'rgbled', 'encoder'] as const)(
+    'calls onWirePin for the M44 device kind %s (FR-DEV-2 regression)',
+    async (deviceType) => {
+      const view = makeWebviewViewMock();
+      provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+      const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
+      await handler({ command: 'wirePin', pinNumber: 15, deviceType, id: 'x1' });
+      expect(onWirePin).toHaveBeenCalledWith({ pinNumber: 15, deviceType, id: 'x1' });
+    },
+  );
+
   it('calls onUnwirePin when unwirePin message received', async () => {
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);

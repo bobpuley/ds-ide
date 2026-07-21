@@ -139,6 +139,30 @@ struct EmulatorState {
     static constexpr int kOnboardLedPin = 23;
     std::atomic<int8_t> led_last_state[kNumGpioPins];
 
+    // FR-DEV-7: virtual toggle-switch (Switch3) position, indexed by
+    // canonical_gpio_index(pin). Written by the IPC `controlValue`/
+    // `controlSnapshot` handler (tgl<N> ids), read by the Switch3 shim's
+    // Debounce(). Value is an integer position: 0, 1, or 2.
+    std::atomic<int> toggle_states[kNumGpioPins];
+
+    // FR-DEV-8: last-emitted RGB LED channel values, indexed by
+    // canonical_gpio_index(r_pin) — the RgbLed shim's dedup state (mirrors
+    // led_last_state's change-suppression, extended to three channels).
+    // -1.f sentinel means "not yet emitted" (a valid brightness is 0..1).
+    std::atomic<float> rgb_r_last[kNumGpioPins];
+    std::atomic<float> rgb_g_last[kNumGpioPins];
+    std::atomic<float> rgb_b_last[kNumGpioPins];
+
+    // FR-DEV-9: encoder's accumulated position, indexed by
+    // canonical_gpio_index(a_pin) — the primary (A-channel) pin. Written by
+    // the IPC `controlValue` handler (enc<N> ids) as a value already wrapped
+    // into [0, kEncoderPositionModulus); the Encoder shim's Debounce() derives
+    // a per-callback delta by diffing against its own previously-read value
+    // (mirrors button_states being read by Switch::Debounce()). The click
+    // pin reuses button_states directly — no separate state needed for it.
+    static constexpr int32_t kEncoderPositionModulus = 1024;
+    std::atomic<int32_t> encoder_positions[kNumGpioPins];
+
     // v2: audio mode (simulated / realtime) and real-time audio configuration
     std::atomic<int>    audio_mode{0};           // AudioMode enum value
     std::atomic<size_t> rt_buffer_size{256};     // target buffer size for CoreAudio (FR-AU-9)
@@ -208,6 +232,11 @@ struct EmulatorState {
         for (auto& v : pot_values) v.store(0.f);
         for (auto& b : button_states) b.store(false);
         for (auto& l : led_last_state) l.store(-1);
+        for (auto& t : toggle_states) t.store(0);
+        for (auto& v : rgb_r_last) v.store(-1.f);
+        for (auto& v : rgb_g_last) v.store(-1.f);
+        for (auto& v : rgb_b_last) v.store(-1.f);
+        for (auto& p : encoder_positions) p.store(0);
     }
 };
 

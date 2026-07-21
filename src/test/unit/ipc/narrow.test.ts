@@ -55,6 +55,15 @@ describe('parseIpcMessage (FR-IPC-2)', () => {
     expect(parseIpcMessage({ type: 'led', gpioPin: 28, lit: true })).toEqual({ type: 'led', gpioPin: 28, lit: true });
   });
 
+  it('accepts a well-formed rgbLed message (FR-DEV-8)', () => {
+    expect(parseIpcMessage({ type: 'rgbLed', gpioPin: 5, r: 0.5, g: 0.1, b: 1 }))
+      .toEqual({ type: 'rgbLed', gpioPin: 5, r: 0.5, g: 0.1, b: 1 });
+  });
+
+  it('rejects an rgbLed message missing a channel', () => {
+    expect(parseIpcMessage({ type: 'rgbLed', gpioPin: 5, r: 0.5, g: 0.1 })).toBeUndefined();
+  });
+
   it('accepts a replayDone message with no extra fields required', () => {
     expect(parseIpcMessage({ type: 'replayDone' })).toEqual({ type: 'replayDone' });
   });

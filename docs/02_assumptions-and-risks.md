@@ -31,9 +31,12 @@
 > keyboard is an acceptable fallback everywhere else. Consistent with the project's macOS-first
 > test priority; Linux/Windows MIDI bridging is an accepted pragmatic gap for v14.
 
-> ⚠️ **ASSUMPTION:** Encoder delta semantics fit the generalised `controlValue {id, value}`
-> message without a separate message kind — i.e. an encoder reports accumulated position and the
-> shim derives increments, rather than the transport carrying discrete tick events.
+> ✅ **CONFIRMED (M44, FR-DEV-9, 2026-07-21):** Encoder delta semantics fit the generalised
+> `controlValue {id, value}` message without a separate message kind. The webview accumulates
+> drag detents into a wrapped position (`codegen/encoder.ts`'s `ENCODER_POSITION_MODULUS`),
+> sends it as an ordinary `controlValue`, and the `Encoder` shim derives each callback's delta by
+> diffing the just-read position against the value it read last time (`Debounce()`), including
+> across the wraparound boundary. No wire-protocol change was needed.
 
 ### Risks
 

@@ -49,4 +49,12 @@ describe('computePinDisplayStates (FR-IPC-6)', () => {
     const d0 = states.find((s) => s.pin === 0)!;
     expect(d0.className).toBe('pin-unassigned');
   });
+
+  it('marks a wired toggle with pin-toggle (FR-DEV-7)', () => {
+    const wired: WiredPin[] = [{ pinNumber: 0, deviceType: 'toggle', id: 'sw1' }];
+    const states = computePinDisplayStates(PIN_DEFS, wired);
+    const d0 = states.find((s) => s.pin === 0)!;
+    expect(d0.className).toBe('pin-toggle');
+    expect(d0.assignedId).toBe('sw1');
+  });
 });

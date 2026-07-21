@@ -3,6 +3,7 @@ import { PIN_DEFS } from '../devices/pin-table.gen';
 import type { PinDef } from '../devices/pin-table.gen';
 import { REGISTRY, registryIds } from '../devices/registry';
 import type { DeviceType } from '../devices/registry';
+import type { ConventionControl } from '../controllers/controls-convention-parser';
 
 export type { DeviceType };
 
@@ -14,6 +15,20 @@ export interface WiredPin {
 
 export type WirePinHandler   = (pin: WiredPin) => Promise<void>;
 export type UnwirePinHandler = (pinNumber: number, id: string) => Promise<void>;
+
+// Expands parsed controls into one WiredPin per physical pin — a
+// 'pins'-attachment device (rgbled, encoder — FR-DEV-8/9) occupies more than
+// one, all sharing its id, so a single-pin `{pinNumber: c.pin, ...}` mapping
+// silently drops its other pins. The single shared implementation here
+// replaces three independent inline copies in extension.ts that drifted out
+// of sync (one kept using the old single-pin form after the multi-pin
+// devices landed, clobbering the Wiring Editor's display back down to one
+// highlighted pin on the very next save).
+export function expandToWiredPins(controls: ConventionControl[]): WiredPin[] {
+  return controls.flatMap(c =>
+    (c.pins ?? [c.pin]).map(p => ({ pinNumber: p, deviceType: c.kind as DeviceType, id: c.id })),
+  );
+}
 
 // Daisy Seed pin definitions for the schematic SVG — generated from
 // resources/Daisy_Seed_Rev4_Pinout.csv, see src/devices/pin-table.gen.ts.

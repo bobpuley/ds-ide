@@ -38,13 +38,16 @@ export type ControlsHostMessage =
   | { command: 'controlsConfig'; controls: ConventionControl[]; placements: ControlsPlacement[]; missingBlock: boolean }
   | { command: 'status'; running: boolean; sampleRate?: number; blockSize?: number }
   | { command: 'editorLoad'; cfg: ControllerConfig }
-  | { command: 'led'; gpioPin: number; lit: boolean };
+  | { command: 'led'; gpioPin: number; lit: boolean }
+  | { command: 'rgbLed'; gpioPin: number; r: number; g: number; b: number };
 
 export type ControlsWebviewMessage =
   | { command: 'webviewReady' }
   | { command: 'editorSave'; cfg: ControllerConfig }
   | { command: 'pot'; channel: number; value: number }
-  | { command: 'button'; gpioPin: number; pressed: boolean };
+  | { command: 'button'; gpioPin: number; pressed: boolean }
+  | { command: 'toggle'; gpioPin: number; position: number }
+  | { command: 'encoder'; gpioPin: number; position: number };
 
 // ── Wiring Editor ────────────────────────────────────────────────────────
 

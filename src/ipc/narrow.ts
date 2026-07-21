@@ -70,6 +70,18 @@ const NARROWERS: Record<string, Narrower> = {
     if (gpioPin === undefined || lit === undefined) return undefined;
     return { type: 'led', gpioPin, lit };
   },
+  // FR-DEV-8: keyed by the RgbLed instance's primary (red-channel) pin — the
+  // same "one message per physical pin" convention as `led`, since the
+  // instance's other two pins are recovered extension-side from the parsed
+  // code annotation, not from this message.
+  rgbLed: (obj) => {
+    const gpioPin = getNumber(obj, 'gpioPin');
+    const r = getNumber(obj, 'r');
+    const g = getNumber(obj, 'g');
+    const b = getNumber(obj, 'b');
+    if (gpioPin === undefined || r === undefined || g === undefined || b === undefined) return undefined;
+    return { type: 'rgbLed', gpioPin, r, g, b };
+  },
   replayDone: () => ({ type: 'replayDone' }),
   protocolVersion: (obj) => {
     const version = getNumber(obj, 'version');
