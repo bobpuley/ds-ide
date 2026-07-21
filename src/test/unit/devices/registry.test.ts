@@ -14,6 +14,12 @@ describe('REGISTRY (FR-DEV-2)', () => {
     expect(isDeviceType('pot')).toBe(true);
     expect(isDeviceType('encoder')).toBe(false);
   });
+
+  it('declares pot, button and led as pin-attached (FR-DEV-3)', () => {
+    expect(REGISTRY['pot']!.attachmentKind).toBe('pin');
+    expect(REGISTRY['button']!.attachmentKind).toBe('pin');
+    expect(REGISTRY['led']!.attachmentKind).toBe('pin');
+  });
 });
 
 // The DoD's own acceptance test: adding a registry entry must surface it in
@@ -37,6 +43,7 @@ describe('adding a registry entry surfaces it everywhere (FR-DEV-2)', () => {
       accentColor: '#abc123',
       pinFill: '#111222',
       declaredClassName: 'ToggleSwitch',
+      attachmentKind: 'pin',
     };
   }
 

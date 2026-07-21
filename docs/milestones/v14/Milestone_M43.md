@@ -78,7 +78,7 @@ rather than silently misbehaving.
 
 ---
 
-### [ ] feat: model attachment as pin, pins, bus or connector (FR-DEV-3)
+### [x] feat: model attachment as pin, pins, bus or connector (FR-DEV-3)
 
 A peripheral's pin footprint is a function of its selected bus, not a constant — an OLED occupies
 D7–D10 on SPI1 but D11–D12 on I2C1. Any model storing a static pin set is wrong.

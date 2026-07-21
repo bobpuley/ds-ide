@@ -43,6 +43,14 @@ export interface DeviceDescriptor {
    * instead of a named instance per control (FR-CODEGEN-1).
    */
   declaredClassName: string | null;
+  /**
+   * Which attachment.ts `Attachment` kind this device type uses (FR-DEV-3) —
+   * a capability declared once per type; the resolved pin(s)/bus/connector
+   * for a specific instance live on that instance, not here. All three
+   * existing devices are single-pin; multi-pin, bus and connector devices
+   * arrive in later milestones (M44-M47).
+   */
+  attachmentKind: 'pin' | 'pins' | 'bus' | 'connector';
 }
 
 // The enumerable literal-type source of truth. REGISTRY itself stays a
@@ -62,6 +70,7 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     accentColor: '#4ec9b0',
     pinFill: '#1a4a4a',
     declaredClassName: null,
+    attachmentKind: 'pin',
   },
   button: {
     id: 'button',
@@ -70,6 +79,7 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     accentColor: '#569cd6',
     pinFill: '#1a2a4a',
     declaredClassName: 'Switch',
+    attachmentKind: 'pin',
   },
   led: {
     id: 'led',
@@ -78,6 +88,7 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     accentColor: '#f04a4a',
     pinFill: '#4a1a1a',
     declaredClassName: 'Led',
+    attachmentKind: 'pin',
   },
 };
 
