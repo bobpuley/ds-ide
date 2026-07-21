@@ -5,6 +5,17 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.14.1 — 2026-07-21
+
+**M44 — Cheap Trio: Toggle, RGB LED, Encoder** *(FR-DEV-7, FR-DEV-8, FR-DEV-9 — all DoD green)*
+
+- **FR-DEV-7** — `Switch3` toggle switch: a single-pin, multi-position (0/1/2) digital input — the first device to exercise the registry's `multi-position` primitive. Reports position over the generalised `controlValue` (`tgl<pin>` ids); `ToggleStore` persists it across redeploys like `ButtonStore`.
+- **FR-DEV-8** — `RgbLed`: three PWM channels addressed as one named instance — the first registry entry owning multiple pins. The annotation convention gained an optional `pins=p0,p1,p2` field alongside the always-present primary `pin=`; the Wiring Editor auto-claims the two additional free pins after the one clicked, refusing the action if not enough remain. Colour renders in the Controls Editor as a live colored-dot indicator via a new `rgbLed` IPC message.
+- **FR-DEV-9** — `Encoder`: A/B quadrature pins plus a click pin (click reuses the existing virtual button state directly). Confirms the M43 assumption that delta semantics fit `controlValue {id, value}` without a new message kind — the wire carries an accumulated, wrapped position, and the shim derives each callback's delta by diffing, including across the wraparound boundary. The Controls Editor gained a rotary drag affordance with detents.
+- Fixed a hardcoded `pot|button|led` device-kind whitelist in `wiring-editor-panel.ts` (predating the registry) that silently dropped every new device kind's wiring message; fixed a related bug where a multi-pin device's Wiring Editor display collapsed back to one highlighted pin immediately after being wired, by unifying three drifted inline pin-mapping copies in `extension.ts` into one shared `expandToWiredPins()`.
+
+---
+
 ## 0.14.0 — 2026-07-21
 
 **M43 — Device Registry & Protocol Foundation** *(FR-DEV-1, FR-DEV-2, FR-DEV-3, FR-DEV-4, FR-DEV-5, FR-DEV-6 — all DoD green)*

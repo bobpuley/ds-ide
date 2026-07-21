@@ -1,7 +1,7 @@
 # M44 — Cheap Trio: Toggle, RGB LED, Encoder
 
-**Version:** 0.15.0
-**Status:** planned
+**Version:** 0.14.1
+**Status:** released
 **Source:** intake 2026-07-21 — device support expansion
 
 ## Goal
