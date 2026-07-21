@@ -113,8 +113,14 @@ export function removeFromSource(source: string, id: string): string {
 
 // ── Init block ────────────────────────────────────────────────────────────────
 
+// A device whose Init() takes no second argument (initArgs: null, e.g.
+// toggle's Switch3 — FR-DEV-7) emits a bare single-pin call rather than a
+// trailing `, null`.
 function initLine(id: string, kind: DeviceKind, pin: number): string {
-  return `  ${id}.Init(daisy::seed::D${pin}, ${REGISTRY[kind]!.initArgs});`;
+  const args = REGISTRY[kind]!.initArgs;
+  return args === null
+    ? `  ${id}.Init(daisy::seed::D${pin});`
+    : `  ${id}.Init(daisy::seed::D${pin}, ${args});`;
 }
 
 // Rebuild the init-block body: independent-device (non-shared) lines as

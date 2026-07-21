@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   potControlId,
   buttonControlId,
+  toggleControlId,
   isValidControlId,
   narrowControlValue,
   narrowControlSnapshot,
@@ -16,6 +17,11 @@ describe('potControlId / buttonControlId (FR-DEV-1)', () => {
   it('formats a button gpio pin as btnN', () => {
     expect(buttonControlId(0)).toBe('btn0');
     expect(buttonControlId(28)).toBe('btn28');
+  });
+
+  it('formats a toggle gpio pin as tglN (FR-DEV-7)', () => {
+    expect(toggleControlId(0)).toBe('tgl0');
+    expect(toggleControlId(28)).toBe('tgl28');
   });
 });
 
@@ -34,6 +40,11 @@ describe('isValidControlId', () => {
 
   it('rejects a button id at/past the 64-pin bound', () => {
     expect(isValidControlId('btn64')).toBe(false);
+  });
+
+  it('accepts every valid toggle id (0-63) and rejects at the bound (FR-DEV-7)', () => {
+    for (const p of [0, 1, 28, 63]) expect(isValidControlId(`tgl${p}`)).toBe(true);
+    expect(isValidControlId('tgl64')).toBe(false);
   });
 
   it('rejects an unrecognized prefix', () => {

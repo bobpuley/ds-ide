@@ -1,9 +1,11 @@
 // Pure reducer from (pin definitions, wired pins) to per-pin display state
 // for the Wiring Editor's SVG pinout — no DOM access, so it can be
 // unit-tested directly instead of only through a browser (FR-IPC-6).
-import { PinDef, WiredPin } from './wiring-panel';
+import { PinDef, WiredPin, DeviceType } from './wiring-panel';
 
-export type PinDisplayClass = 'pin-pot' | 'pin-button' | 'pin-led' | 'pin-unassigned' | 'pin-adc';
+// Derived from DeviceType (FR-DEV-2) rather than hand-listed, so a new
+// registry entry doesn't need a matching edit here.
+export type PinDisplayClass = `pin-${DeviceType}` | 'pin-unassigned' | 'pin-adc';
 
 export interface PinDisplayState {
   pin: number;

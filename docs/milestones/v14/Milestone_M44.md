@@ -13,9 +13,24 @@ is the registry's proof — it lands before OLED and MIDI precisely so that a st
 surfaces while the fix is still cheap. After it, adding a pin-attached device should be a registry
 entry, a codegen strategy and a shim class, with no edits to any view.
 
+> ⚠️ ASSUMPTION: "no edits to any view" is scoped to the two actively-used, already
+> registry-generic surfaces — the Wiring Editor (place/remove a device on a pin) and the Controls
+> Editor's annotation-driven canvas (the live control widget once code carries a `// ds-ide:`
+> marker). The Controls Editor also has a second, legacy YAML-only drag-and-drop palette/canvas
+> (`controls-webview.ts`'s `EditorControl`/`buildCard`, backed by `controller-config.ts`'s
+> hardcoded `pots|buttons|leds` sections) that exists as a fallback for a workspace whose code
+> never adopted the `// ds-ide:` annotation convention at all. Generalizing that legacy path to the
+> registry is a separable, larger refactor (new YAML schema, new per-kind card UI) and is
+> deliberately **not** done in M44 — toggle/RGB LED/encoder do not appear in it. A user in that
+> fallback mode can still use these devices by hand-writing the `// ds-ide:` annotation in their
+> code (then the Wiring Editor and the modern canvas both pick it up normally); only the
+> zero-annotation, pure-YAML workflow has no UI path to these three devices yet. Confirmed
+> acceptable scope for M44 (2026-07-21) — revisit if the legacy palette is still load-bearing when
+> M45+ needs it.
+
 ## Sprint Tasks
 
-### [ ] feat: add toggle switch device (FR-DEV-7)
+### [x] feat: add toggle switch device (FR-DEV-7)
 
 `Switch3` — a multi-position digital input. Exercises the registry's `multi-position` interaction
 primitive, which nothing uses today.

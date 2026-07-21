@@ -139,6 +139,12 @@ struct EmulatorState {
     static constexpr int kOnboardLedPin = 23;
     std::atomic<int8_t> led_last_state[kNumGpioPins];
 
+    // FR-DEV-7: virtual toggle-switch (Switch3) position, indexed by
+    // canonical_gpio_index(pin). Written by the IPC `controlValue`/
+    // `controlSnapshot` handler (tgl<N> ids), read by the Switch3 shim's
+    // Debounce(). Value is an integer position: 0, 1, or 2.
+    std::atomic<int> toggle_states[kNumGpioPins];
+
     // v2: audio mode (simulated / realtime) and real-time audio configuration
     std::atomic<int>    audio_mode{0};           // AudioMode enum value
     std::atomic<size_t> rt_buffer_size{256};     // target buffer size for CoreAudio (FR-AU-9)
@@ -208,6 +214,7 @@ struct EmulatorState {
         for (auto& v : pot_values) v.store(0.f);
         for (auto& b : button_states) b.store(false);
         for (auto& l : led_last_state) l.store(-1);
+        for (auto& t : toggle_states) t.store(0);
     }
 };
 

@@ -16,6 +16,7 @@ import { WiredPin, DeviceType } from './wiring/wiring-panel';
 import { insertIntoSource, removeFromSource, insertInitIntoSource, removeInitFromSource } from './wiring/controls-writer';
 import { PotStore } from './controllers/pot-store';
 import { ButtonStore } from './controllers/button-store';
+import { ToggleStore } from './controllers/toggle-store';
 import { DaisyDebugAdapterFactory, DaisyDebugAdapterTrackerFactory } from './debug/debug-adapter';
 import { buildForHardware } from './commands/hardware-build';
 import { flashToHardware } from './commands/dfu-flash';
@@ -195,6 +196,7 @@ class DeployCoordinator {
     private readonly statusBar: vscode.StatusBarItem,
     private readonly potStore: PotStore,
     private readonly buttonStore: ButtonStore,
+    private readonly toggleStore: ToggleStore,
     private readonly session: SessionState,
     private readonly scopePanel: ScopePanel,
     private readonly controlsProvider: ControlsViewProvider,
@@ -217,7 +219,9 @@ class DeployCoordinator {
   }
 
   sendPostDeployState(): void {
-    this.manager.sendControlSnapshot(this.potStore.getSnapshot(), this.buttonStore.getSnapshot());
+    this.manager.sendControlSnapshot(
+      this.potStore.getSnapshot(), this.buttonStore.getSnapshot(), this.toggleStore.getSnapshot(),
+    );
     this.manager.sendSine(this.session.sineState.freq, this.session.sineState.amplitude);
     const mode = this.session.audioSourceState.input === 'live' ? 'realtime' : 'simulated';
     this.manager.sendAudioMode(mode);
@@ -239,6 +243,14 @@ class DeployCoordinator {
     this.potStore.setDefaults(cfg.pots);
     this.buttonStore.setDefaults(cfg.buttons);
 
+    // Toggle instances aren't declared in controllers.yaml (no ToggleDef —
+    // see docs/milestones/v14/Milestone_M44.md's scope note); their pins are
+    // recovered from the code annotation convention instead (FR-DEV-7).
+    const folder = resolveActiveFolder(this.workspaceState)?.uri.fsPath ?? '';
+    const controlsConfig = await buildControlsConfig(folder, cfg);
+    const togglePins = controlsConfig.controls.filter(c => c.kind === 'toggle').map(c => c.pin);
+    this.toggleStore.setDefaults(togglePins);
+
     if (opts.debug) {
       await debugDeploy(
         this.manager,
@@ -251,10 +263,9 @@ class DeployCoordinator {
       return true;
     }
 
-    const folder = resolveActiveFolder(this.workspaceState)?.uri.fsPath ?? '';
     this.scopePanel.show(this.session.sineState, this.session.audioSourceState);
     this.controlsProvider.loadEditor(cfg);
-    this.controlsProvider.postControlsConfig(await buildControlsConfig(folder, cfg));
+    this.controlsProvider.postControlsConfig(controlsConfig);
     void vscode.commands.executeCommand('workbench.view.extension.ds-ide-controls');
     const deployed = await deployToEmulator(this.manager, this.emulatorChannel);
     if (!deployed) {
@@ -269,6 +280,7 @@ class DeployCoordinator {
 export function activate(context: vscode.ExtensionContext): void {
   const potStore    = new PotStore(context.workspaceState);
   const buttonStore = new ButtonStore(context.workspaceState);
+  const toggleStore = new ToggleStore(context.workspaceState);
   const session = new SessionState(context.workspaceState);
   // Set when the last controllers.yaml read failed for a reason other than
   // "file does not exist" (e.g. EACCES, EMFILE, encoding). While true, saves
@@ -393,6 +405,10 @@ export function activate(context: vscode.ExtensionContext): void {
     (gpioPin, pressed) => {
       buttonStore?.set(gpioPin, pressed);
       manager?.sendButton(gpioPin, pressed);
+    },
+    (gpioPin, position) => {
+      toggleStore?.set(gpioPin, position);
+      manager?.sendToggle(gpioPin, position);
     },
   );
 
@@ -573,7 +589,7 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   const deployCoordinator = new DeployCoordinator(
-    manager, statusBar, potStore, buttonStore, session, scopePanel, controlsProvider,
+    manager, statusBar, potStore, buttonStore, toggleStore, session, scopePanel, controlsProvider,
     diagnostics, buildChannel, emulatorChannel, context.extensionPath, loadControllerConfig,
     context.workspaceState,
   );

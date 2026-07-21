@@ -324,6 +324,32 @@ describe('EmulatorManager', () => {
       });
     });
 
+    it('also merges toggle values when provided (FR-DEV-7)', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      manager.sendControlSnapshot({ 0: 0.5 }, { 28: true }, { 5: 2 });
+      expect(ipcClientStub.send).toHaveBeenCalledWith({
+        type: 'controlSnapshot',
+        values: { pot0: 0.5, btn28: 1, tgl5: 2 },
+      });
+    });
+
+    it('defaults toggle values to empty when omitted', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      manager.sendControlSnapshot({ 0: 0.5 }, {});
+      expect(ipcClientStub.send).toHaveBeenCalledWith({
+        type: 'controlSnapshot',
+        values: { pot0: 0.5 },
+      });
+    });
+
     it('is a no-op when not connected', () => {
       manager.sendControlSnapshot({ 0: 0.5 }, {});
       expect(ipcClientStub.send).not.toHaveBeenCalled();
@@ -416,6 +442,23 @@ describe('EmulatorManager', () => {
 
     it('is a no-op when not connected', () => {
       manager.sendButton(28, true);
+      expect(ipcClientStub.send).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('sendToggle()', () => {
+    it('sends a controlValue with a tglN id and the raw position (FR-DEV-7)', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      manager.sendToggle(5, 2);
+      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'controlValue', id: 'tgl5', value: 2 });
+    });
+
+    it('is a no-op when not connected', () => {
+      manager.sendToggle(5, 2);
       expect(ipcClientStub.send).not.toHaveBeenCalled();
     });
   });

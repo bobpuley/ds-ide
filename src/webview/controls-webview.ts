@@ -6,6 +6,7 @@ import type { ControllerConfig, Taper, ButtonMode, ActiveLevel } from '../contro
 import type { DeviceType } from '../wiring/wiring-panel';
 import { computeKnobGeometry, KNOB_SVG_SIZE, KNOB_CENTER } from './knob-math';
 import { createRafCoalescer } from './raf-coalesce';
+import { TOGGLE_POSITIONS } from '../devices/codegen/toggle';
 
 interface VsCodeApiForControls {
   postMessage(msg: ControlsWebviewMessage): void;
@@ -141,8 +142,10 @@ function updateKnobPaths(knobWrap: HTMLElement, value: number): number {
   return clampedValue;
 }
 
+const KIND_LABELS: Record<DeviceType, string> = { pot: 'Pot', button: 'Button', led: 'LED', toggle: 'Toggle' };
+
 function buildConventionCard(ctrl: ConventionControl, pos: [number, number]): HTMLElement {
-  const kindLabel = ctrl.kind === 'pot' ? 'Pot' : ctrl.kind === 'button' ? 'Button' : 'LED';
+  const kindLabel = KIND_LABELS[ctrl.kind];
   const card = document.createElement('div');
   card.className = 'ctrl-card';
   card.dataset['kind'] = ctrl.kind;
@@ -163,6 +166,9 @@ function buildConventionCard(ctrl: ConventionControl, pos: [number, number]): HT
   } else if (ctrl.kind === 'button') {
     bodyInnerHtml =
       '<button class="btn-ce" type="button" data-pin="' + ctrl.pin + '" aria-pressed="false"></button>';
+  } else if (ctrl.kind === 'toggle') {
+    bodyInnerHtml =
+      '<button class="tgl-ce" type="button" data-pin="' + ctrl.pin + '" data-pos="0">0</button>';
   } else {
     bodyInnerHtml =
       '<span class="vled-dot" data-pin="' + ctrl.pin + '"></span>';
@@ -225,6 +231,17 @@ function buildConventionCard(ctrl: ConventionControl, pos: [number, number]): HT
       btn.addEventListener('mouseup',   release);
       btn.addEventListener('mouseleave', () => { if (btn.getAttribute('aria-pressed') === 'true') release(); });
     }
+  } else if (ctrl.kind === 'toggle') {
+    // Cycles 0 -> 1 -> 2 -> 0 on each click (FR-DEV-7) — the multi-position
+    // primitive's minimal interaction; no drag state to track, unlike pot's knob.
+    const tgl = card.querySelector('.tgl-ce') as HTMLButtonElement;
+    const gpioPin = ctrl.pin;
+    tgl.addEventListener('click', () => {
+      const next = (parseInt(tgl.dataset['pos'] || '0', 10) + 1) % TOGGLE_POSITIONS;
+      tgl.dataset['pos'] = String(next);
+      tgl.textContent = String(next);
+      vscode.postMessage({ command: 'toggle', gpioPin, position: next });
+    });
   }
 
   makeDraggable(card, { pos: [pos[0], pos[1]] });

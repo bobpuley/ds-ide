@@ -25,6 +25,11 @@ describe('declarationLine', () => {
     expect(declarationLine('led1', 'led', 23))
       .toBe('Led led1; // ds-ide: id=led1, kind=led, pin=23');
   });
+
+  it('generates toggle declaration (FR-DEV-7)', () => {
+    expect(declarationLine('sw1', 'toggle', 5))
+      .toBe('Switch3 sw1; // ds-ide: id=sw1, kind=toggle, pin=5');
+  });
 });
 
 // ── insertIntoSource ─────────────────────────────────────────────────────────
@@ -76,6 +81,20 @@ describe('insertIntoSource — block present', () => {
   it('does not declare a separate AdcChannelConfig per pot', () => {
     const result = insertIntoSource(WITH_BLOCK, 'pot2', 'pot', 16);
     expect(result).not.toMatch(/AdcChannelConfig\s+pot2\s*;/);
+  });
+});
+
+describe('insertIntoSource / removeFromSource — toggle (FR-DEV-7)', () => {
+  it('inserts a toggle declaration', () => {
+    const result = insertIntoSource(WITH_BLOCK, 'sw1', 'toggle', 5);
+    expect(result).toContain('Switch3 sw1; // ds-ide: id=sw1, kind=toggle, pin=5');
+  });
+
+  it('removes a toggle declaration by id, preserving others', () => {
+    const withToggle = insertIntoSource(WITH_BLOCK, 'sw1', 'toggle', 5);
+    const result = removeFromSource(withToggle, 'sw1');
+    expect(result).not.toContain('id=sw1');
+    expect(result).toContain('id=vol');
   });
 });
 
@@ -251,6 +270,16 @@ describe('insertInitIntoSource — init block absent', () => {
     ].join('\n');
     const result = insertInitIntoSource(src, 'led1', 'led', 23, []);
     expect(result).toContain('  led1.Init(daisy::seed::D23, false);');
+  });
+
+  it('toggle: writes a bare single-arg Init (initArgs: null — FR-DEV-7)', () => {
+    const src = [
+      '// ds-ide:controls:begin',
+      'Switch3 sw1; // ds-ide: id=sw1, kind=toggle, pin=5',
+      '// ds-ide:controls:end',
+    ].join('\n');
+    const result = insertInitIntoSource(src, 'sw1', 'toggle', 5, []);
+    expect(result).toContain('  sw1.Init(daisy::seed::D5);');
   });
 });
 

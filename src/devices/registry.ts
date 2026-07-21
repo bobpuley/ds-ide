@@ -76,7 +76,7 @@ export interface DeviceDescriptor {
 // plain, freely-indexable runtime object — the architecture is a compiled-in
 // registry, not a plugin system, but tests exercising "adding a registry
 // entry" (FR-DEV-2's own acceptance bullet) need to do that by assignment.
-export const DEVICE_TYPES = ['pot', 'button', 'led'] as const;
+export const DEVICE_TYPES = ['pot', 'button', 'led', 'toggle'] as const;
 
 export type DeviceType = typeof DEVICE_TYPES[number];
 
@@ -111,6 +111,19 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     declaredClassName: 'Led',
     attachmentKind: 'pin',
     initArgs: 'false',
+  },
+  // FR-DEV-7: first exerciser of the 'multi-position' primitive and the
+  // first pin-attached, non-shared-codegen device whose Init() takes no
+  // second argument (initArgs: null) — see controls-writer.ts's initLine().
+  toggle: {
+    id: 'toggle',
+    label: 'Toggle',
+    primitive: 'multi-position',
+    accentColor: '#c586c0',
+    pinFill: '#3a1a4a',
+    declaredClassName: 'Switch3',
+    attachmentKind: 'pin',
+    initArgs: null,
   },
 };
 

@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { EventEmitter } from 'events';
 import { IpcClient, IpcMessage, CONNECT_TIMEOUT_MS } from './ipc-client';
-import { potControlId, buttonControlId, narrowControlValue, narrowControlSnapshot } from '../ipc/control-values';
+import { potControlId, buttonControlId, toggleControlId, narrowControlValue, narrowControlSnapshot } from '../ipc/control-values';
 import { PROTOCOL_VERSION } from '../ipc/protocol-version';
 
 const SOCKET_TIMEOUT_MS = 10_000;
@@ -248,15 +248,24 @@ export class EmulatorManager extends EventEmitter {
   }
 
   // Post-(re)deploy control-state replay (FR-CT-11) — one controlSnapshot
-  // carrying every pot's and button's current value, rather than a separate
-  // *Snapshot message per device type.
-  sendControlSnapshot(potValues: Record<number, number>, buttonValues: Record<number, boolean>): void {
+  // carrying every pot's, button's and toggle's current value, rather than a
+  // separate *Snapshot message per device type. toggleValues defaults to {}
+  // so the debug-attach path (which only ever replayed pot state) doesn't
+  // need to change (FR-DEV-7).
+  sendControlSnapshot(
+    potValues: Record<number, number>,
+    buttonValues: Record<number, boolean>,
+    toggleValues: Record<number, number> = {},
+  ): void {
     const values: Record<string, number> = {};
     for (const [channel, value] of Object.entries(potValues)) {
       values[potControlId(Number(channel))] = value;
     }
     for (const [gpioPin, pressed] of Object.entries(buttonValues)) {
       values[buttonControlId(Number(gpioPin))] = pressed ? 1 : 0;
+    }
+    for (const [gpioPin, position] of Object.entries(toggleValues)) {
+      values[toggleControlId(Number(gpioPin))] = position;
     }
     const narrowed = narrowControlSnapshot(values);
     if (!narrowed) {
@@ -283,6 +292,11 @@ export class EmulatorManager extends EventEmitter {
   // M10: virtual button press/release, keyed by Daisy GPIO pin number.
   sendButton(gpioPin: number, pressed: boolean): void {
     this.sendControlValue(buttonControlId(gpioPin), pressed ? 1 : 0);
+  }
+
+  // FR-DEV-7: virtual toggle-switch position (0, 1, 2), keyed by Daisy GPIO pin number.
+  sendToggle(gpioPin: number, position: number): void {
+    this.sendControlValue(toggleControlId(gpioPin), position);
   }
 
   // M15: master output volume (0.0–1.0) — scales emulator output before CoreAudio write.

@@ -3,6 +3,18 @@ import type { WiringHostMessage, WiringWebviewMessage } from './messages';
 import type { PinDef, WiredPin, DeviceType } from '../wiring/wiring-panel';
 import { computePinDisplayStates } from '../wiring/wired-pin-state';
 import { defaultId, validateId } from '../wiring/id-validation';
+import { REGISTRY, registryIds } from '../devices/registry';
+
+// FR-DEV-2: one popup button id per registry entry — generalizes what used
+// to be a hardcoded ['btn-pot', 'btn-button', 'btn-led'] literal so a new
+// device needs no edit here (matches wiring-panel.ts's popupDeviceButtonsHtml).
+function deviceButtonIds(): string[] {
+  return registryIds().map(id => `btn-${id}`);
+}
+
+function kindFromButtonId(btnId: string): DeviceType {
+  return btnId.slice('btn-'.length) as DeviceType;
+}
 
 function el<T extends HTMLElement>(id: string): T {
   return document.getElementById(id) as T;
@@ -101,7 +113,7 @@ function applyWiredPins(pins: WiredPin[]): void {
   for (const state of computePinDisplayStates(PIN_DEFS, pins)) {
     const g = document.getElementById('pin-' + state.pin);
     if (!g) continue;
-    g.classList.remove('pin-pot', 'pin-button', 'pin-led', 'pin-unassigned', 'pin-adc');
+    g.classList.remove(...registryIds().map(id => `pin-${id}`), 'pin-unassigned', 'pin-adc');
     g.querySelectorAll('.assigned-id').forEach(node => node.remove());
     g.classList.add(state.className);
     if (state.assignedId === null) continue;
@@ -154,7 +166,7 @@ function closePopup(): void {
   el<HTMLInputElement>('id-input').value = '';
   el<HTMLElement>('id-error').textContent = '';
   el<HTMLButtonElement>('popup-confirm').disabled = true;
-  (['btn-pot', 'btn-button', 'btn-led'] as const).forEach(id => {
+  deviceButtonIds().forEach(id => {
     el<HTMLElement>(id).classList.remove('selected');
   });
 }
@@ -175,19 +187,18 @@ function showAssignPopup(pinNumber: number, adc: boolean, e: MouseEvent): void {
 function showAssignedPopup(pinNumber: number, deviceType: DeviceType, id: string, e: MouseEvent): void {
   popupPin = { pinNumber, deviceType, id };
   el<HTMLElement>('popup-title').textContent = 'Pin D' + pinNumber;
-  const kindName = deviceType === 'pot' ? 'Pot' : deviceType === 'button' ? 'Button' : 'LED';
-  el<HTMLElement>('assigned-info').textContent = kindName + ' · id: ' + id;
+  el<HTMLElement>('assigned-info').textContent = REGISTRY[deviceType]!.label + ' · id: ' + id;
   el<HTMLElement>('popup-assign').style.display = 'none';
   el<HTMLElement>('popup-assigned').style.display = 'block';
   positionPopup(e);
 }
 
 // Device type buttons
-(['btn-pot', 'btn-button', 'btn-led'] as const).forEach(btnId => {
+deviceButtonIds().forEach(btnId => {
   el<HTMLElement>(btnId).addEventListener('click', () => {
-    (['btn-pot', 'btn-button', 'btn-led'] as const).forEach(id => el<HTMLElement>(id).classList.remove('selected'));
+    deviceButtonIds().forEach(id => el<HTMLElement>(id).classList.remove('selected'));
     el<HTMLElement>(btnId).classList.add('selected');
-    selectedKind = btnId === 'btn-pot' ? 'pot' : btnId === 'btn-button' ? 'button' : 'led';
+    selectedKind = kindFromButtonId(btnId);
     const proposed = defaultId(selectedKind, wiredPins);
     const idInput  = el<HTMLInputElement>('id-input');
     if (!idInput.value || idInput.dataset['wasDefault'] === 'true') {

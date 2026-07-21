@@ -41,6 +41,7 @@ describe('ControlsViewProvider', () => {
   let onEditorSave: ReturnType<typeof vi.fn>;
   let onPotChange: ReturnType<typeof vi.fn>;
   let onButtonChange: ReturnType<typeof vi.fn>;
+  let onToggleChange: ReturnType<typeof vi.fn>;
   let provider: ControlsViewProvider;
 
   beforeEach(() => {
@@ -48,9 +49,10 @@ describe('ControlsViewProvider', () => {
     onEditorSave  = vi.fn();
     onPotChange   = vi.fn();
     onButtonChange = vi.fn();
+    onToggleChange = vi.fn();
     provider = new ControlsViewProvider(
       { fsPath: '/ext' } as unknown as vscode.Uri,
-      onEditorSave, onPotChange, onButtonChange,
+      onEditorSave, onPotChange, onButtonChange, onToggleChange,
     );
   });
 
@@ -133,6 +135,24 @@ describe('ControlsViewProvider', () => {
     const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => void;
     handler({ command: 'button', gpioPin: 28, pressed: true });
     expect(onButtonChange).toHaveBeenCalledWith(28, true);
+  });
+
+  it('calls onToggleChange when toggle message received (FR-DEV-7)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'toggle', gpioPin: 5, position: 2 });
+    expect(onToggleChange).toHaveBeenCalledWith(5, 2);
+  });
+
+  it('drops a toggle message with an out-of-range position', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'toggle', gpioPin: 5, position: 3 });
+    handler({ command: 'toggle', gpioPin: 5, position: -1 });
+    handler({ command: 'toggle', gpioPin: 5, position: 1.5 });
+    expect(onToggleChange).not.toHaveBeenCalled();
   });
 
   it('calls onEditorSave with valid cfg when editorSave message received', () => {

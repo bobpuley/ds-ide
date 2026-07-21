@@ -52,6 +52,7 @@ set(SHIM_SRC
     "${CMAKE_SOURCE_DIR}/shim/src/adc_handle.cpp"
     "${CMAKE_SOURCE_DIR}/shim/src/system.cpp"
     "${CMAKE_SOURCE_DIR}/shim/src/switch.cpp"
+    "${CMAKE_SOURCE_DIR}/shim/src/switch3.cpp"
     "${CMAKE_SOURCE_DIR}/shim/src/led.cpp"
 )
 
