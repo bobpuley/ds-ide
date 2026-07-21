@@ -119,13 +119,13 @@ Full registry in [`docs/v13/05_dev-plan.md`](v13/05_dev-plan.md).
 
 ### v14 (0.14.0–0.18.0) — planned
 
-| Milestone | Title | Version | Status      | File |
-|---|---|---|-------------|---|
+| Milestone | Title | Version | Status          | File |
+|---|---|---|-----------------|---|
 | M43 | Device Registry & Protocol Foundation | 0.14.0 | **released**    | [`Milestone_M43.md`](milestones/v14/Milestone_M43.md) |
-| M44 | Cheap Trio — Toggle, RGB LED, Encoder | 0.15.0 | **planned**     | [`Milestone_M44.md`](milestones/v14/Milestone_M44.md) |
-| M45 | MicroSD & Bus-Peripheral UI | 0.16.0 | **planned**     | [`Milestone_M45.md`](milestones/v14/Milestone_M45.md) |
-| M46 | OLED Display | 0.17.0 | **planned**     | [`Milestone_M46.md`](milestones/v14/Milestone_M46.md) |
-| M47 | MIDI — TRS & USB | 0.18.0 | **planned**     | [`Milestone_M47.md`](milestones/v14/Milestone_M47.md) |
+| M44 | Cheap Trio — Toggle, RGB LED, Encoder | 0.14.1  | **in progress** | [`Milestone_M44.md`](milestones/v14/Milestone_M44.md) |
+| M45 | MicroSD & Bus-Peripheral UI | 0.14.2  | **planned**     | [`Milestone_M45.md`](milestones/v14/Milestone_M45.md) |
+| M46 | OLED Display | 0.14.3  | **planned**     | [`Milestone_M46.md`](milestones/v14/Milestone_M46.md) |
+| M47 | MIDI — TRS & USB | 0.14.4  | **planned**     | [`Milestone_M47.md`](milestones/v14/Milestone_M47.md) |
 
 Sequencing is deliberate: **M43 lands the protocol change and the registry before any new device
 exists**, because the wire format is the expensive thing to change late. **M44 is the registry's
