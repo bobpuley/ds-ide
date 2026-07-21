@@ -6,6 +6,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { EmulatorManager, workspaceRuntimeDir, killStalePid } from '../../../emulator/manager';
 import { IpcClient } from '../../../emulator/ipc-client';
+import { PROTOCOL_VERSION } from '../../../ipc/protocol-version';
 
 // ---- Process stub helpers ----
 
@@ -81,7 +82,16 @@ function makeIpcClient() {
   const origOn = client.on.bind(client);
   (client as unknown as Record<string, unknown>)['on'] = vi.fn(origOn);
   client.connected  = true;
-  client.connect    = vi.fn(() => { client.connected = true; return Promise.resolve(); }) as ReturnType<typeof vi.fn>;
+  client.connect    = vi.fn(() => {
+    client.connected = true;
+    // FR-DEV-6: a real emulator's first message is always its protocol
+    // version handshake — connectIpc() registers its handshake listener
+    // before calling connect(), so emitting synchronously here is safe and
+    // lets every existing deploy() test resolve exactly as it does against a
+    // real, compatible emulator.
+    client.emit('message', { type: 'protocolVersion', version: PROTOCOL_VERSION });
+    return Promise.resolve();
+  }) as ReturnType<typeof vi.fn>;
   client.send       = vi.fn();
   client.disconnect = vi.fn(() => { client.connected = false; }) as ReturnType<typeof vi.fn>;
   return client;
@@ -198,32 +208,124 @@ describe('EmulatorManager', () => {
     });
   });
 
+  describe('protocol version handshake (FR-DEV-6)', () => {
+    async function buildManager(): Promise<void> {
+      await manager.build(
+        { projectRoot: '/proj', effectSrc: '/proj/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+    }
+
+    it('deploy() rejects when the emulator reports an older protocol version', async () => {
+      ipcClientStub.connect = vi.fn(() => {
+        ipcClientStub.connected = true;
+        ipcClientStub.emit('message', { type: 'protocolVersion', version: PROTOCOL_VERSION - 1 });
+        return Promise.resolve();
+      }) as ReturnType<typeof vi.fn>;
+      await buildManager();
+      await expect(manager.deploy(() => undefined)).rejects.toThrow(/protocol version mismatch/i);
+      expect(ipcClientStub.disconnect).toHaveBeenCalled();
+    });
+
+    it('deploy() rejects when the emulator reports a newer protocol version', async () => {
+      ipcClientStub.connect = vi.fn(() => {
+        ipcClientStub.connected = true;
+        ipcClientStub.emit('message', { type: 'protocolVersion', version: PROTOCOL_VERSION + 1 });
+        return Promise.resolve();
+      }) as ReturnType<typeof vi.fn>;
+      await buildManager();
+      await expect(manager.deploy(() => undefined)).rejects.toThrow(/protocol version mismatch/i);
+    });
+
+    it('rejection names both versions and offers a remedy', async () => {
+      ipcClientStub.connect = vi.fn(() => {
+        ipcClientStub.connected = true;
+        ipcClientStub.emit('message', { type: 'protocolVersion', version: 999 });
+        return Promise.resolve();
+      }) as ReturnType<typeof vi.fn>;
+      await buildManager();
+      await expect(manager.deploy(() => undefined)).rejects.toThrow(
+        new RegExp(`v${PROTOCOL_VERSION}.*v999|999.*v${PROTOCOL_VERSION}`, 'i'),
+      );
+    });
+
+    it('deploy() rejects when the emulator sends a non-protocolVersion first message (stale, pre-handshake emulator)', async () => {
+      ipcClientStub.connect = vi.fn(() => {
+        ipcClientStub.connected = true;
+        ipcClientStub.emit('message', { type: 'status', running: false });
+        return Promise.resolve();
+      }) as ReturnType<typeof vi.fn>;
+      await buildManager();
+      await expect(manager.deploy(() => undefined)).rejects.toThrow(/protocol version handshake/i);
+    });
+
+    it('deploy() succeeds and sends no control messages when versions match', async () => {
+      await buildManager();
+      await expect(manager.deploy(() => undefined)).resolves.toBeUndefined();
+      expect(ipcClientStub.send).not.toHaveBeenCalled();
+    });
+  });
+
   describe('sendPot()', () => {
-    it('sends correct JSON for a pot move', async () => {
+    it('sends a controlValue with a potN id (FR-DEV-1)', async () => {
       await manager.build(
         { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
         () => undefined,
       );
       await manager.deploy(() => undefined);
       manager.sendPot(3, 0.75);
-      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'pot', channel: 3, value: 0.75 });
+      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'controlValue', id: 'pot3', value: 0.75 });
     });
   });
 
-  describe('sendPotSnapshot()', () => {
-    it('sends a potSnapshot with all channel values', async () => {
+  describe('sendControlValue()', () => {
+    it('sends a well-formed controlValue as-is', async () => {
       await manager.build(
         { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
         () => undefined,
       );
       await manager.deploy(() => undefined);
-      const values = { 0: 0.5, 1: 0.3 };
-      manager.sendPotSnapshot(values);
-      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'potSnapshot', values });
+      manager.sendControlValue('pot5', 0.2);
+      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'controlValue', id: 'pot5', value: 0.2 });
+    });
+
+    it('drops an unknown id instead of sending it (FR-DEV-1)', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      manager.sendControlValue('pot12', 0.2);
+      expect(ipcClientStub.send).not.toHaveBeenCalled();
+    });
+
+    it('drops a non-finite value instead of sending it (FR-DEV-1)', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      manager.sendControlValue('pot0', NaN);
+      expect(ipcClientStub.send).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('sendControlSnapshot()', () => {
+    it('merges pot and button values into one controlSnapshot (FR-DEV-1)', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      manager.sendControlSnapshot({ 0: 0.5, 1: 0.3 }, { 28: true, 25: false });
+      expect(ipcClientStub.send).toHaveBeenCalledWith({
+        type: 'controlSnapshot',
+        values: { pot0: 0.5, pot1: 0.3, btn28: 1, btn25: 0 },
+      });
     });
 
     it('is a no-op when not connected', () => {
-      manager.sendPotSnapshot({ 0: 0.5 });
+      manager.sendControlSnapshot({ 0: 0.5 }, {});
       expect(ipcClientStub.send).not.toHaveBeenCalled();
     });
   });
@@ -299,31 +401,21 @@ describe('EmulatorManager', () => {
     });
   });
 
-  describe('sendButton() / sendButtonSnapshot()', () => {
-    it('sends a button press IPC message', async () => {
+  describe('sendButton()', () => {
+    it('sends a controlValue with a btnN id, pressed encoded as 1/0 (FR-DEV-1)', async () => {
       await manager.build(
         { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
         () => undefined,
       );
       await manager.deploy(() => undefined);
       manager.sendButton(28, true);
-      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'button', gpioPin: 28, pressed: true });
+      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'controlValue', id: 'btn28', value: 1 });
+      manager.sendButton(28, false);
+      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'controlValue', id: 'btn28', value: 0 });
     });
 
-    it('sends a buttonSnapshot IPC message', async () => {
-      await manager.build(
-        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
-        () => undefined,
-      );
-      await manager.deploy(() => undefined);
-      const values = { 28: true, 25: false };
-      manager.sendButtonSnapshot(values);
-      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'buttonSnapshot', values });
-    });
-
-    it('button sends are a no-op when not connected', () => {
+    it('is a no-op when not connected', () => {
       manager.sendButton(28, true);
-      manager.sendButtonSnapshot({ 28: true });
       expect(ipcClientStub.send).not.toHaveBeenCalled();
     });
   });

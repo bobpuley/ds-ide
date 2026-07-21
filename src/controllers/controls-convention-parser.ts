@@ -1,4 +1,6 @@
-export type ControlKind = 'pot' | 'button' | 'led';
+import { DeviceType, registryIds } from '../devices/registry';
+
+export type ControlKind = DeviceType;
 
 export interface ConventionControl {
   id: string;
@@ -18,7 +20,12 @@ const BEGIN_MARKER = /^\/\/ ds-ide:controls:begin\s*$/;
 const END_MARKER = /^\/\/ ds-ide:controls:end\s*$/;
 const INIT_BEGIN_MARKER = /^\/\/ ds-ide:controls:init:begin\s*$/;
 const INIT_END_MARKER = /^\/\/ ds-ide:controls:init:end\s*$/;
-const ANNOTATION = /\/\/ ds-ide:\s*id=(\S+),\s*kind=(pot|button|led),\s*pin=(\d+)/;
+// Built fresh per call (not a module-level constant) so it always reflects
+// the registry's current contents rather than a snapshot from module load
+// (FR-DEV-2).
+function annotationPattern(): RegExp {
+  return new RegExp(`// ds-ide:\\s*id=(\\S+),\\s*kind=(${registryIds().join('|')}),\\s*pin=(\\d+)`);
+}
 // Shared AdcChannelConfig array declaration generated for wired pots
 // (FR-CODEGEN-1, see wiring/controls-writer.ts) — infrastructure, not itself
 // a control, so it must not be flagged as an unrecognised annotation.
@@ -49,13 +56,14 @@ export function parseControlsConvention(source: string): ConventionParseResult {
 
   const controls: ConventionControl[] = [];
   const errors: string[] = [];
+  const annotation = annotationPattern();
 
   for (let i = beginLine + 1; i < endLine; i++) {
     const line = lines[i]!.replace(/\r$/, '');
     if (line.trim() === '' || BEGIN_MARKER.test(line)) continue;
     if (ADC_ARRAY_DECL.test(line)) continue;
 
-    const m = ANNOTATION.exec(line);
+    const m = annotation.exec(line);
     if (m) {
       controls.push({ id: m[1]!, kind: m[2]! as ControlKind, pin: parseInt(m[3]!, 10) });
     } else {

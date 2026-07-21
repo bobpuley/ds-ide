@@ -185,8 +185,8 @@ class SessionState {
 }
 
 // Single implementation of build/deploy/debug sequencing and the post-deploy
-// state replay (sendPotSnapshot/sendButtonSnapshot/sendSine/sendAudioMode/
-// sendAudioDevice/WAV), called identically by ds-ide.buildAndDeploy,
+// state replay (sendControlSnapshot/sendSine/sendAudioMode/sendAudioDevice/
+// WAV), called identically by ds-ide.buildAndDeploy,
 // ds-ide.deploy, and ds-ide.debug so the sequence can no longer diverge
 // between commands (FR-IPC-7).
 class DeployCoordinator {
@@ -217,8 +217,7 @@ class DeployCoordinator {
   }
 
   sendPostDeployState(): void {
-    this.manager.sendPotSnapshot(this.potStore.getSnapshot());
-    this.manager.sendButtonSnapshot(this.buttonStore.getSnapshot());
+    this.manager.sendControlSnapshot(this.potStore.getSnapshot(), this.buttonStore.getSnapshot());
     this.manager.sendSine(this.session.sineState.freq, this.session.sineState.amplitude);
     const mode = this.session.audioSourceState.input === 'live' ? 'realtime' : 'simulated';
     this.manager.sendAudioMode(mode);

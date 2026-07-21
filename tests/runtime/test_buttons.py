@@ -65,7 +65,7 @@ def test_button_and_led(exe: str) -> None:
         print(f"  PASS  released → muted (mean_abs={muted:.4f}) + LED off")
 
         # Press the button → audio passes through; LED on (AC-11a + AC-11b).
-        client.send({"type": "button", "gpioPin": BUTTON_PIN, "pressed": True})
+        client.send({"type": "controlValue", "id": f"btn{BUTTON_PIN}", "value": 1})
         scope, leds = collect(client, n_scope=30)
         active = out_mean_abs(scope[-4:])
         assert active > 0.05, f"output should pass audio when pressed, got {active:.4f}"
@@ -75,7 +75,7 @@ def test_button_and_led(exe: str) -> None:
         print(f"  PASS  pressed → audio passes (mean_abs={active:.4f}) + LED on")
 
         # Release → muted again; LED off.
-        client.send({"type": "button", "gpioPin": BUTTON_PIN, "pressed": False})
+        client.send({"type": "controlValue", "id": f"btn{BUTTON_PIN}", "value": 0})
         scope, leds = collect(client, n_scope=30)
         muted2 = out_mean_abs(scope[-4:])
         assert muted2 < 0.01, f"output should mute again on release, got {muted2:.4f}"

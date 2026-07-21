@@ -35,13 +35,12 @@ vi.mock('../../emulator/manager', () => {
   class MockEmulatorManager extends EE {
     build = vi.fn();
     deploy = vi.fn();
-    sendPotSnapshot = vi.fn();
+    sendControlSnapshot = vi.fn();
     sendPot = vi.fn();
     sendTransport = vi.fn();
     sendSine = vi.fn();
     sendAudioMode = vi.fn();
     sendAudioDevice = vi.fn();
-    sendButtonSnapshot = vi.fn();
     sendWavFile = vi.fn();
     dispose = vi.fn();
     get childPid() { return 42; }
@@ -1022,14 +1021,13 @@ describe('deploy sequencing via DeployCoordinator (FR-IPC-7)', () => {
   interface ManagerSpies {
     build: ReturnType<typeof vi.fn>;
     deploy: ReturnType<typeof vi.fn>;
-    sendPotSnapshot: ReturnType<typeof vi.fn>;
-    sendButtonSnapshot: ReturnType<typeof vi.fn>;
+    sendControlSnapshot: ReturnType<typeof vi.fn>;
     sendSine: ReturnType<typeof vi.fn>;
     sendAudioMode: ReturnType<typeof vi.fn>;
     sendAudioDevice: ReturnType<typeof vi.fn>;
   }
 
-  it('ds-ide.deploy replays pot/button/sine/audioMode/audioDevice state after a successful deploy', async () => {
+  it('ds-ide.deploy replays pot+button/sine/audioMode/audioDevice state after a successful deploy (FR-DEV-1)', async () => {
     const { activate: act } = await import('../../extension');
     const ctx = makeContext();
     act(ctx);
@@ -1037,8 +1035,7 @@ describe('deploy sequencing via DeployCoordinator (FR-IPC-7)', () => {
     const mgr = managerInstances[0]! as unknown as ManagerSpies;
     const deployCmd = getCommand('ds-ide.deploy')!;
     await deployCmd();
-    expect(mgr.sendPotSnapshot).toHaveBeenCalled();
-    expect(mgr.sendButtonSnapshot).toHaveBeenCalled();
+    expect(mgr.sendControlSnapshot).toHaveBeenCalled();
     expect(mgr.sendSine).toHaveBeenCalled();
     expect(mgr.sendAudioMode).toHaveBeenCalled();
     expect(mgr.sendAudioDevice).toHaveBeenCalled();
@@ -1052,7 +1049,7 @@ describe('deploy sequencing via DeployCoordinator (FR-IPC-7)', () => {
     const mgr = managerInstances[0]! as unknown as ManagerSpies;
     const debugCmd = getCommand('ds-ide.debug')!;
     await debugCmd();
-    expect(mgr.sendButtonSnapshot).toHaveBeenCalled();
+    expect(mgr.sendControlSnapshot).toHaveBeenCalled();
     expect(mgr.sendSine).toHaveBeenCalled();
     expect(mgr.sendAudioMode).toHaveBeenCalled();
     expect(mgr.sendAudioDevice).toHaveBeenCalled();
@@ -1067,7 +1064,7 @@ describe('deploy sequencing via DeployCoordinator (FR-IPC-7)', () => {
     const cmd = getCommand('ds-ide.buildAndDeploy')!;
     await cmd();
     expect(mgr.build).toHaveBeenCalled();
-    expect(mgr.sendPotSnapshot).toHaveBeenCalled();
+    expect(mgr.sendControlSnapshot).toHaveBeenCalled();
     expect(mgr.sendAudioMode).toHaveBeenCalled();
   });
 
@@ -1093,7 +1090,7 @@ describe('deploy sequencing via DeployCoordinator (FR-IPC-7)', () => {
     mgr.build.mockRejectedValueOnce(new Error('build failed'));
     const cmd = getCommand('ds-ide.buildAndDeploy')!;
     await cmd();
-    expect(mgr.sendPotSnapshot).not.toHaveBeenCalled();
+    expect(mgr.sendControlSnapshot).not.toHaveBeenCalled();
   });
 });
 

@@ -4,6 +4,7 @@ import { IpcMessage } from '../emulator/ipc-client';
 import { getBoolean, getNumber } from '../ipc/narrow';
 import { ControllerConfig, parseControllerConfig, serializeControllerConfig } from '../controllers/controller-config';
 import { ControlsConfig } from '../webview/scope-panel';
+import { REGISTRY, registryIds } from '../devices/registry';
 
 export class ControlsViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
@@ -145,7 +146,28 @@ function safeJson(obj: unknown): string {
     .replace(/>/g, '\\u003e');
 }
 
-function buildHtml(nonce: string, scriptUri: string): string {
+// FR-DEV-2: one CSS rule per registry entry for both the palette item and
+// the on-canvas control card, so adding a device changes what's generated
+// here without editing this file again.
+function paletteCssRules(): string {
+  return registryIds()
+    .map(id => `    .palette-item[data-kind="${id}"] { border-left: 3px solid ${REGISTRY[id]!.accentColor}; }`)
+    .join('\n');
+}
+
+function ctrlCardCssRules(): string {
+  return registryIds()
+    .map(id => `    .ctrl-card[data-kind="${id}"] { border-top: 3px solid ${REGISTRY[id]!.accentColor}; }`)
+    .join('\n');
+}
+
+function paletteItemsHtml(): string {
+  return registryIds()
+    .map(id => `      <div class="palette-item" data-kind="${id}" draggable="true">${REGISTRY[id]!.label}</div>`)
+    .join('\n');
+}
+
+export function buildHtml(nonce: string, scriptUri: string): string {
   return /* html */`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -170,15 +192,11 @@ function buildHtml(nonce: string, scriptUri: string): string {
     .palette-title { font-size: 10px; color: #6a6a6a; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
     .palette-item { padding: 7px 10px; border-radius: 4px; border: 1px solid #555; background: #3c3c3c; color: #d4d4d4; cursor: grab; user-select: none; font-size: 11px; text-align: center; }
     .palette-item:hover { background: #4a4a4a; }
-    .palette-item[data-kind="pot"]    { border-left: 3px solid #4ec9b0; }
-    .palette-item[data-kind="button"] { border-left: 3px solid #569cd6; }
-    .palette-item[data-kind="led"]    { border-left: 3px solid #f04a4a; }
+${paletteCssRules()}
     #canvas-area { flex: 1; position: relative; overflow: auto; background: #1e1e1e; }
     #canvas-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #3c3c3c; font-size: 13px; pointer-events: none; }
     .ctrl-card { position: absolute; min-width: 168px; background: #252526; border: 1px solid #555; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.4); }
-    .ctrl-card[data-kind="pot"]    { border-top: 3px solid #4ec9b0; }
-    .ctrl-card[data-kind="button"] { border-top: 3px solid #569cd6; }
-    .ctrl-card[data-kind="led"]    { border-top: 3px solid #f04a4a; }
+${ctrlCardCssRules()}
     .card-header { padding: 4px 6px 4px 8px; display: flex; align-items: center; justify-content: space-between; cursor: grab; background: rgba(255,255,255,0.03); }
     .card-kind { font-size: 9px; color: #6a6a6a; text-transform: uppercase; letter-spacing: 0.5px; }
     .card-del { background: none; border: none; color: #555; cursor: pointer; font-size: 15px; padding: 0 2px; line-height: 1; }
@@ -219,9 +237,7 @@ function buildHtml(nonce: string, scriptUri: string): string {
   <div id="design-area">
     <div id="palette">
       <div class="palette-title">Palette</div>
-      <div class="palette-item" data-kind="pot" draggable="true">Pot</div>
-      <div class="palette-item" data-kind="button" draggable="true">Button</div>
-      <div class="palette-item" data-kind="led" draggable="true">LED</div>
+${paletteItemsHtml()}
     </div>
     <div id="canvas-area">
       <div id="canvas-hint">Drag a control from the palette</div>

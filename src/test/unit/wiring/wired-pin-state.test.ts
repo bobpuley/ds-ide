@@ -3,9 +3,9 @@ import { computePinDisplayStates } from '../../../wiring/wired-pin-state';
 import { PinDef, WiredPin } from '../../../wiring/wiring-panel';
 
 const PIN_DEFS: PinDef[] = [
-  { row: 0, side: 'L', pin: 0, label: 'D0', aLabel: null, adc: false },
-  { row: 1, side: 'R', pin: 15, label: 'D15', aLabel: 'A0', adc: true },
-  { row: 2, side: 'R', pin: null, label: 'GND', aLabel: null, adc: false },
+  { row: 0, side: 'L', pin: 0, label: 'D0', aLabel: null, adc: false, i2c: null, uart: null, spi: null, sdmmc: null },
+  { row: 1, side: 'R', pin: 15, label: 'D15', aLabel: 'A0', adc: true, i2c: null, uart: null, spi: null, sdmmc: null },
+  { row: 2, side: 'R', pin: null, label: 'GND', aLabel: null, adc: false, i2c: null, uart: null, spi: null, sdmmc: null },
 ];
 
 describe('computePinDisplayStates (FR-IPC-6)', () => {

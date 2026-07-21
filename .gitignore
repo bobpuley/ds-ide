@@ -7,6 +7,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# generated from resources/Daisy_Seed_Rev4_Pinout.csv — run `npm run gen:pins`
+src/devices/pin-table.gen.ts
+
 # Emulator build output (generated per-project, not committed)
 .ds-ide/
 

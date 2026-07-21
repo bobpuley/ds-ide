@@ -1,6 +1,10 @@
 import { randomBytes } from 'node:crypto';
+import { PIN_DEFS } from '../devices/pin-table.gen';
+import type { PinDef } from '../devices/pin-table.gen';
+import { REGISTRY, registryIds } from '../devices/registry';
+import type { DeviceType } from '../devices/registry';
 
-export type DeviceType = 'pot' | 'button' | 'led';
+export type { DeviceType };
 
 export interface WiredPin {
   pinNumber: number;
@@ -11,68 +15,10 @@ export interface WiredPin {
 export type WirePinHandler   = (pin: WiredPin) => Promise<void>;
 export type UnwirePinHandler = (pinNumber: number, id: string) => Promise<void>;
 
-// Daisy Seed pin definitions for the schematic SVG.
-// side: 'L' = left header, 'R' = right header.
-// pin: D-number for digital GPIO pins; null for power/special (not assignable).
-// adc: true for D15–D25 (A0–A10) and D28 (A11); D26/D27/D29/D30 have no ADC.
-// label: primary display label.
-// aLabel: analog alias (shown for ADC pins).
-export interface PinDef {
-  row:    number;
-  side:   'L' | 'R';
-  pin:    number | null;
-  label:  string;
-  aLabel: string | null;
-  adc:    boolean;
-}
-
-// Pin order matches Seed_pinout.csv:
-//   Left  rows 0–19 = CSV rows  1–15  (D0–D14) + rows 16–20 (NC audio/AGND)
-//   Right rows 0–19 = CSV rows 40–22  (GND, VIN, 3V3D, D30, D29, A11/D28 … A0/D15, +3V3A)
-export const PIN_DEFS: PinDef[] = [
-  // ── Left header (rows 0–19, USB end at top) ────────────────────────────
-  { row:  0, side: 'L', pin:  0,  label: 'D0',    aLabel: null,  adc: false },
-  { row:  1, side: 'L', pin:  1,  label: 'D1',    aLabel: null,  adc: false },
-  { row:  2, side: 'L', pin:  2,  label: 'D2',    aLabel: null,  adc: false },
-  { row:  3, side: 'L', pin:  3,  label: 'D3',    aLabel: null,  adc: false },
-  { row:  4, side: 'L', pin:  4,  label: 'D4',    aLabel: null,  adc: false },
-  { row:  5, side: 'L', pin:  5,  label: 'D5',    aLabel: null,  adc: false },
-  { row:  6, side: 'L', pin:  6,  label: 'D6',    aLabel: null,  adc: false },
-  { row:  7, side: 'L', pin:  7,  label: 'D7',    aLabel: null,  adc: false },
-  { row:  8, side: 'L', pin:  8,  label: 'D8',    aLabel: null,  adc: false },
-  { row:  9, side: 'L', pin:  9,  label: 'D9',    aLabel: null,  adc: false },
-  { row: 10, side: 'L', pin: 10,  label: 'D10',   aLabel: null,  adc: false },
-  { row: 11, side: 'L', pin: 11,  label: 'D11',   aLabel: null,  adc: false },
-  { row: 12, side: 'L', pin: 12,  label: 'D12',   aLabel: null,  adc: false },
-  { row: 13, side: 'L', pin: 13,  label: 'D13',   aLabel: null,  adc: false },
-  { row: 14, side: 'L', pin: 14,  label: 'D14',   aLabel: null,  adc: false },
-  { row: 15, side: 'L', pin: null, label: 'AIN L', aLabel: null,  adc: false },
-  { row: 16, side: 'L', pin: null, label: 'AIN R', aLabel: null,  adc: false },
-  { row: 17, side: 'L', pin: null, label: 'AOUT L', aLabel: null, adc: false },
-  { row: 18, side: 'L', pin: null, label: 'AOUT R', aLabel: null, adc: false },
-  { row: 19, side: 'L', pin: null, label: 'AGND',  aLabel: null,  adc: false },
-  // ── Right header (rows 0–19, USB end at top; CSV rows 40→22) ──────────
-  { row:  0, side: 'R', pin: null, label: 'GND',   aLabel: null,  adc: false },
-  { row:  1, side: 'R', pin: null, label: 'VIN',   aLabel: null,  adc: false },
-  { row:  2, side: 'R', pin: null, label: '3V3D',  aLabel: null,  adc: false },
-  { row:  3, side: 'R', pin: 30,   label: 'D30',   aLabel: null,  adc: false },
-  { row:  4, side: 'R', pin: 29,   label: 'D29',   aLabel: null,  adc: false },
-  { row:  5, side: 'R', pin: 28,   label: 'D28',   aLabel: 'A11', adc: true  },
-  { row:  6, side: 'R', pin: 27,   label: 'D27',   aLabel: null,  adc: false },
-  { row:  7, side: 'R', pin: 26,   label: 'D26',   aLabel: null,  adc: false },
-  { row:  8, side: 'R', pin: 25,   label: 'D25',   aLabel: 'A10', adc: true  },
-  { row:  9, side: 'R', pin: 24,   label: 'D24',   aLabel: 'A9',  adc: true  },
-  { row: 10, side: 'R', pin: 23,   label: 'D23',   aLabel: 'A8',  adc: true  },
-  { row: 11, side: 'R', pin: 22,   label: 'D22',   aLabel: 'A7',  adc: true  },
-  { row: 12, side: 'R', pin: 21,   label: 'D21',   aLabel: 'A6',  adc: true  },
-  { row: 13, side: 'R', pin: 20,   label: 'D20',   aLabel: 'A5',  adc: true  },
-  { row: 14, side: 'R', pin: 19,   label: 'D19',   aLabel: 'A4',  adc: true  },
-  { row: 15, side: 'R', pin: 18,   label: 'D18',   aLabel: 'A3',  adc: true  },
-  { row: 16, side: 'R', pin: 17,   label: 'D17',   aLabel: 'A2',  adc: true  },
-  { row: 17, side: 'R', pin: 16,   label: 'D16',   aLabel: 'A1',  adc: true  },
-  { row: 18, side: 'R', pin: 15,   label: 'D15',   aLabel: 'A0',  adc: true  },
-  { row: 19, side: 'R', pin: null,  label: '+3V3A', aLabel: null,  adc: false },
-];
+// Daisy Seed pin definitions for the schematic SVG — generated from
+// resources/Daisy_Seed_Rev4_Pinout.csv, see src/devices/pin-table.gen.ts.
+export { PIN_DEFS };
+export type { PinDef };
 
 // ── HTML builder ─────────────────────────────────────────────────────────────
 
@@ -81,6 +27,32 @@ function safeJson(obj: unknown): string {
     .replace(/&/g, '\\u0026')
     .replace(/</g, '\\u003c')
     .replace(/>/g, '\\u003e');
+}
+
+// FR-DEV-2: one CSS rule and one popup button per registry entry, so adding
+// a device changes what's generated here without editing this file again.
+function pinDeviceCssRules(): string {
+  return registryIds()
+    .map(id => {
+      const d = REGISTRY[id]!;
+      return `    .pin-${id}    circle { fill: ${d.pinFill}; stroke: ${d.accentColor}; stroke-width: 2; }`;
+    })
+    .join('\n');
+}
+
+// The pot button carries an extra non-ADC-pin warning badge — pin-suitability
+// warnings aren't part of the registry descriptor (only pot has one today),
+// so this stays a small special case rather than a registry field.
+function popupDeviceButtonsHtml(): string {
+  return registryIds()
+    .map(id => {
+      const d = REGISTRY[id]!;
+      const warnBadge = id === 'pot'
+        ? '<span class="warn-badge" id="pot-warn" style="display:none">⚠ non-ADC pin</span>'
+        : '';
+      return `      <button class="popup-btn" id="btn-${id}">${d.label}${warnBadge}</button>`;
+    })
+    .join('\n');
 }
 
 export function buildHtml(wiredPins: WiredPin[], nonce: string, scriptUri: string): string {
@@ -107,9 +79,7 @@ export function buildHtml(wiredPins: WiredPin[], nonce: string, scriptUri: strin
     .pin-unassigned circle { fill: #3c3c3c; stroke: #555; stroke-width: 1; }
     .pin-adc circle { fill: #2a3a2a; stroke: #4a7a4a; stroke-width: 1; }
     .pin-adc:hover circle { stroke: #4ec9b0; }
-    .pin-pot    circle { fill: #1a4a4a; stroke: #4ec9b0; stroke-width: 2; }
-    .pin-button circle { fill: #1a2a4a; stroke: #569cd6; stroke-width: 2; }
-    .pin-led    circle { fill: #4a1a1a; stroke: #f04a4a; stroke-width: 2; }
+${pinDeviceCssRules()}
     .pin-power  circle { fill: #2a2a2a; stroke: #444; stroke-width: 1; }
     /* Labels */
     .pin-label { font-size: 10px; fill: #d4d4d4; font-family: monospace; }
@@ -175,9 +145,7 @@ export function buildHtml(wiredPins: WiredPin[], nonce: string, scriptUri: strin
     <h2 id="popup-title">Pin D?</h2>
     <!-- Unassigned view -->
     <div id="popup-assign">
-      <button class="popup-btn" id="btn-pot">Pot<span class="warn-badge" id="pot-warn" style="display:none">⚠ non-ADC pin</span></button>
-      <button class="popup-btn" id="btn-button">Button</button>
-      <button class="popup-btn" id="btn-led">LED</button>
+${popupDeviceButtonsHtml()}
       <div id="id-row">
         <div id="id-label">id / varname</div>
         <input type="text" id="id-input" placeholder="e.g. pot1"/>

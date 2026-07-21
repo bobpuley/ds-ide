@@ -71,6 +71,11 @@ const NARROWERS: Record<string, Narrower> = {
     return { type: 'led', gpioPin, lit };
   },
   replayDone: () => ({ type: 'replayDone' }),
+  protocolVersion: (obj) => {
+    const version = getNumber(obj, 'version');
+    if (version === undefined) return undefined;
+    return { type: 'protocolVersion', version };
+  },
 };
 
 // Validates a just-JSON-parsed IPC line against the known message vocabulary,
