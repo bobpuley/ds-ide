@@ -6,6 +6,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <cctype>
 #include <cerrno>
 #include <chrono>
 #include <cmath>
@@ -234,10 +235,10 @@ static bool clamp_pot_value(float v, float& out) {
     return true;
 }
 
-// Parse {"0":0.5,"1":0.3} (numbers) or {"28":true,...} (bools) and invoke
-// cb(key, rawValueString) for each entry. The caller interprets the value.
+// Parse {"pot0":0.5,"btn3":1} and invoke cb(id, rawValueString) for each
+// entry. The caller interprets the id and the value.
 static void parse_kv_object(const std::string& obj,
-                            void (*cb)(int, const std::string&)) {
+                            void (*cb)(const std::string&, const std::string&)) {
     size_t pos = 0;
     while (pos < obj.size()) {
         auto ks = obj.find('"', pos);
@@ -252,9 +253,37 @@ static void parse_kv_object(const std::string& obj,
         auto vs = pos;
         while (pos < obj.size() && obj[pos] != ',' && obj[pos] != '}') ++pos;
         std::string val = obj.substr(vs, pos - vs);
-        try { cb(std::stoi(key), val); } catch (...) {}
+        cb(key, val);
         ++pos;
     }
+}
+
+// Decodes a controlValue/controlSnapshot id (e.g. "pot3", "btn17") into a
+// device kind ('P' pot, 'B' button) plus its numeric index, or returns false
+// for an unrecognized prefix, non-numeric suffix, or an index outside that
+// kind's valid range (FR-DEV-1) — the id-side counterpart to
+// clamp_pot_value's value-side rejection. This is the only place a device's
+// identity is recovered from the wire; every other handler below is
+// kind-agnostic.
+bool decode_control_id(const std::string& id, char& kind, int& index) {
+    size_t prefix_len;
+    char k;
+    int max;
+    if (id.rfind("pot", 0) == 0) { prefix_len = 3; k = 'P'; max = 12; }
+    else if (id.rfind("btn", 0) == 0) { prefix_len = 3; k = 'B'; max = EmulatorState::kNumGpioPins; }
+    else return false;
+
+    if (id.size() <= prefix_len) return false;
+    for (size_t i = prefix_len; i < id.size(); ++i) {
+        if (!std::isdigit(static_cast<unsigned char>(id[i]))) return false;
+    }
+    try {
+        int n = std::stoi(id.substr(prefix_len));
+        if (n < 0 || n >= max) return false;
+        kind = k;
+        index = n;
+        return true;
+    } catch (...) { return false; }
 }
 
 // ---- JSON emitters ----------------------------------------------------------
@@ -335,65 +364,58 @@ void dispatch(const std::string& line) {
             catch (...) { std::fprintf(stderr, "[daisy-emu] stof failed: sine.amplitude\n"); }
         }
     }
-    else if (type == "pot") {
-        auto ch  = json_get(line, "channel");
+    else if (type == "controlValue") {
+        // FR-DEV-1: pot/potSnapshot/button/buttonSnapshot collapse into
+        // controlValue/controlSnapshot — device identity now lives in the
+        // id field (decode_control_id) rather than in the message type, so
+        // adding a device here adds no new message kind.
+        auto id  = json_get(line, "id");
         auto val = json_get(line, "value");
-        if (!ch.empty() && !val.empty()) {
+        if (!id.empty() && !val.empty()) {
             try {
-                int c = std::stoi(ch);
-                if (c >= 0 && c < 12) {
-                    // FR-QA-EMU-5: clamp to [0,1] and reject NaN/Inf, matching
-                    // outputVolume's clamp behavior — a non-finite or wildly
-                    // out-of-range pot value must never reach effect code.
-                    float v;
-                    if (clamp_pot_value(std::stof(val), v)) {
-                        g_state.pot_values[c].store(v);
+                char kind; int idx;
+                if (decode_control_id(id, kind, idx)) {
+                    float raw = std::stof(val);
+                    if (kind == 'P') {
+                        // FR-QA-EMU-5: clamp to [0,1] and reject NaN/Inf, matching
+                        // outputVolume's clamp behavior — a non-finite or wildly
+                        // out-of-range pot value must never reach effect code.
+                        float v;
+                        if (clamp_pot_value(raw, v)) {
+                            g_state.pot_values[idx].store(v);
+                            // Hold recorder_mutex across active() check + enqueue to close TOCTOU (AC-46).
+                            std::lock_guard<std::mutex> lk(g_state.recorder_mutex);
+                            if (g_state.recorder.active())
+                                g_state.recorder.enqueuePot(static_cast<uint8_t>(idx), v);
+                        }
+                    } else if (std::isfinite(raw)) {
+                        bool pr = (raw != 0.f);
+                        g_state.button_states[idx].store(pr);
                         // Hold recorder_mutex across active() check + enqueue to close TOCTOU (AC-46).
                         std::lock_guard<std::mutex> lk(g_state.recorder_mutex);
                         if (g_state.recorder.active())
-                            g_state.recorder.enqueuePot(static_cast<uint8_t>(c), v);
+                            g_state.recorder.enqueueButton(static_cast<uint8_t>(idx), pr);
                     }
                 }
-            } catch (...) { std::fprintf(stderr, "[daisy-emu] stoi/stof failed: pot\n"); }
+            } catch (...) { std::fprintf(stderr, "[daisy-emu] stof failed: controlValue\n"); }
         }
     }
-    else if (type == "potSnapshot") {
+    else if (type == "controlSnapshot") {
         auto obj = json_get(line, "values");
         if (!obj.empty()) {
-            parse_kv_object(obj, [](int c, const std::string& v) {
-                if (c >= 0 && c < 12) {
-                    try {
+            parse_kv_object(obj, [](const std::string& id, const std::string& v) {
+                char kind; int idx;
+                if (!decode_control_id(id, kind, idx)) return;
+                try {
+                    float raw = std::stof(v);
+                    if (kind == 'P') {
                         float clamped;
-                        if (clamp_pot_value(std::stof(v), clamped))
-                            g_state.pot_values[c].store(clamped);
-                    } catch (...) {}
-                }
-            });
-        }
-    }
-    else if (type == "button") {
-        auto pin     = json_get(line, "gpioPin");
-        auto pressed = json_get(line, "pressed");
-        if (!pin.empty()) {
-            try {
-                int p = std::stoi(pin);
-                if (p >= 0 && p < EmulatorState::kNumGpioPins) {
-                    bool pr = (pressed == "true");
-                    g_state.button_states[p].store(pr);
-                    // Hold recorder_mutex across active() check + enqueue to close TOCTOU (AC-46).
-                    std::lock_guard<std::mutex> lk(g_state.recorder_mutex);
-                    if (g_state.recorder.active())
-                        g_state.recorder.enqueueButton(static_cast<uint8_t>(p), pr);
-                }
-            } catch (...) { std::fprintf(stderr, "[daisy-emu] stoi failed: button.gpioPin\n"); }
-        }
-    }
-    else if (type == "buttonSnapshot") {
-        auto obj = json_get(line, "values");
-        if (!obj.empty()) {
-            parse_kv_object(obj, [](int p, const std::string& v) {
-                if (p >= 0 && p < EmulatorState::kNumGpioPins)
-                    g_state.button_states[p].store(v == "true");
+                        if (clamp_pot_value(raw, clamped))
+                            g_state.pot_values[idx].store(clamped);
+                    } else if (std::isfinite(raw)) {
+                        g_state.button_states[idx].store(raw != 0.f);
+                    }
+                } catch (...) {}
             });
         }
     }

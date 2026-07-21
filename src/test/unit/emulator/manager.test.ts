@@ -199,31 +199,65 @@ describe('EmulatorManager', () => {
   });
 
   describe('sendPot()', () => {
-    it('sends correct JSON for a pot move', async () => {
+    it('sends a controlValue with a potN id (FR-DEV-1)', async () => {
       await manager.build(
         { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
         () => undefined,
       );
       await manager.deploy(() => undefined);
       manager.sendPot(3, 0.75);
-      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'pot', channel: 3, value: 0.75 });
+      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'controlValue', id: 'pot3', value: 0.75 });
     });
   });
 
-  describe('sendPotSnapshot()', () => {
-    it('sends a potSnapshot with all channel values', async () => {
+  describe('sendControlValue()', () => {
+    it('sends a well-formed controlValue as-is', async () => {
       await manager.build(
         { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
         () => undefined,
       );
       await manager.deploy(() => undefined);
-      const values = { 0: 0.5, 1: 0.3 };
-      manager.sendPotSnapshot(values);
-      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'potSnapshot', values });
+      manager.sendControlValue('pot5', 0.2);
+      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'controlValue', id: 'pot5', value: 0.2 });
+    });
+
+    it('drops an unknown id instead of sending it (FR-DEV-1)', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      manager.sendControlValue('pot12', 0.2);
+      expect(ipcClientStub.send).not.toHaveBeenCalled();
+    });
+
+    it('drops a non-finite value instead of sending it (FR-DEV-1)', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      manager.sendControlValue('pot0', NaN);
+      expect(ipcClientStub.send).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('sendControlSnapshot()', () => {
+    it('merges pot and button values into one controlSnapshot (FR-DEV-1)', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      manager.sendControlSnapshot({ 0: 0.5, 1: 0.3 }, { 28: true, 25: false });
+      expect(ipcClientStub.send).toHaveBeenCalledWith({
+        type: 'controlSnapshot',
+        values: { pot0: 0.5, pot1: 0.3, btn28: 1, btn25: 0 },
+      });
     });
 
     it('is a no-op when not connected', () => {
-      manager.sendPotSnapshot({ 0: 0.5 });
+      manager.sendControlSnapshot({ 0: 0.5 }, {});
       expect(ipcClientStub.send).not.toHaveBeenCalled();
     });
   });
@@ -299,31 +333,21 @@ describe('EmulatorManager', () => {
     });
   });
 
-  describe('sendButton() / sendButtonSnapshot()', () => {
-    it('sends a button press IPC message', async () => {
+  describe('sendButton()', () => {
+    it('sends a controlValue with a btnN id, pressed encoded as 1/0 (FR-DEV-1)', async () => {
       await manager.build(
         { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
         () => undefined,
       );
       await manager.deploy(() => undefined);
       manager.sendButton(28, true);
-      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'button', gpioPin: 28, pressed: true });
+      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'controlValue', id: 'btn28', value: 1 });
+      manager.sendButton(28, false);
+      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'controlValue', id: 'btn28', value: 0 });
     });
 
-    it('sends a buttonSnapshot IPC message', async () => {
-      await manager.build(
-        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
-        () => undefined,
-      );
-      await manager.deploy(() => undefined);
-      const values = { 28: true, 25: false };
-      manager.sendButtonSnapshot(values);
-      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'buttonSnapshot', values });
-    });
-
-    it('button sends are a no-op when not connected', () => {
+    it('is a no-op when not connected', () => {
       manager.sendButton(28, true);
-      manager.sendButtonSnapshot({ 28: true });
       expect(ipcClientStub.send).not.toHaveBeenCalled();
     });
   });

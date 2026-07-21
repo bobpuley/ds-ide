@@ -477,51 +477,119 @@ static void test_gpio_canonical_index() {
           "A11 canonical index within kNumGpioPins");
 }
 
-// ---- FR-QA-EMU-5: pot/potSnapshot IPC handlers clamp + reject non-finite ---
+// ---- FR-DEV-1: controlValue/controlSnapshot IPC handlers ------------------
+// (formerly separate pot/potSnapshot/button/buttonSnapshot message kinds —
+// FR-QA-EMU-5's clamp/reject behavior is preserved exactly, now reached via
+// a single message kind with device identity carried in the id field.)
 
-static void test_pot_clamps_and_rejects_nonfinite() {
-    std::printf("--- FR-QA-EMU-5: \"pot\" handler clamps to [0,1] and rejects non-finite ---\n");
+static void test_control_value_pot_clamps_and_rejects_nonfinite() {
+    std::printf("--- FR-DEV-1: \"controlValue\" (pot) clamps to [0,1] and rejects non-finite ---\n");
 
     for (auto& v : g_state.pot_values) v.store(0.f);
 
-    dispatch(R"({"type":"pot","channel":0,"value":0.5})");
+    dispatch(R"({"type":"controlValue","id":"pot0","value":0.5})");
     CHECK(std::fabs(g_state.pot_values[0].load() - 0.5f) < 1e-6f,
           "an in-range value is stored as-is");
 
-    dispatch(R"({"type":"pot","channel":1,"value":-3.0})");
+    dispatch(R"({"type":"controlValue","id":"pot1","value":-3.0})");
     CHECK(g_state.pot_values[1].load() == 0.f, "a negative value clamps to 0");
 
-    dispatch(R"({"type":"pot","channel":2,"value":7.5})");
+    dispatch(R"({"type":"controlValue","id":"pot2","value":7.5})");
     CHECK(g_state.pot_values[2].load() == 1.f, "a value above 1 clamps to 1");
 
     g_state.pot_values[3].store(0.42f);
-    dispatch(R"({"type":"pot","channel":3,"value":NaN})");
+    dispatch(R"({"type":"controlValue","id":"pot3","value":NaN})");
     CHECK(g_state.pot_values[3].load() == 0.42f,
           "a NaN value is rejected — the previous value is left in place");
 
     g_state.pot_values[4].store(0.11f);
-    dispatch(R"({"type":"pot","channel":4,"value":Infinity})");
+    dispatch(R"({"type":"controlValue","id":"pot4","value":Infinity})");
     CHECK(g_state.pot_values[4].load() == 0.11f,
           "an Infinity value is rejected — the previous value is left in place");
 
     g_state.pot_values[5].store(0.77f);
-    dispatch(R"({"type":"pot","channel":5,"value":-Infinity})");
+    dispatch(R"({"type":"controlValue","id":"pot5","value":-Infinity})");
     CHECK(g_state.pot_values[5].load() == 0.77f,
           "a -Infinity value is rejected — the previous value is left in place");
+
+    dispatch(R"({"type":"controlValue","id":"pot12","value":0.9})");
+    CHECK(g_state.pot_values[0].load() != 0.9f,
+          "an id past the pot range (pot12) is rejected without touching any pot slot");
+
+    dispatch(R"({"type":"controlValue","id":"nope3","value":0.9})");
+    CHECK(true, "an unrecognized id prefix is rejected without crashing");
 }
 
-static void test_pot_snapshot_clamps_and_rejects_nonfinite() {
-    std::printf("--- FR-QA-EMU-5: \"potSnapshot\" handler clamps to [0,1] and rejects non-finite ---\n");
+static void test_control_snapshot_pot_clamps_and_rejects_nonfinite() {
+    std::printf("--- FR-DEV-1: \"controlSnapshot\" (pot) clamps to [0,1] and rejects non-finite ---\n");
 
     for (auto& v : g_state.pot_values) v.store(0.f);
 
-    dispatch(R"({"type":"potSnapshot","values":{"0":0.25,"1":-5,"2":9,"3":NaN}})");
+    dispatch(R"({"type":"controlSnapshot","values":{"pot0":0.25,"pot1":-5,"pot2":9,"pot3":NaN}})");
     CHECK(std::fabs(g_state.pot_values[0].load() - 0.25f) < 1e-6f,
           "an in-range snapshot value is stored as-is");
     CHECK(g_state.pot_values[1].load() == 0.f, "a negative snapshot value clamps to 0");
     CHECK(g_state.pot_values[2].load() == 1.f, "an over-range snapshot value clamps to 1");
     CHECK(g_state.pot_values[3].load() == 0.f,
           "a NaN snapshot value is rejected — the (reset) prior value is left in place");
+}
+
+static void test_control_value_button_sets_state() {
+    std::printf("--- FR-DEV-1: \"controlValue\" (button) sets button_states by id ---\n");
+
+    for (auto& b : g_state.button_states) b.store(false);
+
+    dispatch(R"({"type":"controlValue","id":"btn0","value":1})");
+    CHECK(g_state.button_states[0].load() == true, "a non-zero value presses the button");
+
+    dispatch(R"({"type":"controlValue","id":"btn0","value":0})");
+    CHECK(g_state.button_states[0].load() == false, "a zero value releases the button");
+
+    g_state.button_states[1].store(true);
+    dispatch(R"({"type":"controlValue","id":"btn1","value":NaN})");
+    CHECK(g_state.button_states[1].load() == true,
+          "a NaN value is rejected — the previous state is left in place");
+
+    dispatch(R"({"type":"controlValue","id":"btn64","value":1})");
+    CHECK(g_state.button_states[0].load() == false,
+          "an id past the button range (btn64, kNumGpioPins==64) is rejected");
+}
+
+static void test_control_snapshot_mixed_pot_and_button() {
+    std::printf("--- FR-DEV-1: \"controlSnapshot\" carries pot and button ids in one message ---\n");
+
+    for (auto& v : g_state.pot_values) v.store(0.f);
+    for (auto& b : g_state.button_states) b.store(false);
+
+    dispatch(R"({"type":"controlSnapshot","values":{"pot3":0.6,"btn7":1,"btn8":0}})");
+    CHECK(std::fabs(g_state.pot_values[3].load() - 0.6f) < 1e-6f,
+          "a pot id in a mixed snapshot is stored");
+    CHECK(g_state.button_states[7].load() == true,
+          "a button id in a mixed snapshot is stored (pressed)");
+    CHECK(g_state.button_states[8].load() == false,
+          "a button id in a mixed snapshot is stored (released)");
+}
+
+// ---- FR-DEV-1: decode_control_id() id-prefix decoding ----------------------
+
+static void test_decode_control_id() {
+    std::printf("--- FR-DEV-1: decode_control_id() ---\n");
+
+    char kind; int idx;
+    CHECK(decode_control_id("pot0", kind, idx) && kind == 'P' && idx == 0,
+          "\"pot0\" decodes to pot index 0");
+    CHECK(decode_control_id("pot11", kind, idx) && kind == 'P' && idx == 11,
+          "\"pot11\" decodes to pot index 11 (last valid pot)");
+    CHECK(!decode_control_id("pot12", kind, idx), "\"pot12\" is out of range (max 12 pots)");
+    CHECK(decode_control_id("btn0", kind, idx) && kind == 'B' && idx == 0,
+          "\"btn0\" decodes to button index 0");
+    CHECK(decode_control_id("btn63", kind, idx) && kind == 'B' && idx == 63,
+          "\"btn63\" decodes to button index 63 (last valid button)");
+    CHECK(!decode_control_id("btn64", kind, idx), "\"btn64\" is out of range (kNumGpioPins==64)");
+    CHECK(!decode_control_id("led3", kind, idx), "an unrecognized prefix is rejected");
+    CHECK(!decode_control_id("pot", kind, idx), "a bare prefix with no numeric suffix is rejected");
+    CHECK(!decode_control_id("potX", kind, idx), "a non-numeric suffix is rejected");
+    CHECK(!decode_control_id("", kind, idx), "an empty id is rejected");
 }
 
 // ---- FR-EMU-6: json_get() key lookup doesn't match inside string values ----
@@ -535,8 +603,8 @@ static void test_json_get_basic_fields() {
     CHECK(json_get(msg, "blockSize") == "48", "second number field extracted correctly");
     CHECK(json_get(msg, "missing").empty(), "absent key returns empty string");
 
-    std::string nested = R"({"type":"potSnapshot","values":{"0":0.5,"1":0.3}})";
-    CHECK(json_get(nested, "values") == R"({"0":0.5,"1":0.3})",
+    std::string nested = R"({"type":"controlSnapshot","values":{"pot0":0.5,"pot1":0.3}})";
+    CHECK(json_get(nested, "values") == R"({"pot0":0.5,"pot1":0.3})",
           "nested object value extracted as its raw substring");
 }
 
@@ -1243,8 +1311,11 @@ int main() {
     test_scope_decimation_scales_with_frame_size();
     test_spsc_queue_oversize_truncation();
     test_gpio_canonical_index();
-    test_pot_clamps_and_rejects_nonfinite();
-    test_pot_snapshot_clamps_and_rejects_nonfinite();
+    test_control_value_pot_clamps_and_rejects_nonfinite();
+    test_control_snapshot_pot_clamps_and_rejects_nonfinite();
+    test_control_value_button_sets_state();
+    test_control_snapshot_mixed_pot_and_button();
+    test_decode_control_id();
     test_json_get_basic_fields();
     test_json_get_ignores_key_literal_inside_string_value();
     test_json_get_malformed_input_terminates();

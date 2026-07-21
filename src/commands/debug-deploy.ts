@@ -19,7 +19,10 @@ export async function debugDeploy(
     const defs = loadDefs();
     showPanel(defs, getPotSnapshot());
     await manager.deploy((line) => channel.appendLine(line));
-    manager.sendPotSnapshot(getPotSnapshot());
+    // Debug-attach path only ever replayed pot state (button snapshot was
+    // never sent here even before FR-DEV-1) — preserved as-is by passing an
+    // empty button-values map into the now-unified controlSnapshot.
+    manager.sendControlSnapshot(getPotSnapshot(), {});
     sendSine?.();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

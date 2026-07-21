@@ -34,7 +34,7 @@ wrong entry silently corrupts conflict checking rather than merely mislabelling 
 
 ---
 
-### [ ] refactor: replace per-device IPC messages with controlValue/controlSnapshot (FR-DEV-1)
+### [x] refactor: replace per-device IPC messages with controlValue/controlSnapshot (FR-DEV-1)
 
 `pot`, `potSnapshot`, `button` and `buttonSnapshot` encode device identity in the message kind, so
 every new device adds two more. Device identity moves into an `id` field.

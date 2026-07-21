@@ -20,6 +20,15 @@ std::string json_get(const std::string& json, const std::string& key);
 // backslashes, and control characters).
 std::string json_escape(const std::string& s);
 
+// Exposed (non-static) for unit testing (FR-DEV-1) — otherwise only used
+// internally by dispatch()'s controlValue/controlSnapshot handlers.
+//
+// Decodes a controlValue/controlSnapshot id (e.g. "pot3", "btn17") into a
+// device kind ('P' pot, 'B' button) plus its numeric index. Returns false
+// for an unrecognized prefix, non-numeric suffix, or an index outside that
+// kind's valid range.
+bool decode_control_id(const std::string& id, char& kind, int& index);
+
 // Exposed (non-static) for unit testing (FR-QA-EMU-5) — otherwise only
 // called internally, once per received line, by run_ipc_server()'s client
 // loop. Parses one JSON line and applies its effect to g_state.

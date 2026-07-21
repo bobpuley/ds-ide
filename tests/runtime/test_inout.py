@@ -84,10 +84,10 @@ def test_inout_block_callback(exe: str) -> None:
     with run_emulator(exe, SOCKET) as client:
         client.send({"type": "config", "sampleRate": 48000, "blockSize": 48})
         # ADC1 = "audio input" for this effect; set to 0.6 (constant signal level)
-        client.send({"type": "pot", "channel": 1, "value": 0.6})
+        client.send({"type": "controlValue", "id": "pot1", "value": 0.6})
         # ADC0 = volume pot; start high.  Send before transport so the main loop
         # picks up the updated value (it re-reads every 500 ms via System::Delay).
-        client.send({"type": "pot", "channel": 0, "value": 0.8})
+        client.send({"type": "controlValue", "id": "pot0", "value": 0.8})
         # Wait for inout's main loop to re-read ADC0 and update `volume` to 0.8.
         # The loop sleeps 500 ms per iteration, so 600 ms is a safe margin.
         time.sleep(0.6)
@@ -118,7 +118,7 @@ def test_inout_block_callback(exe: str) -> None:
         # Collect a large batch so that old high-volume frames buffered in the
         # socket during the wait are flushed; the tail of the batch reflects the
         # new volume once the main loop has re-read ADC0.
-        client.send({"type": "pot", "channel": 0, "value": 0.1})
+        client.send({"type": "controlValue", "id": "pot0", "value": 0.1})
         # Collect 30 frames (~1 s). The first ~18 are buffered old frames (high
         # volume); after ~500 ms the main loop picks up the new value and the
         # last frames show low amplitude.

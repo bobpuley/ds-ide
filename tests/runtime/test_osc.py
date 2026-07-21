@@ -47,7 +47,7 @@ def test_osc_produces_output(exe: str) -> None:
     """Verify scope output is non-silent and changes with pot position."""
     with run_emulator(exe, SOCKET) as client:
         client.send({"type": "config",    "sampleRate": 48000, "blockSize": 48})
-        client.send({"type": "pot",       "channel": 0, "value": 0.25})
+        client.send({"type": "controlValue", "id": "pot0", "value": 0.25})
         client.send({"type": "transport", "action": "start"})
 
         low_frames = collect_scope_frames(client, n=3)
@@ -56,7 +56,7 @@ def test_osc_produces_output(exe: str) -> None:
         assert low_amp > 0.01, f"Osc silent at pot=0.25: mean_abs={low_amp:.4f}"
 
         # Move pot to high value → different frequency
-        client.send({"type": "pot", "channel": 0, "value": 0.75})
+        client.send({"type": "controlValue", "id": "pot0", "value": 0.75})
         high_frames = collect_scope_frames(client, n=3)
         high_amp = mean_abs([s for frame in high_frames for s in frame])
         assert high_amp > 0.01, f"Osc silent at pot=0.75: mean_abs={high_amp:.4f}"

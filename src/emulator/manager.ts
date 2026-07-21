@@ -5,6 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { EventEmitter } from 'events';
 import { IpcClient, IpcMessage } from './ipc-client';
+import { potControlId, buttonControlId, narrowControlValue, narrowControlSnapshot } from '../ipc/control-values';
 
 const SOCKET_TIMEOUT_MS = 10_000;
 // Grace period between SIGTERM and SIGKILL escalation when reclaiming a
@@ -229,12 +230,39 @@ export class EmulatorManager extends EventEmitter {
     this.ipcClient?.send({ type: 'sine', freq, amplitude });
   }
 
+  // FR-DEV-1: pot/potSnapshot/button/buttonSnapshot collapse into
+  // controlValue/controlSnapshot on the wire — device identity lives in the
+  // id field (potN / btnN for now) rather than the message kind.
   sendPot(channel: number, value: number): void {
-    this.ipcClient?.send({ type: 'pot', channel, value });
+    this.sendControlValue(potControlId(channel), value);
   }
 
-  sendPotSnapshot(values: Record<number, number>): void {
-    this.ipcClient?.send({ type: 'potSnapshot', values });
+  sendControlValue(id: string, value: number): void {
+    const msg = narrowControlValue(id, value);
+    if (!msg) {
+      console.warn(`ds-ide: dropped invalid controlValue (id=${id}, value=${value})`);
+      return;
+    }
+    this.ipcClient?.send({ type: 'controlValue', id: msg.id, value: msg.value });
+  }
+
+  // Post-(re)deploy control-state replay (FR-CT-11) — one controlSnapshot
+  // carrying every pot's and button's current value, rather than a separate
+  // *Snapshot message per device type.
+  sendControlSnapshot(potValues: Record<number, number>, buttonValues: Record<number, boolean>): void {
+    const values: Record<string, number> = {};
+    for (const [channel, value] of Object.entries(potValues)) {
+      values[potControlId(Number(channel))] = value;
+    }
+    for (const [gpioPin, pressed] of Object.entries(buttonValues)) {
+      values[buttonControlId(Number(gpioPin))] = pressed ? 1 : 0;
+    }
+    const narrowed = narrowControlSnapshot(values);
+    if (!narrowed) {
+      console.warn('ds-ide: dropped invalid controlSnapshot');
+      return;
+    }
+    this.ipcClient?.send({ type: 'controlSnapshot', values: narrowed });
   }
 
   sendAudioMode(mode: 'simulated' | 'realtime'): void {
@@ -253,12 +281,7 @@ export class EmulatorManager extends EventEmitter {
 
   // M10: virtual button press/release, keyed by Daisy GPIO pin number.
   sendButton(gpioPin: number, pressed: boolean): void {
-    this.ipcClient?.send({ type: 'button', gpioPin, pressed });
-  }
-
-  // M10: full button-state replay after (re)deploy (FR-CT-11).
-  sendButtonSnapshot(values: Record<number, boolean>): void {
-    this.ipcClient?.send({ type: 'buttonSnapshot', values });
+    this.sendControlValue(buttonControlId(gpioPin), pressed ? 1 : 0);
   }
 
   // M15: master output volume (0.0–1.0) — scales emulator output before CoreAudio write.

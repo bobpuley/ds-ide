@@ -8,11 +8,11 @@ import type { ControllerDef } from '../../../controllers/controller-config';
 function makeManager(overrides: Partial<{
   deploy: () => Promise<void>;
   childPid: number | undefined;
-  sendPotSnapshot: (v: Record<number, number>) => void;
+  sendControlSnapshot: (pots: Record<number, number>, buttons: Record<number, boolean>) => void;
 }> = {}): EmulatorManager {
   const em = new EventEmitter() as unknown as EmulatorManager;
   (em as unknown as Record<string, unknown>)['deploy'] = overrides.deploy ?? vi.fn(() => Promise.resolve());
-  (em as unknown as Record<string, unknown>)['sendPotSnapshot'] = overrides.sendPotSnapshot ?? vi.fn();
+  (em as unknown as Record<string, unknown>)['sendControlSnapshot'] = overrides.sendControlSnapshot ?? vi.fn();
   Object.defineProperty(em, 'childPid', {
     get: () => 'childPid' in overrides ? overrides.childPid : 42,
     configurable: true,
@@ -46,14 +46,14 @@ describe('debugDeploy()', () => {
     expect(config['pid']).toBe(1234);
   });
 
-  it('sends pot snapshot after deploy', async () => {
-    const sendPotSnapshot = vi.fn();
-    const manager = makeManager({ sendPotSnapshot });
+  it('sends pot snapshot after deploy, with an empty button map (pre-existing debug-path asymmetry, FR-DEV-1)', async () => {
+    const sendControlSnapshot = vi.fn();
+    const manager = makeManager({ sendControlSnapshot });
     const snapshot = { 0: 0.7, 1: 0.3 };
 
     await debugDeploy(manager, () => DEFS, vi.fn(), () => snapshot, undefined, makeChannel());
 
-    expect(sendPotSnapshot).toHaveBeenCalledWith(snapshot);
+    expect(sendControlSnapshot).toHaveBeenCalledWith(snapshot, {});
   });
 
   it('shows an error and skips startDebugging when deploy fails', async () => {
