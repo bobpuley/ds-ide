@@ -1,7 +1,7 @@
 # M43 — Device Registry & Protocol Foundation
 
 **Version:** 0.14.0
-**Status:** planned
+**Status:** released
 **Source:** intake 2026-07-21 — device support expansion; UX settled against `docs/mockups/v14-peripheral-ux.html`
 
 ## Goal

@@ -121,7 +121,7 @@ Full registry in [`docs/v13/05_dev-plan.md`](v13/05_dev-plan.md).
 
 | Milestone | Title | Version | Status      | File |
 |---|---|---|-------------|---|
-| M43 | Device Registry & Protocol Foundation | 0.14.0 | **in progress** | [`Milestone_M43.md`](milestones/v14/Milestone_M43.md) |
+| M43 | Device Registry & Protocol Foundation | 0.14.0 | **released**    | [`Milestone_M43.md`](milestones/v14/Milestone_M43.md) |
 | M44 | Cheap Trio — Toggle, RGB LED, Encoder | 0.15.0 | **planned**     | [`Milestone_M44.md`](milestones/v14/Milestone_M44.md) |
 | M45 | MicroSD & Bus-Peripheral UI | 0.16.0 | **planned**     | [`Milestone_M45.md`](milestones/v14/Milestone_M45.md) |
 | M46 | OLED Display | 0.17.0 | **planned**     | [`Milestone_M46.md`](milestones/v14/Milestone_M46.md) |
