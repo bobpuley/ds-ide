@@ -12,7 +12,7 @@ import { DaisyRunConfigurationProvider, DsIdeDebugAdapterDescriptorFactory, DS_I
 import { parseControllerConfig, serializeControllerConfig, ControllerConfig } from './controllers/controller-config';
 import { parseControlsConvention } from './controllers/controls-convention-parser';
 import { ControlsConfig, ControlsPlacement } from './webview/scope-panel';
-import { WiredPin, DeviceType, PIN_DEFS } from './wiring/wiring-panel';
+import { WiredPin, DeviceType, PIN_DEFS, expandToWiredPins } from './wiring/wiring-panel';
 import { insertIntoSource, removeFromSource, insertInitIntoSource, removeInitFromSource } from './wiring/controls-writer';
 import { allocateAdjacentPins } from './wiring/multi-pin-alloc';
 import { REGISTRY } from './devices/registry';
@@ -465,9 +465,7 @@ export function activate(context: vscode.ExtensionContext): void {
       // with the Wiring view until the user manually saves (FR-IPC-5).
       await doc.save();
       const { controls } = parseControlsConvention(newText);
-      const wiredPinList: WiredPin[] = controls.flatMap(c =>
-        (c.pins ?? [c.pin]).map(p => ({ pinNumber: p, deviceType: c.kind as DeviceType, id: c.id })),
-      );
+      const wiredPinList: WiredPin[] = expandToWiredPins(controls);
       wiringProvider?.postWiredPins(wiredPinList);
       const cfg = await loadControllerConfig();
       controlsProvider?.postControlsConfig(await buildControlsConfig(folder, cfg));
@@ -498,9 +496,7 @@ export function activate(context: vscode.ExtensionContext): void {
       // buildControlsConfig matches newText instead of the pre-edit content.
       await doc.save();
       const { controls } = parseControlsConvention(newText);
-      const wiredPinList: WiredPin[] = controls.flatMap(c =>
-        (c.pins ?? [c.pin]).map(p => ({ pinNumber: p, deviceType: c.kind as DeviceType, id: c.id })),
-      );
+      const wiredPinList: WiredPin[] = expandToWiredPins(controls);
       wiringProvider?.postWiredPins(wiredPinList);
       const cfg = await loadControllerConfig();
       controlsProvider?.postControlsConfig(await buildControlsConfig(folder, cfg));
@@ -649,7 +645,7 @@ export function activate(context: vscode.ExtensionContext): void {
       try {
         const text = await fs.promises.readFile(effectPath, 'utf8');
         const { controls } = parseControlsConvention(text);
-        wiredPins = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
+        wiredPins = expandToWiredPins(controls);
       } catch { /* file unreadable — leave wiredPins empty */ }
     }
     wiringProvider.postWiredPins(wiredPins);
@@ -704,7 +700,12 @@ export function activate(context: vscode.ExtensionContext): void {
           try {
             const text = await fs.promises.readFile(effectPath, 'utf8');
             const { controls } = parseControlsConvention(text);
-            pins = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
+            // Reuses the same expansion as the wirePin/unwirePin handlers
+            // above (FR-DEV-8/9) — this listener re-fires on the doc.save()
+            // those handlers themselves trigger, and previously used a
+            // single-pin mapping that clobbered a multi-pin instance's
+            // display down to one highlighted pin right after wiring it.
+            pins = expandToWiredPins(controls);
           } catch { /* unreadable */ }
           wiringProvider.postWiredPins(pins);
         }

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { buildHtml, PIN_DEFS, WiredPin } from '../../../wiring/wiring-panel';
+import { buildHtml, PIN_DEFS, WiredPin, expandToWiredPins } from '../../../wiring/wiring-panel';
+import type { ConventionControl } from '../../../controllers/controls-convention-parser';
 
 // ── PIN_DEFS integrity ───────────────────────────────────────────────────────
 
@@ -66,6 +67,39 @@ describe('PIN_DEFS', () => {
     expect(d26.aLabel).toBeNull();
     expect(d28.adc).toBe(true);
     expect(d28.aLabel).toBe('A11');
+  });
+});
+
+// ── expandToWiredPins (FR-DEV-8/9 regression) ────────────────────────────────
+
+describe('expandToWiredPins', () => {
+  it('maps a single-pin control to one WiredPin', () => {
+    const controls: ConventionControl[] = [{ id: 'vol', kind: 'pot', pin: 15 }];
+    expect(expandToWiredPins(controls)).toEqual([{ pinNumber: 15, deviceType: 'pot', id: 'vol' }]);
+  });
+
+  // Regression: extension.ts used to have three independent inline copies of
+  // this mapping; one still used `pinNumber: c.pin` only after rgbled/encoder
+  // landed, so the Wiring Editor's display collapsed a 3-pin instance down to
+  // its primary pin the moment a save re-triggered that code path.
+  it('expands a pins-attachment control into one WiredPin per physical pin, all sharing its id', () => {
+    const controls: ConventionControl[] = [{ id: 'rgb1', kind: 'rgbled', pin: 5, pins: [5, 6, 7] }];
+    expect(expandToWiredPins(controls)).toEqual([
+      { pinNumber: 5, deviceType: 'rgbled', id: 'rgb1' },
+      { pinNumber: 6, deviceType: 'rgbled', id: 'rgb1' },
+      { pinNumber: 7, deviceType: 'rgbled', id: 'rgb1' },
+    ]);
+  });
+
+  it('mixes single- and multi-pin controls correctly', () => {
+    const controls: ConventionControl[] = [
+      { id: 'vol', kind: 'pot', pin: 15 },
+      { id: 'enc1', kind: 'encoder', pin: 5, pins: [5, 6, 7] },
+    ];
+    const result = expandToWiredPins(controls);
+    expect(result).toHaveLength(4);
+    expect(result.filter(p => p.id === 'enc1')).toHaveLength(3);
+    expect(result.filter(p => p.id === 'vol')).toHaveLength(1);
   });
 });
 
