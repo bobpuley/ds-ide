@@ -106,7 +106,7 @@ D7–D10 on SPI1 but D11–D12 on I2C1. Any model storing a static pin set is wr
 
 ---
 
-### [ ] chore: verify the registry can express a board bundle (FR-DEV-5)
+### [x] chore: verify the registry can express a board bundle (FR-DEV-5)
 
 Board BSP support is deferred, but if the model cannot express it, adding Pod/Patch/Petal later is a
 rewrite rather than an extension.

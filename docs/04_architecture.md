@@ -95,6 +95,15 @@ The registry must be able to express a board as a named bundle of device instanc
 plus a faceplate graphic (FR-DEV-5). Not implemented or exposed in v14 — but if M43's model cannot
 express it, adding Pod/Patch/Petal later is a rewrite rather than an extension.
 
+**Verified in M43.** `src/devices/board-bundle.ts` expresses a bundle as `{ id, label,
+faceplateGraphic, instances: [{ id, kind, pin }] }` and resolves each instance into the same
+`AttachedDevice` shape a user-wired control uses (`src/devices/attachment.ts`) — a board's internal
+pin conflicts and a board-vs-user-wiring conflict both flow through the same `findConflicts()`
+unchanged. No new abstraction was needed beyond composing the registry (device kinds) and the
+attachment model (pin resolution/conflict checking) already built for FR-DEV-2/3/4. The module is
+dormant: nothing else imports it, and it isn't exposed in any UI — it exists to be proven by its own
+test (`board-bundle.test.ts`).
+
 ### Proposed structure
 
 ```
