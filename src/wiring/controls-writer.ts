@@ -1,6 +1,7 @@
 import { parseControlsConvention } from '../controllers/controls-convention-parser';
+import { REGISTRY, DeviceType, registryIds } from '../devices/registry';
 
-export type DeviceKind = 'pot' | 'button' | 'led';
+export type DeviceKind = DeviceType;
 
 const BEGIN = '// ds-ide:controls:begin';
 const END   = '// ds-ide:controls:end';
@@ -19,11 +20,6 @@ const ADC_ARRAY_NAME = 'ds_ide_adc_cfg';
 const ADC_ARRAY_DECL_RE = /^\s*AdcChannelConfig\s+ds_ide_adc_cfg\[\d+\]\s*;\s*$/;
 const ADC_ARRAY_INIT_RE = /^\s*ds_ide_adc_cfg\[\d+\]\.InitSingle\(/;
 
-const TYPE_NAMES: Record<Exclude<DeviceKind, 'pot'>, string> = {
-  button: 'Switch',
-  led:    'Led',
-};
-
 function adcArrayDeclLine(count: number): string {
   return `  AdcChannelConfig ${ADC_ARRAY_NAME}[${count}];`;
 }
@@ -31,12 +27,15 @@ function adcArrayDeclLine(count: number): string {
 // Pots share one regenerated array declaration (see adcArrayDeclLine) instead
 // of a per-pot named variable, so a pot's "declaration" is a marker comment
 // only — it still carries id/kind/pin for parseControlsConvention and for
-// insertFromSource/removeFromSource to find and edit it (FR-CODEGEN-1).
+// insertFromSource/removeFromSource to find and edit it (FR-CODEGEN-1). A
+// device with no declaredClassName in the registry (only pot, today) gets
+// the marker-comment form; every other device gets a named instance line.
 export function declarationLine(id: string, kind: DeviceKind, pin: number): string {
-  if (kind === 'pot') {
+  const className = REGISTRY[kind]!.declaredClassName;
+  if (className === null) {
     return `// ds-ide: id=${id}, kind=${kind}, pin=${pin}`;
   }
-  return `${TYPE_NAMES[kind]} ${id}; // ds-ide: id=${id}, kind=${kind}, pin=${pin}`;
+  return `${className} ${id}; // ds-ide: id=${id}, kind=${kind}, pin=${pin}`;
 }
 
 // Pure: insert declaration into source text. Returns modified text.
@@ -78,7 +77,7 @@ export function insertIntoSource(source: string, id: string, kind: DeviceKind, p
 
 // Pure: remove declaration with the given id. Returns modified text.
 export function removeFromSource(source: string, id: string): string {
-  const ANNOTATION = /\/\/ ds-ide:\s*id=(\S+),\s*kind=(pot|button|led),\s*pin=(\d+)/;
+  const ANNOTATION = new RegExp(`// ds-ide:\\s*id=(\\S+),\\s*kind=(${registryIds().join('|')}),\\s*pin=(\\d+)`);
   const { controls: existing } = parseControlsConvention(source);
   const removedKinds = existing.filter(c => c.id === id).map(c => c.kind);
 

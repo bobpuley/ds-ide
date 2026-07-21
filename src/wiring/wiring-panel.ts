@@ -1,8 +1,10 @@
 import { randomBytes } from 'node:crypto';
 import { PIN_DEFS } from '../devices/pin-table.gen';
 import type { PinDef } from '../devices/pin-table.gen';
+import { REGISTRY, registryIds } from '../devices/registry';
+import type { DeviceType } from '../devices/registry';
 
-export type DeviceType = 'pot' | 'button' | 'led';
+export type { DeviceType };
 
 export interface WiredPin {
   pinNumber: number;
@@ -25,6 +27,32 @@ function safeJson(obj: unknown): string {
     .replace(/&/g, '\\u0026')
     .replace(/</g, '\\u003c')
     .replace(/>/g, '\\u003e');
+}
+
+// FR-DEV-2: one CSS rule and one popup button per registry entry, so adding
+// a device changes what's generated here without editing this file again.
+function pinDeviceCssRules(): string {
+  return registryIds()
+    .map(id => {
+      const d = REGISTRY[id]!;
+      return `    .pin-${id}    circle { fill: ${d.pinFill}; stroke: ${d.accentColor}; stroke-width: 2; }`;
+    })
+    .join('\n');
+}
+
+// The pot button carries an extra non-ADC-pin warning badge — pin-suitability
+// warnings aren't part of the registry descriptor (only pot has one today),
+// so this stays a small special case rather than a registry field.
+function popupDeviceButtonsHtml(): string {
+  return registryIds()
+    .map(id => {
+      const d = REGISTRY[id]!;
+      const warnBadge = id === 'pot'
+        ? '<span class="warn-badge" id="pot-warn" style="display:none">⚠ non-ADC pin</span>'
+        : '';
+      return `      <button class="popup-btn" id="btn-${id}">${d.label}${warnBadge}</button>`;
+    })
+    .join('\n');
 }
 
 export function buildHtml(wiredPins: WiredPin[], nonce: string, scriptUri: string): string {
@@ -51,9 +79,7 @@ export function buildHtml(wiredPins: WiredPin[], nonce: string, scriptUri: strin
     .pin-unassigned circle { fill: #3c3c3c; stroke: #555; stroke-width: 1; }
     .pin-adc circle { fill: #2a3a2a; stroke: #4a7a4a; stroke-width: 1; }
     .pin-adc:hover circle { stroke: #4ec9b0; }
-    .pin-pot    circle { fill: #1a4a4a; stroke: #4ec9b0; stroke-width: 2; }
-    .pin-button circle { fill: #1a2a4a; stroke: #569cd6; stroke-width: 2; }
-    .pin-led    circle { fill: #4a1a1a; stroke: #f04a4a; stroke-width: 2; }
+${pinDeviceCssRules()}
     .pin-power  circle { fill: #2a2a2a; stroke: #444; stroke-width: 1; }
     /* Labels */
     .pin-label { font-size: 10px; fill: #d4d4d4; font-family: monospace; }
@@ -119,9 +145,7 @@ export function buildHtml(wiredPins: WiredPin[], nonce: string, scriptUri: strin
     <h2 id="popup-title">Pin D?</h2>
     <!-- Unassigned view -->
     <div id="popup-assign">
-      <button class="popup-btn" id="btn-pot">Pot<span class="warn-badge" id="pot-warn" style="display:none">⚠ non-ADC pin</span></button>
-      <button class="popup-btn" id="btn-button">Button</button>
-      <button class="popup-btn" id="btn-led">LED</button>
+${popupDeviceButtonsHtml()}
       <div id="id-row">
         <div id="id-label">id / varname</div>
         <input type="text" id="id-input" placeholder="e.g. pot1"/>

@@ -65,7 +65,7 @@ rather than silently misbehaving.
 
 ---
 
-### [ ] feat: introduce the device registry as the single source of truth (FR-DEV-2)
+### [x] feat: introduce the device registry as the single source of truth (FR-DEV-2)
 
 **Affected files:** `src/devices/registry.ts`, `src/controllers/controls-convention-parser.ts`, `src/wiring/controls-writer.ts`, `src/wiring/wiring-panel.ts`, `src/sidebar/controls-editor-panel.ts`
 
