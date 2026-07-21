@@ -117,6 +117,21 @@ Full registry in [`docs/v12/05_dev-plan.md`](v12/05_dev-plan.md).
 M41 Emulator Code Quality & Hygiene · M42 Extension/Tooling Polish.
 Full registry in [`docs/v13/05_dev-plan.md`](v13/05_dev-plan.md).
 
-### v14 — planned
+### v14 (0.14.0–0.18.0) — planned
 
-*(no milestones yet)*
+| Milestone | Title | Version | Status | File |
+|---|---|---|---|---|
+| M43 | Device Registry & Protocol Foundation | 0.14.0 | planned | [`Milestone_M43.md`](milestones/v14/Milestone_M43.md) |
+| M44 | Cheap Trio — Toggle, RGB LED, Encoder | 0.15.0 | planned | [`Milestone_M44.md`](milestones/v14/Milestone_M44.md) |
+| M45 | MicroSD & Bus-Peripheral UI | 0.16.0 | planned | [`Milestone_M45.md`](milestones/v14/Milestone_M45.md) |
+| M46 | OLED Display | 0.17.0 | planned | [`Milestone_M46.md`](milestones/v14/Milestone_M46.md) |
+| M47 | MIDI — TRS & USB | 0.18.0 | planned | [`Milestone_M47.md`](milestones/v14/Milestone_M47.md) |
+
+Sequencing is deliberate: **M43 lands the protocol change and the registry before any new device
+exists**, because the wire format is the expensive thing to change late. **M44 is the registry's
+test** — three devices chosen to stress it differently (multi-position, multi-channel output,
+delta semantics) — and is why M45–M47 carry goals but not yet acceptance criteria. M45 is where
+the first *bus* peripheral lands, so it also carries the bus-peripheral UI.
+
+*(M45–M47 are registry placeholders: goal recorded, sprint tasks written once M44 has proven the
+registry.)*

@@ -39,4 +39,69 @@
 > **v13 complete** — archived to `docs/v13/` on 2026-07-05. Full v13 ideas archived in
 > [`docs/v13/01_input-ideas.md`](v13/01_input-ideas.md).
 
-*v14 planning not yet started. Use `/doc-creator-driver:intake` or `/doc-creator-driver:start` to begin.*
+---
+
+## Device support expansion (intake 2026-07-21)
+
+Source: design session driven from `devices-list.md`; UX settled against the interactive mockup
+at [`docs/mockups/v14-peripheral-ux.html`](mockups/v14-peripheral-ux.html).
+
+### The seed
+
+- Only three device types are supported today (`pot`, `button`, `led`). The set is too small for
+  the app to be broadly useful; `devices-list.md` lists ten common Daisy Seed peripherals.
+- Adding a device today means editing ~12 hardcoded sites across TypeScript, C++ and the IPC
+  protocol, with three separately-declared `pot|button|led` string unions that must agree
+  (`controls-convention-parser.ts`, `controls-writer.ts`, `wiring-panel.ts`,
+  `controls-editor-panel.ts`, the shim, and two IPC message kinds per device type).
+- Devices should be *pluggable*: define behaviour, graphical representation and technical
+  specification once, then have the emulator and the extension views load them.
+
+### Devices wanted
+
+- **Toggle switch** (`Switch3`), **RGB LED** (`RgbLed`), **rotary encoder** (`Encoder`) — cheap,
+  reuse existing plumbing; encoder introduces delta rather than level semantics.
+- **MicroSD** — FatFS over the host filesystem; unblocks samplers and loopers.
+- **OLED display** (`OledDisplay`, SSD1306) — highest value; menu-driven firmware is currently
+  undebuggable in ds-ide.
+- **MIDI in/out** — TRS/UART and USB; unblocks synth projects.
+- **CV / gate** — *not selected for v14*; only worth it if Eurorack becomes a target audience.
+- **Board BSPs** (Pod, Patch, Petal, Field, Patch.Init) — *deferred to a later phase*, but the
+  device model must leave room for a board to be expressed as a bundle of components at fixed
+  pins plus a faceplate graphic.
+
+### Decisions reached
+
+- **Pluggability is a compiled-in registry, not a plugin system.** Specification and graphical
+  representation are declarative; *behaviour* is not — the C++ shim must be compiled in, and pot
+  codegen (shared contiguous `AdcChannelConfig` array with positional indices, FR-CODEGEN-1) is
+  not expressible declaratively. Single source of truth, no third-party loading.
+- **Generalise the IPC protocol first.** `pot`/`potSnapshot`/`button`/`buttonSnapshot` become
+  `controlValue {id, value}` / `controlSnapshot`. Protocol is the expensive thing to change late.
+- **An attachment point is a pin, a pin group, or a built-in connector.** Verified against
+  `Daisy_Seed_Rev4_Pinout.csv`: SD→D1–D6 (SDMMC1), OLED→D7–D10 (SPI1) or D11–D12 (I2C1),
+  MIDI TRS→D13–D14 (USART1), USB MIDI EXTERNAL→D29–D30, USB MIDI INTERNAL→the micro USB
+  connector already drawn at `wiring-panel.ts:167`.
+- **A peripheral's pin footprint is not fixed** — it is a function of its bus config, so the
+  registry must model `bus → pins`, not a static pin set.
+- **Bus groups collapse to one bracket label** on the pinout; detail on demand via tooltip
+  (unstructured: which signal is this pin) and popover (structured: pin map, bus choice, disable).
+  Inline labels only for devices the user named; system-assigned pins stay bare.
+- **Conflicting actions are rejected, not accepted-and-flagged.** The refusal names every
+  blocking pin and offers a concrete remedy; peripheral blockers get a one-click fix, control
+  blockers get guidance only (never silently relocate something placed by hand).
+
+### Captured, not scheduled
+
+- **Wiring conflicts as editor diagnostics.** Rejection prevents the *UI* creating conflicts, but
+  `controllers.yaml` and the C++ remain hand-editable, so a conflicting state can always arrive
+  from outside. It should surface like any other defect — squiggles in the editor plus Problems
+  panel entries. Smaller than it sounds: `extension.ts:363` already creates the `ds-ide`
+  `DiagnosticCollection` and `diagnostics/build-diagnostics.ts` already maps problems to
+  `vscode.Diagnostic` with severities; today the only producer is compiler output
+  (`commands/build.ts:62`). This adds a second producer that walks the wiring model and anchors to
+  the `// ds-ide: id=…, kind=…, pin=…` annotation lines, whose ranges the Wiring Editor already
+  computes. Own questions to answer in its own intake: when analysis runs (save / build / live),
+  whether a conflict blocks deploy or only warns, whether quick-fixes re-pin, what severity, and
+  how it reconciles with the Wiring Editor's rejection so the two never disagree.
+  **Deliberately unscheduled — needs its own deep dive.**
