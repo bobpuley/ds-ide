@@ -658,6 +658,18 @@ void run_ipc_server(const char* socket_path) {
             };
         }
 
+        // FR-DEV-6: protocol version handshake — always the first line on a
+        // new connection, before status or anything else, so the extension
+        // can detect a stale emulator/extension pairing before any control
+        // message is ever exchanged.
+        {
+            std::lock_guard<std::mutex> lk(g_state.send_mutex);
+            char vbuf[64];
+            std::snprintf(vbuf, sizeof(vbuf),
+                "{\"type\":\"protocolVersion\",\"version\":%d}", kProtocolVersion);
+            send_line(client_fd, vbuf);
+        }
+
         // Send initial status so the client knows the runtime is alive
         {
             std::lock_guard<std::mutex> lk(g_state.send_mutex);

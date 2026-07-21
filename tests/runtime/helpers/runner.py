@@ -42,7 +42,9 @@ def run_emulator(exe: str, socket_path: str,
             time.sleep(0.05)
 
         client = EmulatorClient(socket_path, timeout=timeout)
-        # Consume initial status message
+        # Consume the protocol version handshake (FR-DEV-6), then the initial
+        # status message — both always precede any real data on a fresh connection.
+        client.recv_type("protocolVersion")
         client.recv_one()
         yield client
         client.close()

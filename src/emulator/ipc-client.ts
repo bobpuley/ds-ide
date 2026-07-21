@@ -23,8 +23,10 @@ export interface IIpcClient {
 const IPC_MAX_BUFFER = 1 << 20;  // 1 MB receive buffer ceiling
 // A wedged emulator can announce its socket path but never accept the
 // connection; without its own deadline here, connect() would hang forever
-// and wedge the deploy lock along with it (FR-IPC-1).
-const CONNECT_TIMEOUT_MS = 5_000;
+// and wedge the deploy lock along with it (FR-IPC-1). Exported so
+// EmulatorManager's protocol-version handshake (FR-DEV-6) can reuse the same
+// connect-phase budget rather than introducing a second timeout constant.
+export const CONNECT_TIMEOUT_MS = 5_000;
 
 export class IpcClient extends EventEmitter implements IIpcClient {
   private socket: net.Socket | null = null;

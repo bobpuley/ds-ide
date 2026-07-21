@@ -4,8 +4,9 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { EventEmitter } from 'events';
-import { IpcClient, IpcMessage } from './ipc-client';
+import { IpcClient, IpcMessage, CONNECT_TIMEOUT_MS } from './ipc-client';
 import { potControlId, buttonControlId, narrowControlValue, narrowControlSnapshot } from '../ipc/control-values';
+import { PROTOCOL_VERSION } from '../ipc/protocol-version';
 
 const SOCKET_TIMEOUT_MS = 10_000;
 // Grace period between SIGTERM and SIGKILL escalation when reclaiming a
@@ -352,7 +353,66 @@ export class EmulatorManager extends EventEmitter {
     client.on('disconnect', () => {
       if (!this.intentionalDisconnect) this.emit('disconnect');
     });
+    // FR-DEV-6: register the handshake listener before connect() so it can
+    // never miss a message delivered synchronously with (or immediately
+    // after) the connection completing.
+    const handshake = this.awaitProtocolHandshake(client, socketPath);
     await client.connect(socketPath);
+    await handshake;
+  }
+
+  // FR-DEV-6: the emulator's very first message on a new connection is a
+  // protocolVersion handshake — reject before the session is considered
+  // usable (and before any control message is ever exchanged) if it's
+  // missing, malformed, or doesn't match this extension's own version.
+  // Reuses IpcClient's own connect-phase timeout budget rather than adding a
+  // second one.
+  private awaitProtocolHandshake(client: IpcClient, socketPath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        client.off('message', onMessage);
+        client.disconnect();
+        reject(new Error(
+          `emulator at ${socketPath} did not send a protocol version handshake within ${CONNECT_TIMEOUT_MS}ms`,
+        ));
+      }, CONNECT_TIMEOUT_MS);
+
+      const onMessage = (msg: IpcMessage): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        client.off('message', onMessage);
+
+        if (msg['type'] !== 'protocolVersion') {
+          client.disconnect();
+          reject(new Error(
+            `emulator's first message was "${String(msg['type'])}", not a protocol version ` +
+            `handshake — the emulator binary is likely from an incompatible, older ds-ide ` +
+            `build. Rebuild the emulator (ds-ide: Build for Emulator) to fix.`,
+          ));
+          return;
+        }
+
+        const remoteVersion = msg['version'];
+        if (remoteVersion !== PROTOCOL_VERSION) {
+          client.disconnect();
+          reject(new Error(
+            `protocol version mismatch — extension expects v${PROTOCOL_VERSION}, emulator ` +
+            `reports v${String(remoteVersion)}. Rebuild the emulator (ds-ide: Build for ` +
+            `Emulator) or reinstall the extension so both sides match.`,
+          ));
+          return;
+        }
+
+        resolve();
+      };
+
+      client.on('message', onMessage);
+    });
   }
 
   private killExisting(): void {

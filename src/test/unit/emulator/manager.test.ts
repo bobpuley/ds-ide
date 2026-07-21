@@ -6,6 +6,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { EmulatorManager, workspaceRuntimeDir, killStalePid } from '../../../emulator/manager';
 import { IpcClient } from '../../../emulator/ipc-client';
+import { PROTOCOL_VERSION } from '../../../ipc/protocol-version';
 
 // ---- Process stub helpers ----
 
@@ -81,7 +82,16 @@ function makeIpcClient() {
   const origOn = client.on.bind(client);
   (client as unknown as Record<string, unknown>)['on'] = vi.fn(origOn);
   client.connected  = true;
-  client.connect    = vi.fn(() => { client.connected = true; return Promise.resolve(); }) as ReturnType<typeof vi.fn>;
+  client.connect    = vi.fn(() => {
+    client.connected = true;
+    // FR-DEV-6: a real emulator's first message is always its protocol
+    // version handshake — connectIpc() registers its handshake listener
+    // before calling connect(), so emitting synchronously here is safe and
+    // lets every existing deploy() test resolve exactly as it does against a
+    // real, compatible emulator.
+    client.emit('message', { type: 'protocolVersion', version: PROTOCOL_VERSION });
+    return Promise.resolve();
+  }) as ReturnType<typeof vi.fn>;
   client.send       = vi.fn();
   client.disconnect = vi.fn(() => { client.connected = false; }) as ReturnType<typeof vi.fn>;
   return client;
@@ -195,6 +205,64 @@ describe('EmulatorManager', () => {
       );
       await manager.deploy(() => undefined);
       expect(ipcClientStub.connect).toHaveBeenCalledWith('/tmp/daisy_emu_test.sock');
+    });
+  });
+
+  describe('protocol version handshake (FR-DEV-6)', () => {
+    async function buildManager(): Promise<void> {
+      await manager.build(
+        { projectRoot: '/proj', effectSrc: '/proj/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+    }
+
+    it('deploy() rejects when the emulator reports an older protocol version', async () => {
+      ipcClientStub.connect = vi.fn(() => {
+        ipcClientStub.connected = true;
+        ipcClientStub.emit('message', { type: 'protocolVersion', version: PROTOCOL_VERSION - 1 });
+        return Promise.resolve();
+      }) as ReturnType<typeof vi.fn>;
+      await buildManager();
+      await expect(manager.deploy(() => undefined)).rejects.toThrow(/protocol version mismatch/i);
+      expect(ipcClientStub.disconnect).toHaveBeenCalled();
+    });
+
+    it('deploy() rejects when the emulator reports a newer protocol version', async () => {
+      ipcClientStub.connect = vi.fn(() => {
+        ipcClientStub.connected = true;
+        ipcClientStub.emit('message', { type: 'protocolVersion', version: PROTOCOL_VERSION + 1 });
+        return Promise.resolve();
+      }) as ReturnType<typeof vi.fn>;
+      await buildManager();
+      await expect(manager.deploy(() => undefined)).rejects.toThrow(/protocol version mismatch/i);
+    });
+
+    it('rejection names both versions and offers a remedy', async () => {
+      ipcClientStub.connect = vi.fn(() => {
+        ipcClientStub.connected = true;
+        ipcClientStub.emit('message', { type: 'protocolVersion', version: 999 });
+        return Promise.resolve();
+      }) as ReturnType<typeof vi.fn>;
+      await buildManager();
+      await expect(manager.deploy(() => undefined)).rejects.toThrow(
+        new RegExp(`v${PROTOCOL_VERSION}.*v999|999.*v${PROTOCOL_VERSION}`, 'i'),
+      );
+    });
+
+    it('deploy() rejects when the emulator sends a non-protocolVersion first message (stale, pre-handshake emulator)', async () => {
+      ipcClientStub.connect = vi.fn(() => {
+        ipcClientStub.connected = true;
+        ipcClientStub.emit('message', { type: 'status', running: false });
+        return Promise.resolve();
+      }) as ReturnType<typeof vi.fn>;
+      await buildManager();
+      await expect(manager.deploy(() => undefined)).rejects.toThrow(/protocol version handshake/i);
+    });
+
+    it('deploy() succeeds and sends no control messages when versions match', async () => {
+      await buildManager();
+      await expect(manager.deploy(() => undefined)).resolves.toBeUndefined();
+      expect(ipcClientStub.send).not.toHaveBeenCalled();
     });
   });
 

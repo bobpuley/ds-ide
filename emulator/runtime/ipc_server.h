@@ -2,6 +2,13 @@
 #include <string>
 
 namespace daisy_emu {
+
+// FR-DEV-6: exchanged with the extension as the first message on every new
+// connection (see run_ipc_server()). Bump whenever the wire protocol changes
+// incompatibly — keep in sync with src/ipc/protocol-version.ts's
+// PROTOCOL_VERSION on the extension side.
+constexpr int kProtocolVersion = 1;
+
 // Bind a UNIX domain socket at socket_path, print
 // "DAISY_EMU_SOCKET:<path>" to stdout when ready, then accept and serve
 // one client at a time until g_state.shutdown is set.

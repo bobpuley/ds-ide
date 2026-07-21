@@ -50,7 +50,7 @@ every new device adds two more. Device identity moves into an `id` field.
 
 ---
 
-### [ ] feat: add a connect-time protocol version handshake (FR-DEV-6)
+### [x] feat: add a connect-time protocol version handshake (FR-DEV-6)
 
 The wire change is breaking. A stale emulator binary against a new extension must fail loudly
 rather than silently misbehaving.

@@ -59,6 +59,14 @@ describe('parseIpcMessage (FR-IPC-2)', () => {
     expect(parseIpcMessage({ type: 'replayDone' })).toEqual({ type: 'replayDone' });
   });
 
+  it('accepts a well-formed protocolVersion message (FR-DEV-6)', () => {
+    expect(parseIpcMessage({ type: 'protocolVersion', version: 1 })).toEqual({ type: 'protocolVersion', version: 1 });
+  });
+
+  it('rejects a protocolVersion message with a non-numeric version', () => {
+    expect(parseIpcMessage({ type: 'protocolVersion', version: '1' })).toBeUndefined();
+  });
+
   it('rejects a message with an unknown type', () => {
     expect(parseIpcMessage({ type: 'nonsenseType', foo: 'bar' })).toBeUndefined();
   });
