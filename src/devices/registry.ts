@@ -9,12 +9,17 @@
 // scripts once a later task needs it there too (same convention as
 // src/webview/messages.ts's type-only exports).
 //
-// Scope note: this task generates *markup* (palette/popup buttons, per-device
-// CSS) from this registry in wiring-panel.ts and controls-editor-panel.ts.
-// The browser-side interaction scripts (wiring-webview.ts, controls-webview.ts)
-// still branch on device-kind literals internally — fully generalizing their
-// rendering (knob/button/LED widgets) onto interaction primitives is FR-DEV-4's
-// job, once the registry has codegen strategies and shim bindings attached.
+// Scope note: this module generates *markup* (palette/popup buttons,
+// per-device CSS) in wiring-panel.ts and controls-editor-panel.ts, and now
+// (FR-DEV-4) drives controls-writer.ts's declaration/init codegen via
+// declaredClassName/initArgs/codegen below. The browser-side interaction
+// scripts (wiring-webview.ts, controls-webview.ts) still branch on
+// device-kind literals internally — fully generalizing their *rendering*
+// (knob/button/LED widgets) onto interaction primitives remains future work,
+// once a shim-binding field is added here too.
+
+import type { SharedCodegenStrategy } from './codegen/types';
+import { potCodegen } from './codegen/pot';
 
 // Fixed rendering vocabulary (FR-DEV-2) — a device picks one of these rather
 // than shipping bespoke webview code.
@@ -51,6 +56,19 @@ export interface DeviceDescriptor {
    * arrive in later milestones (M44-M47).
    */
   attachmentKind: 'pin' | 'pins' | 'bus' | 'connector';
+  /**
+   * Second argument to this device's per-instance `Init(daisy::seed::D<pin>,
+   * <initArgs>)` call (FR-DEV-4) — null for a device with no per-instance
+   * Init call (pot, whose init is entirely emitted by `codegen` below).
+   */
+  initArgs: string | null;
+  /**
+   * Present only for a device whose declaration/init codegen must be
+   * regenerated in full from every current same-kind instance whenever any
+   * of them changes (today: only pot — FR-CODEGEN-1). A device without this
+   * is handled entirely by declaredClassName + initArgs.
+   */
+  codegen?: SharedCodegenStrategy;
 }
 
 // The enumerable literal-type source of truth. REGISTRY itself stays a
@@ -71,6 +89,8 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     pinFill: '#1a4a4a',
     declaredClassName: null,
     attachmentKind: 'pin',
+    initArgs: null,
+    codegen: potCodegen,
   },
   button: {
     id: 'button',
@@ -80,6 +100,7 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     pinFill: '#1a2a4a',
     declaredClassName: 'Switch',
     attachmentKind: 'pin',
+    initArgs: 'hardware.AudioCallbackRate()',
   },
   led: {
     id: 'led',
@@ -89,6 +110,7 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     pinFill: '#4a1a1a',
     declaredClassName: 'Led',
     attachmentKind: 'pin',
+    initArgs: 'false',
   },
 };
 

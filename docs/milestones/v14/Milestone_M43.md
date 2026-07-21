@@ -94,7 +94,7 @@ D7–D10 on SPI1 but D11–D12 on I2C1. Any model storing a static pin set is wr
 
 ---
 
-### [ ] refactor: migrate pot, button and LED onto the registry (FR-DEV-4)
+### [x] refactor: migrate pot, button and LED onto the registry (FR-DEV-4)
 
 **Affected files:** `src/devices/registry.ts`, `src/devices/codegen/`, `src/wiring/controls-writer.ts`, `src/controllers/controls-convention-parser.ts`
 

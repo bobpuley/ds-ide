@@ -44,6 +44,7 @@ describe('adding a registry entry surfaces it everywhere (FR-DEV-2)', () => {
       pinFill: '#111222',
       declaredClassName: 'ToggleSwitch',
       attachmentKind: 'pin',
+      initArgs: 'false',
     };
   }
 
