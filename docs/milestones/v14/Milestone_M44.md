@@ -62,7 +62,7 @@ owning multiple pins on the *output* side.
 
 ---
 
-### [ ] feat: add rotary encoder device (FR-DEV-9)
+### [x] feat: add rotary encoder device (FR-DEV-9)
 
 `Encoder` — two pins plus optional click, reporting *delta* rather than level. The first device
 whose value semantics differ from everything shipped so far, and the main structural test of the

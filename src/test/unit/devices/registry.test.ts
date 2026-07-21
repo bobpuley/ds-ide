@@ -6,13 +6,13 @@ import { buildHtml as buildControlsHtml } from '../../../sidebar/controls-editor
 import { declarationLine } from '../../../wiring/controls-writer';
 
 describe('REGISTRY (FR-DEV-2)', () => {
-  it('lists pot, button, led, toggle and rgbled', () => {
-    expect([...DEVICE_TYPES].sort()).toEqual(['button', 'led', 'pot', 'rgbled', 'toggle']);
+  it('lists pot, button, led, toggle, rgbled and encoder', () => {
+    expect([...DEVICE_TYPES].sort()).toEqual(['button', 'encoder', 'led', 'pot', 'rgbled', 'toggle']);
   });
 
   it('isDeviceType recognizes registered kinds and rejects others', () => {
     expect(isDeviceType('pot')).toBe(true);
-    expect(isDeviceType('encoder')).toBe(false);
+    expect(isDeviceType('servo')).toBe(false);
   });
 
   it('declares pot, button, led and toggle as pin-attached (FR-DEV-3)', () => {
@@ -33,6 +33,13 @@ describe('REGISTRY (FR-DEV-2)', () => {
     expect(REGISTRY['rgbled']!.pinCount).toBe(3);
     expect(REGISTRY['rgbled']!.declaredClassName).toBe('RgbLed');
     expect(REGISTRY['rgbled']!.primitive).toBe('indicator');
+  });
+
+  it('declares encoder as a 3-pin ("pins") device with the delta primitive (FR-DEV-9)', () => {
+    expect(REGISTRY['encoder']!.attachmentKind).toBe('pins');
+    expect(REGISTRY['encoder']!.pinCount).toBe(3);
+    expect(REGISTRY['encoder']!.declaredClassName).toBe('Encoder');
+    expect(REGISTRY['encoder']!.primitive).toBe('delta');
   });
 });
 

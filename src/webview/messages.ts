@@ -46,7 +46,8 @@ export type ControlsWebviewMessage =
   | { command: 'editorSave'; cfg: ControllerConfig }
   | { command: 'pot'; channel: number; value: number }
   | { command: 'button'; gpioPin: number; pressed: boolean }
-  | { command: 'toggle'; gpioPin: number; position: number };
+  | { command: 'toggle'; gpioPin: number; position: number }
+  | { command: 'encoder'; gpioPin: number; position: number };
 
 // ── Wiring Editor ────────────────────────────────────────────────────────
 

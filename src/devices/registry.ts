@@ -83,7 +83,7 @@ export interface DeviceDescriptor {
 // plain, freely-indexable runtime object — the architecture is a compiled-in
 // registry, not a plugin system, but tests exercising "adding a registry
 // entry" (FR-DEV-2's own acceptance bullet) need to do that by assignment.
-export const DEVICE_TYPES = ['pot', 'button', 'led', 'toggle', 'rgbled'] as const;
+export const DEVICE_TYPES = ['pot', 'button', 'led', 'toggle', 'rgbled', 'encoder'] as const;
 
 export type DeviceType = typeof DEVICE_TYPES[number];
 
@@ -142,6 +142,25 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     accentColor: '#ce9178',
     pinFill: '#4a2a1a',
     declaredClassName: 'RgbLed',
+    attachmentKind: 'pins',
+    initArgs: null,
+    pinCount: 3,
+  },
+  // FR-DEV-9: A/B quadrature pins plus a click pin (reusing the button
+  // pin-state array for click — see emulator/shim/src/encoder.cpp), all
+  // auto-allocated together like rgbled. Value semantics differ from every
+  // other device: `value` on the wire is an accumulated position, not a
+  // level — the shim derives per-callback deltas (Increment()) by diffing
+  // against the previous read, confirming the M43 assumption in
+  // 02_assumptions-and-risks.md that this fits controlValue{id,value}
+  // without a new message kind.
+  encoder: {
+    id: 'encoder',
+    label: 'Encoder',
+    primitive: 'delta',
+    accentColor: '#dcdcaa',
+    pinFill: '#4a4a1a',
+    declaredClassName: 'Encoder',
     attachmentKind: 'pins',
     initArgs: null,
     pinCount: 3,

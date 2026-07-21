@@ -7,6 +7,7 @@ import type { DeviceType } from '../wiring/wiring-panel';
 import { computeKnobGeometry, KNOB_SVG_SIZE, KNOB_CENTER } from './knob-math';
 import { createRafCoalescer } from './raf-coalesce';
 import { TOGGLE_POSITIONS } from '../devices/codegen/toggle';
+import { ENCODER_POSITION_MODULUS, wrapEncoderPosition } from '../devices/codegen/encoder';
 
 interface VsCodeApiForControls {
   postMessage(msg: ControlsWebviewMessage): void;
@@ -143,8 +144,29 @@ function updateKnobPaths(knobWrap: HTMLElement, value: number): number {
 }
 
 const KIND_LABELS: Record<DeviceType, string> = {
-  pot: 'Pot', button: 'Button', led: 'LED', toggle: 'Toggle', rgbled: 'RGB LED',
+  pot: 'Pot', button: 'Button', led: 'LED', toggle: 'Toggle', rgbled: 'RGB LED', encoder: 'Encoder',
 };
+
+// Encoder rotary dial (FR-DEV-9) — endless rotation, so unlike the pot's
+// knob (a bounded arc over [0,1]) this always shows a full circle; the
+// pointer's angle is the wrapped position mapped onto a coarser visual
+// detent count purely for legibility (the wire value stays the full
+// ENCODER_POSITION_MODULUS-resolution position — see codegen/encoder.ts).
+const ENCODER_VISIBLE_DETENTS = 32;
+const ENCODER_PX_PER_DETENT = 12;
+
+function buildEncoderSvg(position: number): string {
+  const cx = KNOB_CENTER, cy = KNOB_CENTER, r = 18;
+  const angleDeg = (position % ENCODER_VISIBLE_DETENTS) * (360 / ENCODER_VISIBLE_DETENTS);
+  const rad = (angleDeg * Math.PI) / 180;
+  const dotX = cx + r * 0.7 * Math.sin(rad);
+  const dotY = cy - r * 0.7 * Math.cos(rad);
+  return `<svg class="knob-svg" viewBox="0 0 ${KNOB_SVG_SIZE} ${KNOB_SVG_SIZE}" width="${KNOB_SVG_SIZE}" height="${KNOB_SVG_SIZE}">` +
+    `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#1e1e1e" stroke="#3c3c3c" stroke-width="1.5"/>` +
+    `<line x1="${cx}" y1="${cy}" x2="${dotX.toFixed(2)}" y2="${dotY.toFixed(2)}" stroke="#dcdcaa" stroke-width="2" stroke-linecap="round"/>` +
+    `<circle cx="${dotX.toFixed(2)}" cy="${dotY.toFixed(2)}" r="2.5" fill="#dcdcaa"/>` +
+    '</svg>';
+}
 
 function buildConventionCard(ctrl: ConventionControl, pos: [number, number]): HTMLElement {
   const kindLabel = KIND_LABELS[ctrl.kind];
@@ -176,6 +198,12 @@ function buildConventionCard(ctrl: ConventionControl, pos: [number, number]): HT
     // rgbLed message's gpioPin, which is the shim's r_pin_ (FR-DEV-8).
     bodyInnerHtml =
       '<span class="vrgb-dot" data-pin="' + ctrl.pin + '"></span>';
+  } else if (ctrl.kind === 'encoder') {
+    bodyInnerHtml =
+      '<div class="enc-wrap" data-pos="0">' +
+        buildEncoderSvg(0) +
+        '<span class="enc-value">0</span>' +
+      '</div>';
   } else {
     bodyInnerHtml =
       '<span class="vled-dot" data-pin="' + ctrl.pin + '"></span>';
@@ -249,6 +277,39 @@ function buildConventionCard(ctrl: ConventionControl, pos: [number, number]): HT
       tgl.textContent = String(next);
       vscode.postMessage({ command: 'toggle', gpioPin, position: next });
     });
+  } else if (ctrl.kind === 'encoder') {
+    // Vertical drag in ENCODER_PX_PER_DETENT-px steps (the "detents") —
+    // unlike pot's continuous knob, only whole-detent movement posts a
+    // message, and rotation is endless (wraps via wrapEncoderPosition)
+    // rather than clamped to [0,1] (FR-DEV-9).
+    const encWrap = card.querySelector('.enc-wrap') as HTMLElement;
+    const gpioPin = ctrl.pin;
+    let eDrag = false, eStartY = 0, eStartPos = 0, eLastSentPos = 0;
+    encWrap.addEventListener('mousedown', e => {
+      eDrag = true;
+      eStartY = (e as MouseEvent).clientY;
+      eStartPos = parseInt(encWrap.dataset['pos'] || '0', 10);
+      eLastSentPos = eStartPos;
+      e.preventDefault();
+    });
+    const flushEncoderMove = createRafCoalescer<number>((targetPos) => {
+      const wrapped = wrapEncoderPosition(targetPos);
+      encWrap.dataset['pos'] = String(wrapped);
+      encWrap.innerHTML = buildEncoderSvg(wrapped) + '<span class="enc-value">' + wrapped + '</span>';
+      if (wrapped !== eLastSentPos) {
+        eLastSentPos = wrapped;
+        vscode.postMessage({ command: 'encoder', gpioPin, position: wrapped });
+      }
+    }, (cb) => requestAnimationFrame(cb));
+    const onEncoderMove = (e: Event): void => {
+      if (!eDrag) return;
+      const pxDelta = eStartY - (e as MouseEvent).clientY;
+      const detents = Math.round(pxDelta / ENCODER_PX_PER_DETENT);
+      flushEncoderMove(eStartPos + detents);
+    };
+    const onEncoderUp = (): void => { eDrag = false; };
+    _addDocListener('mousemove', onEncoderMove);
+    _addDocListener('mouseup', onEncoderUp);
   }
 
   makeDraggable(card, { pos: [pos[0], pos[1]] });

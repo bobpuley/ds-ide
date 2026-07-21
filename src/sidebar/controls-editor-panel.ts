@@ -6,6 +6,7 @@ import { ControllerConfig, parseControllerConfig, serializeControllerConfig } fr
 import { ControlsConfig } from '../webview/scope-panel';
 import { REGISTRY, registryIds } from '../devices/registry';
 import { TOGGLE_POSITIONS } from '../devices/codegen/toggle';
+import { ENCODER_POSITION_MODULUS } from '../devices/codegen/encoder';
 
 export class ControlsViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
@@ -19,6 +20,7 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
     private readonly onPotChange: (channel: number, value: number) => void,
     private readonly onButtonChange: (gpioPin: number, pressed: boolean) => void,
     private readonly onToggleChange: (gpioPin: number, position: number) => void,
+    private readonly onEncoderChange: (gpioPin: number, position: number) => void,
   ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -72,6 +74,10 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
       if (m['command'] === 'toggle' && typeof m['gpioPin'] === 'number' && typeof m['position'] === 'number' &&
           Number.isInteger(m['position']) && m['position'] >= 0 && m['position'] < TOGGLE_POSITIONS) {
         this.onToggleChange(m['gpioPin'], m['position']);
+      }
+      if (m['command'] === 'encoder' && typeof m['gpioPin'] === 'number' && typeof m['position'] === 'number' &&
+          Number.isInteger(m['position']) && m['position'] >= 0 && m['position'] < ENCODER_POSITION_MODULUS) {
+        this.onEncoderChange(m['gpioPin'], m['position']);
       }
     });
 
@@ -236,6 +242,8 @@ ${ctrlCardCssRules()}
     .vled-dot { width: 12px; height: 12px; border-radius: 50%; background: #3c3c3c; border: 1px solid #555; box-shadow: none; display: inline-block; }
     .vled-dot.vled-lit { background: #f04a4a; border-color: #ff6a6a; box-shadow: 0 0 6px 1px #f04a4a; }
     .vrgb-dot { width: 14px; height: 14px; border-radius: 50%; background: #000; border: 1px solid #555; display: inline-block; }
+    .enc-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: ns-resize; user-select: none; padding: 2px 4px; }
+    .enc-value { color: #dcdcaa; font-size: 10px; font-family: monospace; min-width: 24px; text-align: center; }
     .section-label { color: #9cdcfe; align-self: center; }
   </style>
 </head>

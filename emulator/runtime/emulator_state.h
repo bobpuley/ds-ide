@@ -153,6 +153,16 @@ struct EmulatorState {
     std::atomic<float> rgb_g_last[kNumGpioPins];
     std::atomic<float> rgb_b_last[kNumGpioPins];
 
+    // FR-DEV-9: encoder's accumulated position, indexed by
+    // canonical_gpio_index(a_pin) — the primary (A-channel) pin. Written by
+    // the IPC `controlValue` handler (enc<N> ids) as a value already wrapped
+    // into [0, kEncoderPositionModulus); the Encoder shim's Debounce() derives
+    // a per-callback delta by diffing against its own previously-read value
+    // (mirrors button_states being read by Switch::Debounce()). The click
+    // pin reuses button_states directly — no separate state needed for it.
+    static constexpr int32_t kEncoderPositionModulus = 1024;
+    std::atomic<int32_t> encoder_positions[kNumGpioPins];
+
     // v2: audio mode (simulated / realtime) and real-time audio configuration
     std::atomic<int>    audio_mode{0};           // AudioMode enum value
     std::atomic<size_t> rt_buffer_size{256};     // target buffer size for CoreAudio (FR-AU-9)
@@ -226,6 +236,7 @@ struct EmulatorState {
         for (auto& v : rgb_r_last) v.store(-1.f);
         for (auto& v : rgb_g_last) v.store(-1.f);
         for (auto& v : rgb_b_last) v.store(-1.f);
+        for (auto& p : encoder_positions) p.store(0);
     }
 };
 

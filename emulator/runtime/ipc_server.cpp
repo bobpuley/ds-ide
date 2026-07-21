@@ -258,13 +258,13 @@ static void parse_kv_object(const std::string& obj,
     }
 }
 
-// Decodes a controlValue/controlSnapshot id (e.g. "pot3", "btn17", "tgl5")
-// into a device kind ('P' pot, 'B' button, 'T' toggle) plus its numeric
-// index, or returns false for an unrecognized prefix, non-numeric suffix, or
-// an index outside that kind's valid range (FR-DEV-1) — the id-side
-// counterpart to clamp_pot_value's value-side rejection. This is the only
-// place a device's identity is recovered from the wire; every other handler
-// below is kind-agnostic.
+// Decodes a controlValue/controlSnapshot id (e.g. "pot3", "btn17", "tgl5",
+// "enc5") into a device kind ('P' pot, 'B' button, 'T' toggle, 'E' encoder)
+// plus its numeric index, or returns false for an unrecognized prefix,
+// non-numeric suffix, or an index outside that kind's valid range
+// (FR-DEV-1) — the id-side counterpart to clamp_pot_value's value-side
+// rejection. This is the only place a device's identity is recovered from
+// the wire; every other handler below is kind-agnostic.
 bool decode_control_id(const std::string& id, char& kind, int& index) {
     size_t prefix_len;
     char k;
@@ -272,6 +272,7 @@ bool decode_control_id(const std::string& id, char& kind, int& index) {
     if (id.rfind("pot", 0) == 0) { prefix_len = 3; k = 'P'; max = 12; }
     else if (id.rfind("btn", 0) == 0) { prefix_len = 3; k = 'B'; max = EmulatorState::kNumGpioPins; }
     else if (id.rfind("tgl", 0) == 0) { prefix_len = 3; k = 'T'; max = EmulatorState::kNumGpioPins; }
+    else if (id.rfind("enc", 0) == 0) { prefix_len = 3; k = 'E'; max = EmulatorState::kNumGpioPins; }
     else return false;
 
     if (id.size() <= prefix_len) return false;
@@ -403,6 +404,16 @@ void dispatch(const std::string& line) {
                         if (pos < 0) pos = 0;
                         if (pos > 2) pos = 2;
                         g_state.toggle_states[idx].store(pos);
+                    } else if (kind == 'E' && std::isfinite(raw)) {
+                        // FR-DEV-9: value is an accumulated position, wrapped defensively
+                        // into [0, kEncoderPositionModulus) in case a malformed value
+                        // reaches the wire — the shim derives deltas from this, not the
+                        // wire, so wrapping here (rather than rejecting) keeps rotation
+                        // from ever silently freezing on one bad message.
+                        int32_t m = EmulatorState::kEncoderPositionModulus;
+                        int32_t pos = static_cast<int32_t>(std::lround(raw)) % m;
+                        if (pos < 0) pos += m;
+                        g_state.encoder_positions[idx].store(pos);
                     }
                 }
             } catch (...) { std::fprintf(stderr, "[daisy-emu] stof failed: controlValue\n"); }

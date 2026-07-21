@@ -412,6 +412,9 @@ export function activate(context: vscode.ExtensionContext): void {
       toggleStore?.set(gpioPin, position);
       manager?.sendToggle(gpioPin, position);
     },
+    (gpioPin, position) => {
+      manager?.sendEncoder(gpioPin, position);
+    },
   );
 
   const wiringProvider = new WiringViewProvider(

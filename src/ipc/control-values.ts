@@ -8,7 +8,9 @@
 // FR-DEV-7: 'tgl' added for the toggle switch (Switch3) — same gpio-pin
 // range as 'btn', since both are single-pin digital devices; the id scheme
 // distinguishes the *kind*, not the range.
-const CONTROL_ID_MAX: Record<string, number> = { pot: 12, btn: 64, tgl: 64 };
+// FR-DEV-9: 'enc' added for the encoder's accumulated position, keyed by its
+// primary (A-channel) pin — same gpio-pin range again.
+const CONTROL_ID_MAX: Record<string, number> = { pot: 12, btn: 64, tgl: 64, enc: 64 };
 
 export function potControlId(channel: number): string {
   return `pot${channel}`;
@@ -20,6 +22,10 @@ export function buttonControlId(gpioPin: number): string {
 
 export function toggleControlId(gpioPin: number): string {
   return `tgl${gpioPin}`;
+}
+
+export function encoderControlId(gpioPin: number): string {
+  return `enc${gpioPin}`;
 }
 
 export function isValidControlId(id: string): boolean {

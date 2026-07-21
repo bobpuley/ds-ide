@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { EventEmitter } from 'events';
 import { IpcClient, IpcMessage, CONNECT_TIMEOUT_MS } from './ipc-client';
-import { potControlId, buttonControlId, toggleControlId, narrowControlValue, narrowControlSnapshot } from '../ipc/control-values';
+import { potControlId, buttonControlId, toggleControlId, encoderControlId, narrowControlValue, narrowControlSnapshot } from '../ipc/control-values';
 import { PROTOCOL_VERSION } from '../ipc/protocol-version';
 
 const SOCKET_TIMEOUT_MS = 10_000;
@@ -297,6 +297,14 @@ export class EmulatorManager extends EventEmitter {
   // FR-DEV-7: virtual toggle-switch position (0, 1, 2), keyed by Daisy GPIO pin number.
   sendToggle(gpioPin: number, position: number): void {
     this.sendControlValue(toggleControlId(gpioPin), position);
+  }
+
+  // FR-DEV-9: virtual encoder's accumulated position (wrapped into
+  // [0, ENCODER_POSITION_MODULUS)), keyed by its primary (A-channel) pin —
+  // not persisted/replayed like pot/button/toggle (see registry.ts's comment
+  // on encoder's value semantics; no workspaceState store for it).
+  sendEncoder(gpioPin: number, position: number): void {
+    this.sendControlValue(encoderControlId(gpioPin), position);
   }
 
   // M15: master output volume (0.0–1.0) — scales emulator output before CoreAudio write.

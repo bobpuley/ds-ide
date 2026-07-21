@@ -36,6 +36,11 @@ describe('declarationLine', () => {
     expect(declarationLine('rgb1', 'rgbled', 5, [5, 6, 7]))
       .toBe('RgbLed rgb1; // ds-ide: id=rgb1, kind=rgbled, pin=5, pins=5,6,7');
   });
+
+  it('generates encoder declaration with a pins= suffix carrying A/B/click (FR-DEV-9)', () => {
+    expect(declarationLine('enc1', 'encoder', 5, [5, 6, 7]))
+      .toBe('Encoder enc1; // ds-ide: id=enc1, kind=encoder, pin=5, pins=5,6,7');
+  });
 });
 
 // ── insertIntoSource ─────────────────────────────────────────────────────────
@@ -135,6 +140,30 @@ describe('insertInitIntoSource — rgbled three-pin Init (FR-DEV-8)', () => {
     ].join('\n');
     const result = insertInitIntoSource(src, 'rgb1', 'rgbled', 5, [], [5, 6, 7]);
     expect(result).toContain('  rgb1.Init(daisy::seed::D5, daisy::seed::D6, daisy::seed::D7);');
+  });
+});
+
+describe('insertIntoSource / removeFromSource / insertInitIntoSource — encoder (FR-DEV-9)', () => {
+  it('inserts an encoder declaration carrying A/B/click pins', () => {
+    const result = insertIntoSource(WITH_BLOCK, 'enc1', 'encoder', 5, [5, 6, 7]);
+    expect(result).toContain('Encoder enc1; // ds-ide: id=enc1, kind=encoder, pin=5, pins=5,6,7');
+  });
+
+  it('emits Init() with three D-pin args (A, B, click) and no extra initArgs', () => {
+    const src = [
+      '// ds-ide:controls:begin',
+      'Encoder enc1; // ds-ide: id=enc1, kind=encoder, pin=5, pins=5,6,7',
+      '// ds-ide:controls:end',
+    ].join('\n');
+    const result = insertInitIntoSource(src, 'enc1', 'encoder', 5, [], [5, 6, 7]);
+    expect(result).toContain('  enc1.Init(daisy::seed::D5, daisy::seed::D6, daisy::seed::D7);');
+  });
+
+  it('a single removeFromSource(id) releases all three pins together', () => {
+    const withEnc = insertIntoSource(WITH_BLOCK, 'enc1', 'encoder', 5, [5, 6, 7]);
+    const result = removeFromSource(withEnc, 'enc1');
+    expect(result).not.toContain('id=enc1');
+    expect(result).toContain('id=vol');
   });
 });
 

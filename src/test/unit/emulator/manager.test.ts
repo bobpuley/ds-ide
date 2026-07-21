@@ -463,6 +463,23 @@ describe('EmulatorManager', () => {
     });
   });
 
+  describe('sendEncoder()', () => {
+    it('sends a controlValue with an encN id and the raw accumulated position (FR-DEV-9)', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      manager.sendEncoder(5, 42);
+      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'controlValue', id: 'enc5', value: 42 });
+    });
+
+    it('is a no-op when not connected', () => {
+      manager.sendEncoder(5, 42);
+      expect(ipcClientStub.send).not.toHaveBeenCalled();
+    });
+  });
+
   describe('running state inference from scope data', () => {
     async function deployedManager() {
       await manager.build(
