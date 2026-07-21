@@ -145,6 +145,14 @@ struct EmulatorState {
     // Debounce(). Value is an integer position: 0, 1, or 2.
     std::atomic<int> toggle_states[kNumGpioPins];
 
+    // FR-DEV-8: last-emitted RGB LED channel values, indexed by
+    // canonical_gpio_index(r_pin) — the RgbLed shim's dedup state (mirrors
+    // led_last_state's change-suppression, extended to three channels).
+    // -1.f sentinel means "not yet emitted" (a valid brightness is 0..1).
+    std::atomic<float> rgb_r_last[kNumGpioPins];
+    std::atomic<float> rgb_g_last[kNumGpioPins];
+    std::atomic<float> rgb_b_last[kNumGpioPins];
+
     // v2: audio mode (simulated / realtime) and real-time audio configuration
     std::atomic<int>    audio_mode{0};           // AudioMode enum value
     std::atomic<size_t> rt_buffer_size{256};     // target buffer size for CoreAudio (FR-AU-9)
@@ -215,6 +223,9 @@ struct EmulatorState {
         for (auto& b : button_states) b.store(false);
         for (auto& l : led_last_state) l.store(-1);
         for (auto& t : toggle_states) t.store(0);
+        for (auto& v : rgb_r_last) v.store(-1.f);
+        for (auto& v : rgb_g_last) v.store(-1.f);
+        for (auto& v : rgb_b_last) v.store(-1.f);
     }
 };
 

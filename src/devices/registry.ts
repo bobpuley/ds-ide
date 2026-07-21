@@ -69,6 +69,13 @@ export interface DeviceDescriptor {
    * is handled entirely by declaredClassName + initArgs.
    */
   codegen?: SharedCodegenStrategy;
+  /**
+   * Required for attachmentKind 'pins' (FR-DEV-8) — how many pins one
+   * instance occupies (e.g. rgbled: 3, for r/g/b). Lets the Wiring Editor's
+   * auto-adjacent-pin allocator (multi-pin-alloc.ts) stay generic rather than
+   * hardcoding a device's pin count.
+   */
+  pinCount?: number;
 }
 
 // The enumerable literal-type source of truth. REGISTRY itself stays a
@@ -76,7 +83,7 @@ export interface DeviceDescriptor {
 // plain, freely-indexable runtime object — the architecture is a compiled-in
 // registry, not a plugin system, but tests exercising "adding a registry
 // entry" (FR-DEV-2's own acceptance bullet) need to do that by assignment.
-export const DEVICE_TYPES = ['pot', 'button', 'led', 'toggle'] as const;
+export const DEVICE_TYPES = ['pot', 'button', 'led', 'toggle', 'rgbled'] as const;
 
 export type DeviceType = typeof DEVICE_TYPES[number];
 
@@ -124,6 +131,20 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     declaredClassName: 'Switch3',
     attachmentKind: 'pin',
     initArgs: null,
+  },
+  // FR-DEV-8: first registry entry owning multiple pins under one instance —
+  // Init() takes 3 pins directly (see controls-writer.ts's initLine()), so
+  // initArgs is unused (null) rather than describing a shape it doesn't have.
+  rgbled: {
+    id: 'rgbled',
+    label: 'RGB LED',
+    primitive: 'indicator',
+    accentColor: '#ce9178',
+    pinFill: '#4a2a1a',
+    declaredClassName: 'RgbLed',
+    attachmentKind: 'pins',
+    initArgs: null,
+    pinCount: 3,
   },
 };
 

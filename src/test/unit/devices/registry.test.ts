@@ -6,8 +6,8 @@ import { buildHtml as buildControlsHtml } from '../../../sidebar/controls-editor
 import { declarationLine } from '../../../wiring/controls-writer';
 
 describe('REGISTRY (FR-DEV-2)', () => {
-  it('lists pot, button, led and toggle', () => {
-    expect([...DEVICE_TYPES].sort()).toEqual(['button', 'led', 'pot', 'toggle']);
+  it('lists pot, button, led, toggle and rgbled', () => {
+    expect([...DEVICE_TYPES].sort()).toEqual(['button', 'led', 'pot', 'rgbled', 'toggle']);
   });
 
   it('isDeviceType recognizes registered kinds and rejects others', () => {
@@ -26,6 +26,13 @@ describe('REGISTRY (FR-DEV-2)', () => {
     expect(REGISTRY['toggle']!.primitive).toBe('multi-position');
     expect(REGISTRY['toggle']!.declaredClassName).toBe('Switch3');
     expect(REGISTRY['toggle']!.initArgs).toBeNull();
+  });
+
+  it('declares rgbled as a 3-pin ("pins") device (FR-DEV-8)', () => {
+    expect(REGISTRY['rgbled']!.attachmentKind).toBe('pins');
+    expect(REGISTRY['rgbled']!.pinCount).toBe(3);
+    expect(REGISTRY['rgbled']!.declaredClassName).toBe('RgbLed');
+    expect(REGISTRY['rgbled']!.primitive).toBe('indicator');
   });
 });
 

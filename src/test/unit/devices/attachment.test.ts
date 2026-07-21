@@ -138,4 +138,34 @@ describe('findConflicts (FR-DEV-3)', () => {
     const report = findConflicts(devices);
     expect(report.pinConflicts).toEqual([]);
   });
+
+  // FR-DEV-8: a 'pins'-attachment device (e.g. rgbled's three channels) is
+  // resolved to its full pin footprint the same way a single-pin device is —
+  // a collision on ANY one of its pins must be reported, naming both owners.
+  it('reports a collision when a single-pin device claims one of a pins-attachment device\'s three pins', () => {
+    const devices: AttachedDevice[] = [
+      { id: 'rgb1', owner: 'rgb1 (RGB LED)', attachment: { kind: 'pins', pins: [5, 6, 7] } },
+      { id: 'btn1', owner: 'btn1 (Button)', attachment: { kind: 'pin', pin: 6 } },
+    ];
+    const report = findConflicts(devices);
+    const d6 = report.pinConflicts.find(c => c.pin === 6);
+    expect(d6).toBeDefined();
+    expect(d6!.owners.sort()).toEqual(['btn1 (Button)', 'rgb1 (RGB LED)']);
+    // The other two RGB pins are unaffected — not falsely reported as conflicts.
+    expect(report.pinConflicts.find(c => c.pin === 5)).toBeUndefined();
+    expect(report.pinConflicts.find(c => c.pin === 7)).toBeUndefined();
+  });
+
+  it('releasing the pins-attachment device (removing it from the list) clears its conflict', () => {
+    const withCollision: AttachedDevice[] = [
+      { id: 'rgb1', owner: 'rgb1 (RGB LED)', attachment: { kind: 'pins', pins: [5, 6, 7] } },
+      { id: 'btn1', owner: 'btn1 (Button)', attachment: { kind: 'pin', pin: 6 } },
+    ];
+    expect(findConflicts(withCollision).pinConflicts).not.toEqual([]);
+
+    const afterRelease: AttachedDevice[] = [
+      { id: 'btn1', owner: 'btn1 (Button)', attachment: { kind: 'pin', pin: 6 } },
+    ];
+    expect(findConflicts(afterRelease).pinConflicts).toEqual([]);
+  });
 });

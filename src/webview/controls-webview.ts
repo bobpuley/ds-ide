@@ -142,7 +142,9 @@ function updateKnobPaths(knobWrap: HTMLElement, value: number): number {
   return clampedValue;
 }
 
-const KIND_LABELS: Record<DeviceType, string> = { pot: 'Pot', button: 'Button', led: 'LED', toggle: 'Toggle' };
+const KIND_LABELS: Record<DeviceType, string> = {
+  pot: 'Pot', button: 'Button', led: 'LED', toggle: 'Toggle', rgbled: 'RGB LED',
+};
 
 function buildConventionCard(ctrl: ConventionControl, pos: [number, number]): HTMLElement {
   const kindLabel = KIND_LABELS[ctrl.kind];
@@ -169,6 +171,11 @@ function buildConventionCard(ctrl: ConventionControl, pos: [number, number]): HT
   } else if (ctrl.kind === 'toggle') {
     bodyInnerHtml =
       '<button class="tgl-ce" type="button" data-pin="' + ctrl.pin + '" data-pos="0">0</button>';
+  } else if (ctrl.kind === 'rgbled') {
+    // Keyed by the primary (first/red-channel) pin — matches the IPC
+    // rgbLed message's gpioPin, which is the shim's r_pin_ (FR-DEV-8).
+    bodyInnerHtml =
+      '<span class="vrgb-dot" data-pin="' + ctrl.pin + '"></span>';
   } else {
     bodyInnerHtml =
       '<span class="vled-dot" data-pin="' + ctrl.pin + '"></span>';
@@ -440,6 +447,15 @@ function applyLed(gpioPin: number, lit: boolean): void {
   });
 }
 
+// ── RGB LED state from emulator (FR-DEV-8) ────────────────────────────────
+function applyRgbLed(gpioPin: number, r: number, g: number, b: number): void {
+  const clamp255 = (v: number): number => Math.max(0, Math.min(255, Math.round(v * 255)));
+  const color = 'rgb(' + clamp255(r) + ',' + clamp255(g) + ',' + clamp255(b) + ')';
+  document.querySelectorAll('.vrgb-dot[data-pin="' + gpioPin + '"]').forEach(dot => {
+    (dot as HTMLElement).style.backgroundColor = color;
+  });
+}
+
 // ── Message handler ───────────────────────────────────────────────────────
 window.addEventListener('message', (e: MessageEvent<ControlsHostMessage>) => {
   const msg = e.data;
@@ -451,6 +467,8 @@ window.addEventListener('message', (e: MessageEvent<ControlsHostMessage>) => {
     editorLoad(msg.cfg || {});
   } else if (msg.command === 'led') {
     applyLed(msg.gpioPin, msg.lit);
+  } else if (msg.command === 'rgbLed') {
+    applyRgbLed(msg.gpioPin, msg.r, msg.g, msg.b);
   }
 });
 

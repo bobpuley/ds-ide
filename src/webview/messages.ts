@@ -38,7 +38,8 @@ export type ControlsHostMessage =
   | { command: 'controlsConfig'; controls: ConventionControl[]; placements: ControlsPlacement[]; missingBlock: boolean }
   | { command: 'status'; running: boolean; sampleRate?: number; blockSize?: number }
   | { command: 'editorLoad'; cfg: ControllerConfig }
-  | { command: 'led'; gpioPin: number; lit: boolean };
+  | { command: 'led'; gpioPin: number; lit: boolean }
+  | { command: 'rgbLed'; gpioPin: number; r: number; g: number; b: number };
 
 export type ControlsWebviewMessage =
   | { command: 'webviewReady' }

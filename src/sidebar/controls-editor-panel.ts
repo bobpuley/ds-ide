@@ -108,6 +108,12 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
     void this.view?.webview.postMessage({ command: 'led', gpioPin: msg['gpioPin'], lit: msg['lit'] });
   }
 
+  postRgbLed(msg: IpcMessage): void {
+    void this.view?.webview.postMessage({
+      command: 'rgbLed', gpioPin: msg['gpioPin'], r: msg['r'], g: msg['g'], b: msg['b'],
+    });
+  }
+
   loadEditor(cfg: ControllerConfig): void {
     this.lastEditorCfg = cfg;
     void this.view?.webview.postMessage({ command: 'editorLoad', cfg });
@@ -229,6 +235,7 @@ ${ctrlCardCssRules()}
     .tgl-ce:hover { background: #5a5a5a; }
     .vled-dot { width: 12px; height: 12px; border-radius: 50%; background: #3c3c3c; border: 1px solid #555; box-shadow: none; display: inline-block; }
     .vled-dot.vled-lit { background: #f04a4a; border-color: #ff6a6a; box-shadow: 0 0 6px 1px #f04a4a; }
+    .vrgb-dot { width: 14px; height: 14px; border-radius: 50%; background: #000; border: 1px solid #555; display: inline-block; }
     .section-label { color: #9cdcfe; align-self: center; }
   </style>
 </head>

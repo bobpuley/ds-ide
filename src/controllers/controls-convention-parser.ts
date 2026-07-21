@@ -5,7 +5,10 @@ export type ControlKind = DeviceType;
 export interface ConventionControl {
   id: string;
   kind: ControlKind;
+  /** Primary pin — the first entry of `pins` for a multi-pin device (FR-DEV-8), the only pin otherwise. */
   pin: number;
+  /** Present only for a 'pins'-attachment device (e.g. rgbled's r/g/b channels); absent for a single-pin device. */
+  pins?: number[];
 }
 
 export interface ConventionParseResult {
@@ -23,8 +26,14 @@ const INIT_END_MARKER = /^\/\/ ds-ide:controls:init:end\s*$/;
 // Built fresh per call (not a module-level constant) so it always reflects
 // the registry's current contents rather than a snapshot from module load
 // (FR-DEV-2).
+// FR-DEV-8: an optional trailing `, pins=p0,p1,p2` (a multi-pin device's full
+// pin list, e.g. rgbled's r/g/b channels) alongside the always-present
+// `pin=` (that device's primary/first pin — kept so every single-pin
+// consumer of ConventionControl.pin needs no change).
 function annotationPattern(): RegExp {
-  return new RegExp(`// ds-ide:\\s*id=(\\S+),\\s*kind=(${registryIds().join('|')}),\\s*pin=(\\d+)`);
+  return new RegExp(
+    `// ds-ide:\\s*id=(\\S+),\\s*kind=(${registryIds().join('|')}),\\s*pin=(\\d+)(?:,\\s*pins=([\\d,]+))?`,
+  );
 }
 // Shared AdcChannelConfig array declaration generated for wired pots
 // (FR-CODEGEN-1, see wiring/controls-writer.ts) — infrastructure, not itself
@@ -65,7 +74,9 @@ export function parseControlsConvention(source: string): ConventionParseResult {
 
     const m = annotation.exec(line);
     if (m) {
-      controls.push({ id: m[1]!, kind: m[2]! as ControlKind, pin: parseInt(m[3]!, 10) });
+      const control: ConventionControl = { id: m[1]!, kind: m[2]! as ControlKind, pin: parseInt(m[3]!, 10) };
+      if (m[4]) control.pins = m[4].split(',').map(p => parseInt(p, 10));
+      controls.push(control);
     } else {
       errors.push(`unrecognised annotation on line ${i + 1}: ${line.trim()}`);
     }

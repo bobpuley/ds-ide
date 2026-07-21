@@ -46,7 +46,7 @@ primitive, which nothing uses today.
 
 ---
 
-### [ ] feat: add RGB LED device (FR-DEV-8)
+### [x] feat: add RGB LED device (FR-DEV-8)
 
 `RgbLed` — three output channels addressed as one named device. Exercises a single registry entry
 owning multiple pins on the *output* side.

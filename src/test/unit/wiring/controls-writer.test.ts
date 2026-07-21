@@ -7,6 +7,7 @@ import {
   removeInitFromSource,
   pinToAdcChannel,
 } from '../../../wiring/controls-writer';
+import { parseControlsConvention } from '../../../controllers/controls-convention-parser';
 
 // ── declarationLine ──────────────────────────────────────────────────────────
 
@@ -29,6 +30,11 @@ describe('declarationLine', () => {
   it('generates toggle declaration (FR-DEV-7)', () => {
     expect(declarationLine('sw1', 'toggle', 5))
       .toBe('Switch3 sw1; // ds-ide: id=sw1, kind=toggle, pin=5');
+  });
+
+  it('generates rgbled declaration with a pins= suffix carrying all three pins (FR-DEV-8)', () => {
+    expect(declarationLine('rgb1', 'rgbled', 5, [5, 6, 7]))
+      .toBe('RgbLed rgb1; // ds-ide: id=rgb1, kind=rgbled, pin=5, pins=5,6,7');
   });
 });
 
@@ -95,6 +101,40 @@ describe('insertIntoSource / removeFromSource — toggle (FR-DEV-7)', () => {
     const result = removeFromSource(withToggle, 'sw1');
     expect(result).not.toContain('id=sw1');
     expect(result).toContain('id=vol');
+  });
+});
+
+describe('insertIntoSource / removeFromSource — rgbled three-pin (FR-DEV-8)', () => {
+  it('inserts an rgbled declaration carrying all three pins', () => {
+    const result = insertIntoSource(WITH_BLOCK, 'rgb1', 'rgbled', 5, [5, 6, 7]);
+    expect(result).toContain('RgbLed rgb1; // ds-ide: id=rgb1, kind=rgbled, pin=5, pins=5,6,7');
+  });
+
+  it('a single removeFromSource(id) removes the whole three-pin declaration (releases all three)', () => {
+    const withRgb = insertIntoSource(WITH_BLOCK, 'rgb1', 'rgbled', 5, [5, 6, 7]);
+    const result = removeFromSource(withRgb, 'rgb1');
+    expect(result).not.toContain('id=rgb1');
+    expect(result).toContain('id=vol');
+  });
+
+  it('parseControlsConvention recovers the full pins list for an rgbled instance', () => {
+    const withRgb = insertIntoSource(WITH_BLOCK, 'rgb1', 'rgbled', 5, [5, 6, 7]);
+    const { controls } = parseControlsConvention(withRgb);
+    const rgb = controls.find(c => c.id === 'rgb1')!;
+    expect(rgb.pin).toBe(5);
+    expect(rgb.pins).toEqual([5, 6, 7]);
+  });
+});
+
+describe('insertInitIntoSource — rgbled three-pin Init (FR-DEV-8)', () => {
+  it('emits Init() with three D-pin args and no extra initArgs', () => {
+    const src = [
+      '// ds-ide:controls:begin',
+      'RgbLed rgb1; // ds-ide: id=rgb1, kind=rgbled, pin=5, pins=5,6,7',
+      '// ds-ide:controls:end',
+    ].join('\n');
+    const result = insertInitIntoSource(src, 'rgb1', 'rgbled', 5, [], [5, 6, 7]);
+    expect(result).toContain('  rgb1.Init(daisy::seed::D5, daisy::seed::D6, daisy::seed::D7);');
   });
 });
 

@@ -12,8 +12,10 @@ import { DaisyRunConfigurationProvider, DsIdeDebugAdapterDescriptorFactory, DS_I
 import { parseControllerConfig, serializeControllerConfig, ControllerConfig } from './controllers/controller-config';
 import { parseControlsConvention } from './controllers/controls-convention-parser';
 import { ControlsConfig, ControlsPlacement } from './webview/scope-panel';
-import { WiredPin, DeviceType } from './wiring/wiring-panel';
+import { WiredPin, DeviceType, PIN_DEFS } from './wiring/wiring-panel';
 import { insertIntoSource, removeFromSource, insertInitIntoSource, removeInitFromSource } from './wiring/controls-writer';
+import { allocateAdjacentPins } from './wiring/multi-pin-alloc';
+import { REGISTRY } from './devices/registry';
 import { PotStore } from './controllers/pot-store';
 import { ButtonStore } from './controllers/button-store';
 import { ToggleStore } from './controllers/toggle-store';
@@ -423,10 +425,29 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
       const oldText = doc.getText();
-      const afterDecl = insertIntoSource(oldText, wp.id, wp.deviceType as 'pot' | 'button' | 'led', wp.pinNumber);
+
+      // FR-DEV-8: a 'pins'-attachment device (rgbled) auto-claims its
+      // remaining pins from the nearest free ones after the clicked pin,
+      // rather than requiring a redesigned multi-pin picker in the popup.
+      const pinCount = REGISTRY[wp.deviceType]!.pinCount;
+      let pins: number[] | undefined;
+      if (pinCount !== undefined) {
+        const { controls: existingControls } = parseControlsConvention(oldText);
+        const occupied = new Set(existingControls.flatMap(c => c.pins ?? [c.pin]));
+        const allocated = allocateAdjacentPins(wp.pinNumber, pinCount, PIN_DEFS, occupied);
+        if (!allocated) {
+          void vscode.window.showErrorMessage(
+            `ds-ide: not enough free pins after D${wp.pinNumber} to wire a ${REGISTRY[wp.deviceType]!.label} (needs ${pinCount}).`,
+          );
+          return;
+        }
+        pins = allocated;
+      }
+
+      const afterDecl = insertIntoSource(oldText, wp.id, wp.deviceType, wp.pinNumber, pins);
       const { controls: controlsAfterDecl } = parseControlsConvention(afterDecl);
       const allPots = controlsAfterDecl.filter(c => c.kind === 'pot');
-      const newText = insertInitIntoSource(afterDecl, wp.id, wp.deviceType as 'pot' | 'button' | 'led', wp.pinNumber, allPots);
+      const newText = insertInitIntoSource(afterDecl, wp.id, wp.deviceType, wp.pinNumber, allPots, pins);
       const { edit, needsAppendConfirmation } = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
       if (needsAppendConfirmation && !(await confirmAppendMarkerBlocks())) {
         return;
@@ -441,8 +462,10 @@ export function activate(context: vscode.ExtensionContext): void {
       // with the Wiring view until the user manually saves (FR-IPC-5).
       await doc.save();
       const { controls } = parseControlsConvention(newText);
-      const pins: WiredPin[] = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
-      wiringProvider?.postWiredPins(pins);
+      const wiredPinList: WiredPin[] = controls.flatMap(c =>
+        (c.pins ?? [c.pin]).map(p => ({ pinNumber: p, deviceType: c.kind as DeviceType, id: c.id })),
+      );
+      wiringProvider?.postWiredPins(wiredPinList);
       const cfg = await loadControllerConfig();
       controlsProvider?.postControlsConfig(await buildControlsConfig(folder, cfg));
     },
@@ -472,8 +495,10 @@ export function activate(context: vscode.ExtensionContext): void {
       // buildControlsConfig matches newText instead of the pre-edit content.
       await doc.save();
       const { controls } = parseControlsConvention(newText);
-      const pins: WiredPin[] = controls.map(c => ({ pinNumber: c.pin, deviceType: c.kind as DeviceType, id: c.id }));
-      wiringProvider?.postWiredPins(pins);
+      const wiredPinList: WiredPin[] = controls.flatMap(c =>
+        (c.pins ?? [c.pin]).map(p => ({ pinNumber: p, deviceType: c.kind as DeviceType, id: c.id })),
+      );
+      wiringProvider?.postWiredPins(wiredPinList);
       const cfg = await loadControllerConfig();
       controlsProvider?.postControlsConfig(await buildControlsConfig(folder, cfg));
     },
@@ -561,6 +586,9 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     if (msg['type'] === 'led') {
       controlsProvider?.postLed(msg);
+    }
+    if (msg['type'] === 'rgbLed') {
+      controlsProvider?.postRgbLed(msg);
     }
   });
 
