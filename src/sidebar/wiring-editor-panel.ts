@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
 import { WiredPin, WirePinHandler, UnwirePinHandler, buildHtml } from '../wiring/wiring-panel';
+import { isDeviceType } from '../devices/registry';
 
 export class WiringViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
@@ -36,7 +37,7 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
         if (
           !Number.isFinite(pinNumber) || !Number.isInteger(pinNumber) ||
           (pinNumber as number) < 0 || (pinNumber as number) > 31 ||
-          deviceType !== 'pot' && deviceType !== 'button' && deviceType !== 'led' ||
+          typeof deviceType !== 'string' || !isDeviceType(deviceType) ||
           typeof id !== 'string' || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id)
         ) return;
         await this.onWirePin({
