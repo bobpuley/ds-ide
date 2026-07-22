@@ -5,6 +5,17 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.14.3 — 2026-07-22
+
+**M46 — OLED Display** *(FR-DEV-14, FR-DEV-15 — all DoD green)*
+
+- **FR-DEV-14** — `OledDisplay` (SSD1306) lands as the first bus-attached peripheral with more than one candidate bus (SPI1 or I2C1) and the first whose runtime data is a framebuffer rather than a scalar. The registry's single-bus `bus?: string` field gains a `busChoices?: string[]` sibling; the currently-selected bus is read back from which `declLine()` variant is present in source, the same "source is the source of truth" convention every other peripheral uses. The shim implements pixel primitives only (`Fill`/`DrawPixel`/`Update`) — no `WriteString`/font support, a confirmed scope decision. `Update()` runs on the effect's own thread (not the audio engine's RT callback), so the framebuffer rides a second, dedicated `SpscIpcQueue` rather than the existing one — a 10,000-frame concurrent producer/consumer stress test (plain build + ThreadSanitizer) confirms this ships without perturbing the RT thread.
+- **FR-DEV-15** — A new OLED viewer webview panel renders the captured framebuffer at native 128×64, reporting live frame rate and the peripheral's current bus. Auto-opens on deploy only when OLED is actually enabled (unlike the always-shown Scope panel). The Peripherals section gained a "View" action. Bus-choice *switching* from the UI is deliberately deferred to a follow-up — the underlying capability is built and tested, but the switch action itself is a distinct piece of work.
+- Fixed a latent bug this surfaced: `resolveBusFootprint` scanned every alternate-function mux option a pin's CSV column lists, not just its canonical board-dedicated signal, so a bus's resolved footprint could silently include pins nothing has actually wired to it (I2C1 would have falsely included D13/D14, MIDI TRS's pins per M47).
+- Fixed a gap found in manual testing: wiring a control (e.g. a button) onto a pin an enabled bus peripheral occupies silently succeeded with no warning — FR-DEV-13's reject-with-remedy check only ever ran on the "enable a peripheral" path. `onWirePin` now runs the same conflict check.
+
+---
+
 ## 0.14.2 — 2026-07-22
 
 **M45 — MicroSD & Bus-Peripheral UI** *(FR-DEV-10, FR-DEV-11, FR-DEV-12, FR-DEV-13 — all DoD green)*
