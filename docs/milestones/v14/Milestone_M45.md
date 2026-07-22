@@ -1,7 +1,7 @@
 # M45 — MicroSD & Bus-Peripheral UI
 
 **Version:** 0.14.2
-**Status:** in progress
+**Status:** released
 **Source:** intake 2026-07-21 — device support expansion
 
 ## Goal
