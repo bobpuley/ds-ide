@@ -143,13 +143,14 @@ function updateKnobPaths(knobWrap: HTMLElement, value: number): number {
   return clampedValue;
 }
 
-// sdcard (FR-DEV-10), oled (FR-DEV-14) and midiTrs (FR-DEV-16) are bus-attached
-// peripherals and never appear as a control card here (they have no
-// ConventionControl entry — see wiredControlIds() in devices/registry.ts) —
-// their labels exist only to satisfy DeviceType's exhaustiveness.
+// sdcard (FR-DEV-10), oled (FR-DEV-14), midiTrs (FR-DEV-16) and midiUsb
+// (FR-DEV-17) are bus-attached peripherals and never appear as a control card
+// here (they have no ConventionControl entry — see wiredControlIds() in
+// devices/registry.ts) — their labels exist only to satisfy DeviceType's
+// exhaustiveness.
 const KIND_LABELS: Record<DeviceType, string> = {
   pot: 'Pot', button: 'Button', led: 'LED', toggle: 'Toggle', rgbled: 'RGB LED', encoder: 'Encoder',
-  sdcard: 'SD Card', oled: 'OLED', midiTrs: 'MIDI TRS',
+  sdcard: 'SD Card', oled: 'OLED', midiTrs: 'MIDI TRS', midiUsb: 'MIDI USB',
 };
 
 // Encoder rotary dial (FR-DEV-9) — endless rotation, so unlike the pot's

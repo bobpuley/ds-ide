@@ -11,6 +11,7 @@
 
 #include "daisy/midi_event.h"
 #include "daisy/midi_uart_handler.h"
+#include "daisy/midi_usb_handler.h"
 #include "emulator_state.h"
 
 #include <atomic>
@@ -127,6 +128,31 @@ static void test_uart_handler_has_events_and_pop_event_drain_shared_queue() {
     CHECK(!handler.HasEvents(), "HasEvents() is false again after PopEvent() drains it");
 }
 
+// MidiUsbHandler shares the exact same midi_in_queue as MidiUartHandler
+// (FR-DEV-17) — only one MIDI peripheral is realistically enabled at a time
+// in a given effect, and the virtual keyboard/host bridge is one logical
+// input regardless of which transport is declared.
+static void test_usb_handler_shares_the_same_midi_in_queue() {
+    daisy::MidiEvent tmp{};
+    while (daisy_emu::g_state.midi_in_queue.pop(tmp)) {}
+
+    daisy::MidiUsbHandler::Config cfg;
+    cfg.transport_config.periph = daisy::MidiUsbTransport::Config::EXTERNAL;
+    daisy::MidiUsbHandler handler;
+    handler.Init(cfg);
+    CHECK(!handler.HasEvents(), "MidiUsbHandler::HasEvents() is false with an empty queue");
+
+    daisy::MidiEvent ev{};
+    daisy::parse_midi_event(0xB0, 7, 64, ev);
+    daisy_emu::g_state.midi_in_queue.push(ev);
+
+    CHECK(handler.HasEvents(), "MidiUsbHandler::HasEvents() is true once an event is queued");
+    handler.Listen();
+    daisy::MidiEvent popped = handler.PopEvent();
+    CHECK(popped.AsControlChange().control_number == 7, "MidiUsbHandler::PopEvent() returns the queued event");
+    CHECK(!handler.HasEvents(), "queue is shared: draining via MidiUsbHandler leaves it empty for MidiUartHandler too");
+}
+
 // The RT-safety measurement mirroring test_oled.cpp's stress test: a
 // producer thread (simulating the IPC-dispatch thread parsing inbound
 // `midiEvent` messages) racing a consumer thread (simulating the effect's
@@ -171,6 +197,7 @@ int main() {
     test_midi_in_queue_preserves_fifo_order();
     test_midi_in_queue_drops_newest_when_full();
     test_uart_handler_has_events_and_pop_event_drain_shared_queue();
+    test_usb_handler_shares_the_same_midi_in_queue();
     test_sustained_concurrent_producer_consumer_no_corruption();
     std::printf("\nResult: %s\n", failures == 0 ? "all passed" : "FAILURES");
     return failures == 0 ? 0 : 1;

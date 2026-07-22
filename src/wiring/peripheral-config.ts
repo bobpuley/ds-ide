@@ -47,15 +47,18 @@ export function removePeripheralFromSource(source: string, id: string): string {
 }
 
 // Pure: inserts `id`'s init lines. No-op if already present (idempotent) or
-// `id` has no peripheralCodegen.
-export function insertPeripheralInitIntoSource(source: string, id: string): string {
+// `id` has no peripheralCodegen. `bus` selects the emitted Init() content for
+// a peripheral whose mode selection lives in its init line(s) rather than its
+// declared type (FR-DEV-17, e.g. MIDI USB) — ignored by a bus/mode-invariant
+// peripheral's codegen (sdcard, oled).
+export function insertPeripheralInitIntoSource(source: string, id: string, bus?: string): string {
   const codegen = REGISTRY[id]?.peripheralCodegen;
   if (!codegen) return source;
 
   const lines = source.split('\n');
   if (lines.some(l => codegen.isInitLine(stripCr(l)))) return source;
 
-  const body = codegen.initLines();
+  const body = codegen.initLines(bus);
   const initBegIdx = lines.findIndex(l => stripCr(l) === INIT_BEGIN);
   const initEndIdx = lines.findIndex(l => stripCr(l) === INIT_END);
 

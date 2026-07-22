@@ -585,7 +585,7 @@ export function activate(context: vscode.ExtensionContext): void {
         ? insertPeripheralIntoSource(oldText, peripheralId, bus ?? undefined)
         : removePeripheralFromSource(oldText, peripheralId);
       const newText = enabled
-        ? insertPeripheralInitIntoSource(afterDecl, peripheralId)
+        ? insertPeripheralInitIntoSource(afterDecl, peripheralId, bus ?? undefined)
         : removePeripheralInitFromSource(afterDecl, peripheralId);
       const { edit, needsAppendConfirmation } = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
       if (needsAppendConfirmation && !(await confirmAppendMarkerBlocks())) {

@@ -105,48 +105,63 @@ monitor (FR-DEV-18) shows real-time traffic rather than only what's been drained
 
 ---
 
-### [ ] feat: add MIDI USB shim (FR-DEV-17)
+### [x] feat: add MIDI USB shim (FR-DEV-17)
 
-`MidiUsbHandler` — the first peripheral whose *attachment kind itself* (not just which bus, as
-OLED's `busChoices` already covers) depends on a selected mode: `INTERNAL` occupies the micro USB
-connector (`attachment.ts`'s `KNOWN_CONNECTORS = ['microusb']`, reserved for exactly this since
-M43), `EXTERNAL` occupies D29–D30 as real USB HS pins. Reuses `PeripheralCodegenStrategy`'s existing
-`declLine(bus?)`/`busOfDeclLine()` multi-variant mechanism (FR-DEV-14) with the parameter holding a
-transport mode string (`INTERNAL`/`EXTERNAL`) instead of a bus name — the same "read the selection
-back from which declared variant is present in source" convention, no new mechanism needed there.
-What *is* new: `DeviceDescriptor` gains an optional `resolveAttachment(mode): Attachment` used only
-by this device, so `EXTERNAL` mode's D29–D30 footprint participates in `findConflicts`'s pin
-checking and `INTERNAL` mode's connector participates in its separate `connectorConflicts` checking
-— every other peripheral keeps resolving through the unchanged `bus`/`busChoices` path.
+`MidiUsbHandler` — a peripheral whose declared C++ type is mode-invariant (unlike OLED, real
+libDaisy has exactly one `MidiUsbHandler` class; `INTERNAL` vs `EXTERNAL` is a `Config` field, not a
+template parameter), so the mode selection lives in the **init** line rather than the decl line.
+Modeled as `busChoices: ['INTERNAL', 'USB_HS_D']` — reusing FR-DEV-14's whole multi-variant machinery
+(`currentBusOf`, `computePeripheralDisplayStates`, `insertPeripheralIntoSource`'s bus param,
+`extension.ts`'s existing bus-conflict check) unchanged, by choosing `busChoices` values that are
+*also* valid `resolveBusFootprint` inputs: `'USB_HS_D'` resolves D29–D30 for real (a genuine bus,
+extended below), `'INTERNAL'` resolves to zero pins (no pin's canonical signal starts with
+`INTERNAL_`) — which is pin-wise correct for the micro USB connector even though it isn't modeled
+as a true `attachment.kind:'connector'`.
 
-**Affected files:** `src/devices/registry.ts`, `src/devices/codegen/midi-usb.ts`,
-`src/devices/attachment.ts`, `scripts/gen-pin-table.ts`, `src/wiring/peripheral-state.ts`,
-`emulator/shim/include/daisy/midi_usb_handler.h`, `emulator/shim/src/midi_usb_handler.cpp`,
-`emulator/CMakeLists.txt`
+> ⚠️ ASSUMPTION (scope, deliberately simplified): `attachment.ts` already reserves
+> `KNOWN_CONNECTORS = ['microusb']` for exactly this device, and a fully general
+> `resolveAttachment(mode): Attachment` giving `INTERNAL` a real connector attachment (participating
+> in `findConflicts`'s separate `connectorConflicts` bucket) was considered. Deferred: v14 has no
+> second connector-attached peripheral to actually collide with `microusb`, so the extra mechanism
+> has no observable behavior to justify it yet (Simplicity First). Revisit — give `INTERNAL` a real
+> `{kind:'connector', id:'microusb'}` attachment — the day a second connector-attached device is
+> proposed.
+
+**Affected files:** `src/devices/registry.ts`, `src/devices/codegen/types.ts`,
+`src/devices/codegen/midi-usb.ts`, `src/wiring/peripheral-config.ts`, `src/extension.ts`,
+`scripts/gen-pin-table.ts`, `emulator/shim/include/daisy/midi_usb_handler.h`,
+`emulator/shim/src/midi_usb_handler.cpp`, `emulator/CMakeLists.txt`
 
 **DoD:**
 - `gen-pin-table.ts`'s `canonicalBusSignal` derivation extends to recognise D29/D30's `USB_HS_D_-`/
-  `USB_HS_D_+` schematic names under a `USB_HS` bus prefix (parallel to the existing SPI/I2C/UART/
+  `USB_HS_D_+` schematic names under a `USB_HS_D` bus prefix (parallel to the existing SPI/I2C/UART/
   USART/SDMMC handling), regenerating `pin-table.gen.ts` — the pinout CSV stays the single source
   of truth per `04_architecture.md`, no hand-added pin constant.
-- `midiUsb` registry entry resolves to `{kind:'connector', id:'microusb'}` in `INTERNAL` mode and
-  `{kind:'bus', bus:'USB_HS'}` in `EXTERNAL` mode via the new `resolveAttachment`; `peripheral-state.ts`'s
-  `computePeripheralDisplayStates` uses it (falling back to today's `bus`/`busChoices` path for
-  every device that doesn't define it) so the Peripherals section shows the right footprint —
-  pins for `EXTERNAL`, a connector label for `INTERNAL` — without a UI change beyond what FR-DEV-12
-  already renders for a zero-pin peripheral.
-- Selecting `EXTERNAL` while another enabled peripheral occupies D29/D30 (or `INTERNAL` while
-  another occupies `microusb`) is refused with a remedy exactly like FR-DEV-13's existing flow —
-  no new conflict-handling path, just a new resolver feeding the existing one.
+- `PeripheralCodegenStrategy.initLines` gains an optional `bus?: string` parameter (mirroring
+  `declLine(bus?)`'s existing shape); `insertPeripheralInitIntoSource` threads it through from the
+  same `bus` value `insertPeripheralIntoSource` already receives at its `extension.ts` call site.
+  Every existing implementation (`sdcard`, `oled`) ignores the new parameter — bus-invariant Init()
+  calls, unaffected.
+- `midiUsb` registry entry declares `busChoices: ['INTERNAL', 'USB_HS_D']`; `declLine()` always emits
+  one mode-invariant `MidiUsbHandler` declaration, `initLines(mode)` emits the `Config` + `periph =
+  MidiUsbTransport::Config::INTERNAL`/`EXTERNAL` + `Init()` lines for the selected mode, and
+  `busOfDeclLine` reads the mode back from whichever `periph = ...` line is present in source (the
+  same "source is the source of truth" convention, just scanning an init line instead of a decl
+  line — `peripheral-state.ts`'s `currentBusOf` already scans every line, not only decl lines).
+- Selecting `USB_HS_D` while another enabled peripheral occupies D29/D30 is refused with a remedy
+  exactly like FR-DEV-13's existing flow — no new conflict-handling path, since `USB_HS_D` flows
+  through the same `bus` string `extension.ts`'s conflict check already resolves via
+  `resolveBusFootprint`.
 - `MidiUsbHandler::Init(Config)`/`Listen()`/`HasEvents()`/`PopEvent()` match the corpus-confirmed
-  `USB_MIDI.cpp` shape (`midi_cfg.transport_config.periph = MidiUsbTransport::Config::INTERNAL` /
-  `EXTERNAL`), sharing FR-DEV-16's `MidiEvent` parser and `midi_in_queue`/`midi_queue` plumbing —
-  no separate queue per transport, since only one MIDI peripheral is realistically enabled at a
-  time in a given effect and the virtual keyboard/host bridge (FR-DEV-18) is one logical input.
-- Unit tests (`tests/midi-shim/`, extending FR-DEV-16's suite) cover: mode-dependent attachment
-  resolution (`INTERNAL` → connector, `EXTERNAL` → D29/D30 pins), connector-conflict and
-  pin-conflict detection for each mode, and the codegen mode round-trip (declare `EXTERNAL`, read
-  it back, switch to `INTERNAL`, read that back).
+  `USB_MIDI.cpp` shape, sharing FR-DEV-16's `MidiEvent` parser and `midi_in_queue`/`midi_queue`
+  plumbing — no separate queue per transport, since only one MIDI peripheral is realistically
+  enabled at a time in a given effect and the virtual keyboard/host bridge (FR-DEV-18) is one
+  logical input.
+- Unit tests (`tests/midi-shim/`, extending FR-DEV-16's suite) cover: `initLines('INTERNAL')` vs
+  `initLines('USB_HS_D')` content, the mode round-trip (`busOfDeclLine` reading each back), and pin
+  conflict detection for `USB_HS_D` mode against another D29/D30 occupant. TS-side tests cover the
+  registry entry and `computePeripheralDisplayStates`' resolved footprint for each mode (empty for
+  `INTERNAL`, D29/D30 for `USB_HS_D`).
 
 ---
 

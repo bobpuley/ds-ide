@@ -91,8 +91,13 @@ function sdmmcSignal(schName: string): string | null {
 // single canonical signal per pin, not the full mux-option list, or two
 // physically distinct header pins that merely share a muxed AF option would
 // collide in a bus's resolved footprint.
+//
+// USB_HS: D29/D30's schematic names are USB_HS_D_-/USB_HS_D_+ (they also list
+// USART1_TX/RX as a mux option, same caveat as above) — MIDI USB's EXTERNAL
+// mode (FR-DEV-17) resolves via resolveBusFootprint('USB_HS'), matching the
+// 'USB_HS_' prefix these two schematic names already carry verbatim.
 function canonicalBusSignal(schName: string): string | null {
-  return /^(SPI|I2C|UART|USART|SDMMC)\d*_/.test(schName) ? schName : null;
+  return /^(SPI|I2C|UART|USART|SDMMC|USB_HS)\d*_/.test(schName) ? schName : null;
 }
 
 function toPinDef(row: CsvRow, side: 'L' | 'R', outRow: number): PinDefLiteral {

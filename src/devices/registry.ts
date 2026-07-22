@@ -23,6 +23,7 @@ import { potCodegen } from './codegen/pot';
 import { sdcardCodegen } from './codegen/sdcard';
 import { oledCodegen } from './codegen/oled';
 import { midiTrsCodegen } from './codegen/midi-trs';
+import { midiUsbCodegen } from './codegen/midi-usb';
 
 // Fixed rendering vocabulary (FR-DEV-2) — a device picks one of these rather
 // than shipping bespoke webview code.
@@ -118,7 +119,7 @@ export interface DeviceDescriptor {
 // plain, freely-indexable runtime object — the architecture is a compiled-in
 // registry, not a plugin system, but tests exercising "adding a registry
 // entry" (FR-DEV-2's own acceptance bullet) need to do that by assignment.
-export const DEVICE_TYPES = ['pot', 'button', 'led', 'toggle', 'rgbled', 'encoder', 'sdcard', 'oled', 'midiTrs'] as const;
+export const DEVICE_TYPES = ['pot', 'button', 'led', 'toggle', 'rgbled', 'encoder', 'sdcard', 'oled', 'midiTrs', 'midiUsb'] as const;
 
 export type DeviceType = typeof DEVICE_TYPES[number];
 
@@ -248,6 +249,25 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     bus: 'USART1',
     initArgs: null,
     peripheralCodegen: midiTrsCodegen,
+  },
+  // FR-DEV-17: the first peripheral whose declared C++ type is mode-invariant
+  // (one real MidiUsbHandler class) while its *runtime configuration* picks
+  // between two genuinely different footprints — INTERNAL (the micro USB
+  // connector, modeled as a zero-pin pseudo-bus rather than a true
+  // attachment.kind:'connector'; see 02_assumptions-and-risks.md/Milestone_M47
+  // for the deliberate scope note) and USB_HS_D (D29/D30, a real bus).
+  // busChoices values double as resolveBusFootprint inputs, reusing FR-DEV-14's
+  // whole multi-bus machinery unchanged — see codegen/midi-usb.ts.
+  midiUsb: {
+    id: 'midiUsb',
+    label: 'MIDI USB',
+    accentColor: '#569cd6',
+    pinFill: '#1a2a4a',
+    declaredClassName: null,
+    attachmentKind: 'bus',
+    busChoices: ['INTERNAL', 'USB_HS_D'],
+    initArgs: null,
+    peripheralCodegen: midiUsbCodegen,
   },
 };
 

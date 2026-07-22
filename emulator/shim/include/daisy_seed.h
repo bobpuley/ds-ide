@@ -34,6 +34,7 @@
 #include "daisy/fatfs_host.h"
 #include "daisy/oled_display.h"
 #include "daisy/midi_uart_handler.h"
+#include "daisy/midi_usb_handler.h"
 
 // Expose the daisy::seed pin aliases at namespace scope so effects using
 //   using namespace daisy;

@@ -89,4 +89,36 @@ describe('computePeripheralDisplayStates (FR-DEV-11)', () => {
     const pins = [...oled.pins].sort((a, b) => a.pin - b.pin);
     expect(pins.map(p => p.pin)).toEqual([11, 12]);
   });
+
+  // FR-DEV-17: midiUsb's mode selection lives in its init line (the declared
+  // type is mode-invariant, unlike oled's bus-specific template type) — its
+  // 'INTERNAL' default resolves to zero pins (the micro USB connector,
+  // modeled as a zero-pin pseudo-bus rather than a true connector kind).
+  it('defaults midiUsb to INTERNAL (zero pins) when never enabled', () => {
+    const states = computePeripheralDisplayStates('void Init() {}');
+    const midiUsb = states.find(s => s.id === 'midiUsb');
+    expect(midiUsb).toBeDefined();
+    expect(midiUsb!.enabled).toBe(false);
+    expect(midiUsb!.bus).toBe('INTERNAL');
+    expect(midiUsb!.pins).toEqual([]);
+  });
+
+  it('reads back USB_HS_D (D29/D30) as midiUsb\'s current mode once its EXTERNAL init line is present', () => {
+    const source = [
+      '// ds-ide:peripherals:begin',
+      '  MidiUsbHandler ds_ide_midi_usb;',
+      '// ds-ide:peripherals:end',
+      '// ds-ide:peripherals:init:begin',
+      '  MidiUsbHandler::Config ds_ide_midi_usb_cfg;',
+      '  ds_ide_midi_usb_cfg.transport_config.periph = MidiUsbTransport::Config::EXTERNAL;',
+      '  ds_ide_midi_usb.Init(ds_ide_midi_usb_cfg);',
+      '// ds-ide:peripherals:init:end',
+    ].join('\n');
+    const states = computePeripheralDisplayStates(source);
+    const midiUsb = states.find(s => s.id === 'midiUsb')!;
+    expect(midiUsb.enabled).toBe(true);
+    expect(midiUsb.bus).toBe('USB_HS_D');
+    const pins = [...midiUsb.pins].sort((a, b) => a.pin - b.pin);
+    expect(pins.map(p => p.pin)).toEqual([29, 30]);
+  });
 });

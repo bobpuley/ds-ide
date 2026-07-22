@@ -40,8 +40,15 @@ export interface PeripheralCodegenStrategy {
   declLine(bus?: string): string;
   /** Matches an existing declLine() output (any bus variant), to find/remove it. */
   isDeclLine(line: string): boolean;
-  /** The init-block line(s) emitted once when this peripheral is enabled. */
-  initLines(): string[];
+  /**
+   * The init-block line(s) emitted once when this peripheral is enabled.
+   * `bus` selects the emitted `Init()` content for a peripheral whose mode
+   * selection lives in its init line(s) rather than its declared type
+   * (FR-DEV-17, e.g. MIDI USB's `INTERNAL`/`EXTERNAL` transport config) —
+   * ignored by a peripheral whose Init() call is mode/bus-invariant (sdcard,
+   * oled, whose bus only affects declLine()'s declared type).
+   */
+  initLines(bus?: string): string[];
   /** Matches a line produced by initLines(), to find/remove it. */
   isInitLine(line: string): boolean;
   /**
