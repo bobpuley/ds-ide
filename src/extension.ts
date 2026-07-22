@@ -21,6 +21,7 @@ import {
   insertPeripheralInitIntoSource, removePeripheralInitFromSource,
 } from './wiring/peripheral-config';
 import { computePeripheralDisplayStates, PeripheralDisplayState } from './wiring/peripheral-state';
+import { checkConflict, buildOccupants, formatRejection } from './wiring/conflict-remedy';
 import { PotStore } from './controllers/pot-store';
 import { ButtonStore } from './controllers/button-store';
 import { ToggleStore } from './controllers/toggle-store';
@@ -520,6 +521,27 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
       const oldText = doc.getText();
+
+      // FR-DEV-13: a colliding enable is refused before any mutation, never
+      // applied-and-flagged. Disabling a peripheral can never create a
+      // conflict, so only the enable path is checked.
+      if (enabled) {
+        const bus = REGISTRY[peripheralId]?.bus;
+        if (bus) {
+          const occupants = buildOccupants(oldText, peripheralId);
+          const rejection = checkConflict(
+            { kind: 'bus', bus },
+            occupants,
+            PIN_DEFS,
+            (id) => { const b = REGISTRY[id]?.bus; return b ? [b] : []; },
+          );
+          if (rejection) {
+            void vscode.window.showErrorMessage(formatRejection(REGISTRY[peripheralId]!.label, rejection));
+            return;
+          }
+        }
+      }
+
       const afterDecl = enabled
         ? insertPeripheralIntoSource(oldText, peripheralId)
         : removePeripheralFromSource(oldText, peripheralId);

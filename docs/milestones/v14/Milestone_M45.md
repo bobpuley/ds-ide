@@ -74,7 +74,7 @@ generalises for future board faceplates too.
 
 ---
 
-### [ ] feat: reject pin conflicts with a concrete remedy (FR-DEV-13)
+### [x] feat: reject pin conflicts with a concrete remedy (FR-DEV-13)
 
 An action that would create a pin conflict — enabling a peripheral, switching its bus — is refused
 before any state changes, never applied-and-flagged. The refusal names every blocking pin with its
