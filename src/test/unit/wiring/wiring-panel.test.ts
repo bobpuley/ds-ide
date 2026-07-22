@@ -195,6 +195,13 @@ describe('buildHtml', () => {
   it('contains usb-port polygon shape (T19-5)', () => {
     expect(html).toContain('usb-port');
   });
+
+  // FR-DEV-17: the USB port graphic needs a stable id so wiring-webview.ts
+  // can highlight it when a connector-attached peripheral in its zero-pin
+  // mode (midiUsb's INTERNAL) is enabled — there's no pin to mark instead.
+  it('groups the USB port graphic under an id for connector highlighting (FR-DEV-17)', () => {
+    expect(html).toContain('id="usb-port-group"');
+  });
 });
 
 // ── Peripherals section (FR-DEV-11) ──────────────────────────────────────────

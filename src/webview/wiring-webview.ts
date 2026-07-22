@@ -150,6 +150,28 @@ function applyWiredPins(pins: WiredPin[]): void {
 
 applyWiredPins(wiredPins);
 
+// ── Micro USB port indicator (FR-DEV-17) ──────────────────────────────────
+// A connector-attached peripheral in its zero-pin mode (midiUsb's INTERNAL)
+// has no resolved pin to mark the way a bus peripheral's pins already are —
+// the board's static USB port graphic is the only thing on the SVG that can
+// represent "connected here" for it. Listener attached once; reads whatever
+// tip is current at hover time, same convention as a pin dot's tooltip.
+const usbPortGroup = document.getElementById('usb-port-group');
+usbPortGroup?.addEventListener('mousemove', (e) => {
+  const tip = usbPortGroup.dataset['tip'];
+  if (!tip) return;
+  showTooltip(tip, e as MouseEvent);
+});
+usbPortGroup?.addEventListener('mouseleave', hideTooltip);
+
+function updateUsbPortIndicator(): void {
+  if (!usbPortGroup) return;
+  const owner = peripherals.find(p => p.enabled && p.bus === 'INTERNAL');
+  usbPortGroup.classList.toggle('active', !!owner);
+  if (owner) usbPortGroup.dataset['tip'] = `${owner.label} · micro USB connector (INTERNAL)`;
+  else delete usbPortGroup.dataset['tip'];
+}
+
 // ── Peripherals section (FR-DEV-11/12) ────────────────────────────────────
 
 // Marks each enabled peripheral's resolved pins with the generic `pin-bus`
@@ -222,6 +244,7 @@ function renderPeripherals(): void {
   }
   applyPeripheralPins();
   renderBusBrackets();
+  updateUsbPortIndicator();
 }
 
 // ── Bus bracket tooltip and popover (FR-DEV-12) ───────────────────────────

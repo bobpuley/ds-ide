@@ -168,6 +168,15 @@ as a true `attachment.kind:'connector'`.
 > connected to anything." `wiring-webview.ts`'s `renderPeripherals` now falls back to the bus/mode
 > label itself (`p.bus`) when `p.pins` is empty, so the row reads "MIDI USB · INTERNAL" instead of a
 > blank cell.
+>
+> A second round of the same testing found the list-row fix wasn't the whole gap: the board/schematic
+> SVG itself showed nothing near the micro USB connector either — every other peripheral's "connected"
+> state is drawn on the board via its resolved pins (a bus bracket, FR-DEV-12), but `INTERNAL` mode
+> resolves to zero pins, so there was nothing to draw a bracket around. Fixed: the board's existing
+> (previously static, unlabelled) USB port graphic is now grouped under `id="usb-port-group"`
+> (`wiring-panel.ts`) and highlighted with an `.active` class plus a hover tooltip naming the owning
+> peripheral (`wiring-webview.ts`'s new `updateUsbPortIndicator`) whenever a peripheral is enabled with
+> `bus === 'INTERNAL'` — the zero-pin equivalent of a bus peripheral's pin highlight.
 
 ---
 
