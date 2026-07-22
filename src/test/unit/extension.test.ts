@@ -1076,6 +1076,91 @@ describe('setPeripheralEnabled conflict rejection (FR-DEV-13)', () => {
     expect(vscode.workspace.applyEdit).toHaveBeenCalled();
     expect(wiring.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'peripherals' }));
   });
+
+  // The gap a manual test caught: onWirePin never checked a new control's
+  // pin against enabled bus peripherals at all — only setPeripheralEnabled
+  // checked conflicts, and only in the "enabling a peripheral" direction.
+  // Wiring a button onto D3 (SDMMC1_D1, inside SD Card's footprint) or D8
+  // (SPI1_SCK, inside OLED's) silently succeeded with no warning.
+  it('refuses to wire a button onto a pin already occupied by an enabled bus peripheral (sdcard)', async () => {
+    const source = [
+      '// ds-ide:peripherals:begin',
+      '  SdmmcHandler ds_ide_sd; FatFSInterface ds_ide_fatfs;',
+      '// ds-ide:peripherals:end',
+    ].join('\n');
+    (vscode.workspace.openTextDocument as ReturnType<typeof vi.fn>).mockResolvedValue({
+      getText: vi.fn(() => source),
+      lineCount: source.split('\n').length,
+      lineAt: vi.fn((n: number) => ({ range: { end: { line: n, character: source.split('\n')[n]!.length } } })),
+      save: vi.fn(async () => true),
+    });
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flushMicrotasks();
+    const wiring = resolveProvider('ds-ide.wiringEditor');
+    wiring.postMessage.mockClear();
+
+    // D3 = SDMMC1_D1, one of SD Card's six occupied pins.
+    await wiring.handler({ command: 'wirePin', pinNumber: 3, deviceType: 'button', id: 'btn1' });
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringMatching(/D3.*SD Card/is));
+    expect(vscode.workspace.applyEdit).not.toHaveBeenCalled();
+    expect(wiring.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('refuses to wire a control onto a pin occupied by an enabled multi-bus peripheral (oled)', async () => {
+    const source = [
+      '// ds-ide:peripherals:begin',
+      '  OledDisplay<SSD130x4WireSpi128x64Driver> ds_ide_oled;',
+      '// ds-ide:peripherals:end',
+    ].join('\n');
+    (vscode.workspace.openTextDocument as ReturnType<typeof vi.fn>).mockResolvedValue({
+      getText: vi.fn(() => source),
+      lineCount: source.split('\n').length,
+      lineAt: vi.fn((n: number) => ({ range: { end: { line: n, character: source.split('\n')[n]!.length } } })),
+      save: vi.fn(async () => true),
+    });
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flushMicrotasks();
+    const wiring = resolveProvider('ds-ide.wiringEditor');
+    wiring.postMessage.mockClear();
+
+    // D8 = SPI1_SCK, one of OLED's four occupied pins on its default bus (SPI1).
+    await wiring.handler({ command: 'wirePin', pinNumber: 8, deviceType: 'button', id: 'btn2' });
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringMatching(/D8.*OLED/is));
+    expect(vscode.workspace.applyEdit).not.toHaveBeenCalled();
+    expect(wiring.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('still allows wiring a control onto a pin no enabled peripheral occupies', async () => {
+    const source = [
+      '// ds-ide:peripherals:begin',
+      '  SdmmcHandler ds_ide_sd; FatFSInterface ds_ide_fatfs;',
+      '// ds-ide:peripherals:end',
+    ].join('\n');
+    (vscode.workspace.openTextDocument as ReturnType<typeof vi.fn>).mockResolvedValue({
+      getText: vi.fn(() => source),
+      lineCount: source.split('\n').length,
+      lineAt: vi.fn((n: number) => ({ range: { end: { line: n, character: source.split('\n')[n]!.length } } })),
+      save: vi.fn(async () => true),
+    });
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flushMicrotasks();
+    const wiring = resolveProvider('ds-ide.wiringEditor');
+    wiring.postMessage.mockClear();
+
+    // D15 is free — not part of SD Card's D1-D6 footprint.
+    await wiring.handler({ command: 'wirePin', pinNumber: 15, deviceType: 'pot', id: 'vol' });
+
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+    expect(vscode.workspace.applyEdit).toHaveBeenCalled();
+  });
 });
 
 // ── FR-UX-3: a configured effectSource outside the workspace is refused ──

@@ -17,12 +17,13 @@ import { WiredPin, DeviceType, PIN_DEFS, expandToWiredPins } from './wiring/wiri
 import { insertIntoSource, removeFromSource, insertInitIntoSource, removeInitFromSource } from './wiring/controls-writer';
 import { allocateAdjacentPins } from './wiring/multi-pin-alloc';
 import { REGISTRY } from './devices/registry';
+import type { Attachment } from './devices/attachment';
 import {
   insertPeripheralIntoSource, removePeripheralFromSource,
   insertPeripheralInitIntoSource, removePeripheralInitFromSource,
 } from './wiring/peripheral-config';
 import { computePeripheralDisplayStates, PeripheralDisplayState, currentBusOf } from './wiring/peripheral-state';
-import { checkConflict, buildOccupants, formatRejection } from './wiring/conflict-remedy';
+import { checkConflict, buildOccupants, formatRejection, candidateBusesFor } from './wiring/conflict-remedy';
 import { PotStore } from './controllers/pot-store';
 import { ButtonStore } from './controllers/button-store';
 import { ToggleStore } from './controllers/toggle-store';
@@ -478,6 +479,21 @@ export function activate(context: vscode.ExtensionContext): void {
         pins = allocated;
       }
 
+      // FR-DEV-13: wiring a control is also a pin-claiming action, so it must
+      // be refused on the same terms enabling a peripheral already is — a
+      // gap surfaced by manual testing (M46): wiring a button onto an
+      // enabled bus peripheral's pin (e.g. SD Card's D1-D6, OLED's D7-D10)
+      // previously succeeded silently. No peripheral is being toggled here,
+      // so nothing is excluded from the occupant set.
+      const candidateAttachment: Attachment = pins ? { kind: 'pins', pins } : { kind: 'pin', pin: wp.pinNumber };
+      const wireRejection = checkConflict(candidateAttachment, buildOccupants(oldText), PIN_DEFS, candidateBusesFor);
+      if (wireRejection) {
+        void vscode.window.showErrorMessage(
+          formatRejection(`${wp.id} (${REGISTRY[wp.deviceType]!.label})`, wireRejection),
+        );
+        return;
+      }
+
       const afterDecl = insertIntoSource(oldText, wp.id, wp.deviceType, wp.pinNumber, pins);
       const { controls: controlsAfterDecl } = parseControlsConvention(afterDecl);
       const allPots = controlsAfterDecl.filter(c => c.kind === 'pot');
@@ -541,15 +557,6 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
       const oldText = doc.getText();
-
-      // candidateBusesFor(id): every bus `id` could resolve against — a
-      // single-element list for a fixed-bus peripheral (sdcard), the full
-      // choice set for a multi-bus one (oled, FR-DEV-14).
-      const candidateBusesFor = (id: string): string[] => {
-        const d = REGISTRY[id];
-        if (!d) return [];
-        return d.busChoices ?? (d.bus ? [d.bus] : []);
-      };
 
       // FR-DEV-13: a colliding enable is refused before any mutation, never
       // applied-and-flagged. Disabling a peripheral can never create a
