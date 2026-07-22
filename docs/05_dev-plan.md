@@ -1,4 +1,4 @@
-# 05 — Development Plan (v14)
+# 05 — Development Plan (v15)
 
 > **v1 complete** — M0–M7 released (0.1.0–0.1.7), all ACs green.
 > Archived: [`docs/v1/`](v1/).
@@ -38,8 +38,11 @@
 >
 > **v13 complete** — M41–M42 released (0.13.3–0.13.4), all ACs green.
 > Archived: [`docs/v13/`](v13/).
+>
+> **v14 complete** — M43–M47 released (0.14.0–0.14.4), all ACs green.
+> Archived: [`docs/v14/`](v14/).
 
-*v14 milestones not yet planned.*
+*v15 milestones not yet planned.*
 
 ---
 
@@ -117,21 +120,12 @@ Full registry in [`docs/v12/05_dev-plan.md`](v12/05_dev-plan.md).
 M41 Emulator Code Quality & Hygiene · M42 Extension/Tooling Polish.
 Full registry in [`docs/v13/05_dev-plan.md`](v13/05_dev-plan.md).
 
-### v14 (0.14.0–0.18.0) — planned
+### v14 (0.14.0–0.14.4) — archived in `docs/v14/`
 
-| Milestone | Title | Version | Status          | File |
-|---|---|---|-----------------|---|
-| M43 | Device Registry & Protocol Foundation | 0.14.0 | **released**    | [`Milestone_M43.md`](milestones/v14/Milestone_M43.md) |
-| M44 | Cheap Trio — Toggle, RGB LED, Encoder | 0.14.1  | **released**    | [`Milestone_M44.md`](milestones/v14/Milestone_M44.md) |
-| M45 | MicroSD & Bus-Peripheral UI | 0.14.2  | **released**    | [`Milestone_M45.md`](milestones/v14/Milestone_M45.md) |
-| M46 | OLED Display | 0.14.3  | **released**    | [`Milestone_M46.md`](milestones/v14/Milestone_M46.md) |
-| M47 | MIDI — TRS & USB | 0.14.4  | **released**    | [`Milestone_M47.md`](milestones/v14/Milestone_M47.md) |
+M43 Device Registry & Protocol Foundation · M44 Cheap Trio — Toggle, RGB LED, Encoder ·
+M45 MicroSD & Bus-Peripheral UI · M46 OLED Display · M47 MIDI — TRS & USB.
+Full registry in [`docs/v14/05_dev-plan.md`](v14/05_dev-plan.md).
 
-Sequencing is deliberate: **M43 lands the protocol change and the registry before any new device
-exists**, because the wire format is the expensive thing to change late. **M44 is the registry's
-test** — three devices chosen to stress it differently (multi-position, multi-channel output,
-delta semantics) — and is why M45–M47 carry goals but not yet acceptance criteria. M45 is where
-the first *bus* peripheral lands, so it also carries the bus-peripheral UI.
+### v15 — planned
 
-*(M45–M47 are registry placeholders: goal recorded, sprint tasks written once M44 has proven the
-registry.)*
+*(no milestones yet)*
