@@ -5,6 +5,18 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.14.2 — 2026-07-22
+
+**M45 — MicroSD & Bus-Peripheral UI** *(FR-DEV-10, FR-DEV-11, FR-DEV-12, FR-DEV-13 — all DoD green)*
+
+- **FR-DEV-10** — `sdcard` lands as the first bus-attached, non-instanced device: a registry entry with a `peripheralCodegen` strategy (enabled/disabled, not N-instance like pot's shared array) and an emulator-side FatFS shim (`emulator/shim/src/fatfs_host.cpp`) mapping `f_mount`/`f_open`/`f_read`/`f_write`/`f_lseek`/`f_close` onto a workspace-relative host directory instead of real SD hardware, with path-escape rejection.
+- **FR-DEV-11** — The Wiring Editor gained a dedicated Peripherals section: bus peripherals are enabled/disabled from a checkbox list rather than by clicking a pin. Enabled state persists the same way wired-control topology already does — presence of the peripheral's declaration in the effect source — via a new `peripheral-state.ts`/`peripheral-config.ts` pair living in their own `ds-ide:peripherals:*` marker block, independent of the existing controls block.
+- **FR-DEV-12** — Enabled bus peripherals draw as one collapsed bracket spanning their resolved pins, via a new pure `bus-bracket.ts` reducer — never one label per pin. Hovering a bracket's pin shows a tooltip (pin · signal · owner); clicking the bracket opens a structured popover with the full pin map and a disable action.
+- **FR-DEV-13** — Enabling a peripheral is now checked against every existing occupant (wired controls and other enabled peripherals) before any source edit is made — a colliding action is refused outright, never applied-and-flagged, naming every blocking pin/signal/owner. A colliding peripheral occupant gets a one-click "move to bus X" remedy when a collision-free alternative exists; a hand-wired control blocker never does.
+- Fixed a regression (found in manual testing) where disabling a peripheral left its pins permanently marked as occupied — the DOM class-toggling logic only ever added the "connected" style and never restored the default, replaced with a pure `pin-overlay-state.ts` that recomputes each pin's full desired state from scratch on every update.
+
+---
+
 ## 0.14.1 — 2026-07-21
 
 **M44 — Cheap Trio: Toggle, RGB LED, Encoder** *(FR-DEV-7, FR-DEV-8, FR-DEV-9 — all DoD green)*
