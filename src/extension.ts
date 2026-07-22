@@ -5,6 +5,8 @@ import { EmulatorManager, workspaceRuntimeDir } from './emulator/manager';
 import { IpcMessage } from './emulator/ipc-client';
 import { ScopePanel } from './webview/scope-panel';
 import { OledPanel } from './webview/oled-panel';
+import { MidiPanel } from './webview/midi-panel';
+import { HostMidiBridge } from './midi/host-bridge';
 import { buildForEmulator } from './commands/build';
 import { deployToEmulator } from './commands/deploy';
 import { startAudio, stopAudio } from './commands/transport';
@@ -215,6 +217,7 @@ class DeployCoordinator {
     private readonly session: SessionState,
     private readonly scopePanel: ScopePanel,
     private readonly oledPanel: OledPanel,
+    private readonly midiPanel: MidiPanel,
     private readonly controlsProvider: ControlsViewProvider,
     private readonly diagnostics: vscode.DiagnosticCollection,
     private readonly buildChannel: vscode.OutputChannel,
@@ -239,6 +242,20 @@ class DeployCoordinator {
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
     const state = computePeripheralDisplayStates(doc.getText()).find(p => p.id === 'oled');
     if (state?.enabled) this.oledPanel.show(state.bus);
+  }
+
+  // FR-DEV-18: mirrors showOledIfEnabled — opens the MIDI panel only when
+  // the deployed effect actually enables a MIDI peripheral (midiTrs or
+  // midiUsb; either is enough, since the panel's keyboard/monitor aren't
+  // specific to one transport).
+  private async showMidiIfEnabled(): Promise<void> {
+    const folder = resolveActiveFolder(this.workspaceState)?.uri.fsPath ?? '';
+    const effectPath = await findEffectSource(folder);
+    if (!effectPath) return;
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
+    const states = computePeripheralDisplayStates(doc.getText());
+    const enabled = states.some(p => (p.id === 'midiTrs' || p.id === 'midiUsb') && p.enabled);
+    if (enabled) this.midiPanel.show();
   }
 
   private setStopped(): void {
@@ -286,6 +303,7 @@ class DeployCoordinator {
         () => {
           this.scopePanel.show(this.session.sineState, this.session.audioSourceState);
           void this.showOledIfEnabled();
+          void this.showMidiIfEnabled();
         },
         () => this.potStore.getSnapshot(),
         () => this.sendPostDeployState(),
@@ -296,6 +314,7 @@ class DeployCoordinator {
 
     this.scopePanel.show(this.session.sineState, this.session.audioSourceState);
     void this.showOledIfEnabled();
+    void this.showMidiIfEnabled();
     this.controlsProvider.loadEditor(cfg);
     this.controlsProvider.postControlsConfig(controlsConfig);
     void vscode.commands.executeCommand('workbench.view.extension.ds-ide-controls');
@@ -448,6 +467,9 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   const oledPanel = new OledPanel(context.extensionUri, manager);
+  const midiPanel = new MidiPanel(context.extensionUri, manager);
+  const hostMidiBridge = new HostMidiBridge(manager);
+  hostMidiBridge.start();
 
   const wiringProvider = new WiringViewProvider(
     context.extensionUri,
@@ -600,14 +622,17 @@ export function activate(context: vscode.ExtensionContext): void {
       wiringProvider?.postPeripherals(computePeripheralDisplayStates(newText));
     },
     (peripheralId: string) => {
-      if (peripheralId !== 'oled') return;
-      const folder = resolveActiveFolder(context.workspaceState)?.uri.fsPath ?? '';
-      void findEffectSource(folder).then(async (effectPath) => {
-        if (!effectPath) return;
-        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
-        const state = computePeripheralDisplayStates(doc.getText()).find(p => p.id === 'oled');
-        oledPanel.show(state?.bus ?? null);
-      });
+      if (peripheralId === 'oled') {
+        const folder = resolveActiveFolder(context.workspaceState)?.uri.fsPath ?? '';
+        void findEffectSource(folder).then(async (effectPath) => {
+          if (!effectPath) return;
+          const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
+          const state = computePeripheralDisplayStates(doc.getText()).find(p => p.id === 'oled');
+          oledPanel.show(state?.bus ?? null);
+        });
+      } else if (peripheralId === 'midiTrs' || peripheralId === 'midiUsb') {
+        midiPanel.show();
+      }
     },
   );
 
@@ -724,8 +749,8 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   const deployCoordinator = new DeployCoordinator(
-    manager, statusBar, potStore, buttonStore, toggleStore, session, scopePanel, oledPanel, controlsProvider,
-    diagnostics, buildChannel, emulatorChannel, context.extensionPath, loadControllerConfig,
+    manager, statusBar, potStore, buttonStore, toggleStore, session, scopePanel, oledPanel, midiPanel,
+    controlsProvider, diagnostics, buildChannel, emulatorChannel, context.extensionPath, loadControllerConfig,
     context.workspaceState,
   );
 
@@ -864,7 +889,10 @@ export function activate(context: vscode.ExtensionContext): void {
       const chosen = await promptSelectActiveFolder(context.workspaceState);
       if (chosen) void initViewsFromProject();
     }),
-    { dispose: () => { manager?.dispose(); scopePanel?.dispose(); oledPanel?.dispose(); } },
+    { dispose: () => {
+      manager?.dispose(); scopePanel?.dispose(); oledPanel?.dispose(); midiPanel?.dispose();
+      hostMidiBridge?.stop();
+    } },
     startSessionDisposable,
     terminateSessionDisposable,
   );

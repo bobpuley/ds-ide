@@ -66,6 +66,21 @@
 > deploy time. Discovered while wiring `midi_uart_handler.h` into the same umbrella header for
 > FR-DEV-16 and confirmed via a standalone probe compile; fixed for all five alongside MIDI TRS.
 
+> ✅ **FIXED (M47, FR-DEV-18, 2026-07-22):** `midi` (RtMidi bindings, the host MIDI bridge's native
+> addon) can't be inlined by esbuild the way every other dependency is — packaging originally used
+> `vsce package --no-dependencies` on the assumption that zero runtime `dependencies` ever needed to
+> ship as real files. Fixed: `package` script drops `--no-dependencies`, and `.vscodeignore` carves
+> the seven files actually needed (`midi`'s JS glue + prebuilt `.node` binary, plus its `bindings`/
+> `file-uri-to-path` dependency chain) back in from the blanket `node_modules/**` exclusion —
+> verified end-to-end by `scripts/verify-vsix.sh`, which now packages the extension and `require()`s
+> the module straight out of the unzipped layout. **Known limitation, not fixed here:** the packaged
+> `.node` binary is prebuilt for whatever platform/arch ran `npm install` (macOS/Apple Silicon, this
+> project's primary target) — installing the packaged extension on a different OS/arch would fail to
+> load it. `host-bridge.ts` already wraps the `require()` in a try/catch and no-ops on failure (the
+> same macOS-only gate covers most of this), so the failure mode is "bridge silently unavailable,"
+> never a crash — but multi-arch prebuilt-binary distribution (or fetching one at install time) is
+> unaddressed.
+
 ### Risks
 
 - **The IPC generalisation is a breaking protocol change.** Replacing

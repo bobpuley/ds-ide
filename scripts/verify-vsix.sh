@@ -28,7 +28,11 @@ echo ""
 
 cd "${REPO_ROOT}"
 node esbuild.js --production
-npx --yes @vscode/vsce package --no-dependencies -o "${VSIX_PATH}"
+# No --no-dependencies (FR-DEV-18): 'midi' is a native addon esbuild can't
+# inline, so its runtime files must ship as real node_modules entries —
+# .vscodeignore carves the specific files needed back in from its blanket
+# node_modules/** exclusion.
+npx --yes @vscode/vsce package -o "${VSIX_PATH}"
 
 mkdir -p "${UNZIP_DIR}"
 unzip -q "${VSIX_PATH}" -d "${UNZIP_DIR}"
@@ -46,6 +50,33 @@ check() {
 
 check "emulator/CMakeLists.txt"
 check "dist/extension.js"
+
+# FR-DEV-18: the host MIDI bridge's native addon must actually be present and
+# loadable from the packaged layout — the class of bug this whole script
+# exists to catch (invisible when testing only via dev-mode Extension Host,
+# where node_modules is resolved from the repo root instead of the .vsix).
+check "node_modules/midi/midi.js"
+check "node_modules/midi/build/Release/midi.node"
+check "node_modules/bindings/bindings.js"
+check "node_modules/file-uri-to-path/index.js"
+
+if node -e "require('${UNZIP_DIR}/extension/node_modules/midi/midi.js')" 2>/tmp/midi-load-err.txt; then
+  echo "  PASS  node_modules/midi loads successfully from the packaged layout"
+else
+  echo "  FAIL  node_modules/midi failed to load from the packaged layout:"
+  sed 's/^/    /' /tmp/midi-load-err.txt
+  fail=1
+fi
+rm -f /tmp/midi-load-err.txt
+
+# Bulk exclusion: midi's test suite and vendored RtMidi C++ source must NOT
+# be packaged (only the compiled runtime files above are needed).
+if [[ -e "${UNZIP_DIR}/extension/node_modules/midi/test" || -e "${UNZIP_DIR}/extension/node_modules/midi/vendor" ]]; then
+  echo "  FAIL  node_modules/midi/test or vendor/ was packaged (should be excluded)"
+  fail=1
+else
+  echo "  PASS  node_modules/midi's test/vendor bulk is excluded"
+fi
 
 # Defense-in-depth: build output directories must NOT be packaged.
 if find "${UNZIP_DIR}/extension" -path '*/emulator/*/build/*' -print -quit | grep -q .; then

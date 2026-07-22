@@ -278,6 +278,18 @@ describe('EmulatorManager', () => {
     });
   });
 
+  describe('sendMidiEvent()', () => {
+    it('sends a midiEvent with flat status/data1/data2 fields (FR-DEV-16/18)', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      manager.sendMidiEvent(0x90, 60, 100);
+      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'midiEvent', status: 0x90, data1: 60, data2: 100 });
+    });
+  });
+
   describe('sendControlValue()', () => {
     it('sends a well-formed controlValue as-is', async () => {
       await manager.build(

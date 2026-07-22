@@ -16,6 +16,7 @@ describe('esbuild configs', () => {
     expect(webviewConfig.external ?? []).not.toContain('vscode');
     expect(Object.keys(webviewConfig.entryPoints).sort()).toEqual([
       'webview/controls-webview',
+      'webview/midi-webview',
       'webview/oled-webview',
       'webview/scope-webview',
       'webview/wiring-webview',

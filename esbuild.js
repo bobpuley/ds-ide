@@ -11,7 +11,11 @@ const extensionConfig = {
   },
   bundle: true,
   outdir: 'dist',
-  external: ['vscode'],
+  // 'midi' is a native addon (RtMidi bindings, FR-DEV-18's host MIDI bridge)
+  // — esbuild can't inline a compiled .node binary, so it stays external and
+  // ships as real node_modules files instead (package.json's `package`
+  // script no longer passes vsce's --no-dependencies for this reason).
+  external: ['vscode', 'midi'],
   format: 'cjs',
   platform: 'node',
   target: 'node18',
@@ -27,6 +31,7 @@ const webviewConfig = {
     'webview/scope-webview': 'src/webview/scope-webview.ts',
     'webview/wiring-webview': 'src/webview/wiring-webview.ts',
     'webview/oled-webview': 'src/webview/oled-webview.ts',
+    'webview/midi-webview': 'src/webview/midi-webview.ts',
   },
   bundle: true,
   outdir: 'dist',

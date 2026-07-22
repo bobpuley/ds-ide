@@ -112,6 +112,15 @@ export interface DeviceDescriptor {
    * hardcoding a device's pin count.
    */
   pinCount?: number;
+  /**
+   * True for a peripheral with a live webview panel to open (FR-DEV-15's
+   * OLED viewer; FR-DEV-18 extends this to the MIDI panel) — the Peripherals
+   * section's "View" button and the auto-open-on-deploy trigger both
+   * enumerate this instead of a hardcoded id, once a second consumer existed
+   * to make a shared flag worth it (wiring-webview.ts's own FR-DEV-15
+   * comment named this exact moment as the trigger to generalize).
+   */
+  hasLiveView?: boolean;
 }
 
 // The enumerable literal-type source of truth. REGISTRY itself stays a
@@ -232,6 +241,7 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     busChoices: ['SPI1', 'I2C1'],
     initArgs: null,
     peripheralCodegen: oledCodegen,
+    hasLiveView: true,
   },
   // FR-DEV-16: the first peripheral whose runtime data is an *inbound* event
   // stream (a played note) rather than outbound telemetry. Fixed to USART1
@@ -249,6 +259,7 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     bus: 'USART1',
     initArgs: null,
     peripheralCodegen: midiTrsCodegen,
+    hasLiveView: true,
   },
   // FR-DEV-17: the first peripheral whose declared C++ type is mode-invariant
   // (one real MidiUsbHandler class) while its *runtime configuration* picks
@@ -268,6 +279,7 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     busChoices: ['INTERNAL', 'USB_HS_D'],
     initArgs: null,
     peripheralCodegen: midiUsbCodegen,
+    hasLiveView: true,
   },
 };
 

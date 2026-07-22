@@ -10,6 +10,19 @@ tsconfig.test.json
 **/*.ts
 !dist/**
 node_modules/**
+# midi (FR-DEV-18's host MIDI bridge) is a native addon esbuild can't inline
+# into dist/extension.js — its runtime files (JS glue + prebuilt binary, plus
+# its own bindings/file-uri-to-path dependency chain) are carved back in from
+# the blanket node_modules/** exclusion above. Everything else under
+# node_modules/midi/** (tests/, vendor/rtmidi source, build/Makefile, ...) is
+# unnecessary bulk and stays excluded.
+!node_modules/midi/package.json
+!node_modules/midi/midi.js
+!node_modules/midi/build/Release/midi.node
+!node_modules/bindings/package.json
+!node_modules/bindings/bindings.js
+!node_modules/file-uri-to-path/package.json
+!node_modules/file-uri-to-path/index.js
 daisy-seed-knowledge/**
 docs/**
 graphify-out/**

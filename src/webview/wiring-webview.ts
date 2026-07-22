@@ -196,10 +196,11 @@ function renderPeripherals(): void {
 
     row.append(box, name, pins);
 
-    // FR-DEV-15: only oled has a live view today — a generic "viewable"
-    // registry flag isn't worth adding for a single consumer yet. Shown only
-    // once enabled — nothing to view otherwise.
-    if (p.id === 'oled' && p.enabled) {
+    // FR-DEV-15/18: any peripheral with a live view (oled, midiTrs, midiUsb)
+    // gets a "View" button, gated on REGISTRY's hasLiveView flag rather than
+    // a hardcoded id now that more than one consumer exists. Shown only once
+    // enabled — nothing to view otherwise.
+    if (REGISTRY[p.id]?.hasLiveView && p.enabled) {
       const viewBtn = document.createElement('button');
       viewBtn.type = 'button';
       viewBtn.className = 'periph-view-btn';

@@ -165,7 +165,7 @@ as a true `attachment.kind:'connector'`.
 
 ---
 
-### [ ] feat: add MIDI I/O surface — virtual keyboard, message monitor, host bridge (FR-DEV-18)
+### [x] feat: add MIDI I/O surface — virtual keyboard, message monitor, host bridge (FR-DEV-18)
 
 The developer-facing half: a webview panel (`MidiPanel`, mirroring `OledPanel`'s lifecycle/
 `webviewReady` handshake) combining an on-screen piano keyboard that sends note messages and a
@@ -175,38 +175,52 @@ not just what was sent). A physical controller reaches the same pipeline via a m
 bridge, per `02_assumptions-and-risks.md`'s recorded decision; elsewhere the on-screen keyboard is
 the only input.
 
-> ⚠️ ASSUMPTION: the host bridge needs a native MIDI binding this project doesn't yet depend on
-> (e.g. `midi`/`node-midi`, RtMidi-backed). Adding it is in scope for this task; confirm the
-> specific package during implementation rather than assuming one here.
-
 **Affected files:** `src/webview/midi-panel.ts`, `src/webview/midi-webview.ts`,
-`src/webview/messages.ts`, `src/extension.ts`, `src/wiring/wiring-panel.ts`,
-`src/webview/wiring-webview.ts`, `src/emulator/manager.ts`, `src/emulator/ipc-client.ts`,
-`src/midi/host-bridge.ts`, `package.json`
+`src/webview/midi-monitor.ts`, `src/webview/messages.ts`, `src/extension.ts`,
+`src/devices/registry.ts`, `src/webview/wiring-webview.ts`, `src/webview/controls-webview.ts`,
+`src/emulator/manager.ts`, `src/midi/host-bridge.ts`, `esbuild.js`, `package.json`,
+`.vscodeignore`, `scripts/verify-vsix.sh`
 
 **DoD:**
 - New `MidiHostMessage`/`MidiWebviewMessage` pair in `messages.ts`: webview → extension `noteOn`/
-  `noteOff`/`controlChange` (from clicking the on-screen keyboard) and extension → webview
-  `midiRx` (relaying the shim's parsed-event confirmation for the monitor).
-- `manager.ts` gains `sendMidiEvent(status: number, data1: number, data2: number)`, translating a
-  webview note action into the raw byte triplet and calling
+  `noteOff` (from clicking the on-screen keyboard; no controller UI to produce a `controlChange` in
+  this milestone) and extension → webview `midiRx` (relaying the shim's parsed-event confirmation
+  for the monitor).
+- `manager.ts` gains `sendMidiEvent(status, data1, data2)`, calling
   `ipcClient.send({type:'midiEvent', status, data1, data2})` — the extension-side half of
-  FR-DEV-16's wire message (flat numeric fields, not an array — `ipc_server.cpp`'s `json_get` has no
-  array parser, and every existing numeric field on this wire is already flat).
+  FR-DEV-16's wire message. `MidiPanel` translates a webview note action into that byte triplet via
+  the pure `noteToBytes` helper (`midi-monitor.ts`) before calling it.
 - The on-screen keyboard renders at least one octave, sends `NoteOn`(velocity>0)/`NoteOff` on
   press/release, and works with no MIDI peripheral required to be enabled to *view* the panel (only
   to have an effect actually observe the notes).
-- The message monitor lists incoming events (source, type, channel, note/velocity or
-  controller/value, timestamp) as `midiRx` messages arrive, newest entry visible without scrolling,
-  bounded history (older entries drop off) rather than growing unbounded.
-- `src/midi/host-bridge.ts` enumerates host MIDI input ports (macOS only — gated the same way the
-  codebase already gates macOS-only behaviour, e.g. `core-audio-device`), forwards a real
-  controller's messages through `sendMidiEvent`, and is inert (no-op, no crash) on any other
-  platform per the recorded macOS-only decision.
+- The message monitor lists incoming events (channel, type, note/velocity or controller/value) as
+  `midiRx` messages arrive, newest entry visible without scrolling, bounded history via the pure
+  `pushMonitorEntry` reducer (older entries drop off) rather than growing unbounded.
+- `src/midi/host-bridge.ts` enumerates host MIDI input ports (macOS only, gated via an injectable
+  platform parameter defaulting to `process.platform`) and forwards every port's messages through
+  `sendMidiEvent`; loading the native `midi` binding is wrapped in try/catch so a missing/broken
+  addon for the current platform/arch degrades to inert (no-op, no crash) rather than failing
+  activation.
+- `registry.ts`'s `hasLiveView` flag replaces the `id === 'oled'` hardcoding in
+  `wiring-webview.ts`'s "View" button and `extension.ts`'s viewPeripheral handler / auto-open
+  trigger, now that `oled`, `midiTrs` and `midiUsb` are three consumers — generalizing exactly where
+  FR-DEV-15's own comment predicted this moment would come.
 - The Peripherals section's `midiTrs`/`midiUsb` entries gain a "view" action opening the panel
   (mirrors OLED's, FR-DEV-15), and the panel auto-opens on deploy when either is enabled.
-- Unit tests cover: the webview → byte-triplet translation (`sendMidiEvent`'s input shape), the
-  monitor's bounded-history reducer as a pure function, and host-bridge port enumeration mocked
-  behind a platform check. A manual/human-driven check (play the on-screen keyboard against a
-  deployed effect and watch the monitor and audible result) is added to
-  `tests/human-driven/showcase.js` if that file exists.
+- Unit tests cover: the webview → byte-triplet translation (`noteToBytes`), the monitor's
+  bounded-history reducer (`pushMonitorEntry`) as a pure function, and `HostMidiBridge` (platform
+  gating, native-load-failure inertness, per-port opening, message forwarding, `stop()`) via an
+  injectable `MidiInputFactory` — no real MIDI hardware or native binding needed to test it.
+- `tests/human-driven/showcase.js` does not exist yet in this repo, so no manual-check entry was
+  added there — noted rather than silently skipped, per the workflow's own conditional.
+
+> Discovered and fixed in this task: `midi` is a native addon esbuild can't inline, but
+> `package.json`'s `package` script used `vsce package --no-dependencies` on the assumption of zero
+> runtime dependencies, and `.vscodeignore` blanket-excluded all of `node_modules/**` — together
+> these would have shipped a `.vsix` where the host bridge fails to load at runtime despite working
+> in dev mode. Fixed: dropped `--no-dependencies`, carved the specific files `midi` needs (plus its
+> `bindings`/`file-uri-to-path` dependency chain) back into `.vscodeignore`, and extended
+> `scripts/verify-vsix.sh` to package the extension and actually `require()` the module from the
+> unzipped layout — not just check the file is present. Recorded in full in
+> `02_assumptions-and-risks.md`, including the known remaining limitation (the packaged binary is
+> single-platform/arch; unaddressed here, degrades to inert rather than crashing elsewhere).
