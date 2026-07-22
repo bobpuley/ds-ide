@@ -7,13 +7,19 @@
 // peripheral-config.ts for the writer side).
 import { REGISTRY } from '../devices/registry';
 import { resolveBusFootprint } from '../devices/attachment';
+import type { ResolvedPin } from '../devices/attachment';
 
 export interface PeripheralDisplayState {
   id: string;
   label: string;
   enabled: boolean;
-  /** Resolved pin footprint (FR-DEV-3) — empty for a connector-attached peripheral. */
-  pins: number[];
+  /**
+   * Resolved pin footprint (FR-DEV-3), each with its bus signal name — empty
+   * for a connector-attached peripheral. Carries the signal (not just the
+   * pin number) so FR-DEV-12's tooltip can show "pin · signal · owner"
+   * without re-resolving the bus footprint a second time.
+   */
+  pins: ResolvedPin[];
 }
 
 // Registry ids for bus/connector-attached peripherals — the Peripherals
@@ -39,7 +45,7 @@ export function isPeripheralEnabled(source: string, id: string): boolean {
 export function computePeripheralDisplayStates(source: string): PeripheralDisplayState[] {
   return peripheralIds().map(id => {
     const d = REGISTRY[id]!;
-    const pins = d.bus ? resolveBusFootprint(d.bus).map(r => r.pin) : [];
+    const pins = d.bus ? resolveBusFootprint(d.bus) : [];
     return { id, label: d.label, enabled: isPeripheralEnabled(source, id), pins };
   });
 }

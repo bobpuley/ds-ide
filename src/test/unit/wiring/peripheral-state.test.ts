@@ -41,13 +41,15 @@ describe('isPeripheralEnabled (FR-DEV-11)', () => {
 });
 
 describe('computePeripheralDisplayStates (FR-DEV-11)', () => {
-  it('reports sdcard disabled with its resolved SDMMC1 footprint when absent from source', () => {
+  it('reports sdcard disabled with its resolved SDMMC1 footprint (pin + signal) when absent from source', () => {
     const states = computePeripheralDisplayStates('void Init() {}');
     const sd = states.find(s => s.id === 'sdcard');
     expect(sd).toBeDefined();
     expect(sd!.enabled).toBe(false);
     expect(sd!.label).toBe('SD Card');
-    expect(sd!.pins.sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6]);
+    const pins = [...sd!.pins].sort((a, b) => a.pin - b.pin);
+    expect(pins.map(p => p.pin)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(pins.find(p => p.pin === 5)!.signal).toBe('SDMMC1_CMD');
   });
 
   it('reports sdcard enabled once its declaration is present in source', () => {

@@ -55,7 +55,7 @@ placed by clicking a pin, and drawn on the board at the pins their selected bus 
 
 ---
 
-### [ ] feat: collapsed bus bracket rendering with tooltip and popover (FR-DEV-12)
+### [x] feat: collapsed bus bracket rendering with tooltip and popover (FR-DEV-12)
 
 A bus group renders as one bracket with one label, never one label per pin. Detail is on demand:
 hovering a bus pin shows an unstructured tooltip (pin · signal · owner); clicking the bracket opens

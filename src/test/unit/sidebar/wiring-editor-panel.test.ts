@@ -247,13 +247,13 @@ describe('WiringViewProvider', () => {
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);
     view.webview.postMessage.mockClear();
-    const peripherals = [{ id: 'sdcard', label: 'SD Card', enabled: true, pins: [1, 2, 3, 4, 5, 6] }];
+    const peripherals = [{ id: 'sdcard', label: 'SD Card', enabled: true, pins: [1, 2, 3, 4, 5, 6].map(pin => ({ pin, signal: null })) }];
     provider.postPeripherals(peripherals);
     expect(view.webview.postMessage).toHaveBeenCalledWith({ command: 'peripherals', peripherals });
   });
 
   it('re-sends peripherals when view becomes visible after being hidden', () => {
-    const peripherals = [{ id: 'sdcard', label: 'SD Card', enabled: true, pins: [1, 2, 3, 4, 5, 6] }];
+    const peripherals = [{ id: 'sdcard', label: 'SD Card', enabled: true, pins: [1, 2, 3, 4, 5, 6].map(pin => ({ pin, signal: null })) }];
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);
     provider.postPeripherals(peripherals);

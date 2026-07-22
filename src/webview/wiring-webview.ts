@@ -4,6 +4,7 @@ import type { PinDef, WiredPin, DeviceType, PeripheralDisplayState } from '../wi
 import { computePinDisplayStates } from '../wiring/wired-pin-state';
 import { defaultId, validateId } from '../wiring/id-validation';
 import { REGISTRY, wiredControlIds } from '../devices/registry';
+import { computeBusBrackets, type BusBracket } from '../wiring/bus-bracket';
 
 // FR-DEV-2: one popup button id per pin-attached registry entry —
 // generalizes what used to be a hardcoded ['btn-pot', 'btn-button', 'btn-led']
@@ -26,9 +27,11 @@ interface VsCodeApiForWiring {
   postMessage(msg: WiringWebviewMessage): void;
 }
 
-const vscode  = acquireVsCodeApi() as unknown as VsCodeApiForWiring;
-const svg     = el<HTMLElement & SVGSVGElement>('pinout');
-const popup   = el<HTMLElement>('popup');
+const vscode      = acquireVsCodeApi() as unknown as VsCodeApiForWiring;
+const svg         = el<HTMLElement & SVGSVGElement>('pinout');
+const popup       = el<HTMLElement>('popup');
+const tooltip     = el<HTMLElement>('tooltip');
+const busPopover  = el<HTMLElement>('bus-popover');
 
 // ── Pin definitions (loaded from data island) ─────────────────────────────
 const PIN_DEFS: PinDef[] = JSON.parse(el<HTMLElement>('pin-defs').textContent || '[]');
@@ -72,6 +75,16 @@ PIN_DEFS.forEach(def => {
     g.dataset['adc']  = def.adc ? 'true' : 'false';
     g.classList.add(def.adc ? 'pin-adc' : 'pin-unassigned');
     g.addEventListener('click', onPinClick);
+    // A bus peripheral's pin carries a live "pin · signal · owner" tooltip
+    // (FR-DEV-12) — g.dataset['tip'] is set/cleared by applyPeripheralPins()
+    // as peripherals are enabled/disabled, so this listener is attached once
+    // here and reads whatever tip is current at hover time.
+    g.addEventListener('mousemove', (e) => {
+      const tip = g.dataset['tip'];
+      if (!tip) return;
+      showTooltip(tip, e as MouseEvent);
+    });
+    g.addEventListener('mouseleave', hideTooltip);
   } else {
     g.classList.add('pin-power');
   }
@@ -136,25 +149,32 @@ function applyWiredPins(pins: WiredPin[]): void {
 
 applyWiredPins(wiredPins);
 
-// ── Peripherals section (FR-DEV-11) ───────────────────────────────────────
+// ── Peripherals section (FR-DEV-11/12) ────────────────────────────────────
 
 // Marks each enabled peripheral's resolved pins with the generic `pin-bus`
-// class so they read as "system-assigned, not user-wired" on the board — a
-// hand-wired control on the same pin still wins visually (should never
-// legitimately happen once FR-DEV-13's reject-with-remedy lands, but a
-// loaded-from-disk conflict is possible today). Per-peripheral bracket
-// grouping and labelling is FR-DEV-12; this only supplies the occupancy data
-// that task draws from.
+// class and a hover tooltip ("pin · signal · owner") — a hand-wired control
+// on the same pin still wins visually (should never legitimately happen
+// once FR-DEV-13's reject-with-remedy lands, but a loaded-from-disk
+// conflict is possible today).
 function applyPeripheralPins(): void {
   const wiredPinNumbers = new Set(wiredPins.map(wp => wp.pinNumber));
-  const occupied = new Set(peripherals.filter(p => p.enabled).flatMap(p => p.pins));
+  const owned = new Map<number, { signal: string | null; owner: string }>();
+  for (const b of computeBusBrackets(peripherals, PIN_DEFS)) {
+    for (const rp of b.pins) owned.set(rp.pin, { signal: rp.signal, owner: b.label });
+  }
+
   for (const def of PIN_DEFS) {
     if (def.pin === null) continue;
     const g = document.getElementById('pin-' + def.pin);
     if (!g) continue;
-    if (!occupied.has(def.pin) || wiredPinNumbers.has(def.pin)) continue;
+    const info = owned.get(def.pin);
+    if (!info || wiredPinNumbers.has(def.pin)) {
+      delete g.dataset['tip'];
+      continue;
+    }
     g.classList.remove('pin-unassigned', 'pin-adc');
     g.classList.add('pin-bus');
+    g.dataset['tip'] = `D${def.pin} · ${info.signal ?? '—'} · ${info.owner}`;
   }
 }
 
@@ -178,13 +198,133 @@ function renderPeripherals(): void {
 
     const pins = document.createElement('span');
     pins.className = 'periph-pins';
-    pins.textContent = p.pins.length ? p.pins.map(n => 'D' + n).join(', ') : '';
+    pins.textContent = p.pins.length ? p.pins.map(rp => 'D' + rp.pin).join(', ') : '';
 
     row.append(box, name, pins);
     host.appendChild(row);
   }
   applyPeripheralPins();
+  renderBusBrackets();
 }
+
+// ── Bus bracket tooltip and popover (FR-DEV-12) ───────────────────────────
+
+function showTooltip(text: string, e: MouseEvent): void {
+  tooltip.textContent = text;
+  tooltip.style.display = 'block';
+  tooltip.style.left = (e.clientX + 14) + 'px';
+  tooltip.style.top = (e.clientY + 14) + 'px';
+}
+
+function hideTooltip(): void {
+  tooltip.style.display = 'none';
+}
+
+let busPopoverId: string | null = null;
+
+function hideBusPopover(): void {
+  busPopover.style.display = 'none';
+  busPopoverId = null;
+}
+
+// Structured popover for a bracket click: pin map (pin → signal) plus a
+// disable action. A peripheral with more than one candidate bus would also
+// show a bus choice here — none does yet (sdcard has exactly one, SDMMC1),
+// so that section is deferred until a real multi-bus peripheral (OLED,
+// M46) needs it, per FR-DEV-13's conflict check.
+function renderBusPopover(bracket: BusBracket, e: MouseEvent): void {
+  const p = peripherals.find(pp => pp.id === bracket.id);
+  if (!p) { hideBusPopover(); return; }
+
+  busPopover.innerHTML = '';
+
+  const h = document.createElement('h3');
+  h.textContent = p.label;
+  busPopover.appendChild(h);
+
+  const table = document.createElement('table');
+  for (const rp of bracket.pins) {
+    const tr = document.createElement('tr');
+    const tdPin = document.createElement('td');
+    tdPin.textContent = 'D' + rp.pin;
+    const tdSig = document.createElement('td');
+    tdSig.textContent = rp.signal ?? '—';
+    tr.append(tdPin, tdSig);
+    table.appendChild(tr);
+  }
+  busPopover.appendChild(table);
+
+  const actions = document.createElement('div');
+  actions.className = 'bus-popover-actions';
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = 'Close';
+  closeBtn.addEventListener('click', hideBusPopover);
+  const disableBtn = document.createElement('button');
+  disableBtn.textContent = 'Disable';
+  disableBtn.className = 'bus-popover-disable';
+  disableBtn.addEventListener('click', () => {
+    vscode.postMessage({ command: 'setPeripheralEnabled', peripheralId: p.id, enabled: false });
+    hideBusPopover();
+  });
+  actions.append(closeBtn, disableBtn);
+  busPopover.appendChild(actions);
+
+  busPopover.style.display = 'block';
+  busPopoverId = bracket.id;
+  busPopover.style.left = Math.min(e.clientX + 12, window.innerWidth - 240) + 'px';
+  busPopover.style.top  = Math.max(10, Math.min(e.clientY + 12, window.innerHeight - 160)) + 'px';
+}
+
+// Redraws every enabled peripheral's collapsed bracket (FR-DEV-12) — one
+// bracket per peripheral, spanning its topmost-to-bottommost pin row, never
+// one label per pin.
+function renderBusBrackets(): void {
+  svg.querySelectorAll('.bus-grp').forEach(node => node.remove());
+
+  for (const b of computeBusBrackets(peripherals, PIN_DEFS)) {
+    const y0 = pinY(b.minRow) - 10;
+    const y1 = pinY(b.maxRow) + 10;
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.classList.add('bus-grp');
+
+    const hit = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    hit.classList.add('bracket-hit');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.classList.add('bus-bracket');
+    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    label.classList.add('bus-bracket-label');
+    label.textContent = b.label;
+    label.setAttribute('y', String((y0 + y1) / 2 + 3));
+
+    if (b.side === 'L') {
+      hit.setAttribute('x', '150');
+      hit.setAttribute('width', '40');
+      path.setAttribute('d', `M172 ${y0} L160 ${y0} L160 ${y1} L172 ${y1}`);
+      label.setAttribute('x', '156');
+      label.setAttribute('text-anchor', 'end');
+    } else {
+      hit.setAttribute('x', '380');
+      hit.setAttribute('width', '40');
+      path.setAttribute('d', `M388 ${y0} L400 ${y0} L400 ${y1} L388 ${y1}`);
+      label.setAttribute('x', '404');
+      label.setAttribute('text-anchor', 'start');
+    }
+    hit.setAttribute('y', String(y0 - 4));
+    hit.setAttribute('height', String(y1 - y0 + 8));
+
+    g.append(hit, path, label);
+    g.addEventListener('click', (e) => {
+      e.stopPropagation();
+      renderBusPopover(b, e as MouseEvent);
+    });
+    svg.appendChild(g);
+  }
+}
+
+document.addEventListener('click', e => {
+  if (busPopover.style.display === 'block' && !busPopover.contains(e.target as Node)) hideBusPopover();
+});
 
 renderPeripherals();
 
@@ -308,5 +448,9 @@ window.addEventListener('message', (e: MessageEvent<WiringHostMessage>) => {
   } else if (msg.command === 'peripherals') {
     peripherals = msg.peripherals || [];
     renderPeripherals();
+    // An externally-driven change (another view, a reload) can update the
+    // very peripheral this webview's popover is open for — closing it
+    // rather than leaving stale pin-map content on screen is simplest.
+    if (busPopoverId !== null) hideBusPopover();
   }
 });
