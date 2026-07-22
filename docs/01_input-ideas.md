@@ -121,3 +121,13 @@ at [`docs/mockups/v14-peripheral-ux.html`](mockups/v14-peripheral-ux.html).
   itself (a new webview command, conflict re-check before applying, the popover dropdown) is a
   distinct follow-up, not bundled into FR-DEV-15. Today OLED always enables at SPI1 (`busChoices[0]`)
   from the UI. **Deliberately unscheduled.**
+
+- **SD Card file navigator/preview in the Controls Editor.** Raised during M46 manual testing:
+  wiring SD Card and OLED, the Controls Editor shows nothing for either — expected, since a bus
+  peripheral has no runtime value and is deliberately excluded from the Controls Editor, configured
+  only from the Wiring Editor's Peripherals section instead (M45, FR-DEV-11). A simple file
+  navigator over the FatFS host shim's `./sdcard/` directory, with a preview for `.txt` files,
+  would give SD Card the same kind of live observability OLED's viewer panel gives the display —
+  but it's a genuinely new feature (file I/O UI, text-preview rendering), not something either
+  M45 or M46 scoped. **Deliberately unscheduled — needs its own intake** (UI location, what file
+  types preview vs. just list, read-only or read/write, refresh trigger).
