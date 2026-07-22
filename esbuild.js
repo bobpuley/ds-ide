@@ -26,6 +26,7 @@ const webviewConfig = {
     'webview/controls-webview': 'src/webview/controls-webview.ts',
     'webview/scope-webview': 'src/webview/scope-webview.ts',
     'webview/wiring-webview': 'src/webview/wiring-webview.ts',
+    'webview/oled-webview': 'src/webview/oled-webview.ts',
   },
   bundle: true,
   outdir: 'dist',

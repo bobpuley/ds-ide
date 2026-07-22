@@ -18,6 +18,8 @@ export interface WiredPin {
 export type WirePinHandler   = (pin: WiredPin) => Promise<void>;
 export type UnwirePinHandler = (pinNumber: number, id: string) => Promise<void>;
 export type SetPeripheralEnabledHandler = (peripheralId: string, enabled: boolean) => Promise<void>;
+// FR-DEV-15: opens or reveals a peripheral's live view (today: only oled has one).
+export type ViewPeripheralHandler = (peripheralId: string) => void;
 
 // Expands parsed controls into one WiredPin per physical pin — a
 // 'pins'-attachment device (rgbled, encoder — FR-DEV-8/9) occupies more than
@@ -176,6 +178,9 @@ ${pinDeviceCssRules()}
               border-bottom: 1px solid #2a2a2a; font-size: 11px; }
     .periph.off .periph-name { color: #6a6a6a; }
     .periph-pins { color: #f4c430; margin-left: auto; }
+    .periph-view-btn { background: #0e639c; color: #fff; border: none; padding: 2px 8px;
+                        font-family: monospace; font-size: 11px; cursor: pointer; border-radius: 2px; }
+    .periph-view-btn:hover { background: #1177bb; }
   </style>
 </head>
 <body>

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
 import {
-  WiredPin, WirePinHandler, UnwirePinHandler, SetPeripheralEnabledHandler,
+  WiredPin, WirePinHandler, UnwirePinHandler, SetPeripheralEnabledHandler, ViewPeripheralHandler,
   PeripheralDisplayState, buildHtml,
 } from '../wiring/wiring-panel';
 import { isDeviceType } from '../devices/registry';
@@ -17,6 +17,7 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
     private readonly onWirePin: WirePinHandler,
     private readonly onUnwirePin: UnwirePinHandler,
     private readonly onSetPeripheralEnabled: SetPeripheralEnabledHandler,
+    private readonly onViewPeripheral: ViewPeripheralHandler,
   ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -68,6 +69,10 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
           typeof enabled !== 'boolean'
         ) return;
         await this.onSetPeripheralEnabled(peripheralId, enabled);
+      } else if (m['command'] === 'viewPeripheral') {
+        const peripheralId = m['peripheralId'];
+        if (typeof peripheralId !== 'string' || !peripheralIds().includes(peripheralId)) return;
+        this.onViewPeripheral(peripheralId);
       }
     });
 

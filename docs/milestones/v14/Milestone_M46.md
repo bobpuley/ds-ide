@@ -55,7 +55,7 @@ perturbing the RT audio thread, not assuming it.
 
 ---
 
-### [ ] feat: add OLED viewer panel (FR-DEV-15)
+### [x] feat: add OLED viewer panel (FR-DEV-15)
 
 A webview panel renders the captured framebuffer at native 128×64 (scaled up for visibility, as in
 the mockup's 256×128 canvas), reporting live frame rate and the peripheral's currently-selected bus
@@ -69,5 +69,15 @@ just an on/off toggle.
 - `OledPanel` mirrors `ScopePanel`'s structure (panel lifecycle, `webviewReady` handshake replaying the last frame on reveal) and is shown when the emulator session starts, the same trigger `scopePanel.show(...)` uses today.
 - The webview canvas renders each incoming frame at 128×64, decoded client-side from the base64 payload, with no per-frame allocation growth in the extension host.
 - The panel's footer reports live frame rate (measured from message arrival timestamps) and the peripheral's current bus label (e.g. "SSD1306 · 128×64 · SPI1"), matching the mockup's readout.
-- The Peripherals section's OLED entry gains a "view" action (alongside its on/off toggle and, per M45's popover, its bus choice) that opens or reveals the panel.
+- The Peripherals section's OLED entry gains a "view" action that opens or reveals the panel, and the panel auto-opens on deploy when OLED is enabled (mirroring `scopePanel.show(...)`'s trigger, but conditional — unlike scope, popping an OLED viewer for an effect that never uses one would be noise).
 - Unit tests cover the frame-rate calculation as a pure function and the base64 encode/decode round-trip; a manual/human-driven check (deploy an effect that draws to the OLED and watch it render live) is added to `tests/human-driven/showcase.js` if that file exists.
+
+> Deferred, not bundled here: the bus-choice **selector** in M45's popover (switching an already-enabled
+> OLED between SPI1 and I2C1 from the UI). The underlying capability is real and tested —
+> `busChoices` on the registry entry, `currentBusOf`'s source-text readback, `insertPeripheralIntoSource`'s
+> `bus` parameter, and `conflict-remedy.ts`'s generalized `candidateBusesFor` all support it — but the
+> switch *action* itself (a new webview command, conflict re-check before applying, and the popover
+> dropdown) is a distinct, self-contained follow-up, the same way M45 itself deferred this exact piece
+> ("none does yet... deferred until a real multi-bus peripheral needs it"). Today OLED always enables at its
+> default bus (SPI1, `busChoices[0]`) from the UI; picking I2C1 requires hand-editing the generated
+> declaration line until the switch action ships.

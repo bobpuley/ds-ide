@@ -1102,6 +1102,12 @@ describe('effectSource containment (FR-UX-3)', () => {
 
   afterEach(() => {
     (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = undefined;
+    // getConfiguration's mockReturnValue (unlike the other mocks reset via
+    // vi.clearAllMocks() in every describe's beforeEach) persists across
+    // describes until explicitly replaced — leaving 'effectSource' pointing
+    // at '/etc/passwd' broke every later describe's findEffectSource() calls
+    // silently, since they don't set their own getConfiguration override.
+    (vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>).mockReturnValue({ get: vi.fn() });
   });
 
   function flushMicrotasks(): Promise<void> {
@@ -1147,6 +1153,16 @@ describe('deploy sequencing via DeployCoordinator (FR-IPC-7)', () => {
     (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [
       { uri: { fsPath: '/proj' } },
     ];
+    // Reset to the global default shape (see src/__mocks__/vscode.ts) —
+    // openTextDocument's mockResolvedValue persists across tests otherwise,
+    // so a prior test's override (e.g. an OLED-enabled source) would
+    // silently leak into this one (FR-DEV-15).
+    (vscode.workspace.openTextDocument as ReturnType<typeof vi.fn>).mockResolvedValue({
+      getText: () => '',
+      lineCount: 1,
+      lineAt: (n: number) => ({ range: { end: { line: n, character: 0 } } }),
+      save: async () => true,
+    });
   });
 
   afterEach(() => {
@@ -1183,6 +1199,40 @@ describe('deploy sequencing via DeployCoordinator (FR-IPC-7)', () => {
     expect(mgr.sendSine).toHaveBeenCalled();
     expect(mgr.sendAudioMode).toHaveBeenCalled();
     expect(mgr.sendAudioDevice).toHaveBeenCalled();
+  });
+
+  it('ds-ide.deploy opens the OLED viewer when the deployed effect has OLED enabled (FR-DEV-15)', async () => {
+    (vscode.workspace.openTextDocument as ReturnType<typeof vi.fn>).mockResolvedValue({
+      getText: vi.fn(() => [
+        '// ds-ide:peripherals:begin',
+        '  OledDisplay<SSD130x4WireSpi128x64Driver> ds_ide_oled;',
+        '// ds-ide:peripherals:end',
+      ].join('\n')),
+      lineCount: 3,
+      lineAt: vi.fn((n: number) => ({ range: { end: { line: n, character: 0 } } })),
+      save: vi.fn(async () => true),
+    });
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flush();
+    const deployCmd = getCommand('ds-ide.deploy')!;
+    await deployCmd();
+    await flush();
+    const calls = (vscode.window.createWebviewPanel as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls.some((c: unknown[]) => c[0] === 'daisy-oled')).toBe(true);
+  });
+
+  it('ds-ide.deploy does not open the OLED viewer when the deployed effect has no OLED enabled', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flush();
+    const deployCmd = getCommand('ds-ide.deploy')!;
+    await deployCmd();
+    await flush();
+    const calls = (vscode.window.createWebviewPanel as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls.some((c: unknown[]) => c[0] === 'daisy-oled')).toBe(false);
   });
 
   it('ds-ide.debug replays the same post-deploy state sequence via the shared coordinator', async () => {

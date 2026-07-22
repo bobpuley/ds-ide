@@ -33,6 +33,15 @@ export type ScopeWebviewMessage =
   | { command: 'replayStart' }
   | { command: 'outputVolume'; volume: number };
 
+// ── OLED viewer panel (FR-DEV-15) ────────────────────────────────────────
+
+export type OledHostMessage =
+  | { command: 'oledFrame'; data: string }
+  | { command: 'oledBus'; bus: string | null };
+
+export type OledWebviewMessage =
+  | { command: 'webviewReady' };
+
 // ── Controls Editor ──────────────────────────────────────────────────────
 
 export type ControlsHostMessage =
@@ -59,4 +68,5 @@ export type WiringHostMessage =
 export type WiringWebviewMessage =
   | { command: 'wirePin'; pinNumber: number; deviceType: DeviceType; id: string }
   | { command: 'unwirePin'; pinNumber: number; id: string }
-  | { command: 'setPeripheralEnabled'; peripheralId: string; enabled: boolean };
+  | { command: 'setPeripheralEnabled'; peripheralId: string; enabled: boolean }
+  | { command: 'viewPeripheral'; peripheralId: string };

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
 import { WiringViewProvider } from '../../../sidebar/wiring-editor-panel';
-import type { WirePinHandler, UnwirePinHandler, SetPeripheralEnabledHandler } from '../../../wiring/wiring-panel';
+import type { WirePinHandler, UnwirePinHandler, SetPeripheralEnabledHandler, ViewPeripheralHandler } from '../../../wiring/wiring-panel';
 
 function makeWebviewViewMock() {
   const onDisposeHandlers: Array<() => void> = [];
@@ -42,6 +42,7 @@ describe('WiringViewProvider', () => {
   let onWirePin: ReturnType<typeof vi.fn>;
   let onUnwirePin: ReturnType<typeof vi.fn>;
   let onSetPeripheralEnabled: ReturnType<typeof vi.fn>;
+  let onViewPeripheral: ReturnType<typeof vi.fn>;
   let provider: WiringViewProvider;
 
   beforeEach(() => {
@@ -49,11 +50,13 @@ describe('WiringViewProvider', () => {
     onWirePin   = vi.fn().mockResolvedValue(undefined);
     onUnwirePin = vi.fn().mockResolvedValue(undefined);
     onSetPeripheralEnabled = vi.fn().mockResolvedValue(undefined);
+    onViewPeripheral = vi.fn();
     provider = new WiringViewProvider(
       { fsPath: '/ext' } as unknown as vscode.Uri,
       onWirePin as unknown as WirePinHandler,
       onUnwirePin as unknown as UnwirePinHandler,
       onSetPeripheralEnabled as unknown as SetPeripheralEnabledHandler,
+      onViewPeripheral as unknown as ViewPeripheralHandler,
     );
   });
 

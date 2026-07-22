@@ -112,3 +112,12 @@ at [`docs/mockups/v14-peripheral-ux.html`](mockups/v14-peripheral-ux.html).
   etc.) this project has no vendored copy of; porting them (or a minimal stand-in face) is its own
   task, not bundled into FR-DEV-14. An effect using `WriteString` today will not compile against
   the M46 shim until this lands. **Deliberately unscheduled.**
+
+- **OLED bus-choice selector in the Peripherals popover.** M45's popover already anticipated this
+  ("a peripheral with more than one candidate bus would also show a bus choice... deferred until a
+  real multi-bus peripheral needs it") and M46 built the underlying capability (`busChoices` on the
+  registry entry, `currentBusOf`'s source-text readback, `insertPeripheralIntoSource`'s `bus`
+  parameter, `conflict-remedy.ts`'s generalized `candidateBusesFor`) — but the switch *action*
+  itself (a new webview command, conflict re-check before applying, the popover dropdown) is a
+  distinct follow-up, not bundled into FR-DEV-15. Today OLED always enables at SPI1 (`busChoices[0]`)
+  from the UI. **Deliberately unscheduled.**

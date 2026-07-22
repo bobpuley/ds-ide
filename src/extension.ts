@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { EmulatorManager, workspaceRuntimeDir } from './emulator/manager';
 import { IpcMessage } from './emulator/ipc-client';
 import { ScopePanel } from './webview/scope-panel';
+import { OledPanel } from './webview/oled-panel';
 import { buildForEmulator } from './commands/build';
 import { deployToEmulator } from './commands/deploy';
 import { startAudio, stopAudio } from './commands/transport';
@@ -212,6 +213,7 @@ class DeployCoordinator {
     private readonly toggleStore: ToggleStore,
     private readonly session: SessionState,
     private readonly scopePanel: ScopePanel,
+    private readonly oledPanel: OledPanel,
     private readonly controlsProvider: ControlsViewProvider,
     private readonly diagnostics: vscode.DiagnosticCollection,
     private readonly buildChannel: vscode.OutputChannel,
@@ -224,6 +226,18 @@ class DeployCoordinator {
   private setDeploying(): void {
     this.statusBar.text = '$(loading~spin) Daisy: deploying…';
     this.statusBar.tooltip = FIDELITY_CAVEAT;
+  }
+
+  // FR-DEV-15: unlike scopePanel (always shown — audio is core), the OLED
+  // viewer only opens when the deployed effect actually enables it; popping
+  // it for every effect regardless would be noise.
+  private async showOledIfEnabled(): Promise<void> {
+    const folder = resolveActiveFolder(this.workspaceState)?.uri.fsPath ?? '';
+    const effectPath = await findEffectSource(folder);
+    if (!effectPath) return;
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
+    const state = computePeripheralDisplayStates(doc.getText()).find(p => p.id === 'oled');
+    if (state?.enabled) this.oledPanel.show(state.bus);
   }
 
   private setStopped(): void {
@@ -268,7 +282,10 @@ class DeployCoordinator {
       await debugDeploy(
         this.manager,
         () => cfg.pots,
-        () => this.scopePanel.show(this.session.sineState, this.session.audioSourceState),
+        () => {
+          this.scopePanel.show(this.session.sineState, this.session.audioSourceState);
+          void this.showOledIfEnabled();
+        },
         () => this.potStore.getSnapshot(),
         () => this.sendPostDeployState(),
         this.emulatorChannel,
@@ -277,6 +294,7 @@ class DeployCoordinator {
     }
 
     this.scopePanel.show(this.session.sineState, this.session.audioSourceState);
+    void this.showOledIfEnabled();
     this.controlsProvider.loadEditor(cfg);
     this.controlsProvider.postControlsConfig(controlsConfig);
     void vscode.commands.executeCommand('workbench.view.extension.ds-ide-controls');
@@ -428,6 +446,8 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   );
 
+  const oledPanel = new OledPanel(context.extensionUri, manager);
+
   const wiringProvider = new WiringViewProvider(
     context.extensionUri,
     async (wp: WiredPin) => {
@@ -572,6 +592,16 @@ export function activate(context: vscode.ExtensionContext): void {
       await doc.save();
       wiringProvider?.postPeripherals(computePeripheralDisplayStates(newText));
     },
+    (peripheralId: string) => {
+      if (peripheralId !== 'oled') return;
+      const folder = resolveActiveFolder(context.workspaceState)?.uri.fsPath ?? '';
+      void findEffectSource(folder).then(async (effectPath) => {
+        if (!effectPath) return;
+        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
+        const state = computePeripheralDisplayStates(doc.getText()).find(p => p.id === 'oled');
+        oledPanel.show(state?.bus ?? null);
+      });
+    },
   );
 
   const scopePanel = new ScopePanel(
@@ -687,7 +717,7 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   const deployCoordinator = new DeployCoordinator(
-    manager, statusBar, potStore, buttonStore, toggleStore, session, scopePanel, controlsProvider,
+    manager, statusBar, potStore, buttonStore, toggleStore, session, scopePanel, oledPanel, controlsProvider,
     diagnostics, buildChannel, emulatorChannel, context.extensionPath, loadControllerConfig,
     context.workspaceState,
   );
@@ -827,7 +857,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const chosen = await promptSelectActiveFolder(context.workspaceState);
       if (chosen) void initViewsFromProject();
     }),
-    { dispose: () => { manager?.dispose(); scopePanel?.dispose(); } },
+    { dispose: () => { manager?.dispose(); scopePanel?.dispose(); oledPanel?.dispose(); } },
     startSessionDisposable,
     terminateSessionDisposable,
   );

@@ -195,6 +195,21 @@ function renderPeripherals(): void {
     pins.textContent = p.pins.length ? p.pins.map(rp => 'D' + rp.pin).join(', ') : '';
 
     row.append(box, name, pins);
+
+    // FR-DEV-15: only oled has a live view today — a generic "viewable"
+    // registry flag isn't worth adding for a single consumer yet. Shown only
+    // once enabled — nothing to view otherwise.
+    if (p.id === 'oled' && p.enabled) {
+      const viewBtn = document.createElement('button');
+      viewBtn.type = 'button';
+      viewBtn.className = 'periph-view-btn';
+      viewBtn.textContent = 'View';
+      viewBtn.addEventListener('click', () => {
+        vscode.postMessage({ command: 'viewPeripheral', peripheralId: p.id });
+      });
+      row.append(viewBtn);
+    }
+
     host.appendChild(row);
   }
   applyPeripheralPins();
