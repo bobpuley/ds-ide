@@ -1,7 +1,7 @@
 # M46 — OLED Display
 
 **Version:** 0.14.3
-**Status:** in progress
+**Status:** released
 **Source:** intake 2026-07-21 — device support expansion
 
 ## Goal
