@@ -4,7 +4,7 @@ import { IpcMessage } from '../emulator/ipc-client';
 import { getBoolean, getNumber } from '../ipc/narrow';
 import { ControllerConfig, parseControllerConfig, serializeControllerConfig } from '../controllers/controller-config';
 import { ControlsConfig } from '../webview/scope-panel';
-import { REGISTRY, registryIds } from '../devices/registry';
+import { REGISTRY, wiredControlIds } from '../devices/registry';
 import { TOGGLE_POSITIONS } from '../devices/codegen/toggle';
 import { ENCODER_POSITION_MODULUS } from '../devices/codegen/encoder';
 
@@ -168,19 +168,19 @@ function safeJson(obj: unknown): string {
 // the on-canvas control card, so adding a device changes what's generated
 // here without editing this file again.
 function paletteCssRules(): string {
-  return registryIds()
+  return wiredControlIds()
     .map(id => `    .palette-item[data-kind="${id}"] { border-left: 3px solid ${REGISTRY[id]!.accentColor}; }`)
     .join('\n');
 }
 
 function ctrlCardCssRules(): string {
-  return registryIds()
+  return wiredControlIds()
     .map(id => `    .ctrl-card[data-kind="${id}"] { border-top: 3px solid ${REGISTRY[id]!.accentColor}; }`)
     .join('\n');
 }
 
 function paletteItemsHtml(): string {
-  return registryIds()
+  return wiredControlIds()
     .map(id => `      <div class="palette-item" data-kind="${id}" draggable="true">${REGISTRY[id]!.label}</div>`)
     .join('\n');
 }

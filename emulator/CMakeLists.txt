@@ -56,6 +56,7 @@ set(SHIM_SRC
     "${CMAKE_SOURCE_DIR}/shim/src/led.cpp"
     "${CMAKE_SOURCE_DIR}/shim/src/rgb_led.cpp"
     "${CMAKE_SOURCE_DIR}/shim/src/encoder.cpp"
+    "${CMAKE_SOURCE_DIR}/shim/src/fatfs_host.cpp"
 )
 
 set(RUNTIME_SRC

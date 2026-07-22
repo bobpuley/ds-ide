@@ -18,8 +18,9 @@
 // (knob/button/LED widgets) onto interaction primitives remains future work,
 // once a shim-binding field is added here too.
 
-import type { SharedCodegenStrategy } from './codegen/types';
+import type { SharedCodegenStrategy, PeripheralCodegenStrategy } from './codegen/types';
 import { potCodegen } from './codegen/pot';
+import { sdcardCodegen } from './codegen/sdcard';
 
 // Fixed rendering vocabulary (FR-DEV-2) — a device picks one of these rather
 // than shipping bespoke webview code.
@@ -37,7 +38,13 @@ export interface DeviceDescriptor {
   id: string;
   /** Display name shown in the Wiring/Controls Editor UI. */
   label: string;
-  primitive: InteractionPrimitive;
+  /**
+   * Omitted by a bus/connector-attached peripheral (FR-DEV-10) — a primitive
+   * only means something for a live control the Controls Editor renders;
+   * a peripheral is configured from the Wiring Editor's Peripherals section
+   * instead (FR-DEV-11) and never appears in the Controls Editor at all.
+   */
+  primitive?: InteractionPrimitive;
   /** CSS color: wiring-editor pin stroke and controls-editor palette border. */
   accentColor: string;
   /** CSS fill color for the wiring-editor pin dot. */
@@ -70,6 +77,22 @@ export interface DeviceDescriptor {
    */
   codegen?: SharedCodegenStrategy;
   /**
+   * Present only for a bus-attached peripheral with no per-instance id/pin
+   * at all (today: only sdcard — FR-DEV-10). Distinct from `codegen` above:
+   * that shape regenerates from an N-instance list (pot), this one emits at
+   * most once, gated on "is this peripheral enabled" rather than a count.
+   */
+  peripheralCodegen?: PeripheralCodegenStrategy;
+  /**
+   * Present only for attachmentKind 'bus' (FR-DEV-10/11) — the bus name this
+   * device type resolves its footprint against via attachment.ts's
+   * resolveBusFootprint. A single, fixed bus for now (sdcard has exactly one
+   * real SDMMC bus on Daisy Seed); a peripheral with more than one candidate
+   * bus (OLED, MIDI TRS — M46/M47) extends this once it actually needs a
+   * user-facing choice.
+   */
+  bus?: string;
+  /**
    * Required for attachmentKind 'pins' (FR-DEV-8) — how many pins one
    * instance occupies (e.g. rgbled: 3, for r/g/b). Lets the Wiring Editor's
    * auto-adjacent-pin allocator (multi-pin-alloc.ts) stay generic rather than
@@ -83,7 +106,7 @@ export interface DeviceDescriptor {
 // plain, freely-indexable runtime object — the architecture is a compiled-in
 // registry, not a plugin system, but tests exercising "adding a registry
 // entry" (FR-DEV-2's own acceptance bullet) need to do that by assignment.
-export const DEVICE_TYPES = ['pot', 'button', 'led', 'toggle', 'rgbled', 'encoder'] as const;
+export const DEVICE_TYPES = ['pot', 'button', 'led', 'toggle', 'rgbled', 'encoder', 'sdcard'] as const;
 
 export type DeviceType = typeof DEVICE_TYPES[number];
 
@@ -165,6 +188,22 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     initArgs: null,
     pinCount: 3,
   },
+  // FR-DEV-10: the first bus-attached, non-instanced peripheral — enabled or
+  // disabled from the Wiring Editor's Peripherals section (FR-DEV-11), never
+  // placed by clicking a pin, so it carries no `primitive` and no
+  // per-instance `declaredClassName`. Its footprint resolves from the
+  // SDMMC1 bus via attachment.ts's resolveBusFootprint, not a static pin list.
+  sdcard: {
+    id: 'sdcard',
+    label: 'SD Card',
+    accentColor: '#f4c430',
+    pinFill: '#4a3a1a',
+    declaredClassName: null,
+    attachmentKind: 'bus',
+    bus: 'SDMMC1',
+    initArgs: null,
+    peripheralCodegen: sdcardCodegen,
+  },
 };
 
 export function isDeviceType(value: string): value is DeviceType {
@@ -180,4 +219,17 @@ export function isDeviceType(value: string): value is DeviceType {
 // runtime mutation of REGISTRY.
 export function registryIds(): string[] {
   return Object.keys(REGISTRY);
+}
+
+// Registry ids for pin-attached devices only (attachmentKind 'pin' | 'pins')
+// — what the Wiring Editor's per-pin popup and the Controls Editor's palette
+// enumerate (FR-DEV-10). A bus/connector-attached peripheral (e.g. sdcard) is
+// configured from the Peripherals section instead (FR-DEV-11) and must never
+// appear as something a user "clicks a pin" or "drags onto the canvas" to
+// place.
+export function wiredControlIds(): string[] {
+  return registryIds().filter(id => {
+    const kind = REGISTRY[id]!.attachmentKind;
+    return kind === 'pin' || kind === 'pins';
+  });
 }

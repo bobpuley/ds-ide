@@ -782,6 +782,45 @@ describe('makeBlockEdit append-with-confirmation (FR-UX-3)', () => {
     const insertedText = (edit.insert as ReturnType<typeof vi.fn>).mock.calls[0]![2] as string;
     expect(insertedText).toContain('// ds-ide:controls:init:begin');
   });
+
+  // FR-DEV-11 — makeBlockEdit is reused for peripheral enable/disable edits,
+  // which live in their own "ds-ide:peripherals:*" marker pair alongside (not
+  // instead of) the controls ones.
+  it('flags needsAppendConfirmation and appends a peripherals block when none exists yet', () => {
+    const oldText = 'int main() {}\n';
+    const newText = [
+      'int main() {}',
+      '// ds-ide:peripherals:begin',
+      '  SdmmcHandler ds_ide_sd; FatFSInterface ds_ide_fatfs;',
+      '// ds-ide:peripherals:end',
+      '',
+    ].join('\n');
+    const doc = makeDoc(oldText);
+    const { edit, needsAppendConfirmation } = makeBlockEdit(
+      doc, { fsPath: '/proj/effect.cpp' } as unknown as vscode.Uri, oldText, newText,
+    );
+    expect(needsAppendConfirmation).toBe(true);
+    const insertedText = (edit.insert as ReturnType<typeof vi.fn>).mock.calls[0]![2] as string;
+    expect(insertedText).toContain('// ds-ide:peripherals:begin');
+  });
+
+  it('in-place replaces an already-established peripherals block, not a full-file rewrite', () => {
+    const oldText = [
+      'int main() {}',
+      '// ds-ide:peripherals:begin',
+      '  SdmmcHandler ds_ide_sd; FatFSInterface ds_ide_fatfs;',
+      '// ds-ide:peripherals:end',
+    ].join('\n');
+    const newText = oldText.replace(
+      '// ds-ide:peripherals:begin\n  SdmmcHandler ds_ide_sd; FatFSInterface ds_ide_fatfs;\n// ds-ide:peripherals:end',
+      '// ds-ide:peripherals:begin\n// ds-ide:peripherals:end',
+    );
+    const doc = makeDoc(oldText);
+    const { needsAppendConfirmation } = makeBlockEdit(
+      doc, { fsPath: '/proj/effect.cpp' } as unknown as vscode.Uri, oldText, newText,
+    );
+    expect(needsAppendConfirmation).toBe(false);
+  });
 });
 
 describe('wiring edit consistency (FR-IPC-5)', () => {
@@ -931,6 +970,111 @@ describe('wiring edit consistency (FR-IPC-5)', () => {
     expect(vscode.workspace.applyEdit).not.toHaveBeenCalled();
     expect(wiring.postMessage).not.toHaveBeenCalled();
     expect(controls.postMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('setPeripheralEnabled conflict rejection (FR-DEV-13)', () => {
+  let fsMock: Record<string, ReturnType<typeof vi.fn>>;
+  let promisesMock: Record<string, ReturnType<typeof vi.fn>>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    managerInstances.length = 0;
+    fsMock = (await import('fs')) as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['access']!.mockImplementation((p: unknown) => {
+      const fp = String(p);
+      if (fp.endsWith('CMakeLists.txt') || fp.endsWith('.cpp')) return Promise.resolve();
+      return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    });
+    promisesMock['readdir']!.mockResolvedValue(['effect.cpp']);
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [
+      { uri: { fsPath: '/proj' } },
+    ];
+    (vscode.workspace.applyEdit as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+  });
+
+  afterEach(() => {
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = undefined;
+  });
+
+  function resolveProvider(viewId: string): { handler: (msg: unknown) => Promise<void> | void; postMessage: ReturnType<typeof vi.fn> } {
+    const registerCalls = (vscode.window.registerWebviewViewProvider as ReturnType<typeof vi.fn>).mock.calls;
+    const entry = registerCalls.find((c: unknown[]) => c[0] === viewId);
+    const provider = entry?.[1] as { resolveWebviewView: (view: unknown) => void };
+    const postMessage = vi.fn();
+    const mockView = {
+      webview: {
+        html: '', options: {},
+        onDidReceiveMessage: vi.fn(() => ({ dispose: vi.fn() })),
+        postMessage,
+        asWebviewUri: vi.fn((u: unknown) => u),
+        cspSource: '',
+      },
+      visible: true,
+      onDidDispose: vi.fn((_cb: () => void) => ({ dispose: vi.fn() })),
+      onDidChangeVisibility: vi.fn((_cb: () => void) => ({ dispose: vi.fn() })),
+      show: vi.fn(),
+    };
+    provider.resolveWebviewView(mockView);
+    const handler = (mockView.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
+      (msg: unknown) => Promise<void> | void;
+    return { handler, postMessage };
+  }
+
+  function flushMicrotasks(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  it('refuses to enable sdcard when a hand-wired control occupies one of its pins, without mutating the file', async () => {
+    // D5 carries SDMMC1_CMD — a LED hand-wired there blocks SD Card. The
+    // handler reads oldText via doc.getText() (openTextDocument), not
+    // fs.readFile — the latter only feeds unrelated view-refresh reads.
+    const source = [
+      '// ds-ide:controls:begin',
+      '// ds-ide: id=led1, kind=led, pin=5',
+      '// ds-ide:controls:end',
+    ].join('\n');
+    (vscode.workspace.openTextDocument as ReturnType<typeof vi.fn>).mockResolvedValue({
+      getText: vi.fn(() => source),
+      lineCount: source.split('\n').length,
+      lineAt: vi.fn((n: number) => ({ range: { end: { line: n, character: source.split('\n')[n]!.length } } })),
+      save: vi.fn(async () => true),
+    });
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flushMicrotasks();
+    const wiring = resolveProvider('ds-ide.wiringEditor');
+    wiring.postMessage.mockClear();
+
+    await wiring.handler({ command: 'setPeripheralEnabled', peripheralId: 'sdcard', enabled: true });
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringMatching(/D5.*led1/is));
+    expect(vscode.workspace.applyEdit).not.toHaveBeenCalled();
+    expect(wiring.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('enables sdcard when no conflicting occupant exists', async () => {
+    const source = 'int main() {}\n';
+    (vscode.workspace.openTextDocument as ReturnType<typeof vi.fn>).mockResolvedValue({
+      getText: vi.fn(() => source),
+      lineCount: 1,
+      lineAt: vi.fn((n: number) => ({ range: { end: { line: n, character: 0 } } })),
+      save: vi.fn(async () => true),
+    });
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flushMicrotasks();
+    const wiring = resolveProvider('ds-ide.wiringEditor');
+    wiring.postMessage.mockClear();
+
+    await wiring.handler({ command: 'setPeripheralEnabled', peripheralId: 'sdcard', enabled: true });
+
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+    expect(vscode.workspace.applyEdit).toHaveBeenCalled();
+    expect(wiring.postMessage).toHaveBeenCalledWith(expect.objectContaining({ command: 'peripherals' }));
   });
 });
 

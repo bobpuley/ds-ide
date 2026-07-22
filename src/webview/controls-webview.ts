@@ -143,8 +143,13 @@ function updateKnobPaths(knobWrap: HTMLElement, value: number): number {
   return clampedValue;
 }
 
+// sdcard (FR-DEV-10) is a bus-attached peripheral and never appears as a
+// control card here (it has no ConventionControl entry — see
+// wiredControlIds() in devices/registry.ts) — the label exists only to
+// satisfy DeviceType's exhaustiveness.
 const KIND_LABELS: Record<DeviceType, string> = {
   pot: 'Pot', button: 'Button', led: 'LED', toggle: 'Toggle', rgbled: 'RGB LED', encoder: 'Encoder',
+  sdcard: 'SD Card',
 };
 
 // Encoder rotary dial (FR-DEV-9) — endless rotation, so unlike the pot's

@@ -1,16 +1,22 @@
 import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
-import { WiredPin, WirePinHandler, UnwirePinHandler, buildHtml } from '../wiring/wiring-panel';
+import {
+  WiredPin, WirePinHandler, UnwirePinHandler, SetPeripheralEnabledHandler,
+  PeripheralDisplayState, buildHtml,
+} from '../wiring/wiring-panel';
 import { isDeviceType } from '../devices/registry';
+import { peripheralIds } from '../wiring/peripheral-state';
 
 export class WiringViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
   private lastWiredPins: WiredPin[] = [];
+  private lastPeripherals: PeripheralDisplayState[] = [];
 
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly onWirePin: WirePinHandler,
     private readonly onUnwirePin: UnwirePinHandler,
+    private readonly onSetPeripheralEnabled: SetPeripheralEnabledHandler,
   ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -25,7 +31,7 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
     const scriptUri = webviewView.webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview', 'wiring-webview.js'),
     ).toString();
-    webviewView.webview.html = buildHtml(this.lastWiredPins, nonce, scriptUri);
+    webviewView.webview.html = buildHtml(this.lastWiredPins, this.lastPeripherals, nonce, scriptUri);
 
     const msgDisposable = webviewView.webview.onDidReceiveMessage(async (msg: unknown) => {
       if (!msg || typeof msg !== 'object') return;
@@ -54,12 +60,21 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
           typeof id !== 'string' || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id)
         ) return;
         await this.onUnwirePin(pinNumber as number, id);
+      } else if (m['command'] === 'setPeripheralEnabled') {
+        const peripheralId = m['peripheralId'];
+        const enabled      = m['enabled'];
+        if (
+          typeof peripheralId !== 'string' || !peripheralIds().includes(peripheralId) ||
+          typeof enabled !== 'boolean'
+        ) return;
+        await this.onSetPeripheralEnabled(peripheralId, enabled);
       }
     });
 
     webviewView.onDidChangeVisibility(() => {
       if (webviewView.visible) {
         void webviewView.webview.postMessage({ command: 'wiredPins', pins: this.lastWiredPins });
+        void webviewView.webview.postMessage({ command: 'peripherals', peripherals: this.lastPeripherals });
       }
     });
 
@@ -69,6 +84,7 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
     });
 
     void webviewView.webview.postMessage({ command: 'wiredPins', pins: this.lastWiredPins });
+    void webviewView.webview.postMessage({ command: 'peripherals', peripherals: this.lastPeripherals });
   }
 
   get isVisible(): boolean { return this.view?.visible ?? false; }
@@ -77,6 +93,13 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
     this.lastWiredPins = pins;
     if (this.view) {
       void this.view.webview.postMessage({ command: 'wiredPins', pins });
+    }
+  }
+
+  postPeripherals(peripherals: PeripheralDisplayState[]): void {
+    this.lastPeripherals = peripherals;
+    if (this.view) {
+      void this.view.webview.postMessage({ command: 'peripherals', peripherals });
     }
   }
 }
