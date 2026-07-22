@@ -1,7 +1,7 @@
 # M47 — MIDI: TRS & USB
 
 **Version:** 0.14.4
-**Status:** in progress
+**Status:** released
 **Source:** intake 2026-07-21 — device support expansion
 
 ## Goal
