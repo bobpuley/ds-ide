@@ -192,7 +192,14 @@ function renderPeripherals(): void {
 
     const pins = document.createElement('span');
     pins.className = 'periph-pins';
-    pins.textContent = p.pins.length ? p.pins.map(rp => 'D' + rp.pin).join(', ') : '';
+    // FR-DEV-17: a zero-pin bus (midiUsb's INTERNAL mode — the micro USB
+    // connector, modeled without a resolved pin footprint) would otherwise
+    // render as a blank cell with nothing indicating it's connected at all.
+    // Fall back to the bus/mode label itself, same as oled's row already
+    // implicitly relies on pins to communicate its bus.
+    pins.textContent = p.pins.length
+      ? p.pins.map(rp => 'D' + rp.pin).join(', ')
+      : (p.bus ?? '');
 
     row.append(box, name, pins);
 

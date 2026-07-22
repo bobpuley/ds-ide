@@ -163,6 +163,12 @@ as a true `attachment.kind:'connector'`.
   registry entry and `computePeripheralDisplayStates`' resolved footprint for each mode (empty for
   `INTERNAL`, D29/D30 for `USB_HS_D`).
 
+> Found in human-driven testing, fixed before merge: the Peripherals section's pins column rendered
+> blank for `INTERNAL` mode — correct footprint-wise (zero pins), but indistinguishable from "not
+> connected to anything." `wiring-webview.ts`'s `renderPeripherals` now falls back to the bus/mode
+> label itself (`p.bus`) when `p.pins` is empty, so the row reads "MIDI USB · INTERNAL" instead of a
+> blank cell.
+
 ---
 
 ### [x] feat: add MIDI I/O surface — virtual keyboard, message monitor, host bridge (FR-DEV-18)
