@@ -27,6 +27,7 @@ interface PinDefLiteral {
   uart: string[] | null;
   spi: string[] | null;
   sdmmc: string | null;
+  canonicalBusSignal: string | null;
 }
 
 // Non-GPIO rows (power/audio/ground) don't carry an Arduino D-number, so their
@@ -76,6 +77,24 @@ function sdmmcSignal(schName: string): string | null {
   return /^SDMMC/.test(schName) ? schName : null;
 }
 
+// The pin's canonical, board-dedicated bus signal (FR-DEV-14) — the
+// schematic name itself, when it identifies a bus signal, generalizing the
+// SDMMC-only derivation above to SPI/I2C/UART/USART as well.
+//
+// Necessary because the CSV's SPI/I2C/UART *columns* enumerate every
+// alternate-function the silicon supports for that physical pin — most of
+// which the Daisy Seed board never actually wires. E.g. D9's SPI column
+// lists SPI1/SPI2/SPI3/SPI6 options, but D9 is only ever the board's SPI1
+// pin; D13/D14's I2C column lists I2C1_SCL/SDA as a mux alternative, but
+// their canonical (schematic-name) assignment is USART1 — the MIDI TRS pins
+// (M47). resolveBusFootprint (attachment.ts) must resolve a bus against this
+// single canonical signal per pin, not the full mux-option list, or two
+// physically distinct header pins that merely share a muxed AF option would
+// collide in a bus's resolved footprint.
+function canonicalBusSignal(schName: string): string | null {
+  return /^(SPI|I2C|UART|USART|SDMMC)\d*_/.test(schName) ? schName : null;
+}
+
 function toPinDef(row: CsvRow, side: 'L' | 'R', outRow: number): PinDefLiteral {
   const dMatch = /^D(\d+)$/.exec(row.arduinoD);
   const pin = dMatch ? Number(dMatch[1]) : null;
@@ -93,6 +112,7 @@ function toPinDef(row: CsvRow, side: 'L' | 'R', outRow: number): PinDefLiteral {
     uart: splitSignals(row.uart),
     spi: splitSignals(row.spi),
     sdmmc: sdmmcSignal(row.schName),
+    canonicalBusSignal: canonicalBusSignal(row.schName),
   };
 }
 
@@ -103,7 +123,8 @@ function renderEntry(d: PinDefLiteral): string {
   const uart = d.uart === null ? 'null' : JSON.stringify(d.uart);
   const spi = d.spi === null ? 'null' : JSON.stringify(d.spi);
   const sdmmc = d.sdmmc === null ? 'null' : JSON.stringify(d.sdmmc);
-  return `  { row: ${d.row}, side: '${d.side}', pin: ${pin}, label: ${JSON.stringify(d.label)}, aLabel: ${aLabel}, adc: ${d.adc}, i2c: ${i2c}, uart: ${uart}, spi: ${spi}, sdmmc: ${sdmmc} },`;
+  const canonicalBusSignal = d.canonicalBusSignal === null ? 'null' : JSON.stringify(d.canonicalBusSignal);
+  return `  { row: ${d.row}, side: '${d.side}', pin: ${pin}, label: ${JSON.stringify(d.label)}, aLabel: ${aLabel}, adc: ${d.adc}, i2c: ${i2c}, uart: ${uart}, spi: ${spi}, sdmmc: ${sdmmc}, canonicalBusSignal: ${canonicalBusSignal} },`;
 }
 
 function renderModule(pinDefs: PinDefLiteral[]): string {
@@ -116,8 +137,16 @@ function renderModule(pinDefs: PinDefLiteral[]): string {
     '// side: \'L\' = left header, \'R\' = right header.',
     '// pin: D-number for digital GPIO pins; null for power/special (not assignable).',
     '// adc: true when the CSV\'s Arduino A# column is populated for this pin.',
-    '// i2c/uart/spi: signal names from the CSV\'s matching column, split on \'/\'.',
+    '// i2c/uart/spi: EVERY alternate-function signal name the CSV\'s matching',
+    '// column lists for this physical pin, split on \'/\' — most of these are',
+    '// mux options the board never actually wires; do not use these to resolve',
+    '// a bus\'s footprint (see canonicalBusSignal).',
     '// sdmmc: the SDMMC signal name when the CSV schematic name identifies one.',
+    '// canonicalBusSignal: this pin\'s single board-dedicated bus signal (the',
+    '// schematic name itself, e.g. \'SPI1_NSS\'), or null for a pin with no',
+    '// canonical bus role. The authoritative source for bus-footprint',
+    '// resolution (attachment.ts\'s resolveBusFootprint) — unlike i2c/uart/spi',
+    '// above, exactly one canonical signal (or none) per pin, never several.',
     '',
   ].join('\n');
   const iface = [
@@ -132,6 +161,7 @@ function renderModule(pinDefs: PinDefLiteral[]): string {
     '  uart: string[] | null;',
     '  spi: string[] | null;',
     '  sdmmc: string | null;',
+    '  canonicalBusSignal: string | null;',
     '}',
     '',
     '',

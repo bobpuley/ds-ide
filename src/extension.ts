@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { EmulatorManager, workspaceRuntimeDir } from './emulator/manager';
 import { IpcMessage } from './emulator/ipc-client';
 import { ScopePanel } from './webview/scope-panel';
+import { OledPanel } from './webview/oled-panel';
 import { buildForEmulator } from './commands/build';
 import { deployToEmulator } from './commands/deploy';
 import { startAudio, stopAudio } from './commands/transport';
@@ -16,12 +17,13 @@ import { WiredPin, DeviceType, PIN_DEFS, expandToWiredPins } from './wiring/wiri
 import { insertIntoSource, removeFromSource, insertInitIntoSource, removeInitFromSource } from './wiring/controls-writer';
 import { allocateAdjacentPins } from './wiring/multi-pin-alloc';
 import { REGISTRY } from './devices/registry';
+import type { Attachment } from './devices/attachment';
 import {
   insertPeripheralIntoSource, removePeripheralFromSource,
   insertPeripheralInitIntoSource, removePeripheralInitFromSource,
 } from './wiring/peripheral-config';
-import { computePeripheralDisplayStates, PeripheralDisplayState } from './wiring/peripheral-state';
-import { checkConflict, buildOccupants, formatRejection } from './wiring/conflict-remedy';
+import { computePeripheralDisplayStates, PeripheralDisplayState, currentBusOf } from './wiring/peripheral-state';
+import { checkConflict, buildOccupants, formatRejection, candidateBusesFor } from './wiring/conflict-remedy';
 import { PotStore } from './controllers/pot-store';
 import { ButtonStore } from './controllers/button-store';
 import { ToggleStore } from './controllers/toggle-store';
@@ -212,6 +214,7 @@ class DeployCoordinator {
     private readonly toggleStore: ToggleStore,
     private readonly session: SessionState,
     private readonly scopePanel: ScopePanel,
+    private readonly oledPanel: OledPanel,
     private readonly controlsProvider: ControlsViewProvider,
     private readonly diagnostics: vscode.DiagnosticCollection,
     private readonly buildChannel: vscode.OutputChannel,
@@ -224,6 +227,18 @@ class DeployCoordinator {
   private setDeploying(): void {
     this.statusBar.text = '$(loading~spin) Daisy: deploying…';
     this.statusBar.tooltip = FIDELITY_CAVEAT;
+  }
+
+  // FR-DEV-15: unlike scopePanel (always shown — audio is core), the OLED
+  // viewer only opens when the deployed effect actually enables it; popping
+  // it for every effect regardless would be noise.
+  private async showOledIfEnabled(): Promise<void> {
+    const folder = resolveActiveFolder(this.workspaceState)?.uri.fsPath ?? '';
+    const effectPath = await findEffectSource(folder);
+    if (!effectPath) return;
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
+    const state = computePeripheralDisplayStates(doc.getText()).find(p => p.id === 'oled');
+    if (state?.enabled) this.oledPanel.show(state.bus);
   }
 
   private setStopped(): void {
@@ -268,7 +283,10 @@ class DeployCoordinator {
       await debugDeploy(
         this.manager,
         () => cfg.pots,
-        () => this.scopePanel.show(this.session.sineState, this.session.audioSourceState),
+        () => {
+          this.scopePanel.show(this.session.sineState, this.session.audioSourceState);
+          void this.showOledIfEnabled();
+        },
         () => this.potStore.getSnapshot(),
         () => this.sendPostDeployState(),
         this.emulatorChannel,
@@ -277,6 +295,7 @@ class DeployCoordinator {
     }
 
     this.scopePanel.show(this.session.sineState, this.session.audioSourceState);
+    void this.showOledIfEnabled();
     this.controlsProvider.loadEditor(cfg);
     this.controlsProvider.postControlsConfig(controlsConfig);
     void vscode.commands.executeCommand('workbench.view.extension.ds-ide-controls');
@@ -428,6 +447,8 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   );
 
+  const oledPanel = new OledPanel(context.extensionUri, manager);
+
   const wiringProvider = new WiringViewProvider(
     context.extensionUri,
     async (wp: WiredPin) => {
@@ -456,6 +477,21 @@ export function activate(context: vscode.ExtensionContext): void {
           return;
         }
         pins = allocated;
+      }
+
+      // FR-DEV-13: wiring a control is also a pin-claiming action, so it must
+      // be refused on the same terms enabling a peripheral already is — a
+      // gap surfaced by manual testing (M46): wiring a button onto an
+      // enabled bus peripheral's pin (e.g. SD Card's D1-D6, OLED's D7-D10)
+      // previously succeeded silently. No peripheral is being toggled here,
+      // so nothing is excluded from the occupant set.
+      const candidateAttachment: Attachment = pins ? { kind: 'pins', pins } : { kind: 'pin', pin: wp.pinNumber };
+      const wireRejection = checkConflict(candidateAttachment, buildOccupants(oldText), PIN_DEFS, candidateBusesFor);
+      if (wireRejection) {
+        void vscode.window.showErrorMessage(
+          formatRejection(`${wp.id} (${REGISTRY[wp.deviceType]!.label})`, wireRejection),
+        );
+        return;
       }
 
       const afterDecl = insertIntoSource(oldText, wp.id, wp.deviceType, wp.pinNumber, pins);
@@ -524,16 +560,19 @@ export function activate(context: vscode.ExtensionContext): void {
 
       // FR-DEV-13: a colliding enable is refused before any mutation, never
       // applied-and-flagged. Disabling a peripheral can never create a
-      // conflict, so only the enable path is checked.
+      // conflict, so only the enable path is checked. The bus checked is
+      // whichever `currentBusOf` resolves to — the peripheral's current
+      // declaration if already enabled, or its default first choice
+      // otherwise (FR-DEV-14).
+      const bus = currentBusOf(oldText, peripheralId);
       if (enabled) {
-        const bus = REGISTRY[peripheralId]?.bus;
         if (bus) {
           const occupants = buildOccupants(oldText, peripheralId);
           const rejection = checkConflict(
             { kind: 'bus', bus },
             occupants,
             PIN_DEFS,
-            (id) => { const b = REGISTRY[id]?.bus; return b ? [b] : []; },
+            candidateBusesFor,
           );
           if (rejection) {
             void vscode.window.showErrorMessage(formatRejection(REGISTRY[peripheralId]!.label, rejection));
@@ -543,7 +582,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
 
       const afterDecl = enabled
-        ? insertPeripheralIntoSource(oldText, peripheralId)
+        ? insertPeripheralIntoSource(oldText, peripheralId, bus ?? undefined)
         : removePeripheralFromSource(oldText, peripheralId);
       const newText = enabled
         ? insertPeripheralInitIntoSource(afterDecl, peripheralId)
@@ -559,6 +598,16 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       await doc.save();
       wiringProvider?.postPeripherals(computePeripheralDisplayStates(newText));
+    },
+    (peripheralId: string) => {
+      if (peripheralId !== 'oled') return;
+      const folder = resolveActiveFolder(context.workspaceState)?.uri.fsPath ?? '';
+      void findEffectSource(folder).then(async (effectPath) => {
+        if (!effectPath) return;
+        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
+        const state = computePeripheralDisplayStates(doc.getText()).find(p => p.id === 'oled');
+        oledPanel.show(state?.bus ?? null);
+      });
     },
   );
 
@@ -675,7 +724,7 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   const deployCoordinator = new DeployCoordinator(
-    manager, statusBar, potStore, buttonStore, toggleStore, session, scopePanel, controlsProvider,
+    manager, statusBar, potStore, buttonStore, toggleStore, session, scopePanel, oledPanel, controlsProvider,
     diagnostics, buildChannel, emulatorChannel, context.extensionPath, loadControllerConfig,
     context.workspaceState,
   );
@@ -815,7 +864,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const chosen = await promptSelectActiveFolder(context.workspaceState);
       if (chosen) void initViewsFromProject();
     }),
-    { dispose: () => { manager?.dispose(); scopePanel?.dispose(); } },
+    { dispose: () => { manager?.dispose(); scopePanel?.dispose(); oledPanel?.dispose(); } },
     startSessionDisposable,
     terminateSessionDisposable,
   );

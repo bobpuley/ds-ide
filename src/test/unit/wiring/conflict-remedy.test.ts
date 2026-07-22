@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { checkConflict, buildOccupants, formatRejection } from '../../../wiring/conflict-remedy';
+import { checkConflict, buildOccupants, formatRejection, candidateBusesFor } from '../../../wiring/conflict-remedy';
 import type { Occupant } from '../../../wiring/conflict-remedy';
 import { PIN_DEFS } from '../../../devices/pin-table.gen';
 
@@ -137,5 +137,51 @@ describe('buildOccupants (FR-DEV-13)', () => {
     // The peripheral currently being toggled ('sdcard') is excluded — it's
     // the candidate, not an existing occupant to collide against.
     expect(occupants.some(o => o.id === 'sdcard')).toBe(false);
+  });
+
+  // FR-DEV-14: oled has no static registry `bus` — its occupant attachment
+  // must reflect whichever bus is actually declared in source, not a
+  // registry default, or a real conflict on its I2C1 footprint would be missed.
+  it('resolves a multi-bus peripheral\'s occupant attachment to its currently-declared bus, not a default', () => {
+    const source = [
+      '// ds-ide:peripherals:begin',
+      '  OledDisplay<SSD130xI2c128x64Driver> ds_ide_oled;',
+      '// ds-ide:peripherals:end',
+    ].join('\n');
+    const occupants = buildOccupants(source, 'sdcard');
+    const oled = occupants.find(o => o.id === 'oled');
+    expect(oled).toBeDefined();
+    expect(oled!.attachment).toEqual({ kind: 'bus', bus: 'I2C1' });
+  });
+
+  // A new control being wired isn't toggling any peripheral, so there is
+  // nothing to exclude — every enabled peripheral must count as an existing
+  // occupant, or wiring a control onto a peripheral's pins would silently
+  // succeed (the bug this test guards against).
+  it('with no peripheral excluded, includes every enabled peripheral as an occupant', () => {
+    const source = [
+      '// ds-ide:peripherals:begin',
+      '  SdmmcHandler ds_ide_sd; FatFSInterface ds_ide_fatfs;',
+      '  OledDisplay<SSD130x4WireSpi128x64Driver> ds_ide_oled;',
+      '// ds-ide:peripherals:end',
+    ].join('\n');
+    const occupants = buildOccupants(source);
+    expect(occupants.some(o => o.id === 'sdcard')).toBe(true);
+    expect(occupants.some(o => o.id === 'oled')).toBe(true);
+  });
+});
+
+describe('candidateBusesFor (FR-DEV-13/14)', () => {
+  it('returns the single fixed bus for a single-bus peripheral', () => {
+    expect(candidateBusesFor('sdcard')).toEqual(['SDMMC1']);
+  });
+
+  it('returns every candidate bus for a multi-bus peripheral', () => {
+    expect(candidateBusesFor('oled')).toEqual(['SPI1', 'I2C1']);
+  });
+
+  it('returns an empty list for an id with no bus at all', () => {
+    expect(candidateBusesFor('pot')).toEqual([]);
+    expect(candidateBusesFor('not-a-real-id')).toEqual([]);
   });
 });

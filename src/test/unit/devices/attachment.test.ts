@@ -29,6 +29,22 @@ describe('resolveBusFootprint (FR-DEV-3)', () => {
     expect(i2c1).toContain(12); // D12 = I2C1_SDA
   });
 
+  // FR-DEV-14: D7-D10's schematic names are literally SPI1_*, so they are the
+  // board's real dedicated SPI1 header pins. D18/19/22/23 (ADC/DAC pins) and
+  // D13/14 (USART1, MIDI TRS's pins per M47) merely list SPI1_*/I2C1_* among
+  // several other alternate-function mux options in their CSV column — they
+  // must NOT be reported as part of SPI1's/I2C1's footprint, or OLED would
+  // falsely conflict against pins nothing has actually wired to that bus.
+  it('resolves SPI1 to exactly its four dedicated header pins, not every pin listing SPI1 as a mux option', () => {
+    const pins = resolveBusFootprint('SPI1').map(f => f.pin).sort((a, b) => a - b);
+    expect(pins).toEqual([7, 8, 9, 10]);
+  });
+
+  it('resolves I2C1 to exactly D11/D12, not D13/D14 (whose canonical bus is USART1)', () => {
+    const pins = resolveBusFootprint('I2C1').map(f => f.pin).sort((a, b) => a - b);
+    expect(pins).toEqual([11, 12]);
+  });
+
   it('returns an empty footprint for a bus name with no matching signals', () => {
     expect(resolveBusFootprint('NOPE1')).toEqual([]);
   });

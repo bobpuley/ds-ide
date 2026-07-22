@@ -208,14 +208,14 @@ describe('buildHtml Peripherals section', () => {
   });
 
   it('embeds initial peripheral state from a data island', () => {
-    const peripherals = [{ id: 'sdcard', label: 'SD Card', enabled: false, pins: [1, 2, 3, 4, 5, 6].map(pin => ({ pin, signal: null })) }];
+    const peripherals = [{ id: 'sdcard', label: 'SD Card', enabled: false, bus: 'SDMMC1', pins: [1, 2, 3, 4, 5, 6].map(pin => ({ pin, signal: null })) }];
     const html = buildHtml([], peripherals, TEST_NONCE, 'vscode-resource://test/webview/wiring-webview.js');
     expect(html).toContain('"id":"sdcard"');
     expect(html).toContain('"enabled":false');
   });
 
   it('escapes < and > in a peripheral label to prevent HTML injection', () => {
-    const peripherals = [{ id: 'sdcard', label: '<script>alert(1)</script>', enabled: false, pins: [] }];
+    const peripherals = [{ id: 'sdcard', label: '<script>alert(1)</script>', enabled: false, bus: 'SDMMC1', pins: [] }];
     const html = buildHtml([], peripherals, TEST_NONCE, 'vscode-resource://test/webview/wiring-webview.js');
     expect(html).not.toContain('<script>alert(1)');
     expect(html).toContain('\\u003c');

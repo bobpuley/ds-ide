@@ -19,7 +19,9 @@ function stripCr(line: string): string {
 
 // Pure: inserts `id`'s declaration line into source text. No-op if the
 // peripheral is already enabled (idempotent) or `id` has no peripheralCodegen.
-export function insertPeripheralIntoSource(source: string, id: string): string {
+// `bus` selects which declLine() variant to write for a multi-bus peripheral
+// (FR-DEV-14, e.g. oled) — ignored by a single-bus peripheral's codegen.
+export function insertPeripheralIntoSource(source: string, id: string, bus?: string): string {
   const codegen = REGISTRY[id]?.peripheralCodegen;
   if (!codegen || isPeripheralEnabled(source, id)) return source;
 
@@ -29,11 +31,11 @@ export function insertPeripheralIntoSource(source: string, id: string): string {
 
   if (begIdx === -1 || endIdx === -1 || endIdx <= begIdx) {
     const trimmed = source.replace(/\n+$/, '');
-    return `${trimmed}\n${BEGIN}\n${codegen.declLine()}\n${END}\n`;
+    return `${trimmed}\n${BEGIN}\n${codegen.declLine(bus)}\n${END}\n`;
   }
 
   const result = [...lines];
-  result.splice(endIdx, 0, codegen.declLine());
+  result.splice(endIdx, 0, codegen.declLine(bus));
   return result.join('\n');
 }
 

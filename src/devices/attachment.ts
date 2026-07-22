@@ -24,27 +24,26 @@ export interface ResolvedPin {
   signal: string | null;
 }
 
-function pinSignals(def: PinDef): string[] {
-  return [
-    ...(def.i2c ?? []),
-    ...(def.uart ?? []),
-    ...(def.spi ?? []),
-    ...(def.sdmmc ? [def.sdmmc] : []),
-  ];
-}
-
-// Scans the pin table for every pin carrying a signal in `busName`'s
-// namespace (e.g. 'SPI1' matches 'SPI1_NSS', 'SPI1_SCK', ... but not
-// 'SPI13_...' or 'I2C1_...') — the pin table is the single source of truth
-// for this mapping (FR-DEV-3, see pin-table.gen.ts), so it is never
-// hand-declared per device.
+// Scans the pin table for every pin whose canonical, board-dedicated bus
+// signal is in `busName`'s namespace (e.g. 'SPI1' matches 'SPI1_NSS',
+// 'SPI1_SCK', ... but not 'SPI13_...' or 'I2C1_...') — the pin table is the
+// single source of truth for this mapping (FR-DEV-3, see pin-table.gen.ts),
+// so it is never hand-declared per device.
+//
+// Matches against `canonicalBusSignal` only, not the full i2c/uart/spi
+// mux-option arrays (FR-DEV-14): those list every alternate-function the
+// silicon supports for a pin, most of which the Daisy Seed board never
+// actually wires — e.g. D13/D14 list I2C1_SCL/SDA as a mux option but their
+// canonical assignment is USART1 (MIDI TRS, M47). Resolving against the
+// full arrays would falsely include such pins in another bus's footprint.
 export function resolveBusFootprint(busName: string, pinDefs: PinDef[] = PIN_DEFS): ResolvedPin[] {
   const prefix = `${busName}_`;
   const resolved: ResolvedPin[] = [];
   for (const def of pinDefs) {
     if (def.pin === null) continue;
-    const match = pinSignals(def).find(s => s.startsWith(prefix));
-    if (match) resolved.push({ pin: def.pin, signal: match });
+    if (def.canonicalBusSignal?.startsWith(prefix)) {
+      resolved.push({ pin: def.pin, signal: def.canonicalBusSignal });
+    }
   }
   return resolved;
 }

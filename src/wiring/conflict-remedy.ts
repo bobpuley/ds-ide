@@ -154,12 +154,27 @@ export function formatRejection(peripheralLabel: string, rejection: Rejection): 
   return `ds-ide: can't enable ${peripheralLabel} — ${why}.${guidance}${remedyText}`;
 }
 
+// Every bus a peripheral could resolve against — a single-element list for
+// a fixed-bus peripheral (sdcard), the full choice set for a multi-bus one
+// (oled, FR-DEV-14), empty for anything with no bus at all (pin/pins/
+// connector-attached devices, or an unknown id). Feeds checkConflict's
+// candidateBusesFor parameter from either call site (enabling a peripheral,
+// or wiring a new control) so the two never drift into checking different
+// bus sets.
+export function candidateBusesFor(id: string): string[] {
+  const d = REGISTRY[id];
+  if (!d) return [];
+  return d.busChoices ?? (d.bus ? [d.bus] : []);
+}
+
 // Assembles every occupant currently on the board from the effect source
 // text — one control occupant per wired control (controls-convention-parser)
 // plus one peripheral occupant per *other* enabled peripheral
 // (peripheral-state) — excluding `excludingPeripheralId` (the peripheral
-// being enabled, which is the candidate, not an existing occupant).
-export function buildOccupants(source: string, excludingPeripheralId: string): Occupant[] {
+// being enabled, which is the candidate, not an existing occupant). Omit it
+// entirely when the candidate isn't a peripheral at all (e.g. wiring a new
+// control — nothing to exclude, every enabled peripheral is a real occupant).
+export function buildOccupants(source: string, excludingPeripheralId?: string): Occupant[] {
   const { controls } = parseControlsConvention(source);
   const controlOccupants: Occupant[] = controls.map(c => ({
     id: c.id,
@@ -169,12 +184,12 @@ export function buildOccupants(source: string, excludingPeripheralId: string): O
   }));
 
   const peripheralOccupants: Occupant[] = computePeripheralDisplayStates(source)
-    .filter(p => p.enabled && p.id !== excludingPeripheralId)
+    .filter(p => p.enabled && p.id !== excludingPeripheralId && p.bus)
     .map(p => ({
       id: p.id,
       label: p.label,
       kind: 'peripheral',
-      attachment: { kind: 'bus', bus: REGISTRY[p.id]!.bus! },
+      attachment: { kind: 'bus', bus: p.bus! },
     }));
 
   return [...controlOccupants, ...peripheralOccupants];

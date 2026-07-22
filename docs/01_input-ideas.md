@@ -105,3 +105,29 @@ at [`docs/mockups/v14-peripheral-ux.html`](mockups/v14-peripheral-ux.html).
   whether a conflict blocks deploy or only warns, whether quick-fixes re-pin, what severity, and
   how it reconciles with the Wiring Editor's rejection so the two never disagree.
   **Deliberately unscheduled — needs its own deep dive.**
+
+- **OLED font/text rendering.** M46's shim implements `OledDisplay` pixel primitives only
+  (`Fill`/`DrawPixel`/`Update`) — confirmed scope, 2026-07-22 (`02_assumptions-and-risks.md`).
+  Real libDaisy's `WriteString`/`SetCursor` depend on font bitmap tables (`Font_6x8`, `Font_11x18`,
+  etc.) this project has no vendored copy of; porting them (or a minimal stand-in face) is its own
+  task, not bundled into FR-DEV-14. An effect using `WriteString` today will not compile against
+  the M46 shim until this lands. **Deliberately unscheduled.**
+
+- **OLED bus-choice selector in the Peripherals popover.** M45's popover already anticipated this
+  ("a peripheral with more than one candidate bus would also show a bus choice... deferred until a
+  real multi-bus peripheral needs it") and M46 built the underlying capability (`busChoices` on the
+  registry entry, `currentBusOf`'s source-text readback, `insertPeripheralIntoSource`'s `bus`
+  parameter, `conflict-remedy.ts`'s generalized `candidateBusesFor`) — but the switch *action*
+  itself (a new webview command, conflict re-check before applying, the popover dropdown) is a
+  distinct follow-up, not bundled into FR-DEV-15. Today OLED always enables at SPI1 (`busChoices[0]`)
+  from the UI. **Deliberately unscheduled.**
+
+- **SD Card file navigator/preview in the Controls Editor.** Raised during M46 manual testing:
+  wiring SD Card and OLED, the Controls Editor shows nothing for either — expected, since a bus
+  peripheral has no runtime value and is deliberately excluded from the Controls Editor, configured
+  only from the Wiring Editor's Peripherals section instead (M45, FR-DEV-11). A simple file
+  navigator over the FatFS host shim's `./sdcard/` directory, with a preview for `.txt` files,
+  would give SD Card the same kind of live observability OLED's viewer panel gives the display —
+  but it's a genuinely new feature (file I/O UI, text-preview rendering), not something either
+  M45 or M46 scoped. **Deliberately unscheduled — needs its own intake** (UI location, what file
+  types preview vs. just list, read-only or read/write, refresh trigger).

@@ -2,7 +2,7 @@
   "name": "ds-ide",
   "displayName": "Daisy Seed IDE",
   "description": "Develop, test, and debug Daisy Seed audio effects without physical hardware.",
-  "version": "0.14.1",
+  "version": "0.14.2",
   "publisher": "daisy-ide",
   "license": "MIT",
   "icon": "media/ds-ide-icon.png",

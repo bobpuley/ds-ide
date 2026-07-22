@@ -64,6 +64,15 @@ describe('parseIpcMessage (FR-IPC-2)', () => {
     expect(parseIpcMessage({ type: 'rgbLed', gpioPin: 5, r: 0.5, g: 0.1 })).toBeUndefined();
   });
 
+  it('accepts a well-formed oledFrame message (FR-DEV-15)', () => {
+    expect(parseIpcMessage({ type: 'oledFrame', data: 'QUJD' }))
+      .toEqual({ type: 'oledFrame', data: 'QUJD' });
+  });
+
+  it('rejects an oledFrame message missing its data field', () => {
+    expect(parseIpcMessage({ type: 'oledFrame' })).toBeUndefined();
+  });
+
   it('accepts a replayDone message with no extra fields required', () => {
     expect(parseIpcMessage({ type: 'replayDone' })).toEqual({ type: 'replayDone' });
   });

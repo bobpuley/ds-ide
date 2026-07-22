@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
 import { WiringViewProvider } from '../../../sidebar/wiring-editor-panel';
-import type { WirePinHandler, UnwirePinHandler, SetPeripheralEnabledHandler } from '../../../wiring/wiring-panel';
+import type { WirePinHandler, UnwirePinHandler, SetPeripheralEnabledHandler, ViewPeripheralHandler } from '../../../wiring/wiring-panel';
 
 function makeWebviewViewMock() {
   const onDisposeHandlers: Array<() => void> = [];
@@ -42,6 +42,7 @@ describe('WiringViewProvider', () => {
   let onWirePin: ReturnType<typeof vi.fn>;
   let onUnwirePin: ReturnType<typeof vi.fn>;
   let onSetPeripheralEnabled: ReturnType<typeof vi.fn>;
+  let onViewPeripheral: ReturnType<typeof vi.fn>;
   let provider: WiringViewProvider;
 
   beforeEach(() => {
@@ -49,11 +50,13 @@ describe('WiringViewProvider', () => {
     onWirePin   = vi.fn().mockResolvedValue(undefined);
     onUnwirePin = vi.fn().mockResolvedValue(undefined);
     onSetPeripheralEnabled = vi.fn().mockResolvedValue(undefined);
+    onViewPeripheral = vi.fn();
     provider = new WiringViewProvider(
       { fsPath: '/ext' } as unknown as vscode.Uri,
       onWirePin as unknown as WirePinHandler,
       onUnwirePin as unknown as UnwirePinHandler,
       onSetPeripheralEnabled as unknown as SetPeripheralEnabledHandler,
+      onViewPeripheral as unknown as ViewPeripheralHandler,
     );
   });
 
@@ -247,13 +250,13 @@ describe('WiringViewProvider', () => {
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);
     view.webview.postMessage.mockClear();
-    const peripherals = [{ id: 'sdcard', label: 'SD Card', enabled: true, pins: [1, 2, 3, 4, 5, 6].map(pin => ({ pin, signal: null })) }];
+    const peripherals = [{ id: 'sdcard', label: 'SD Card', enabled: true, bus: 'SDMMC1', pins: [1, 2, 3, 4, 5, 6].map(pin => ({ pin, signal: null })) }];
     provider.postPeripherals(peripherals);
     expect(view.webview.postMessage).toHaveBeenCalledWith({ command: 'peripherals', peripherals });
   });
 
   it('re-sends peripherals when view becomes visible after being hidden', () => {
-    const peripherals = [{ id: 'sdcard', label: 'SD Card', enabled: true, pins: [1, 2, 3, 4, 5, 6].map(pin => ({ pin, signal: null })) }];
+    const peripherals = [{ id: 'sdcard', label: 'SD Card', enabled: true, bus: 'SDMMC1', pins: [1, 2, 3, 4, 5, 6].map(pin => ({ pin, signal: null })) }];
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);
     provider.postPeripherals(peripherals);

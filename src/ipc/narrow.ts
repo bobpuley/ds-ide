@@ -82,6 +82,15 @@ const NARROWERS: Record<string, Narrower> = {
     if (gpioPin === undefined || r === undefined || g === undefined || b === undefined) return undefined;
     return { type: 'rgbLed', gpioPin, r, g, b };
   },
+  // FR-DEV-15: the SSD1306 framebuffer, base64 encoded (emulator/shim/src/
+  // oled_display.cpp) — an opaque payload rather than a numeric array like
+  // scope/spectrum, per the architecture doc's one exception to "adding a
+  // device adds no message kinds."
+  oledFrame: (obj) => {
+    const data = getString(obj, 'data');
+    if (data === undefined) return undefined;
+    return { type: 'oledFrame', data };
+  },
   replayDone: () => ({ type: 'replayDone' }),
   protocolVersion: (obj) => {
     const version = getNumber(obj, 'version');
