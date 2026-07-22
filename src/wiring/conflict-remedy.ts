@@ -169,12 +169,12 @@ export function buildOccupants(source: string, excludingPeripheralId: string): O
   }));
 
   const peripheralOccupants: Occupant[] = computePeripheralDisplayStates(source)
-    .filter(p => p.enabled && p.id !== excludingPeripheralId)
+    .filter(p => p.enabled && p.id !== excludingPeripheralId && p.bus)
     .map(p => ({
       id: p.id,
       label: p.label,
       kind: 'peripheral',
-      attachment: { kind: 'bus', bus: REGISTRY[p.id]!.bus! },
+      attachment: { kind: 'bus', bus: p.bus! },
     }));
 
   return [...controlOccupants, ...peripheralOccupants];

@@ -21,6 +21,7 @@
 import type { SharedCodegenStrategy, PeripheralCodegenStrategy } from './codegen/types';
 import { potCodegen } from './codegen/pot';
 import { sdcardCodegen } from './codegen/sdcard';
+import { oledCodegen } from './codegen/oled';
 
 // Fixed rendering vocabulary (FR-DEV-2) — a device picks one of these rather
 // than shipping bespoke webview code.
@@ -93,6 +94,16 @@ export interface DeviceDescriptor {
    */
   bus?: string;
   /**
+   * Present only for a bus-attached peripheral with more than one candidate
+   * bus (FR-DEV-14; today: only oled — SPI1 or I2C1). Distinct from `bus`
+   * above: `bus` is a single fixed assignment, this is the full set a user
+   * can choose among. The currently-selected bus is read back from source
+   * text via the peripheral's `peripheralCodegen.busOfDeclLine` (see
+   * peripheral-state.ts), defaulting to `busChoices[0]` before it's ever
+   * been enabled.
+   */
+  busChoices?: string[];
+  /**
    * Required for attachmentKind 'pins' (FR-DEV-8) — how many pins one
    * instance occupies (e.g. rgbled: 3, for r/g/b). Lets the Wiring Editor's
    * auto-adjacent-pin allocator (multi-pin-alloc.ts) stay generic rather than
@@ -106,7 +117,7 @@ export interface DeviceDescriptor {
 // plain, freely-indexable runtime object — the architecture is a compiled-in
 // registry, not a plugin system, but tests exercising "adding a registry
 // entry" (FR-DEV-2's own acceptance bullet) need to do that by assignment.
-export const DEVICE_TYPES = ['pot', 'button', 'led', 'toggle', 'rgbled', 'encoder', 'sdcard'] as const;
+export const DEVICE_TYPES = ['pot', 'button', 'led', 'toggle', 'rgbled', 'encoder', 'sdcard', 'oled'] as const;
 
 export type DeviceType = typeof DEVICE_TYPES[number];
 
@@ -203,6 +214,22 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     bus: 'SDMMC1',
     initArgs: null,
     peripheralCodegen: sdcardCodegen,
+  },
+  // FR-DEV-14: the first peripheral with more than one candidate bus — its
+  // declared C++ type is itself bus-specific (real libDaisy's OledDisplay is
+  // templated on a transport driver), unlike sdcard's bus-invariant
+  // declaration. Pixel primitives only (Fill/DrawPixel/Update); no
+  // WriteString/font support — confirmed scope, 02_assumptions-and-risks.md.
+  oled: {
+    id: 'oled',
+    label: 'OLED',
+    accentColor: '#4fc1ff',
+    pinFill: '#1a3a4a',
+    declaredClassName: null,
+    attachmentKind: 'bus',
+    busChoices: ['SPI1', 'I2C1'],
+    initArgs: null,
+    peripheralCodegen: oledCodegen,
   },
 };
 

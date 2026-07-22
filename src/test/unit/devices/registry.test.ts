@@ -6,8 +6,8 @@ import { buildHtml as buildControlsHtml } from '../../../sidebar/controls-editor
 import { declarationLine } from '../../../wiring/controls-writer';
 
 describe('REGISTRY (FR-DEV-2)', () => {
-  it('lists pot, button, led, toggle, rgbled, encoder and sdcard', () => {
-    expect([...DEVICE_TYPES].sort()).toEqual(['button', 'encoder', 'led', 'pot', 'rgbled', 'sdcard', 'toggle']);
+  it('lists pot, button, led, toggle, rgbled, encoder, sdcard and oled', () => {
+    expect([...DEVICE_TYPES].sort()).toEqual(['button', 'encoder', 'led', 'oled', 'pot', 'rgbled', 'sdcard', 'toggle']);
   });
 
   it('isDeviceType recognizes registered kinds and rejects others', () => {
@@ -48,6 +48,14 @@ describe('REGISTRY (FR-DEV-2)', () => {
     expect(REGISTRY['sdcard']!.primitive).toBeUndefined();
     expect(REGISTRY['sdcard']!.peripheralCodegen).toBeDefined();
   });
+
+  it('declares oled as a bus-attached device with more than one candidate bus (FR-DEV-14)', () => {
+    expect(REGISTRY['oled']!.attachmentKind).toBe('bus');
+    expect(REGISTRY['oled']!.declaredClassName).toBeNull();
+    expect(REGISTRY['oled']!.primitive).toBeUndefined();
+    expect(REGISTRY['oled']!.peripheralCodegen).toBeDefined();
+    expect(REGISTRY['oled']!.busChoices).toEqual(['SPI1', 'I2C1']);
+  });
 });
 
 describe('wiredControlIds (FR-DEV-10)', () => {
@@ -63,6 +71,7 @@ describe('wiredControlIds (FR-DEV-10)', () => {
 
   it('excludes bus-attached peripherals', () => {
     expect(wiredControlIds()).not.toContain('sdcard');
+    expect(wiredControlIds()).not.toContain('oled');
   });
 });
 

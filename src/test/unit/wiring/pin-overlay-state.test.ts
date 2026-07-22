@@ -8,6 +8,7 @@ const SDCARD_ENABLED: PeripheralDisplayState = {
   id: 'sdcard',
   label: 'SD Card',
   enabled: true,
+  bus: 'SDMMC1',
   pins: [
     { pin: 1, signal: 'SDMMC1_D3' },
     { pin: 2, signal: 'SDMMC1_D2' },

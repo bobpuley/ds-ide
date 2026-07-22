@@ -61,4 +61,32 @@ describe('computePeripheralDisplayStates (FR-DEV-11)', () => {
     const states = computePeripheralDisplayStates(source);
     expect(states.find(s => s.id === 'sdcard')!.enabled).toBe(true);
   });
+
+  // FR-DEV-14: oled is the first peripheral with more than one candidate
+  // bus, so its current bus must be read back from which declLine() variant
+  // is present in source — never a static registry field, since there isn't
+  // one to read.
+  it('defaults oled to its first bus choice (SPI1) when never enabled', () => {
+    const states = computePeripheralDisplayStates('void Init() {}');
+    const oled = states.find(s => s.id === 'oled');
+    expect(oled).toBeDefined();
+    expect(oled!.enabled).toBe(false);
+    expect(oled!.bus).toBe('SPI1');
+    const pins = [...oled!.pins].sort((a, b) => a.pin - b.pin);
+    expect(pins.map(p => p.pin)).toEqual([7, 8, 9, 10]);
+  });
+
+  it('reads back I2C1 as oled\'s current bus once its I2C1 declaration is present', () => {
+    const source = [
+      '// ds-ide:peripherals:begin',
+      '  OledDisplay<SSD130xI2c128x64Driver> ds_ide_oled;',
+      '// ds-ide:peripherals:end',
+    ].join('\n');
+    const states = computePeripheralDisplayStates(source);
+    const oled = states.find(s => s.id === 'oled')!;
+    expect(oled.enabled).toBe(true);
+    expect(oled.bus).toBe('I2C1');
+    const pins = [...oled.pins].sort((a, b) => a.pin - b.pin);
+    expect(pins.map(p => p.pin)).toEqual([11, 12]);
+  });
 });

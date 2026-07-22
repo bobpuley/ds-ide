@@ -31,12 +31,25 @@ export interface SharedCodegenStrategy {
 // apply here; FR-DEV-11's peripheral enable/disable flow calls these
 // directly instead.
 export interface PeripheralCodegenStrategy {
-  /** The declaration-block line for this peripheral, emitted at most once. */
-  declLine(): string;
-  /** Matches an existing declLine() output, to find/remove it. */
+  /**
+   * The declaration-block line for this peripheral, emitted at most once.
+   * `bus` selects the declared type/driver for a peripheral with more than
+   * one candidate bus (FR-DEV-14, e.g. OLED's SPI1 vs I2C1 transport
+   * template) — ignored by a single-bus peripheral like sdcard.
+   */
+  declLine(bus?: string): string;
+  /** Matches an existing declLine() output (any bus variant), to find/remove it. */
   isDeclLine(line: string): boolean;
   /** The init-block line(s) emitted once when this peripheral is enabled. */
   initLines(): string[];
   /** Matches a line produced by initLines(), to find/remove it. */
   isInitLine(line: string): boolean;
+  /**
+   * For a multi-bus peripheral only (FR-DEV-14): extracts which bus an
+   * existing declLine() output encodes, so the currently-selected bus can be
+   * read back from source text — the same "source is the source of truth"
+   * convention every other peripheral/control state uses. Undefined for a
+   * single-bus peripheral, whose bus never varies.
+   */
+  busOfDeclLine?(line: string): string | null;
 }

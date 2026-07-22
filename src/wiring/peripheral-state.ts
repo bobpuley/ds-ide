@@ -20,6 +20,35 @@ export interface PeripheralDisplayState {
    * without re-resolving the bus footprint a second time.
    */
   pins: ResolvedPin[];
+  /**
+   * The bus this peripheral currently resolves against, or null for a
+   * connector-attached peripheral. For a single-bus peripheral this is
+   * always its fixed `bus`; for a multi-bus peripheral (FR-DEV-14) it's read
+   * back from which `declLine()` variant is present in source — the "source
+   * is the source of truth" convention every other peripheral/control state
+   * already uses — defaulting to `busChoices[0]` before it's ever enabled.
+   */
+  bus: string | null;
+}
+
+// The bus a peripheral currently resolves against (FR-DEV-14). A single-bus
+// peripheral's `bus` never varies; a multi-bus peripheral's selection lives
+// in source text (which declLine() variant is present), read back via its
+// own codegen's busOfDeclLine — never cached or stored separately, so a
+// direct source edit is picked up the same way `enabled` already is.
+export function currentBusOf(source: string, id: string): string | null {
+  const d = REGISTRY[id];
+  if (!d) return null;
+  if (d.bus) return d.bus;
+  if (!d.busChoices || d.busChoices.length === 0) return null;
+  const codegen = d.peripheralCodegen;
+  if (codegen?.busOfDeclLine) {
+    for (const line of source.split('\n')) {
+      const bus = codegen.busOfDeclLine(line.replace(/\r$/, ''));
+      if (bus) return bus;
+    }
+  }
+  return d.busChoices[0]!;
 }
 
 // Registry ids for bus/connector-attached peripherals — the Peripherals
@@ -45,7 +74,8 @@ export function isPeripheralEnabled(source: string, id: string): boolean {
 export function computePeripheralDisplayStates(source: string): PeripheralDisplayState[] {
   return peripheralIds().map(id => {
     const d = REGISTRY[id]!;
-    const pins = d.bus ? resolveBusFootprint(d.bus) : [];
-    return { id, label: d.label, enabled: isPeripheralEnabled(source, id), pins };
+    const bus = currentBusOf(source, id);
+    const pins = bus ? resolveBusFootprint(bus) : [];
+    return { id, label: d.label, enabled: isPeripheralEnabled(source, id), pins, bus };
   });
 }

@@ -228,6 +228,20 @@ struct EmulatorState {
     // Counts messages silently dropped when ipc_queue is full (FR-QA-1).
     std::atomic<uint32_t> ipc_queue_drops{0};
 
+    // FR-DEV-14: a second, dedicated queue for OLED framebuffer frames — same
+    // lock-free, non-allocating type as ipc_queue, but a separate instance.
+    // OledDisplay::Update() is called from the effect's own while(1) loop
+    // (effect_main()'s thread, see runtime/main.cpp), not the audio engine's
+    // RT callback thread that owns ipc_queue; sharing that single instance
+    // would turn it into a two-producer queue and break its SPSC invariant.
+    // Drained alongside ipc_queue by the same drain thread in
+    // run_audio_engine() — one consumer thread servicing two independent
+    // SPSC queues is safe, since each queue's own single-producer/
+    // single-consumer contract is unaffected by what else that thread does.
+    SpscIpcQueue oled_queue;
+    // Counts messages silently dropped when oled_queue is full.
+    std::atomic<uint32_t> oled_queue_drops{0};
+
     EmulatorState() {
         for (auto& v : pot_values) v.store(0.f);
         for (auto& b : button_states) b.store(false);

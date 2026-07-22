@@ -138,4 +138,19 @@ describe('buildOccupants (FR-DEV-13)', () => {
     // the candidate, not an existing occupant to collide against.
     expect(occupants.some(o => o.id === 'sdcard')).toBe(false);
   });
+
+  // FR-DEV-14: oled has no static registry `bus` — its occupant attachment
+  // must reflect whichever bus is actually declared in source, not a
+  // registry default, or a real conflict on its I2C1 footprint would be missed.
+  it('resolves a multi-bus peripheral\'s occupant attachment to its currently-declared bus, not a default', () => {
+    const source = [
+      '// ds-ide:peripherals:begin',
+      '  OledDisplay<SSD130xI2c128x64Driver> ds_ide_oled;',
+      '// ds-ide:peripherals:end',
+    ].join('\n');
+    const occupants = buildOccupants(source, 'sdcard');
+    const oled = occupants.find(o => o.id === 'oled');
+    expect(oled).toBeDefined();
+    expect(oled!.attachment).toEqual({ kind: 'bus', bus: 'I2C1' });
+  });
 });

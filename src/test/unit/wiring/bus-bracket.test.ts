@@ -7,6 +7,7 @@ const SDCARD_ENABLED: PeripheralDisplayState = {
   id: 'sdcard',
   label: 'SD Card',
   enabled: true,
+  bus: 'SDMMC1',
   pins: [
     { pin: 1, signal: 'SDMMC1_D3' },
     { pin: 2, signal: 'SDMMC1_D2' },
@@ -44,7 +45,7 @@ describe('computeBusBrackets (FR-DEV-12)', () => {
   });
 
   it('omits a peripheral with no resolved pins (e.g. connector-attached)', () => {
-    const connectorLike: PeripheralDisplayState = { id: 'midiusb', label: 'MIDI USB', enabled: true, pins: [] };
+    const connectorLike: PeripheralDisplayState = { id: 'midiusb', label: 'MIDI USB', enabled: true, bus: null, pins: [] };
     expect(computeBusBrackets([connectorLike], PIN_DEFS)).toEqual([]);
   });
 

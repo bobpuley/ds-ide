@@ -25,6 +25,20 @@ describe('insertPeripheralIntoSource (FR-DEV-11)', () => {
     const source = 'int main() {}\n';
     expect(insertPeripheralIntoSource(source, 'pot')).toBe(source);
   });
+
+  // FR-DEV-14: a multi-bus peripheral's declLine() varies by bus — enabling
+  // it must be able to select which variant gets written, not always the
+  // codegen's own default.
+  it('passes an explicit bus through to a multi-bus peripheral\'s declLine()', () => {
+    const result = insertPeripheralIntoSource('int main() {}\n', 'oled', 'I2C1');
+    expect(result).toContain('SSD130xI2c128x64Driver');
+    expect(result).not.toContain('SSD130x4WireSpi128x64Driver');
+  });
+
+  it('defaults a multi-bus peripheral to its codegen default bus when none is given', () => {
+    const result = insertPeripheralIntoSource('int main() {}\n', 'oled');
+    expect(result).toContain('SSD130x4WireSpi128x64Driver');
+  });
 });
 
 describe('removePeripheralFromSource (FR-DEV-11)', () => {

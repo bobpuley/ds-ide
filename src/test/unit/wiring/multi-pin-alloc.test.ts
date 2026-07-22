@@ -5,7 +5,7 @@ import type { PinDef } from '../../../devices/pin-table.gen';
 function makePinDefs(pins: Array<number | null>): PinDef[] {
   return pins.map((pin, i) => ({
     row: i, side: 'L', pin, label: pin === null ? 'GND' : `D${pin}`,
-    aLabel: null, adc: false, i2c: null, uart: null, spi: null, sdmmc: null,
+    aLabel: null, adc: false, i2c: null, uart: null, spi: null, sdmmc: null, canonicalBusSignal: null,
   }));
 }
 

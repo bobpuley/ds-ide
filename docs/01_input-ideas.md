@@ -105,3 +105,10 @@ at [`docs/mockups/v14-peripheral-ux.html`](mockups/v14-peripheral-ux.html).
   whether a conflict blocks deploy or only warns, whether quick-fixes re-pin, what severity, and
   how it reconciles with the Wiring Editor's rejection so the two never disagree.
   **Deliberately unscheduled — needs its own deep dive.**
+
+- **OLED font/text rendering.** M46's shim implements `OledDisplay` pixel primitives only
+  (`Fill`/`DrawPixel`/`Update`) — confirmed scope, 2026-07-22 (`02_assumptions-and-risks.md`).
+  Real libDaisy's `WriteString`/`SetCursor` depend on font bitmap tables (`Font_6x8`, `Font_11x18`,
+  etc.) this project has no vendored copy of; porting them (or a minimal stand-in face) is its own
+  task, not bundled into FR-DEV-14. An effect using `WriteString` today will not compile against
+  the M46 shim until this lands. **Deliberately unscheduled.**

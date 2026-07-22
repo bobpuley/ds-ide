@@ -20,7 +20,7 @@ import {
   insertPeripheralIntoSource, removePeripheralFromSource,
   insertPeripheralInitIntoSource, removePeripheralInitFromSource,
 } from './wiring/peripheral-config';
-import { computePeripheralDisplayStates, PeripheralDisplayState } from './wiring/peripheral-state';
+import { computePeripheralDisplayStates, PeripheralDisplayState, currentBusOf } from './wiring/peripheral-state';
 import { checkConflict, buildOccupants, formatRejection } from './wiring/conflict-remedy';
 import { PotStore } from './controllers/pot-store';
 import { ButtonStore } from './controllers/button-store';
@@ -522,18 +522,30 @@ export function activate(context: vscode.ExtensionContext): void {
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
       const oldText = doc.getText();
 
+      // candidateBusesFor(id): every bus `id` could resolve against — a
+      // single-element list for a fixed-bus peripheral (sdcard), the full
+      // choice set for a multi-bus one (oled, FR-DEV-14).
+      const candidateBusesFor = (id: string): string[] => {
+        const d = REGISTRY[id];
+        if (!d) return [];
+        return d.busChoices ?? (d.bus ? [d.bus] : []);
+      };
+
       // FR-DEV-13: a colliding enable is refused before any mutation, never
       // applied-and-flagged. Disabling a peripheral can never create a
-      // conflict, so only the enable path is checked.
+      // conflict, so only the enable path is checked. The bus checked is
+      // whichever `currentBusOf` resolves to — the peripheral's current
+      // declaration if already enabled, or its default first choice
+      // otherwise (FR-DEV-14).
+      const bus = currentBusOf(oldText, peripheralId);
       if (enabled) {
-        const bus = REGISTRY[peripheralId]?.bus;
         if (bus) {
           const occupants = buildOccupants(oldText, peripheralId);
           const rejection = checkConflict(
             { kind: 'bus', bus },
             occupants,
             PIN_DEFS,
-            (id) => { const b = REGISTRY[id]?.bus; return b ? [b] : []; },
+            candidateBusesFor,
           );
           if (rejection) {
             void vscode.window.showErrorMessage(formatRejection(REGISTRY[peripheralId]!.label, rejection));
@@ -543,7 +555,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
 
       const afterDecl = enabled
-        ? insertPeripheralIntoSource(oldText, peripheralId)
+        ? insertPeripheralIntoSource(oldText, peripheralId, bus ?? undefined)
         : removePeripheralFromSource(oldText, peripheralId);
       const newText = enabled
         ? insertPeripheralInitIntoSource(afterDecl, peripheralId)

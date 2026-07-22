@@ -18,10 +18,20 @@
 > the model in different ways (multi-pin, multi-channel output, delta semantics) before OLED and
 > MIDI depend on it.
 
-> ⚠️ **ASSUMPTION:** The SSD1306 framebuffer (128×64×1bpp ≈ 1 KB/frame) can be shipped over the
-> existing IPC transport at useful frame rates without perturbing the real-time audio thread.
-> Rests on the framebuffer being captured on the *caller's* thread at `Update()` and handed off
-> via the existing lock-free SPSC ring, never allocating or blocking on the RT path.
+> ✅ **CONFIRMED (M46, FR-DEV-14, 2026-07-22):** The SSD1306 framebuffer (128×64×1bpp = 1024
+> bytes ≈ 1.4 KB base64-encoded) ships over the existing SPSC-ring mechanism without perturbing
+> the real-time audio thread — with one adjustment to the original bet: it rides its **own**
+> `SpscIpcQueue` instance (`EmulatorState::oled_queue`), not the audio engine's `ipc_queue`.
+> `OledDisplay::Update()` is called from the effect's own `while(1)` loop (`effect_main()`'s
+> thread), not the audio callback thread that already owns `ipc_queue` as its sole producer —
+> sharing that instance would have silently turned it into a two-producer queue, violating its
+> SPSC contract. `tests/oled-shim/test_oled.cpp`'s concurrent producer/consumer stress test
+> (10,000 frames, no real-time pacing needed since the risk is queue capacity/corruption, not
+> wall-clock rate) passed clean under both a plain build and ThreadSanitizer: every frame was
+> either consumed or counted in `oled_queue_drops`, `oversize_drops` stayed zero, and TSan
+> reported no races. The encoding step (base64 into a fixed 2 KB stack buffer, no heap allocation)
+> is the only cost added to the caller's thread — negligible next to `System::Delay()`-paced
+> real-world OLED update rates (the one corpus example redraws every 500 ms).
 
 > ⚠️ **ASSUMPTION:** A FatFS shim mapping `f_open`/`f_read`/`f_write`/`f_lseek` onto host
 > `stdio` covers the API surface that real sampler/looper projects actually use. Unverified
@@ -37,6 +47,15 @@
 > sends it as an ordinary `controlValue`, and the `Encoder` shim derives each callback's delta by
 > diffing the just-read position against the value it read last time (`Debounce()`), including
 > across the wraparound boundary. No wire-protocol change was needed.
+
+> ⚠️ **ASSUMPTION (confirmed scope, 2026-07-22):** The M46 OLED shim implements pixel primitives
+> only — `Fill()`, `DrawPixel()`, `Update()` and framebuffer capture — not real libDaisy's
+> `WriteString()`/`SetCursor()` text API, which depends on font bitmap tables (`Font_6x8`,
+> `Font_11x18`, etc.) this project has no vendored copy of and that porting would be its own
+> substantial task. The only corpus example
+> (`daisy-seed-knowledge/examples/OLED/OLED.cpp`) drives the display via `WriteString` — real
+> effects using it will not compile against the M46 shim. Font/text support is deferred to a
+> follow-up task, tracked in [`01_input-ideas.md`](01_input-ideas.md).
 
 ### Risks
 
@@ -65,3 +84,17 @@
 - **Board BSP support is deferred but not designed out.** If the M43 registry cannot express "a
   board is a bundle of components at fixed pins plus a faceplate graphic", adding Pod/Patch/Petal
   later becomes a rewrite rather than an extension. *Mitigation:* explicit DoD item in M43.
+
+- **`g_state.ipc_queue`'s single-producer guarantee depends on calling convention, not
+  architecture.** Discovered while designing M46's OLED framebuffer hand-off: `led.cpp`/
+  `rgb_led.cpp` already push straight into the one shared `ipc_queue` from `Update()`, which is
+  safe only because real effects conventionally call it from inside the audio callback (the same
+  thread `audio_engine.cpp`'s RT loop already treats as the sole producer) — nothing stops an
+  effect from calling `Led::Update()`/`RgbLed::Update()` from `main()`'s loop instead, which would
+  silently violate the SPSC invariant. OLED's own real-world usage (the one corpus example,
+  `daisy-seed-knowledge/examples/OLED/OLED.cpp`) calls `Update()` from `main()`'s `while(1)` loop,
+  paced by a blocking `System::Delay()` — genuinely a different thread, not just a hypothetical
+  one — which is why M46 gives it its own dedicated `SpscIpcQueue` instance rather than reusing
+  the audio engine's. *Not fixed here*: auditing/redesigning every existing shim's producer
+  threading is a larger, separate undertaking outside FR-DEV-14's scope. Relevant to M47 too
+  (MIDI callbacks may run on yet another thread).
