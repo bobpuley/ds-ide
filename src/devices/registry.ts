@@ -22,6 +22,7 @@ import type { SharedCodegenStrategy, PeripheralCodegenStrategy } from './codegen
 import { potCodegen } from './codegen/pot';
 import { sdcardCodegen } from './codegen/sdcard';
 import { oledCodegen } from './codegen/oled';
+import { midiTrsCodegen } from './codegen/midi-trs';
 
 // Fixed rendering vocabulary (FR-DEV-2) — a device picks one of these rather
 // than shipping bespoke webview code.
@@ -117,7 +118,7 @@ export interface DeviceDescriptor {
 // plain, freely-indexable runtime object — the architecture is a compiled-in
 // registry, not a plugin system, but tests exercising "adding a registry
 // entry" (FR-DEV-2's own acceptance bullet) need to do that by assignment.
-export const DEVICE_TYPES = ['pot', 'button', 'led', 'toggle', 'rgbled', 'encoder', 'sdcard', 'oled'] as const;
+export const DEVICE_TYPES = ['pot', 'button', 'led', 'toggle', 'rgbled', 'encoder', 'sdcard', 'oled', 'midiTrs'] as const;
 
 export type DeviceType = typeof DEVICE_TYPES[number];
 
@@ -230,6 +231,23 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     busChoices: ['SPI1', 'I2C1'],
     initArgs: null,
     peripheralCodegen: oledCodegen,
+  },
+  // FR-DEV-16: the first peripheral whose runtime data is an *inbound* event
+  // stream (a played note) rather than outbound telemetry. Fixed to USART1
+  // (D13-D14) — the canonical UART assignment the pin table already reserves
+  // for MIDI TRS — no busChoices; v14 scopes "or an alternative UART" down to
+  // the one UART the board actually wires this way
+  // (02_assumptions-and-risks.md).
+  midiTrs: {
+    id: 'midiTrs',
+    label: 'MIDI TRS',
+    accentColor: '#c586c0',
+    pinFill: '#3a1a3a',
+    declaredClassName: null,
+    attachmentKind: 'bus',
+    bus: 'USART1',
+    initArgs: null,
+    peripheralCodegen: midiTrsCodegen,
   },
 };
 

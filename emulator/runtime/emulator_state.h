@@ -6,11 +6,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
 #include "daisy/audio_handle.h"
+#include "daisy/midi_event.h"
 #include "session_recorder.h"
 #include "session_player.h"
 #include "wav_reader.h"
@@ -97,6 +99,51 @@ private:
     std::array<Slot, CAPACITY> slots_;
     std::atomic<size_t> write_{0};
     std::atomic<size_t> read_{0};
+};
+
+// Bounded, mutex-guarded FIFO of parsed MidiEvents (M47, FR-DEV-16/17) — the
+// first *inbound* peripheral queue in this tree; every prior queue
+// (ipc_queue, oled_queue) only ever carries data OUT of the emulator. Not on
+// the RT audio path (the producer is the IPC-dispatch thread parsing an
+// incoming `midiEvent` message; the consumer is the effect's own thread
+// calling MidiUartHandler/MidiUsbHandler::PopEvent(), matching real
+// libDaisy's call shape), so a plain mutex is fine here — the same
+// non-RT convention recorder_mutex/player_mutex already use, unlike the
+// lock-free SpscIpcQueue reserved for the RT-adjacent outbound path.
+//
+// A discrete note event must never be silently coalesced the way a
+// continuous control's last-value state can be (two rapid NoteOn/NoteOff
+// pairs are not the same as one), so this is a real FIFO, not an
+// atomic-per-id slot like button_states/toggle_states. A full queue drops
+// the *new* event (preserving the ordering of everything already queued)
+// and counts it in drops, mirroring SpscIpcQueue's own "count, don't corrupt"
+// contract.
+struct MidiInQueue {
+    static constexpr size_t CAPACITY = 256;
+
+    bool push(const daisy::MidiEvent& ev) {
+        std::lock_guard<std::mutex> lk(mutex_);
+        if (queue_.size() >= CAPACITY) return false;
+        queue_.push_back(ev);
+        return true;
+    }
+
+    bool pop(daisy::MidiEvent& out) {
+        std::lock_guard<std::mutex> lk(mutex_);
+        if (queue_.empty()) return false;
+        out = queue_.front();
+        queue_.pop_front();
+        return true;
+    }
+
+    bool empty() {
+        std::lock_guard<std::mutex> lk(mutex_);
+        return queue_.empty();
+    }
+
+private:
+    std::mutex               mutex_;
+    std::deque<daisy::MidiEvent> queue_;
 };
 
 struct EmulatorState {
@@ -241,6 +288,26 @@ struct EmulatorState {
     SpscIpcQueue oled_queue;
     // Counts messages silently dropped when oled_queue is full.
     std::atomic<uint32_t> oled_queue_drops{0};
+
+    // M47 (FR-DEV-16/17): inbound MIDI events, parsed from the `midiEvent`
+    // IPC message by the IPC-dispatch thread and drained by whichever MIDI
+    // handler (MidiUartHandler/MidiUsbHandler) the effect calls PopEvent()
+    // on. Shared by both transports — only one MIDI peripheral is
+    // realistically enabled at a time in a given effect, and the virtual
+    // keyboard/host bridge (FR-DEV-18) is one logical input regardless of
+    // which transport is declared.
+    MidiInQueue midi_in_queue;
+    // Counts inbound MIDI events dropped because midi_in_queue was full.
+    std::atomic<uint32_t> midi_in_drops{0};
+
+    // Outbound `midiRx` telemetry (own SpscIpcQueue instance, same "different
+    // producer thread" reasoning as oled_queue) — emitted the moment the IPC
+    // thread parses an inbound event, regardless of whether the effect has
+    // called PopEvent() yet, so the message monitor (FR-DEV-18) shows
+    // real-time traffic rather than only what's been drained.
+    SpscIpcQueue midi_queue;
+    // Counts messages silently dropped when midi_queue is full.
+    std::atomic<uint32_t> midi_queue_drops{0};
 
     EmulatorState() {
         for (auto& v : pot_values) v.store(0.f);

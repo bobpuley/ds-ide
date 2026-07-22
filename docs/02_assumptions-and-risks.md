@@ -57,6 +57,15 @@
 > effects using it will not compile against the M46 shim. Font/text support is deferred to a
 > follow-up task, tracked in [`01_input-ideas.md`](01_input-ideas.md).
 
+> ✅ **FIXED (M47, FR-DEV-16, 2026-07-22):** `emulator/shim/include/daisy_seed.h` — the one header
+> a generated effect includes (`create-effect-project.ts`'s scaffold emits only `#include
+> "daisy_seed.h"`) — never included `switch3.h`/`rgb_led.h`/`encoder.h`/`fatfs_host.h`/
+> `oled_display.h`. Each shim's own isolated unit test (which includes its header directly) passed
+> at its own milestone, masking that a real end-to-end generated project placing a toggle/RGB
+> LED/encoder/SD card/OLED via the Wiring Editor would fail to compile with "unknown type name" at
+> deploy time. Discovered while wiring `midi_uart_handler.h` into the same umbrella header for
+> FR-DEV-16 and confirmed via a standalone probe compile; fixed for all five alongside MIDI TRS.
+
 ### Risks
 
 - **The IPC generalisation is a breaking protocol change.** Replacing

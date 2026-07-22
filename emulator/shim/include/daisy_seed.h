@@ -18,6 +18,23 @@
 #include "daisy/switch.h"
 #include "daisy/daisy_seed_class.h"
 
+// FR-DEV-7/8/9/10/14/16: these peripheral shims were never wired into this
+// umbrella header when each landed — a generated effect (whose scaffold only
+// ever emits `#include "daisy_seed.h"`, see create-effect-project.ts) placing
+// a toggle/RGB LED/encoder/SD card/OLED/MIDI-TRS control failed to compile
+// with "unknown type name", even though each shim's own isolated unit test
+// (which includes its header directly) passed — the gap only surfaces at a
+// real end-to-end build. Discovered and fixed while adding MidiUartHandler
+// (M47, FR-DEV-16), whose own Init()-emitting DoD bullet would have been
+// false under the same gap; folding in the five pre-existing misses here
+// rather than leaving a known compile break in place for released devices.
+#include "daisy/switch3.h"
+#include "daisy/rgb_led.h"
+#include "daisy/encoder.h"
+#include "daisy/fatfs_host.h"
+#include "daisy/oled_display.h"
+#include "daisy/midi_uart_handler.h"
+
 // Expose the daisy::seed pin aliases at namespace scope so effects using
 //   using namespace daisy;
 // can write A0, A1, … directly (matches libDaisy usage in Osc.cpp / inout.cpp).

@@ -716,16 +716,19 @@ void run_audio_engine() {
     // Runs for the lifetime of the audio engine; the mutex and ::send() stay off
     // the real-time thread. Reports ipc_queue_drops periodically (FR-QA-1).
     //
-    // Also drains oled_queue (FR-DEV-14, M46) — a second, independent SPSC
-    // queue whose producer is the effect's own thread (OledDisplay::Update(),
-    // called from effect_main()'s while(1) loop), not this engine's RT
-    // callback. One consumer thread servicing two unrelated SPSC queues is
-    // safe: each queue's single-producer/single-consumer contract only
-    // constrains its own producer/consumer pair, not what else the consumer
-    // thread does between pops.
+    // Also drains oled_queue (FR-DEV-14, M46) and midi_queue (FR-DEV-16, M47)
+    // — independent SPSC queues whose producers are, respectively, the
+    // effect's own thread (OledDisplay::Update(), called from effect_main()'s
+    // while(1) loop) and the IPC-dispatch thread (parsing an inbound
+    // `midiEvent` message) — neither is this engine's RT callback. One
+    // consumer thread servicing several unrelated SPSC queues is safe: each
+    // queue's single-producer/single-consumer contract only constrains its
+    // own producer/consumer pair, not what else the consumer thread does
+    // between pops.
     std::thread drain_thread([&]() {
         std::string msg;
         std::string oled_msg;
+        std::string midi_msg;
         uint32_t last_reported_drops = 0;
         int idle_ticks = 0;
         while (!g_state.shutdown.load()) {
@@ -738,6 +741,11 @@ void run_audio_engine() {
             if (g_state.oled_queue.pop(oled_msg)) {
                 std::lock_guard<std::mutex> lk(g_state.send_mutex);
                 if (g_state.send_ipc) g_state.send_ipc(oled_msg);
+                did_work = true;
+            }
+            if (g_state.midi_queue.pop(midi_msg)) {
+                std::lock_guard<std::mutex> lk(g_state.send_mutex);
+                if (g_state.send_ipc) g_state.send_ipc(midi_msg);
                 did_work = true;
             }
             if (did_work) {
@@ -754,7 +762,10 @@ void run_audio_engine() {
                     uint32_t drops = g_state.ipc_queue_drops.load(std::memory_order_relaxed)
                                    + g_state.ipc_queue.oversize_drops.load(std::memory_order_relaxed)
                                    + g_state.oled_queue_drops.load(std::memory_order_relaxed)
-                                   + g_state.oled_queue.oversize_drops.load(std::memory_order_relaxed);
+                                   + g_state.oled_queue.oversize_drops.load(std::memory_order_relaxed)
+                                   + g_state.midi_queue_drops.load(std::memory_order_relaxed)
+                                   + g_state.midi_queue.oversize_drops.load(std::memory_order_relaxed)
+                                   + g_state.midi_in_drops.load(std::memory_order_relaxed);
                     if (drops != last_reported_drops) {
                         last_reported_drops = drops;
                         char buf[80];
@@ -774,6 +785,10 @@ void run_audio_engine() {
         while (g_state.oled_queue.pop(oled_msg)) {
             std::lock_guard<std::mutex> lk(g_state.send_mutex);
             if (g_state.send_ipc) g_state.send_ipc(oled_msg);
+        }
+        while (g_state.midi_queue.pop(midi_msg)) {
+            std::lock_guard<std::mutex> lk(g_state.send_mutex);
+            if (g_state.send_ipc) g_state.send_ipc(midi_msg);
         }
     });
 

@@ -58,6 +58,8 @@ set(SHIM_SRC
     "${CMAKE_SOURCE_DIR}/shim/src/encoder.cpp"
     "${CMAKE_SOURCE_DIR}/shim/src/fatfs_host.cpp"
     "${CMAKE_SOURCE_DIR}/shim/src/oled_display.cpp"
+    "${CMAKE_SOURCE_DIR}/shim/src/midi_event.cpp"
+    "${CMAKE_SOURCE_DIR}/shim/src/midi_uart_handler.cpp"
 )
 
 set(RUNTIME_SRC

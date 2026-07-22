@@ -1,5 +1,6 @@
 #include "ipc_server.h"
 #include "emulator_state.h"
+#include "daisy/midi_event.h"
 #include "session_recorder.h"
 #include "session_player.h"
 #include <sys/select.h>
@@ -441,6 +442,50 @@ void dispatch(const std::string& line) {
                     }
                 } catch (...) {}
             });
+        }
+    }
+    else if (type == "midiEvent") {
+        // M47 (FR-DEV-16/17): the first *inbound* peripheral message — a
+        // note played on the virtual keyboard or forwarded by the host MIDI
+        // bridge (FR-DEV-18), travelling extension -> emulator rather than
+        // the other direction every prior message flows. Flat numeric fields
+        // (not a byte array): json_get has no array parser, and every other
+        // numeric field on this wire (value, freq, amplitude, ...) is
+        // already flat.
+        auto status_s = json_get(line, "status");
+        auto data1_s   = json_get(line, "data1");
+        auto data2_s   = json_get(line, "data2");
+        if (!status_s.empty() && !data1_s.empty() && !data2_s.empty()) {
+            try {
+                float status_f = std::stof(status_s);
+                float data1_f  = std::stof(data1_s);
+                float data2_f  = std::stof(data2_s);
+                if (std::isfinite(status_f) && std::isfinite(data1_f) && std::isfinite(data2_f)
+                    && status_f >= 0.f && status_f <= 255.f
+                    && data1_f  >= 0.f && data1_f  <= 255.f
+                    && data2_f  >= 0.f && data2_f  <= 255.f) {
+                    auto status = static_cast<uint8_t>(std::lround(status_f));
+                    auto data1  = static_cast<uint8_t>(std::lround(data1_f));
+                    auto data2  = static_cast<uint8_t>(std::lround(data2_f));
+
+                    daisy::MidiEvent ev{};
+                    daisy::parse_midi_event(status, data1, data2, ev);
+
+                    if (!g_state.midi_in_queue.push(ev))
+                        g_state.midi_in_drops.fetch_add(1, std::memory_order_relaxed);
+
+                    // Emitted regardless of whether the effect has drained
+                    // midi_in_queue yet, so the message monitor (FR-DEV-18)
+                    // shows real-time traffic rather than only what's been
+                    // popped.
+                    char buf[96];
+                    std::snprintf(buf, sizeof(buf),
+                        "{\"type\":\"midiRx\",\"status\":%u,\"data1\":%u,\"data2\":%u,\"channel\":%u,\"midiType\":%d}",
+                        status, data1, data2, ev.channel, static_cast<int>(ev.type));
+                    if (!g_state.midi_queue.push(buf))
+                        g_state.midi_queue_drops.fetch_add(1, std::memory_order_relaxed);
+                }
+            } catch (...) { std::fprintf(stderr, "[daisy-emu] stof failed: midiEvent\n"); }
         }
     }
     else if (type == "audioMode") {
