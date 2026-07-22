@@ -5,6 +5,7 @@ import { computePinDisplayStates } from '../wiring/wired-pin-state';
 import { defaultId, validateId } from '../wiring/id-validation';
 import { REGISTRY, wiredControlIds } from '../devices/registry';
 import { computeBusBrackets, type BusBracket } from '../wiring/bus-bracket';
+import { computePinOverlayStates } from '../wiring/pin-overlay-state';
 
 // FR-DEV-2: one popup button id per pin-attached registry entry —
 // generalizes what used to be a hardcoded ['btn-pot', 'btn-button', 'btn-led']
@@ -155,26 +156,19 @@ applyWiredPins(wiredPins);
 // class and a hover tooltip ("pin · signal · owner") — a hand-wired control
 // on the same pin still wins visually (should never legitimately happen
 // once FR-DEV-13's reject-with-remedy lands, but a loaded-from-disk
-// conflict is possible today).
+// conflict is possible today). Recomputes and re-applies every assignable
+// pin's *full* desired class on every call via the pure
+// computePinOverlayStates — a pin whose peripheral was just disabled
+// correctly reverts to pin-unassigned/pin-adc rather than staying pin-bus
+// forever (regression: the previous add-only version never restored it).
 function applyPeripheralPins(): void {
-  const wiredPinNumbers = new Set(wiredPins.map(wp => wp.pinNumber));
-  const owned = new Map<number, { signal: string | null; owner: string }>();
-  for (const b of computeBusBrackets(peripherals, PIN_DEFS)) {
-    for (const rp of b.pins) owned.set(rp.pin, { signal: rp.signal, owner: b.label });
-  }
-
-  for (const def of PIN_DEFS) {
-    if (def.pin === null) continue;
-    const g = document.getElementById('pin-' + def.pin);
+  for (const state of computePinOverlayStates(PIN_DEFS, wiredPins, peripherals)) {
+    const g = document.getElementById('pin-' + state.pin);
     if (!g) continue;
-    const info = owned.get(def.pin);
-    if (!info || wiredPinNumbers.has(def.pin)) {
-      delete g.dataset['tip'];
-      continue;
-    }
-    g.classList.remove('pin-unassigned', 'pin-adc');
-    g.classList.add('pin-bus');
-    g.dataset['tip'] = `D${def.pin} · ${info.signal ?? '—'} · ${info.owner}`;
+    g.classList.remove(...wiredControlIds().map(id => `pin-${id}`), 'pin-unassigned', 'pin-adc', 'pin-bus');
+    g.classList.add(state.className);
+    if (state.tip) g.dataset['tip'] = state.tip;
+    else delete g.dataset['tip'];
   }
 }
 
