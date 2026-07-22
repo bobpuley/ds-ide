@@ -6,8 +6,8 @@ import { buildHtml as buildControlsHtml } from '../../../sidebar/controls-editor
 import { declarationLine } from '../../../wiring/controls-writer';
 
 describe('REGISTRY (FR-DEV-2)', () => {
-  it('lists pot, button, led, toggle, rgbled, encoder, sdcard and oled', () => {
-    expect([...DEVICE_TYPES].sort()).toEqual(['button', 'encoder', 'led', 'oled', 'pot', 'rgbled', 'sdcard', 'toggle']);
+  it('lists pot, button, led, toggle, rgbled, encoder, sdcard, oled, midiTrs and midiUsb', () => {
+    expect([...DEVICE_TYPES].sort()).toEqual(['button', 'encoder', 'led', 'midiTrs', 'midiUsb', 'oled', 'pot', 'rgbled', 'sdcard', 'toggle']);
   });
 
   it('isDeviceType recognizes registered kinds and rejects others', () => {
@@ -55,6 +55,22 @@ describe('REGISTRY (FR-DEV-2)', () => {
     expect(REGISTRY['oled']!.primitive).toBeUndefined();
     expect(REGISTRY['oled']!.peripheralCodegen).toBeDefined();
     expect(REGISTRY['oled']!.busChoices).toEqual(['SPI1', 'I2C1']);
+  });
+
+  it('declares midiTrs as a bus-attached device fixed to USART1 (FR-DEV-16)', () => {
+    expect(REGISTRY['midiTrs']!.attachmentKind).toBe('bus');
+    expect(REGISTRY['midiTrs']!.bus).toBe('USART1');
+    expect(REGISTRY['midiTrs']!.declaredClassName).toBeNull();
+    expect(REGISTRY['midiTrs']!.primitive).toBeUndefined();
+    expect(REGISTRY['midiTrs']!.peripheralCodegen).toBeDefined();
+  });
+
+  it('declares midiUsb as a bus-attached device with INTERNAL/USB_HS_D mode choices (FR-DEV-17)', () => {
+    expect(REGISTRY['midiUsb']!.attachmentKind).toBe('bus');
+    expect(REGISTRY['midiUsb']!.busChoices).toEqual(['INTERNAL', 'USB_HS_D']);
+    expect(REGISTRY['midiUsb']!.declaredClassName).toBeNull();
+    expect(REGISTRY['midiUsb']!.primitive).toBeUndefined();
+    expect(REGISTRY['midiUsb']!.peripheralCodegen).toBeDefined();
   });
 });
 

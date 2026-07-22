@@ -192,14 +192,22 @@ function renderPeripherals(): void {
 
     const pins = document.createElement('span');
     pins.className = 'periph-pins';
-    pins.textContent = p.pins.length ? p.pins.map(rp => 'D' + rp.pin).join(', ') : '';
+    // FR-DEV-17: a zero-pin bus (midiUsb's INTERNAL mode — the micro USB
+    // connector, modeled without a resolved pin footprint) would otherwise
+    // render as a blank cell with nothing indicating it's connected at all.
+    // Fall back to the bus/mode label itself, same as oled's row already
+    // implicitly relies on pins to communicate its bus.
+    pins.textContent = p.pins.length
+      ? p.pins.map(rp => 'D' + rp.pin).join(', ')
+      : (p.bus ?? '');
 
     row.append(box, name, pins);
 
-    // FR-DEV-15: only oled has a live view today — a generic "viewable"
-    // registry flag isn't worth adding for a single consumer yet. Shown only
-    // once enabled — nothing to view otherwise.
-    if (p.id === 'oled' && p.enabled) {
+    // FR-DEV-15/18: any peripheral with a live view (oled, midiTrs, midiUsb)
+    // gets a "View" button, gated on REGISTRY's hasLiveView flag rather than
+    // a hardcoded id now that more than one consumer exists. Shown only once
+    // enabled — nothing to view otherwise.
+    if (REGISTRY[p.id]?.hasLiveView && p.enabled) {
       const viewBtn = document.createElement('button');
       viewBtn.type = 'button';
       viewBtn.className = 'periph-view-btn';

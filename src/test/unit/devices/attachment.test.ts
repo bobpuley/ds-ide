@@ -49,6 +49,11 @@ describe('resolveBusFootprint (FR-DEV-3)', () => {
     expect(resolveBusFootprint('NOPE1')).toEqual([]);
   });
 
+  it('resolves USB_HS_D to exactly D29/D30, not D0 (USB_HS_ID is a distinct OTG signal)', () => {
+    const pins = resolveBusFootprint('USB_HS_D').map(f => f.pin).sort((a, b) => a - b);
+    expect(pins).toEqual([29, 30]);
+  });
+
   it('is recomputed on every call rather than cached — a live pinDefs edit changes the result', () => {
     const live = [...PIN_DEFS];
     const before = resolveBusFootprint('SPI1', live);

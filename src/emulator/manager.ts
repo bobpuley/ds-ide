@@ -275,6 +275,15 @@ export class EmulatorManager extends EventEmitter {
     this.ipcClient?.send({ type: 'controlSnapshot', values: narrowed });
   }
 
+  // FR-DEV-16/18: the first *inbound* peripheral message — a note played on
+  // the virtual keyboard or forwarded by the host MIDI bridge, travelling
+  // extension -> emulator. Flat numeric fields (not a byte array):
+  // ipc_server.cpp's json_get has no array parser, and every other numeric
+  // field on this wire (value, freq, amplitude, ...) is already flat.
+  sendMidiEvent(status: number, data1: number, data2: number): void {
+    this.ipcClient?.send({ type: 'midiEvent', status, data1, data2 });
+  }
+
   sendAudioMode(mode: 'simulated' | 'realtime'): void {
     this.ipcClient?.send({ type: 'audioMode', mode });
   }
