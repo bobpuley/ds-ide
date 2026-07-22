@@ -107,7 +107,7 @@ describe('expandToWiredPins', () => {
 
 describe('buildHtml', () => {
   const TEST_NONCE = 'test-nonce-abc123';
-  const html = buildHtml([], TEST_NONCE, 'vscode-resource://test/webview/wiring-webview.js');
+  const html = buildHtml([], [], TEST_NONCE, 'vscode-resource://test/webview/wiring-webview.js');
 
   it('contains DOCTYPE and lang', () => {
     expect(html).toContain('<!DOCTYPE html>');
@@ -166,18 +166,18 @@ describe('buildHtml', () => {
   });
 
   it('embeds initial wiredPins from init-data script tag', () => {
-    const html2 = buildHtml([{ pinNumber: 15, deviceType: 'pot', id: 'vol' }], TEST_NONCE, 'vscode-resource://test/webview/wiring-webview.js');
+    const html2 = buildHtml([{ pinNumber: 15, deviceType: 'pot', id: 'vol' }], [], TEST_NONCE, 'vscode-resource://test/webview/wiring-webview.js');
     expect(html2).toContain('"pinNumber":15');
     expect(html2).toContain('"id":"vol"');
   });
 
   it('escapes </ in JSON data island to prevent XSS', () => {
-    const dangerous = buildHtml([{ pinNumber: 15, deviceType: 'pot', id: '</script><script>alert(1)</script>' }], TEST_NONCE, 'vscode-resource://test/webview/wiring-webview.js');
+    const dangerous = buildHtml([{ pinNumber: 15, deviceType: 'pot', id: '</script><script>alert(1)</script>' }], [], TEST_NONCE, 'vscode-resource://test/webview/wiring-webview.js');
     expect(dangerous).not.toContain('</script><script>');
   });
 
   it('escapes < and > in pin ID to prevent HTML injection (AC-70)', () => {
-    const html = buildHtml([{ pinNumber: 15, deviceType: 'pot', id: '<script>alert(1)</script>' }], TEST_NONCE, 'vscode-resource://test/webview/wiring-webview.js');
+    const html = buildHtml([{ pinNumber: 15, deviceType: 'pot', id: '<script>alert(1)</script>' }], [], TEST_NONCE, 'vscode-resource://test/webview/wiring-webview.js');
     // The user-supplied payload must not appear verbatim in the HTML
     expect(html).not.toContain('<script>alert(1)');
     expect(html).not.toContain('</script><');  // no break-out sequence
@@ -186,7 +186,7 @@ describe('buildHtml', () => {
   });
 
   it('escapes & in pin ID to prevent entity injection (AC-70)', () => {
-    const html = buildHtml([{ pinNumber: 15, deviceType: 'pot', id: 'vol&amp;gain' }], TEST_NONCE, 'vscode-resource://test/webview/wiring-webview.js');
+    const html = buildHtml([{ pinNumber: 15, deviceType: 'pot', id: 'vol&amp;gain' }], [], TEST_NONCE, 'vscode-resource://test/webview/wiring-webview.js');
     expect(html).not.toContain('vol&amp;gain');
     expect(html).not.toContain('&amp;');
   });
@@ -194,6 +194,31 @@ describe('buildHtml', () => {
   // T19-5 — USB port indicator (AC-30)
   it('contains usb-port polygon shape (T19-5)', () => {
     expect(html).toContain('usb-port');
+  });
+});
+
+// ── Peripherals section (FR-DEV-11) ──────────────────────────────────────────
+
+describe('buildHtml Peripherals section', () => {
+  const TEST_NONCE = 'test-nonce-abc123';
+
+  it('contains a peripherals list container', () => {
+    const html = buildHtml([], [], TEST_NONCE, 'vscode-resource://test/webview/wiring-webview.js');
+    expect(html).toContain('id="periph-list"');
+  });
+
+  it('embeds initial peripheral state from a data island', () => {
+    const peripherals = [{ id: 'sdcard', label: 'SD Card', enabled: false, pins: [1, 2, 3, 4, 5, 6] }];
+    const html = buildHtml([], peripherals, TEST_NONCE, 'vscode-resource://test/webview/wiring-webview.js');
+    expect(html).toContain('"id":"sdcard"');
+    expect(html).toContain('"enabled":false');
+  });
+
+  it('escapes < and > in a peripheral label to prevent HTML injection', () => {
+    const peripherals = [{ id: 'sdcard', label: '<script>alert(1)</script>', enabled: false, pins: [] }];
+    const html = buildHtml([], peripherals, TEST_NONCE, 'vscode-resource://test/webview/wiring-webview.js');
+    expect(html).not.toContain('<script>alert(1)');
+    expect(html).toContain('\\u003c');
   });
 });
 

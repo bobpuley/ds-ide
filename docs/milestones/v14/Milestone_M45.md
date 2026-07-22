@@ -38,7 +38,7 @@ I/O are out of scope until a real project needs them.
 
 ---
 
-### [ ] feat: add Peripherals section to Wiring Editor (FR-DEV-11)
+### [x] feat: add Peripherals section to Wiring Editor (FR-DEV-11)
 
 Bus peripherals are a second device category (`04_architecture.md`'s "wired controls vs bus
 peripherals") with no prior UI: enabled/disabled and configured from a dedicated list rather than

@@ -782,6 +782,45 @@ describe('makeBlockEdit append-with-confirmation (FR-UX-3)', () => {
     const insertedText = (edit.insert as ReturnType<typeof vi.fn>).mock.calls[0]![2] as string;
     expect(insertedText).toContain('// ds-ide:controls:init:begin');
   });
+
+  // FR-DEV-11 — makeBlockEdit is reused for peripheral enable/disable edits,
+  // which live in their own "ds-ide:peripherals:*" marker pair alongside (not
+  // instead of) the controls ones.
+  it('flags needsAppendConfirmation and appends a peripherals block when none exists yet', () => {
+    const oldText = 'int main() {}\n';
+    const newText = [
+      'int main() {}',
+      '// ds-ide:peripherals:begin',
+      '  SdmmcHandler ds_ide_sd; FatFSInterface ds_ide_fatfs;',
+      '// ds-ide:peripherals:end',
+      '',
+    ].join('\n');
+    const doc = makeDoc(oldText);
+    const { edit, needsAppendConfirmation } = makeBlockEdit(
+      doc, { fsPath: '/proj/effect.cpp' } as unknown as vscode.Uri, oldText, newText,
+    );
+    expect(needsAppendConfirmation).toBe(true);
+    const insertedText = (edit.insert as ReturnType<typeof vi.fn>).mock.calls[0]![2] as string;
+    expect(insertedText).toContain('// ds-ide:peripherals:begin');
+  });
+
+  it('in-place replaces an already-established peripherals block, not a full-file rewrite', () => {
+    const oldText = [
+      'int main() {}',
+      '// ds-ide:peripherals:begin',
+      '  SdmmcHandler ds_ide_sd; FatFSInterface ds_ide_fatfs;',
+      '// ds-ide:peripherals:end',
+    ].join('\n');
+    const newText = oldText.replace(
+      '// ds-ide:peripherals:begin\n  SdmmcHandler ds_ide_sd; FatFSInterface ds_ide_fatfs;\n// ds-ide:peripherals:end',
+      '// ds-ide:peripherals:begin\n// ds-ide:peripherals:end',
+    );
+    const doc = makeDoc(oldText);
+    const { needsAppendConfirmation } = makeBlockEdit(
+      doc, { fsPath: '/proj/effect.cpp' } as unknown as vscode.Uri, oldText, newText,
+    );
+    expect(needsAppendConfirmation).toBe(false);
+  });
 });
 
 describe('wiring edit consistency (FR-IPC-5)', () => {

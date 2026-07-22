@@ -16,6 +16,11 @@ import { WiredPin, DeviceType, PIN_DEFS, expandToWiredPins } from './wiring/wiri
 import { insertIntoSource, removeFromSource, insertInitIntoSource, removeInitFromSource } from './wiring/controls-writer';
 import { allocateAdjacentPins } from './wiring/multi-pin-alloc';
 import { REGISTRY } from './devices/registry';
+import {
+  insertPeripheralIntoSource, removePeripheralFromSource,
+  insertPeripheralInitIntoSource, removePeripheralInitFromSource,
+} from './wiring/peripheral-config';
+import { computePeripheralDisplayStates, PeripheralDisplayState } from './wiring/peripheral-state';
 import { PotStore } from './controllers/pot-store';
 import { ButtonStore } from './controllers/button-store';
 import { ToggleStore } from './controllers/toggle-store';
@@ -90,6 +95,11 @@ export function makeBlockEdit(
   const MARKERS: Array<[string, string]> = [
     ['// ds-ide:controls:begin',      '// ds-ide:controls:end'],
     ['// ds-ide:controls:init:begin', '// ds-ide:controls:init:end'],
+    // FR-DEV-11: a bus peripheral's enable/disable edit lives in its own
+    // marker pair, entirely separate from the wired-controls ones above, so
+    // toggling a peripheral never touches the controls block and vice versa.
+    ['// ds-ide:peripherals:begin',      '// ds-ide:peripherals:end'],
+    ['// ds-ide:peripherals:init:begin', '// ds-ide:peripherals:init:end'],
   ];
   const oldLines = oldText.split('\n');
   const newLines = newText.split('\n');
@@ -501,6 +511,33 @@ export function activate(context: vscode.ExtensionContext): void {
       const cfg = await loadControllerConfig();
       controlsProvider?.postControlsConfig(await buildControlsConfig(folder, cfg));
     },
+    async (peripheralId: string, enabled: boolean) => {
+      const folder = resolveActiveFolder(context.workspaceState)?.uri.fsPath ?? '';
+      const effectPath = await findEffectSource(folder);
+      if (!effectPath) {
+        void vscode.window.showErrorMessage('ds-ide: no effect source file found — set ds-ide.effectSource');
+        return;
+      }
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
+      const oldText = doc.getText();
+      const afterDecl = enabled
+        ? insertPeripheralIntoSource(oldText, peripheralId)
+        : removePeripheralFromSource(oldText, peripheralId);
+      const newText = enabled
+        ? insertPeripheralInitIntoSource(afterDecl, peripheralId)
+        : removePeripheralInitFromSource(afterDecl, peripheralId);
+      const { edit, needsAppendConfirmation } = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
+      if (needsAppendConfirmation && !(await confirmAppendMarkerBlocks())) {
+        return;
+      }
+      const applied = await vscode.workspace.applyEdit(edit);
+      if (!applied) {
+        void vscode.window.showErrorMessage('ds-ide: peripheral edit could not be applied — source file was not changed.');
+        return;
+      }
+      await doc.save();
+      wiringProvider?.postPeripherals(computePeripheralDisplayStates(newText));
+    },
   );
 
   const scopePanel = new ScopePanel(
@@ -641,14 +678,17 @@ export function activate(context: vscode.ExtensionContext): void {
     // unrelated workspaces (FR-QA-EXT-6).
     void vscode.commands.executeCommand('setContext', 'ds-ide.isDaisyProject', effectPath !== undefined);
     let wiredPins: WiredPin[] = [];
+    let peripherals: PeripheralDisplayState[] = computePeripheralDisplayStates('');
     if (effectPath) {
       try {
         const text = await fs.promises.readFile(effectPath, 'utf8');
         const { controls } = parseControlsConvention(text);
         wiredPins = expandToWiredPins(controls);
-      } catch { /* file unreadable — leave wiredPins empty */ }
+        peripherals = computePeripheralDisplayStates(text);
+      } catch { /* file unreadable — leave wiredPins/peripherals at their defaults */ }
     }
     wiringProvider.postWiredPins(wiredPins);
+    wiringProvider.postPeripherals(peripherals);
   }
 
   void initViewsFromProject();
@@ -697,6 +737,7 @@ export function activate(context: vscode.ExtensionContext): void {
         const effectPath = await findEffectSource(folder);
         if (effectPath && saved === effectPath) {
           let pins: WiredPin[] = [];
+          let peripherals: PeripheralDisplayState[] = computePeripheralDisplayStates('');
           try {
             const text = await fs.promises.readFile(effectPath, 'utf8');
             const { controls } = parseControlsConvention(text);
@@ -706,8 +747,10 @@ export function activate(context: vscode.ExtensionContext): void {
             // single-pin mapping that clobbered a multi-pin instance's
             // display down to one highlighted pin right after wiring it.
             pins = expandToWiredPins(controls);
+            peripherals = computePeripheralDisplayStates(text);
           } catch { /* unreadable */ }
           wiringProvider.postWiredPins(pins);
+          wiringProvider.postPeripherals(peripherals);
         }
       }
     }),

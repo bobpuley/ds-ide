@@ -5,6 +5,7 @@ import type { ConventionControl } from '../controllers/controls-convention-parse
 import type { ControllerConfig } from '../controllers/controller-config';
 import type { WiredPin, DeviceType } from '../wiring/wiring-panel';
 import type { ControlsPlacement } from './scope-panel';
+import type { PeripheralDisplayState } from '../wiring/peripheral-state';
 
 // ── Daisy Scope panel ────────────────────────────────────────────────────
 
@@ -52,8 +53,10 @@ export type ControlsWebviewMessage =
 // ── Wiring Editor ────────────────────────────────────────────────────────
 
 export type WiringHostMessage =
-  { command: 'wiredPins'; pins: WiredPin[] };
+  | { command: 'wiredPins'; pins: WiredPin[] }
+  | { command: 'peripherals'; peripherals: PeripheralDisplayState[] };
 
 export type WiringWebviewMessage =
   | { command: 'wirePin'; pinNumber: number; deviceType: DeviceType; id: string }
-  | { command: 'unwirePin'; pinNumber: number; id: string };
+  | { command: 'unwirePin'; pinNumber: number; id: string }
+  | { command: 'setPeripheralEnabled'; peripheralId: string; enabled: boolean };

@@ -84,6 +84,15 @@ export interface DeviceDescriptor {
    */
   peripheralCodegen?: PeripheralCodegenStrategy;
   /**
+   * Present only for attachmentKind 'bus' (FR-DEV-10/11) — the bus name this
+   * device type resolves its footprint against via attachment.ts's
+   * resolveBusFootprint. A single, fixed bus for now (sdcard has exactly one
+   * real SDMMC bus on Daisy Seed); a peripheral with more than one candidate
+   * bus (OLED, MIDI TRS — M46/M47) extends this once it actually needs a
+   * user-facing choice.
+   */
+  bus?: string;
+  /**
    * Required for attachmentKind 'pins' (FR-DEV-8) — how many pins one
    * instance occupies (e.g. rgbled: 3, for r/g/b). Lets the Wiring Editor's
    * auto-adjacent-pin allocator (multi-pin-alloc.ts) stay generic rather than
@@ -191,6 +200,7 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     pinFill: '#4a3a1a',
     declaredClassName: null,
     attachmentKind: 'bus',
+    bus: 'SDMMC1',
     initArgs: null,
     peripheralCodegen: sdcardCodegen,
   },

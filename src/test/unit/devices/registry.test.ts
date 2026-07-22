@@ -109,7 +109,7 @@ describe('adding a registry entry surfaces it everywhere (FR-DEV-2)', () => {
 
   it('surfaces in the Wiring Editor CSS and popup button', () => {
     addFakeDevice();
-    const html = buildWiringHtml([], 'test-nonce', 'vscode-resource://x.js');
+    const html = buildWiringHtml([], [], 'test-nonce', 'vscode-resource://x.js');
     expect(html).toContain('.pin-fakekind');
     expect(html).toContain('#abc123');
     expect(html).toContain('#111222');
@@ -142,7 +142,7 @@ describe('adding a registry entry surfaces it everywhere (FR-DEV-2)', () => {
 // enumerate wiredControlIds() (pin/pins-attached only), not every registry id.
 describe('bus-attached peripherals are excluded from pin/palette pickers (FR-DEV-10)', () => {
   it('sdcard has no per-pin popup button in the Wiring Editor', () => {
-    const html = buildWiringHtml([], 'test-nonce', 'vscode-resource://x.js');
+    const html = buildWiringHtml([], [], 'test-nonce', 'vscode-resource://x.js');
     expect(html).not.toContain('id="btn-sdcard"');
   });
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
 import { WiringViewProvider } from '../../../sidebar/wiring-editor-panel';
-import type { WirePinHandler, UnwirePinHandler } from '../../../wiring/wiring-panel';
+import type { WirePinHandler, UnwirePinHandler, SetPeripheralEnabledHandler } from '../../../wiring/wiring-panel';
 
 function makeWebviewViewMock() {
   const onDisposeHandlers: Array<() => void> = [];
@@ -41,16 +41,19 @@ function makeWebviewViewMock() {
 describe('WiringViewProvider', () => {
   let onWirePin: ReturnType<typeof vi.fn>;
   let onUnwirePin: ReturnType<typeof vi.fn>;
+  let onSetPeripheralEnabled: ReturnType<typeof vi.fn>;
   let provider: WiringViewProvider;
 
   beforeEach(() => {
     vi.clearAllMocks();
     onWirePin   = vi.fn().mockResolvedValue(undefined);
     onUnwirePin = vi.fn().mockResolvedValue(undefined);
+    onSetPeripheralEnabled = vi.fn().mockResolvedValue(undefined);
     provider = new WiringViewProvider(
       { fsPath: '/ext' } as unknown as vscode.Uri,
       onWirePin as unknown as WirePinHandler,
       onUnwirePin as unknown as UnwirePinHandler,
+      onSetPeripheralEnabled as unknown as SetPeripheralEnabledHandler,
     );
   });
 
@@ -212,5 +215,53 @@ describe('WiringViewProvider', () => {
     view.webview.postMessage.mockClear();
     view._simulateVisibilityChange(false);
     expect(view.webview.postMessage).not.toHaveBeenCalled();
+  });
+
+  // ── Peripherals (FR-DEV-11) ────────────────────────────────────────────────
+
+  it('calls onSetPeripheralEnabled when setPeripheralEnabled message received', async () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
+    await handler({ command: 'setPeripheralEnabled', peripheralId: 'sdcard', enabled: true });
+    expect(onSetPeripheralEnabled).toHaveBeenCalledWith('sdcard', true);
+  });
+
+  it('drops setPeripheralEnabled for an unknown peripheral id', async () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
+    await handler({ command: 'setPeripheralEnabled', peripheralId: 'pot', enabled: true });
+    expect(onSetPeripheralEnabled).not.toHaveBeenCalled();
+  });
+
+  it('drops setPeripheralEnabled with a non-boolean enabled value', async () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
+    await handler({ command: 'setPeripheralEnabled', peripheralId: 'sdcard', enabled: 'yes' });
+    expect(onSetPeripheralEnabled).not.toHaveBeenCalled();
+  });
+
+  it('postPeripherals sends a peripherals message to live-update the webview', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    view.webview.postMessage.mockClear();
+    const peripherals = [{ id: 'sdcard', label: 'SD Card', enabled: true, pins: [1, 2, 3, 4, 5, 6] }];
+    provider.postPeripherals(peripherals);
+    expect(view.webview.postMessage).toHaveBeenCalledWith({ command: 'peripherals', peripherals });
+  });
+
+  it('re-sends peripherals when view becomes visible after being hidden', () => {
+    const peripherals = [{ id: 'sdcard', label: 'SD Card', enabled: true, pins: [1, 2, 3, 4, 5, 6] }];
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    provider.postPeripherals(peripherals);
+
+    view.webview.postMessage.mockClear();
+    view._simulateVisibilityChange(true);
+    expect(view.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'peripherals', peripherals }),
+    );
   });
 });

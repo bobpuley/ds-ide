@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 import type { WiringHostMessage, WiringWebviewMessage } from './messages';
-import type { PinDef, WiredPin, DeviceType } from '../wiring/wiring-panel';
+import type { PinDef, WiredPin, DeviceType, PeripheralDisplayState } from '../wiring/wiring-panel';
 import { computePinDisplayStates } from '../wiring/wired-pin-state';
 import { defaultId, validateId } from '../wiring/id-validation';
 import { REGISTRY, wiredControlIds } from '../devices/registry';
@@ -35,6 +35,7 @@ const PIN_DEFS: PinDef[] = JSON.parse(el<HTMLElement>('pin-defs').textContent ||
 
 // ── State ─────────────────────────────────────────────────────────────────
 let wiredPins: WiredPin[] = JSON.parse(el<HTMLElement>('init-data').textContent || '[]');
+let peripherals: PeripheralDisplayState[] = JSON.parse(el<HTMLElement>('peripherals-data').textContent || '[]');
 // { pinNumber, adc } for unassigned; { pinNumber, id, deviceType } for assigned.
 let popupPin: { pinNumber: number; adc?: boolean; deviceType?: DeviceType; id?: string } | null = null;
 let selectedKind: DeviceType | null = null;
@@ -134,6 +135,58 @@ function applyWiredPins(pins: WiredPin[]): void {
 }
 
 applyWiredPins(wiredPins);
+
+// ── Peripherals section (FR-DEV-11) ───────────────────────────────────────
+
+// Marks each enabled peripheral's resolved pins with the generic `pin-bus`
+// class so they read as "system-assigned, not user-wired" on the board — a
+// hand-wired control on the same pin still wins visually (should never
+// legitimately happen once FR-DEV-13's reject-with-remedy lands, but a
+// loaded-from-disk conflict is possible today). Per-peripheral bracket
+// grouping and labelling is FR-DEV-12; this only supplies the occupancy data
+// that task draws from.
+function applyPeripheralPins(): void {
+  const wiredPinNumbers = new Set(wiredPins.map(wp => wp.pinNumber));
+  const occupied = new Set(peripherals.filter(p => p.enabled).flatMap(p => p.pins));
+  for (const def of PIN_DEFS) {
+    if (def.pin === null) continue;
+    const g = document.getElementById('pin-' + def.pin);
+    if (!g) continue;
+    if (!occupied.has(def.pin) || wiredPinNumbers.has(def.pin)) continue;
+    g.classList.remove('pin-unassigned', 'pin-adc');
+    g.classList.add('pin-bus');
+  }
+}
+
+function renderPeripherals(): void {
+  const host = el<HTMLElement>('periph-list');
+  host.innerHTML = '';
+  for (const p of peripherals) {
+    const row = document.createElement('div');
+    row.className = 'periph ' + (p.enabled ? 'on' : 'off');
+
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = p.enabled;
+    box.addEventListener('change', () => {
+      vscode.postMessage({ command: 'setPeripheralEnabled', peripheralId: p.id, enabled: box.checked });
+    });
+
+    const name = document.createElement('span');
+    name.className = 'periph-name';
+    name.textContent = p.label;
+
+    const pins = document.createElement('span');
+    pins.className = 'periph-pins';
+    pins.textContent = p.pins.length ? p.pins.map(n => 'D' + n).join(', ') : '';
+
+    row.append(box, name, pins);
+    host.appendChild(row);
+  }
+  applyPeripheralPins();
+}
+
+renderPeripherals();
 
 // ── Pin click handler ─────────────────────────────────────────────────────
 function onPinClick(e: Event): void {
@@ -249,5 +302,11 @@ document.addEventListener('click', e => {
 // Extension → webview messages
 window.addEventListener('message', (e: MessageEvent<WiringHostMessage>) => {
   const msg = e.data;
-  if (msg.command === 'wiredPins') applyWiredPins(msg.pins || []);
+  if (msg.command === 'wiredPins') {
+    applyWiredPins(msg.pins || []);
+    applyPeripheralPins();
+  } else if (msg.command === 'peripherals') {
+    peripherals = msg.peripherals || [];
+    renderPeripherals();
+  }
 });
