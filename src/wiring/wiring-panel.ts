@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { PIN_DEFS } from '../devices/pin-table.gen';
 import type { PinDef } from '../devices/pin-table.gen';
-import { REGISTRY, registryIds } from '../devices/registry';
+import { REGISTRY, wiredControlIds } from '../devices/registry';
 import type { DeviceType } from '../devices/registry';
 import type { ConventionControl } from '../controllers/controls-convention-parser';
 
@@ -47,7 +47,7 @@ function safeJson(obj: unknown): string {
 // FR-DEV-2: one CSS rule and one popup button per registry entry, so adding
 // a device changes what's generated here without editing this file again.
 function pinDeviceCssRules(): string {
-  return registryIds()
+  return wiredControlIds()
     .map(id => {
       const d = REGISTRY[id]!;
       return `    .pin-${id}    circle { fill: ${d.pinFill}; stroke: ${d.accentColor}; stroke-width: 2; }`;
@@ -59,7 +59,7 @@ function pinDeviceCssRules(): string {
 // warnings aren't part of the registry descriptor (only pot has one today),
 // so this stays a small special case rather than a registry field.
 function popupDeviceButtonsHtml(): string {
-  return registryIds()
+  return wiredControlIds()
     .map(id => {
       const d = REGISTRY[id]!;
       const warnBadge = id === 'pot'

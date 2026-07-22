@@ -23,3 +23,20 @@ export interface SharedCodegenStrategy {
   /** Matches a line produced by initLines(), to strip stale ones before regenerating. */
   isInitLine(line: string): boolean;
 }
+
+// Declared only by a bus-attached peripheral with no per-instance id/pin at
+// all (today: only sdcard, FR-DEV-10) — enabled or not, never keyed by a
+// list of named instances the way SharedCodegenStrategy's pot is. Wiring
+// this into controls-writer.ts's id/pin-shaped annotation pipeline doesn't
+// apply here; FR-DEV-11's peripheral enable/disable flow calls these
+// directly instead.
+export interface PeripheralCodegenStrategy {
+  /** The declaration-block line for this peripheral, emitted at most once. */
+  declLine(): string;
+  /** Matches an existing declLine() output, to find/remove it. */
+  isDeclLine(line: string): boolean;
+  /** The init-block line(s) emitted once when this peripheral is enabled. */
+  initLines(): string[];
+  /** Matches a line produced by initLines(), to find/remove it. */
+  isInitLine(line: string): boolean;
+}

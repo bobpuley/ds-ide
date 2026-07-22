@@ -1,13 +1,13 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { REGISTRY, DEVICE_TYPES, isDeviceType, DeviceType } from '../../../devices/registry';
+import { REGISTRY, DEVICE_TYPES, isDeviceType, DeviceType, wiredControlIds } from '../../../devices/registry';
 import { parseControlsConvention } from '../../../controllers/controls-convention-parser';
 import { buildHtml as buildWiringHtml } from '../../../wiring/wiring-panel';
 import { buildHtml as buildControlsHtml } from '../../../sidebar/controls-editor-panel';
 import { declarationLine } from '../../../wiring/controls-writer';
 
 describe('REGISTRY (FR-DEV-2)', () => {
-  it('lists pot, button, led, toggle, rgbled and encoder', () => {
-    expect([...DEVICE_TYPES].sort()).toEqual(['button', 'encoder', 'led', 'pot', 'rgbled', 'toggle']);
+  it('lists pot, button, led, toggle, rgbled, encoder and sdcard', () => {
+    expect([...DEVICE_TYPES].sort()).toEqual(['button', 'encoder', 'led', 'pot', 'rgbled', 'sdcard', 'toggle']);
   });
 
   it('isDeviceType recognizes registered kinds and rejects others', () => {
@@ -40,6 +40,29 @@ describe('REGISTRY (FR-DEV-2)', () => {
     expect(REGISTRY['encoder']!.pinCount).toBe(3);
     expect(REGISTRY['encoder']!.declaredClassName).toBe('Encoder');
     expect(REGISTRY['encoder']!.primitive).toBe('delta');
+  });
+
+  it('declares sdcard as a bus-attached device with no per-instance class or primitive (FR-DEV-10)', () => {
+    expect(REGISTRY['sdcard']!.attachmentKind).toBe('bus');
+    expect(REGISTRY['sdcard']!.declaredClassName).toBeNull();
+    expect(REGISTRY['sdcard']!.primitive).toBeUndefined();
+    expect(REGISTRY['sdcard']!.peripheralCodegen).toBeDefined();
+  });
+});
+
+describe('wiredControlIds (FR-DEV-10)', () => {
+  it('includes every pin/pins-attached device', () => {
+    const ids = wiredControlIds();
+    expect(ids).toContain('pot');
+    expect(ids).toContain('button');
+    expect(ids).toContain('led');
+    expect(ids).toContain('toggle');
+    expect(ids).toContain('rgbled');
+    expect(ids).toContain('encoder');
+  });
+
+  it('excludes bus-attached peripherals', () => {
+    expect(wiredControlIds()).not.toContain('sdcard');
   });
 });
 
@@ -110,5 +133,21 @@ describe('adding a registry entry surfaces it everywhere (FR-DEV-2)', () => {
     // test only needs the runtime behavior.
     const decl = declarationLine('sw1', FAKE_ID as DeviceType, 5);
     expect(decl).toBe('FakeKindSwitch sw1; // ds-ide: id=sw1, kind=fakekind, pin=5');
+  });
+});
+
+// A bus-attached peripheral (sdcard) is enabled/disabled from the Wiring
+// Editor's Peripherals section (FR-DEV-11), never by clicking an arbitrary
+// pin — so it must not leak into either editor's pin/palette pickers, which
+// enumerate wiredControlIds() (pin/pins-attached only), not every registry id.
+describe('bus-attached peripherals are excluded from pin/palette pickers (FR-DEV-10)', () => {
+  it('sdcard has no per-pin popup button in the Wiring Editor', () => {
+    const html = buildWiringHtml([], 'test-nonce', 'vscode-resource://x.js');
+    expect(html).not.toContain('id="btn-sdcard"');
+  });
+
+  it('sdcard has no palette item in the Controls Editor', () => {
+    const html = buildControlsHtml('test-nonce', 'vscode-resource://x.js');
+    expect(html).not.toContain('data-kind="sdcard"');
   });
 });

@@ -3,13 +3,15 @@ import type { WiringHostMessage, WiringWebviewMessage } from './messages';
 import type { PinDef, WiredPin, DeviceType } from '../wiring/wiring-panel';
 import { computePinDisplayStates } from '../wiring/wired-pin-state';
 import { defaultId, validateId } from '../wiring/id-validation';
-import { REGISTRY, registryIds } from '../devices/registry';
+import { REGISTRY, wiredControlIds } from '../devices/registry';
 
-// FR-DEV-2: one popup button id per registry entry — generalizes what used
-// to be a hardcoded ['btn-pot', 'btn-button', 'btn-led'] literal so a new
-// device needs no edit here (matches wiring-panel.ts's popupDeviceButtonsHtml).
+// FR-DEV-2: one popup button id per pin-attached registry entry —
+// generalizes what used to be a hardcoded ['btn-pot', 'btn-button', 'btn-led']
+// literal so a new device needs no edit here (matches wiring-panel.ts's
+// popupDeviceButtonsHtml). Bus-attached peripherals (FR-DEV-10) are excluded
+// — they have no per-pin popup button to wire a click listener to.
 function deviceButtonIds(): string[] {
-  return registryIds().map(id => `btn-${id}`);
+  return wiredControlIds().map(id => `btn-${id}`);
 }
 
 function kindFromButtonId(btnId: string): DeviceType {
@@ -113,7 +115,7 @@ function applyWiredPins(pins: WiredPin[]): void {
   for (const state of computePinDisplayStates(PIN_DEFS, pins)) {
     const g = document.getElementById('pin-' + state.pin);
     if (!g) continue;
-    g.classList.remove(...registryIds().map(id => `pin-${id}`), 'pin-unassigned', 'pin-adc');
+    g.classList.remove(...wiredControlIds().map(id => `pin-${id}`), 'pin-unassigned', 'pin-adc');
     g.querySelectorAll('.assigned-id').forEach(node => node.remove());
     g.classList.add(state.className);
     if (state.assignedId === null) continue;
