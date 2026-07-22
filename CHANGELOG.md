@@ -5,6 +5,18 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.14.4 — 2026-07-22
+
+**M47 — MIDI: TRS & USB** *(FR-DEV-16, FR-DEV-17, FR-DEV-18 — all DoD green)*
+
+- **FR-DEV-16** — `MidiUartHandler` (MIDI TRS) lands as the first peripheral whose runtime data is an *inbound* event stream rather than outbound telemetry — a note played on the virtual keyboard or a host controller must travel extension → emulator → effect. Fixed to USART1 (D13–D14). Introduces the shared MIDI plumbing: a byte-triplet `midiEvent` wire message, a shared `MidiEvent` parser (NoteOn/NoteOff/ControlChange), a mutex-guarded `midi_in_queue` FIFO, and a dedicated `midi_queue` emitting `midiRx` telemetry for the monitor. Also fixed a latent gap this surfaced: `daisy_seed.h` never included `switch3.h`/`rgb_led.h`/`encoder.h`/`fatfs_host.h`/`oled_display.h`, so a real generated project using any of those M44–M46 devices failed to compile despite each shim's own isolated unit tests passing — fixed for all five.
+- **FR-DEV-17** — `MidiUsbHandler` (MIDI USB) lands with mode-dependent footprint resolution: `INTERNAL` (the micro USB connector, modeled as a zero-pin pseudo-bus) and `USB_HS_D` (D29–D30, a real bus — `canonicalBusSignal` extended to recognize the `USB_HS_D_-`/`USB_HS_D_+` schematic names, carefully excluding the unrelated `USB_HS_ID` signal on D0). Unlike OLED, the declared C++ type is mode-invariant; the mode selection lives in the init line instead, so `PeripheralCodegenStrategy.initLines` gained an optional bus/mode parameter.
+- **FR-DEV-18** — A new `MidiPanel` combines an on-screen keyboard (sends notes into the emulator) and a message monitor (renders every `midiRx` event the shim confirms it parsed). `HostMidiBridge` forwards a real controller's messages into the same pipeline, macOS-only, with the native `midi` binding loaded lazily and defensively — a missing/broken addon degrades to inert rather than crashing activation. Generalized the OLED-only "View" button/auto-open trigger into a registry-driven `hasLiveView` flag now that three peripherals use it.
+- Fixed a packaging gap FR-DEV-18's own dependency exposed: `midi` is a native addon esbuild can't inline, but the package script used `vsce package --no-dependencies` and `.vscodeignore` blanket-excluded `node_modules` — together these would have shipped a `.vsix` where the host bridge silently failed to load. Fixed by carving the specific runtime files `midi` needs back into `.vscodeignore` and extending `verify-vsix.sh` to actually `require()` the module from the packaged layout.
+- Fixed two gaps found in manual testing: the Peripherals section rendered a blank pins column for `midiUsb`'s `INTERNAL` mode (zero pins is correct, but indistinguishable from "not connected"), and the board/schematic SVG showed nothing near the micro USB connector at all. Both fixed — the list row falls back to the bus/mode label, and the board's USB port graphic now highlights (with a hover tooltip) whenever a peripheral is enabled with `bus === 'INTERNAL'`.
+
+---
+
 ## 0.14.3 — 2026-07-22
 
 **M46 — OLED Display** *(FR-DEV-14, FR-DEV-15 — all DoD green)*
