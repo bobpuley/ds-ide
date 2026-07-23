@@ -15,10 +15,11 @@ the emulated device.
 
 M44 has proven the registry (three devices stressing it three different ways) and M45 has landed
 the bus-peripheral UI (Peripherals section, collapsed brackets, conflict-with-remedy). The sprint
-tasks below finalise FR-DEV-16 through FR-DEV-18 in [`03_requirements.md`](../../03_requirements.md)
-against that foundation. Host MIDI bridging is macOS-only for v14 by explicit decision, recorded in
-[`02_assumptions-and-risks.md`](../../02_assumptions-and-risks.md); the on-screen keyboard is the
-cross-platform fallback.
+tasks below finalise FR-DEV-16 through FR-DEV-18 in
+[`v14/03_requirements.md`](../../v14/03_requirements.md) against that foundation. Host MIDI bridging
+is macOS-only for v14 by explicit decision, recorded in
+[`v14/02_assumptions-and-risks.md`](../../v14/02_assumptions-and-risks.md); the on-screen keyboard is
+the cross-platform fallback.
 
 > ⚠️ ASSUMPTION: MIDI is the first *inbound* peripheral — every prior peripheral/control only ever
 > sends data *out* of the emulator (a pot's `controlValue`, the OLED's framebuffer). A note played
