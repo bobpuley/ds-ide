@@ -128,10 +128,10 @@ Full registry in [`docs/v14/05_dev-plan.md`](v14/05_dev-plan.md).
 
 ### v15 (0.15.0–…) — planned
 
-| ID   | Name          | Status                        | Version   | File                                              |
-|------|---------------|--------------------------------|-----------|----------------------------------------------------|
-| M48  | Controls Editor Fix & I/O Monitor UIs | **planned** | 0.15.0 | [Milestone_M48.md](milestones/v15/Milestone_M48.md) |
-| M49  | Controls Editor as Preview Surface (OLED Embedding) | **planned** | 0.15.1 | [Milestone_M49.md](milestones/v15/Milestone_M49.md) |
+| ID   | Name          | Status          | Version   | File                                              |
+|------|---------------|-----------------|-----------|----------------------------------------------------|
+| M48  | Controls Editor Fix & I/O Monitor UIs | **in progress** | 0.15.0 | [Milestone_M48.md](milestones/v15/Milestone_M48.md) |
+| M49  | Controls Editor as Preview Surface (OLED Embedding) | **planned**     | 0.15.1 | [Milestone_M49.md](milestones/v15/Milestone_M49.md) |
 
 Source: 2026-07-24 intake session — bug report + 3 feature requests, split into two milestones
 (M48: concrete additive UI work; M49: the controls-editor reframing/OLED-embedding, kept separate
