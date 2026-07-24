@@ -79,6 +79,8 @@ function applyControlsConfig(msg: ControlsConfigMsg): void {
   if (palette) palette.style.display = conventionMissing ? 'flex' : 'none';
   if (!conventionMissing) {
     renderConventionCanvas();
+  } else {
+    renderCanvas();
   }
 }
 
@@ -374,7 +376,15 @@ function editorLoad(cfg: Partial<ControllerConfig>): void {
   for (const b of (cfg.buttons || [])) editorControls.push({ kind: 'button', id: b.id, label: b.label, adcChannel: null, range: null, taper: null, def: null, gpioPin: b.gpioPin ?? 0, mode: b.mode || 'momentary', activeLevel: b.activeLevel || 'low', pos: b.pos || nextPos() });
   for (const l of (cfg.leds || [])) editorControls.push({ kind: 'led', id: l.id, label: l.label, adcChannel: null, range: null, taper: null, def: null, gpioPin: l.gpioPin ?? 0, mode: null, activeLevel: null, pos: l.pos || nextPos() });
   nextCtrlIdx = Math.max(editorControls.length, nextCtrlIdx);
-  renderCanvas();
+  // Canvas rendering is owned by applyControlsConfig() (driven by the
+  // 'controlsConfig' message's authoritative missingBlock flag), not here —
+  // editorLoad()'s job is only to refresh _yamlCfg/editorControls. Every
+  // real call site sends 'editorLoad' immediately followed by
+  // 'controlsConfig' (loadEditor() then postControlsConfig(), or _flush()'s
+  // same order), so rendering unconditionally here used to momentarily (or,
+  // after FR-CE-1's fix started firing this pair right after a layout save,
+  // visibly) stomp a convention-mode canvas with the legacy YAML-editor's
+  // card set before the very next message corrected it (FR-CE-1 follow-up).
 }
 
 function renderCanvas(): void {
