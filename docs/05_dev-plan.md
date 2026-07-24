@@ -42,7 +42,7 @@
 > **v14 complete** — M43–M47 released (0.14.0–0.14.4), all ACs green.
 > Archived: [`docs/v14/`](v14/).
 
-*v15 milestones not yet planned.*
+v15 milestone planning is underway — see the registry below.
 
 ---
 
@@ -126,6 +126,13 @@ M43 Device Registry & Protocol Foundation · M44 Cheap Trio — Toggle, RGB LED,
 M45 MicroSD & Bus-Peripheral UI · M46 OLED Display · M47 MIDI — TRS & USB.
 Full registry in [`docs/v14/05_dev-plan.md`](v14/05_dev-plan.md).
 
-### v15 — planned
+### v15 (0.15.0–…) — planned
 
-*(no milestones yet)*
+| ID   | Name          | Status                        | Version   | File                                              |
+|------|---------------|--------------------------------|-----------|----------------------------------------------------|
+| M48  | Controls Editor Fix & I/O Monitor UIs | **planned** | 0.15.0 | [Milestone_M48.md](milestones/v15/Milestone_M48.md) |
+| M49  | Controls Editor as Preview Surface (OLED Embedding) | **planned** | 0.15.1 | [Milestone_M49.md](milestones/v15/Milestone_M49.md) |
+
+Source: 2026-07-24 intake session — bug report + 3 feature requests, split into two milestones
+(M48: concrete additive UI work; M49: the controls-editor reframing/OLED-embedding, kept separate
+since it changes the panel's default view and warranted its own design pass).
