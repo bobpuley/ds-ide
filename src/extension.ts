@@ -472,6 +472,13 @@ export function activate(context: vscode.ExtensionContext): void {
   const emulatorChannel = vscode.window.createOutputChannel('Daisy IDE Emulator');
   const hardwareChannel = vscode.window.createOutputChannel('Daisy IDE Hardware Build');
   const flashChannel    = vscode.window.createOutputChannel('Daisy IDE Flash');
+  // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed fixed.
+  // Both the extension host and the Controls Editor webview (via a debugLog
+  // message forwarded through ControlsViewProvider) write here, so there's
+  // one place to look — View > Output > "Daisy IDE Controls Debug" — instead
+  // of needing the Debug Console (host window) and Webview Developer Tools
+  // (dev-host window) separately.
+  const controlsDebugChannel = vscode.window.createOutputChannel('Daisy IDE Controls Debug');
 
   const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBar.text = '$(circuit-board) Daisy';
@@ -490,8 +497,12 @@ export function activate(context: vscode.ExtensionContext): void {
       const folder = resolveActiveFolder(context.workspaceState);
       if (!folder) return;
       const yamlPath = path.join(folder.uri.fsPath, 'controllers.yaml');
+      // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed fixed.
+      controlsDebugChannel.show(true);
+      controlsDebugChannel.appendLine(`onEditorSave: writing ${yamlPath} pots=${cfg.pots.map(p => p.id)} buttons=${cfg.buttons.map(b => b.id)} leds=${cfg.leds.map(l => l.id)}`);
       void fs.promises.writeFile(yamlPath, serializeControllerConfig(cfg), 'utf8')
         .then(async () => {
+          controlsDebugChannel.appendLine('onEditorSave: write succeeded, refreshing');
           // Keep the provider's cache in sync with what's now on disk — otherwise the next
           // onDidChangeVisibility flush re-sends the stale pre-save snapshot and clobbers the
           // positions just saved (FR-CE-1).
@@ -526,6 +537,8 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!folder) { controlsProvider.postSdPreview(name, null); return; }
       void readSdCardPreview(folder.uri.fsPath, name).then(content => controlsProvider.postSdPreview(name, content));
     },
+    // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed fixed.
+    (msg) => controlsDebugChannel.appendLine(msg),
   );
 
   // FR-CE-1 follow-up: buildControlsConfig() used to be independently
@@ -543,13 +556,13 @@ export function activate(context: vscode.ExtensionContext): void {
   async function computeControlsConfig(folder: string, cfg: ControllerConfig): Promise<ControlsConfig | undefined> {
     const requestId = ++controlsConfigRequestId;
     // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed fixed.
-    console.log(`[ds-ide:controls] computeControlsConfig #${requestId} started (folder=${folder})`);
+    controlsDebugChannel.appendLine(`computeControlsConfig #${requestId} started (folder=${folder})`);
     const result = await buildControlsConfig(folder, cfg);
     if (requestId !== controlsConfigRequestId) {
-      console.log(`[ds-ide:controls] computeControlsConfig #${requestId} DISCARDED as stale (latest is #${controlsConfigRequestId}) — would have returned controls=${result.controls.map(c => c.id)} missingBlock=${result.missingBlock}`);
+      controlsDebugChannel.appendLine(`computeControlsConfig #${requestId} DISCARDED as stale (latest is #${controlsConfigRequestId}) — would have returned controls=${result.controls.map(c => c.id)} missingBlock=${result.missingBlock}`);
       return undefined;
     }
-    console.log(`[ds-ide:controls] computeControlsConfig #${requestId} resolved — controls=${result.controls.map(c => c.id)} placements=${result.placements.map(p => p.id)} missingBlock=${result.missingBlock}`);
+    controlsDebugChannel.appendLine(`computeControlsConfig #${requestId} resolved — controls=${result.controls.map(c => c.id)} placements=${result.placements.map(p => p.id)} missingBlock=${result.missingBlock}`);
     return result;
   }
 
