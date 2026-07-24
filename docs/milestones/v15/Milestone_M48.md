@@ -1,7 +1,7 @@
 # M48 — Controls Editor Fix & I/O Monitor UIs
 
 **Version:** 0.15.0
-**Status:** planned
+**Status:** released
 **Source:** intake 2026-07-24 — bug report + 2 feature requests
 
 ## Goal
