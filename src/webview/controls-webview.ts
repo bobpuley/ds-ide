@@ -70,6 +70,12 @@ function escJ(s: unknown): string {
 type ControlsConfigMsg = Extract<ControlsHostMessage, { command: 'controlsConfig' }>;
 
 function applyControlsConfig(msg: ControlsConfigMsg): void {
+  // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed fixed.
+  console.log('[ds-ide:controls webview] applyControlsConfig', {
+    controls: (msg.controls || []).map(c => c.id),
+    placements: (msg.placements || []).map(p => ({ id: p.id, pos: p.pos })),
+    missingBlock: msg.missingBlock,
+  });
   conventionControls = msg.controls || [];
   conventionPlacements = msg.placements || [];
   conventionMissing = !!msg.missingBlock;
@@ -116,6 +122,9 @@ function renderConventionCanvas(): void {
   }
   if (hint) hint.style.display = (conventionControls.length === 0 && conventionPlacements.length === 0) ? 'flex' : 'none';
   updateCeEmulatorState(ceEmulatorRunning);
+  // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed fixed.
+  console.log('[ds-ide:controls webview] renderConventionCanvas rendered ids=',
+    Array.from(area.querySelectorAll('.ctrl-card[data-id]')).map(c => (c as HTMLElement).dataset['id']));
 }
 
 function buildKnobSvg(value: number): string {
@@ -368,6 +377,12 @@ function makeDraggable(card: HTMLElement, ctrl: { pos: [number, number] }): void
 
 // ── Legacy YAML editor (missingBlock mode) ───────────────────────────────
 function editorLoad(cfg: Partial<ControllerConfig>): void {
+  // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed fixed.
+  console.log('[ds-ide:controls webview] editorLoad cfg=', {
+    pots: (cfg.pots || []).map(p => ({ id: p.id, pos: p.pos })),
+    buttons: (cfg.buttons || []).map(b => ({ id: b.id, pos: b.pos })),
+    leds: (cfg.leds || []).map(l => ({ id: l.id, pos: l.pos })),
+  });
   _yamlCfg = { pots: cfg.pots || [], buttons: cfg.buttons || [], leds: cfg.leds || [], errors: [] };
   editorControls = [];
   let ax = 20, ay = 20;
@@ -512,6 +527,12 @@ el<HTMLElement>('save-btn').addEventListener('click', () => {
     const leds    = editorControls.filter(c => c.kind === 'led').map(c => ({ id: c.id, label: c.label, gpioPin: c.gpioPin ?? 0, pos: c.pos }));
     cfg = { pots, buttons, leds, errors: [] };
   }
+  // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed fixed.
+  console.log('[ds-ide:controls webview] Save clicked, conventionMissing=', conventionMissing, 'posting editorSave cfg=', {
+    pots: cfg.pots.map(p => ({ id: p.id, pos: p.pos })),
+    buttons: cfg.buttons.map(b => ({ id: b.id, pos: b.pos })),
+    leds: cfg.leds.map(l => ({ id: l.id, pos: l.pos })),
+  });
   vscode.postMessage({ command: 'editorSave', cfg });
   const st = el<HTMLElement>('save-status');
   st.textContent = 'Saved ✓';

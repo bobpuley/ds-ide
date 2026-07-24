@@ -483,8 +483,12 @@ export function activate(context: vscode.ExtensionContext): void {
       const folder = resolveActiveFolder(context.workspaceState);
       if (!folder) return;
       const yamlPath = path.join(folder.uri.fsPath, 'controllers.yaml');
+      // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed fixed.
+      console.log('[ds-ide:controls] onEditorSave: writing', yamlPath,
+        'pots=', cfg.pots.map(p => p.id), 'buttons=', cfg.buttons.map(b => b.id), 'leds=', cfg.leds.map(l => l.id));
       void fs.promises.writeFile(yamlPath, serializeControllerConfig(cfg), 'utf8')
         .then(async () => {
+          console.log('[ds-ide:controls] onEditorSave: write succeeded, refreshing provider cache + pushing controlsConfig');
           // Keep the provider's cache in sync with what's now on disk — otherwise the next
           // onDidChangeVisibility flush re-sends the stale pre-save snapshot and clobbers the
           // positions just saved (FR-CE-1).
@@ -535,8 +539,14 @@ export function activate(context: vscode.ExtensionContext): void {
   let controlsConfigRequestId = 0;
   async function pushControlsConfig(folder: string, cfg: ControllerConfig): Promise<void> {
     const requestId = ++controlsConfigRequestId;
+    // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed fixed.
+    console.log(`[ds-ide:controls] pushControlsConfig #${requestId} started (folder=${folder})`);
     const result = await buildControlsConfig(folder, cfg);
-    if (requestId !== controlsConfigRequestId) return;
+    if (requestId !== controlsConfigRequestId) {
+      console.log(`[ds-ide:controls] pushControlsConfig #${requestId} DISCARDED as stale (latest is #${controlsConfigRequestId}) — would have applied controls=${result.controls.map(c => c.id)} missingBlock=${result.missingBlock}`);
+      return;
+    }
+    console.log(`[ds-ide:controls] pushControlsConfig #${requestId} APPLIED — controls=${result.controls.map(c => c.id)} placements=${result.placements.map(p => p.id)} missingBlock=${result.missingBlock}`);
     controlsProvider.postControlsConfig(result);
   }
 

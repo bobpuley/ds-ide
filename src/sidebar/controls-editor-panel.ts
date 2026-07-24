@@ -115,6 +115,9 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
   get isVisible(): boolean { return this.view?.visible ?? false; }
 
   postControlsConfig(config: ControlsConfig): void {
+    // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed fixed.
+    console.log('[ds-ide:controls provider] postControlsConfig hasView=', !!this.view,
+      'controls=', config.controls.map(c => c.id), 'missingBlock=', config.missingBlock);
     this.lastControlsConfig = config;
     void this.view?.webview.postMessage({ command: 'controlsConfig', ...config });
     if (this.lastStatus) {
@@ -138,6 +141,9 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
   }
 
   loadEditor(cfg: ControllerConfig): void {
+    // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed fixed.
+    console.log('[ds-ide:controls provider] loadEditor hasView=', !!this.view,
+      'pots=', cfg.pots.map(p => p.id), 'buttons=', cfg.buttons.map(b => b.id));
     this.lastEditorCfg = cfg;
     void this.view?.webview.postMessage({ command: 'editorLoad', cfg });
   }
@@ -158,6 +164,10 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
   }
 
   private _flush(): void {
+    // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed fixed.
+    console.log('[ds-ide:controls provider] _flush hasEditorCfg=', !!this.lastEditorCfg,
+      'hasControlsConfig=', !!this.lastControlsConfig,
+      'controls=', this.lastControlsConfig?.controls.map(c => c.id));
     if (this.lastEditorCfg) {
       void this.view?.webview.postMessage({ command: 'editorLoad', cfg: this.lastEditorCfg });
     }
