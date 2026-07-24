@@ -590,6 +590,75 @@ describe('controllers.yaml read robustness (FR-IPC-4)', () => {
       }),
     );
   });
+
+  it('a slower, stale controlsConfig refresh does not overwrite a faster, later layout-save refresh (FR-CE-1 follow-up)', async () => {
+    // Reproduces a bug found in manual testing: the extension-activation-time
+    // refresh (initViewsFromProject's own buildControlsConfig call) and a
+    // layout-save's refresh both read the effect source asynchronously and
+    // can resolve out of order. If the activation-time read is slow (e.g. a
+    // transient read failure/workspace-mount race) and resolves *after* the
+    // save's own (successful, faster) refresh, the stale response used to
+    // win — silently reverting the canvas to empty right after a successful
+    // save (observed: a button disappearing from the Controls Editor).
+    const cppSource = [
+      '// ds-ide:controls:begin',
+      'Switch  selectBtn; // ds-ide: id=selectBtn, kind=button, pin=11',
+      'Encoder enc1;       // ds-ide: id=enc1, kind=encoder, pin=12, pins=12,13,14',
+      '// ds-ide:controls:end',
+    ].join('\n');
+    promisesMock['readdir']!.mockResolvedValue(['effect.cpp']);
+
+    let effectCppReadCount = 0;
+    let releaseFirstRead: (() => void) | undefined;
+    promisesMock['readFile']!.mockImplementation((p: unknown) => {
+      const fp = String(p);
+      if (fp.endsWith('controllers.yaml')) {
+        return Promise.resolve(
+          'buttons:\n  - id: selectBtn\n    label: Select Effect\n    gpio_pin: 11\n    mode: momentary\n    active_level: low\n    editor_pos: [20, 20]\n',
+        );
+      }
+      if (fp.endsWith('effect.cpp')) {
+        effectCppReadCount++;
+        if (effectCppReadCount === 1) {
+          // The activation-time (initViewsFromProject) read — held open
+          // until releaseFirstRead() is called below, simulating it
+          // finishing late, after a subsequent save's own refresh.
+          return new Promise((_resolve, reject) => {
+            releaseFirstRead = () => reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+          });
+        }
+        return Promise.resolve(cppSource);
+      }
+      return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    });
+
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);  // kicks off initViewsFromProject() — its effect.cpp read is now stuck open
+
+    const { handler, mockView } = getControlsEditorHandlerAndView();
+    mockView.webview.postMessage.mockClear();
+    const savedCfg = {
+      pots: [], leds: [], errors: [],
+      buttons: [{ id: 'selectBtn', label: 'Select Effect', gpioPin: 11, mode: 'momentary', activeLevel: 'low', pos: [20, 20] }],
+    };
+    handler({ command: 'editorSave', cfg: savedCfg });
+    // The save's own refresh (2nd effect.cpp read) resolves immediately.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Now the stale, slower activation-time read finally settles (with a
+    // failure, producing an empty controls list) — after the save's own
+    // correct refresh already landed.
+    releaseFirstRead?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const controlsConfigCalls = (mockView.webview.postMessage as ReturnType<typeof vi.fn>).mock.calls
+      .map((c: unknown[]) => c[0] as Record<string, unknown>)
+      .filter(m => m['command'] === 'controlsConfig');
+    const lastControlsConfig = controlsConfigCalls[controlsConfigCalls.length - 1];
+    const ids = ((lastControlsConfig?.['controls'] as Array<{ id: string }>) || []).map(c => c.id);
+    expect(ids.sort()).toEqual(['enc1', 'selectBtn']);
+  });
 });
 
 // ── FR-SD-1: SD card content viewer ──────────────────────────────────────

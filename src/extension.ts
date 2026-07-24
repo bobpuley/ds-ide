@@ -489,7 +489,7 @@ export function activate(context: vscode.ExtensionContext): void {
           // onDidChangeVisibility flush re-sends the stale pre-save snapshot and clobbers the
           // positions just saved (FR-CE-1).
           controlsProvider.loadEditor(cfg);
-          controlsProvider.postControlsConfig(await buildControlsConfig(folder.uri.fsPath, cfg));
+          await pushControlsConfig(folder.uri.fsPath, cfg);
         })
         .catch((err: unknown) => {
           void vscode.window.showErrorMessage(`ds-ide: could not write controllers.yaml: ${String(err)}`);
@@ -521,6 +521,24 @@ export function activate(context: vscode.ExtensionContext): void {
       void readSdCardPreview(folder.uri.fsPath, name).then(content => controlsProvider.postSdPreview(name, content));
     },
   );
+
+  // FR-CE-1 follow-up: buildControlsConfig() is called from several
+  // independent triggers (initial load, layout save, wirePin/unwirePin,
+  // effect-source save) that can overlap — e.g. the initial-load refresh
+  // is still in flight when the user immediately saves a layout change.
+  // Without a guard, whichever call happens to *resolve* last wins,
+  // regardless of which was *started* last — a slower, earlier, now-stale
+  // refresh can silently overwrite the correct just-saved state (observed:
+  // a control disappearing from the canvas right after a successful save).
+  // requestId tracks the most recently *started* request; a response only
+  // applies if it's still the latest one by the time it resolves.
+  let controlsConfigRequestId = 0;
+  async function pushControlsConfig(folder: string, cfg: ControllerConfig): Promise<void> {
+    const requestId = ++controlsConfigRequestId;
+    const result = await buildControlsConfig(folder, cfg);
+    if (requestId !== controlsConfigRequestId) return;
+    controlsProvider.postControlsConfig(result);
+  }
 
   const oledPanel = new OledPanel(context.extensionUri, manager);
   const midiPanel = new MidiPanel(context.extensionUri, manager);
@@ -593,7 +611,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const wiredPinList: WiredPin[] = expandToWiredPins(controls);
       wiringProvider?.postWiredPins(wiredPinList);
       const cfg = await loadControllerConfig();
-      controlsProvider?.postControlsConfig(await buildControlsConfig(folder, cfg));
+      await pushControlsConfig(folder, cfg);
     },
     async (pinNumber: number, id: string) => {
       const folder = resolveActiveFolder(context.workspaceState)?.uri.fsPath ?? '';
@@ -624,7 +642,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const wiredPinList: WiredPin[] = expandToWiredPins(controls);
       wiringProvider?.postWiredPins(wiredPinList);
       const cfg = await loadControllerConfig();
-      controlsProvider?.postControlsConfig(await buildControlsConfig(folder, cfg));
+      await pushControlsConfig(folder, cfg);
     },
     async (peripheralId: string, enabled: boolean) => {
       const folder = resolveActiveFolder(context.workspaceState)?.uri.fsPath ?? '';
@@ -824,7 +842,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const folder = activeFolder.uri.fsPath;
     const cfg = await loadControllerConfig();
     controlsProvider.loadEditor(cfg);
-    controlsProvider.postControlsConfig(await buildControlsConfig(folder, cfg));
+    await pushControlsConfig(folder, cfg);
     const effectPath = await findEffectSource(folder);
     // Scopes the ds-ide.* keybindings (package.json) so they don't fire in
     // unrelated workspaces (FR-QA-EXT-6).
@@ -884,7 +902,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
       const cfg = await loadControllerConfig();
       controlsProvider.loadEditor(cfg);
-      controlsProvider.postControlsConfig(await buildControlsConfig(folder, cfg));
+      await pushControlsConfig(folder, cfg);
 
       if (mightBeSource) {
         const effectPath = await findEffectSource(folder);
