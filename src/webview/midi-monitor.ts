@@ -13,9 +13,29 @@ export function noteToBytes(
   return { status, data1: note, data2: velocity };
 }
 
-// Mirrors messages.ts's MidiHostMessage 'midiRx' payload plus a client-side
-// arrival timestamp for display ordering.
+// FR-MIDI-1: Program Change/Control Change sender — same fixed-channel-0
+// convention as noteToBytes (no channel selector in the UI). Program Change
+// is a real 2-byte MIDI message (status, program) but the `midiEvent` wire
+// message is a fixed 3-number triplet (M47), so data2 is sent as 0 — a
+// value ipc_server.cpp's parser never reads for a Program Change status
+// byte in the first place (parse_midi_event only recognizes NoteOff/NoteOn/
+// ControlChange; PC support here is send-only, matching FR-MIDI-1's scope).
+export function programChangeToBytes(program: number): { status: number; data1: number; data2: number } {
+  return { status: 0xC0, data1: program, data2: 0 };
+}
+
+export function controlChangeToBytes(
+  controller: number,
+  value: number,
+): { status: number; data1: number; data2: number } {
+  return { status: 0xB0, data1: controller, data2: value };
+}
+
+// Mirrors messages.ts's MidiHostMessage 'midiRx'/'midiTx' payload plus a
+// client-side arrival timestamp for display ordering and a `direction` tag
+// so the monitor can distinguish the two in one unified list (FR-MIDI-1).
 export interface MidiMonitorEntry {
+  direction: 'rx' | 'tx';
   status: number;
   data1: number;
   data2: number;

@@ -10,6 +10,9 @@ function el<T extends HTMLElement>(id: string): T {
 const vscode = acquireVsCodeApi();
 const keyboardEl = el<HTMLElement>('keyboard');
 const monitorEl = el<HTMLElement>('monitor');
+const pcSelectEl = el<HTMLSelectElement>('pc-select');
+const ccNumEl = el<HTMLInputElement>('cc-num');
+const ccValEl = el<HTMLInputElement>('cc-val');
 
 // One octave (C4-B4, MIDI notes 60-71) — the DoD's "at least one octave".
 const FIRST_NOTE = 60;
@@ -44,9 +47,10 @@ function renderMonitor(): void {
   monitorEl.innerHTML = '';
   for (const entry of history) {
     const row = document.createElement('div');
-    row.className = 'monitor-row';
+    row.className = 'monitor-row dir-' + entry.direction;
     const typeName = MIDI_TYPE_NAMES[entry.midiType] ?? 'Unknown';
-    row.textContent = `ch${entry.channel} ${typeName} ${entry.data1} ${entry.data2}`;
+    const dirLabel = entry.direction === 'rx' ? '↓ Rx' : '↑ Tx';
+    row.textContent = `${dirLabel} ch${entry.channel} ${typeName} ${entry.data1} ${entry.data2}`;
     monitorEl.appendChild(row);
   }
   monitorEl.scrollTop = monitorEl.scrollHeight;
@@ -54,13 +58,33 @@ function renderMonitor(): void {
 
 window.addEventListener('message', (e: MessageEvent<MidiHostMessage>) => {
   const msg = e.data;
-  if (msg.command === 'midiRx') {
+  if (msg.command === 'midiRx' || msg.command === 'midiTx') {
     history = pushMonitorEntry(history, {
+      direction: msg.command === 'midiRx' ? 'rx' : 'tx',
       status: msg.status, data1: msg.data1, data2: msg.data2,
       channel: msg.channel, midiType: msg.midiType, timestamp: performance.now(),
     }, MAX_MONITOR_ENTRIES);
     renderMonitor();
   }
+});
+
+// FR-MIDI-1: Program Change / Control Change sender.
+for (let i = 0; i <= 127; i++) {
+  const opt = document.createElement('option');
+  opt.value = String(i);
+  opt.textContent = String(i);
+  pcSelectEl.appendChild(opt);
+}
+
+el<HTMLElement>('pc-send').addEventListener('click', () => {
+  const program = parseInt(pcSelectEl.value, 10);
+  vscode.postMessage({ command: 'programChange', program });
+});
+
+el<HTMLElement>('cc-send').addEventListener('click', () => {
+  const controller = parseInt(ccNumEl.value, 10);
+  const value = parseInt(ccValEl.value, 10);
+  vscode.postMessage({ command: 'controlChange', controller, value });
 });
 
 vscode.postMessage({ command: 'webviewReady' });

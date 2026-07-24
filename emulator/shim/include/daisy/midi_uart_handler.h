@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include "daisy/midi_event.h"
 
 // MidiUartHandler host shim (MIDI TRS, M47/FR-DEV-16). Fixed to USART1
@@ -26,6 +27,11 @@ public:
 
     bool HasEvents() const;
     MidiEvent PopEvent();
+
+    // FR-MIDI-1: mirrors MidiUsbHandler::SendMessage — see that declaration
+    // for the byte-triplet parsing/shorter-message contract shared by both
+    // transports.
+    void SendMessage(uint8_t* buff, size_t size);
 };
 
 }  // namespace daisy

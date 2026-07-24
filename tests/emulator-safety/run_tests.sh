@@ -29,6 +29,8 @@ echo ""
 
 BIN="${BUILD_DIR}/test_emulator_safety"
 
+SHIM_SRC="${REPO_ROOT}/emulator/shim/src"
+
 # Units under test (no CoreAudio dependency):
 SOURCES=(
     "${TEST_SRC}"
@@ -36,6 +38,9 @@ SOURCES=(
     "${RUNTIME_DIR}/session_player.cpp"
     "${RUNTIME_DIR}/session_recorder.cpp"
     "${RUNTIME_DIR}/ipc_server.cpp"
+    "${SHIM_SRC}/midi_event.cpp"
+    "${SHIM_SRC}/midi_usb_handler.cpp"
+    "${SHIM_SRC}/midi_uart_handler.cpp"
 )
 
 "${CXX}" "${CXXFLAGS[@]}" -pthread -o "${BIN}" "${SOURCES[@]}"

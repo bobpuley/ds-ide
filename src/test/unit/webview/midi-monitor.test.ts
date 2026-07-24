@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { noteToBytes, pushMonitorEntry, MAX_MONITOR_ENTRIES } from '../../../webview/midi-monitor';
+import {
+  noteToBytes, pushMonitorEntry, MAX_MONITOR_ENTRIES, programChangeToBytes, controlChangeToBytes,
+} from '../../../webview/midi-monitor';
 import type { MidiMonitorEntry } from '../../../webview/midi-monitor';
 
 describe('noteToBytes (FR-DEV-18)', () => {
@@ -12,9 +14,21 @@ describe('noteToBytes (FR-DEV-18)', () => {
   });
 });
 
+describe('programChangeToBytes (FR-MIDI-1)', () => {
+  it('encodes a Program Change as status 0xC0 on channel 0 with data2 zeroed', () => {
+    expect(programChangeToBytes(5)).toEqual({ status: 0xC0, data1: 5, data2: 0 });
+  });
+});
+
+describe('controlChangeToBytes (FR-MIDI-1)', () => {
+  it('encodes a Control Change as status 0xB0 on channel 0', () => {
+    expect(controlChangeToBytes(7, 100)).toEqual({ status: 0xB0, data1: 7, data2: 100 });
+  });
+});
+
 describe('pushMonitorEntry (FR-DEV-18)', () => {
   function entry(note: number): MidiMonitorEntry {
-    return { status: 0x90, data1: note, data2: 100, channel: 0, midiType: 1, timestamp: note };
+    return { direction: 'rx', status: 0x90, data1: note, data2: 100, channel: 0, midiType: 1, timestamp: note };
   }
 
   it('appends an entry to the history', () => {
@@ -36,5 +50,11 @@ describe('pushMonitorEntry (FR-DEV-18)', () => {
     expect(history).toHaveLength(MAX_MONITOR_ENTRIES);
     expect(history[0]!.data1).toBe(5);
     expect(history[history.length - 1]!.data1).toBe(MAX_MONITOR_ENTRIES + 4);
+  });
+
+  it('preserves direction across mixed rx/tx entries in one history (FR-MIDI-1)', () => {
+    const txEntry: MidiMonitorEntry = { ...entry(64), direction: 'tx' };
+    const history = pushMonitorEntry(pushMonitorEntry([], entry(60)), txEntry);
+    expect(history.map(e => e.direction)).toEqual(['rx', 'tx']);
   });
 });

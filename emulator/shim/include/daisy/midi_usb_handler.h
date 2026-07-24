@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include "daisy/midi_event.h"
 
 // MidiUsbHandler host shim (MIDI USB, M47/FR-DEV-17). Confirmed against the
@@ -35,6 +36,16 @@ public:
 
     bool HasEvents() const;
     MidiEvent PopEvent();
+
+    // FR-MIDI-1: outbound path — an effect calling this enqueues a `midiTx`
+    // message onto the same EmulatorState::midi_queue the inbound `midiRx`
+    // telemetry already uses (see midi_usb_handler.cpp), so the monitor sees
+    // both directions on one channel. `buff` is read as a status byte plus up
+    // to two data bytes (status[, data1[, data2]]) — the same triplet shape
+    // ipc_server.cpp's `midiEvent` handler parses inbound, tolerating a
+    // shorter 2-byte message (e.g. Program Change) by treating a missing
+    // data2 as 0 rather than reading past `size`.
+    void SendMessage(uint8_t* buff, size_t size);
 };
 
 }  // namespace daisy

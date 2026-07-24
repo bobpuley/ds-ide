@@ -62,7 +62,7 @@ directly beneath it, mirroring the mockup's Variant A.
 
 ---
 
-### [ ] feat: add MIDI SendMessage shim + complete MIDI monitor UI (FR-MIDI-1)
+### [x] feat: add MIDI SendMessage shim + complete MIDI monitor UI (FR-MIDI-1)
 
 M47 delivered inbound MIDI (virtual keyboard → effect) and a monitor that shows what the shim
 confirms it parsed, but nothing lets the *effect* send MIDI out, and nothing lets a developer send

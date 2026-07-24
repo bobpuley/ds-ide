@@ -46,15 +46,19 @@ export type OledWebviewMessage =
 // ── MIDI panel (FR-DEV-18) ───────────────────────────────────────────────
 
 // Relays the shim's parsed-event confirmation (emulator/runtime/ipc_server.cpp's
-// `midiRx` message) for the monitor — `midiType` is daisy::MidiMessageType's
+// `midiRx` message, and the shim's own SendMessage()-driven `midiTx` message —
+// FR-MIDI-1) for the monitor — `midiType` is daisy::MidiMessageType's
 // underlying int value (0=NoteOff, 1=NoteOn, 2=ControlChange, 3=Unknown).
 export type MidiHostMessage =
-  | { command: 'midiRx'; status: number; data1: number; data2: number; channel: number; midiType: number };
+  | { command: 'midiRx'; status: number; data1: number; data2: number; channel: number; midiType: number }
+  | { command: 'midiTx'; status: number; data1: number; data2: number; channel: number; midiType: number };
 
 export type MidiWebviewMessage =
   | { command: 'webviewReady' }
   | { command: 'noteOn'; note: number; velocity: number }
-  | { command: 'noteOff'; note: number; velocity: number };
+  | { command: 'noteOff'; note: number; velocity: number }
+  | { command: 'programChange'; program: number }
+  | { command: 'controlChange'; controller: number; value: number };
 
 // ── Controls Editor ──────────────────────────────────────────────────────
 
