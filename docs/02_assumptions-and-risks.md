@@ -45,6 +45,13 @@ v15 risk-tracking is underway — see below.
 > a new embedded-rendering message contract to `messages.ts` — there's no existing "peripheral
 > live-view" abstraction to embed for free.
 
+> ⚠️ ASSUMPTION: `src/sidebar/controls-editor-panel.ts`'s `#palette` (drag-and-drop control-type
+> list, `paletteItemsHtml()`/`paletteCssRules()`) is still present in source but, per direct
+> confirmation, isn't actually rendered in the Controls Editor today. Left in place deliberately
+> (not dead code to delete) in case it's needed again before the extension is stable. FR-CE-2's
+> docked-strip layout (M49) was designed around the palette's *absence* — if the palette is
+> reinstated later, revisit the strip's placement/width alongside it.
+
 ## Carried-over open items
 
 - **`MidiUartHandler::Config` field names unverified against real hardware** — M47

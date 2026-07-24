@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<!--
+  MOCKUP — not production code.
+  M49: embed the OLED live view into the Controls Editor as its default view when `oled`
+  is enabled, with a "show in separate view" pop-out that still opens today's standalone
+  OledPanel. First step toward the Controls Editor as a general preview surface — future
+  pedal/board/rack layouts would live in the same slot this mockup is choosing the shape of.
+
+  Dimensions/palette lifted from the real webviews:
+    - src/sidebar/controls-editor-panel.ts (.ctrl-card layout editor — note: its `#palette`
+      column exists in source but isn't rendered in practice today, so it's deliberately
+      left out of this mockup's mini layout editor)
+    - src/webview/oled-webview.ts (128×64 SSD1306, monochrome, "SSD1306 · WxH · bus · fps" footer)
+    - src/wiring/wiring-panel.ts (.section-hdr pattern reused for the pop-out affordance)
+
+  Open question this mockup exists to resolve: does the OLED preview REPLACE the layout
+  editor's screen space (tabbed) or coexist with it (docked strip)? Per 02_assumptions-and-
+  risks.md's recorded scope decision, no rename/command-ID change is in play here either way.
+
+  DECISION (2026-07-24): Variant B (docked strip) chosen — layout and OLED preview visible
+  simultaneously. Variant A kept below for reference only.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>ds-ide M49 — OLED embedding mockup (decided: Variant B)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #1e1e1e; color: #d4d4d4; font-family: monospace; font-size: 12px; }
+
+  #chrome { background: #111; border-bottom: 1px solid #3c3c3c; padding: 10px 16px; }
+  #chrome h1 { font-size: 13px; color: #f4c430; font-weight: normal; }
+  #chrome p { font-size: 11px; color: #6a6a6a; margin-top: 3px; }
+
+  #toolbar { display: flex; gap: 6px; align-items: center; padding: 8px 16px; background: #161616;
+             border-bottom: 1px solid #3c3c3c; }
+  #toolbar .lbl { font-size: 10px; color: #9a9a9a; margin-right: 4px; }
+  #toolbar button { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; padding: 4px 10px;
+                     border-radius: 2px; cursor: pointer; font-family: monospace; font-size: 10px; }
+  #toolbar button.on { background: #0e639c; border-color: #1177bb; color: #fff; }
+
+  #stage { display: flex; gap: 16px; padding: 16px; align-items: flex-start; }
+  .panel { background: #1e1e1e; border: 1px solid #3c3c3c; border-radius: 4px; width: 360px; flex-shrink: 0; }
+  .panel h2 { padding: 8px 14px; font-size: 12px; color: #9cdcfe; background: #252526;
+              border-bottom: 1px solid #3c3c3c; font-weight: normal; }
+  .panel h2 .tag { display: block; font-size: 9px; color: #6a6a6a; font-weight: normal; margin-top: 2px; }
+
+  /* ---- Variant A: tab bar ---- */
+  .tabbar { display: flex; background: #1a1a1a; border-bottom: 1px solid #3c3c3c; }
+  .tabbar button { flex: 1; background: transparent; border: none; border-bottom: 2px solid transparent;
+                    color: #9a9a9a; padding: 7px 0; font-family: monospace; font-size: 11px; cursor: pointer; }
+  .tabbar button.active { color: #9cdcfe; border-bottom-color: #9cdcfe; background: #202020; }
+  .tabbar button:disabled { color: #4a4a4a; cursor: default; }
+
+  /* ---- mini layout editor (shared illustration) ---- */
+  /* No palette column — the real Controls Editor's #palette exists in source but isn't
+     rendered in practice today (kept in code in case it's needed again pre-stability). */
+  .mini-editor { display: flex; height: 220px; }
+  .mini-canvas { flex: 1; position: relative; background:
+    repeating-linear-gradient(0deg, #232323, #232323 1px, #1e1e1e 1px, #1e1e1e 18px),
+    repeating-linear-gradient(90deg, #232323, #232323 1px, #1e1e1e 1px, #1e1e1e 18px); }
+  .ctrl-card { position: absolute; background: #252526; border: 1px solid #555; border-radius: 3px;
+               padding: 4px 7px; font-size: 9px; box-shadow: 0 2px 6px rgba(0,0,0,.4); }
+  .ctrl-card .hdr { color: #d4d4d4; margin-bottom: 3px; }
+  .ctrl-card .knob { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #4ec9b0; margin: 0 auto; }
+
+  /* ---- OLED render ---- */
+  .oled-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center;
+               background: #000; position: relative; }
+  .oled-wrap .foot { font-size: 9px; color: #6a6a6a; margin-top: 6px; }
+  .oled-placeholder { color: #4a4a4a; font-size: 10px; text-align: center; padding: 0 20px; }
+  .popout-btn { position: absolute; top: 6px; right: 6px; background: #252526; border: 1px solid #555;
+                color: #9cdcfe; padding: 3px 7px; border-radius: 2px; cursor: pointer;
+                font-family: monospace; font-size: 9px; }
+  .popout-btn:hover { background: #2f2f2f; }
+
+  /* ---- Variant A preview pane ---- */
+  .previewA { height: 220px; position: relative; display: flex; align-items: center; justify-content: center; }
+
+  /* ---- Variant B docked strip ---- */
+  .strip { height: 130px; position: relative; border-bottom: 1px solid #3c3c3c; display: flex;
+           align-items: center; justify-content: center; }
+  .strip.collapsed { height: 0; border-bottom: none; }
+  .strip-label { position: absolute; top: 5px; left: 8px; font-size: 9px; color: #6a6a6a; }
+
+  #notes { flex: 1; min-width: 280px; max-width: 420px; }
+  #notes h3 { font-size: 12px; color: #9cdcfe; margin-bottom: 8px; font-weight: normal; }
+  #notes .blk { background: #252526; border: 1px solid #3c3c3c; border-radius: 4px; padding: 12px 14px; margin-bottom: 12px; }
+  #notes .blk h4 { font-size: 11px; margin-bottom: 6px; font-weight: normal; }
+  #notes .pro h4 { color: #4ec9b0; } #notes .con h4 { color: #f48771; } #notes .opn h4 { color: #f4c430; }
+  #notes ul { list-style: none; }
+  #notes li { padding: 3px 0 3px 14px; position: relative; line-height: 1.5; color: #b8b8b8; }
+  #notes li::before { content: "·"; position: absolute; left: 4px; color: #6a6a6a; }
+  code { color: #ce9178; }
+</style>
+</head>
+<body>
+
+<div id="chrome">
+  <h1>⚠ MOCKUP — ds-ide M49, OLED embedding in the Controls Editor</h1>
+  <p>Toggle OLED state below — it drives both variants at once so they're directly comparable.
+     "Live" renders a sample framebuffer on a 128×64 canvas exactly like today's standalone
+     OLED panel, just embedded.</p>
+</div>
+
+<div id="toolbar">
+  <span class="lbl">oled peripheral:</span>
+  <button id="btn-off" class="on" onclick="setState('off')">Disabled</button>
+  <button id="btn-wait" onclick="setState('wait')">Enabled, no frame yet</button>
+  <button id="btn-live" onclick="setState('live')">Enabled, live</button>
+</div>
+
+<div id="stage">
+
+  <div class="panel">
+    <h2>Variant A — Tabbed<span class="tag">Layout / Preview replace each other</span></h2>
+    <div class="tabbar">
+      <button id="A-tab-layout" class="active" onclick="setTabA('layout')">Layout</button>
+      <button id="A-tab-preview" onclick="setTabA('preview')">Preview</button>
+    </div>
+    <div id="A-body"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Variant B — Docked strip<span class="tag">Preview and layout both visible at once</span></h2>
+    <div class="strip" id="B-strip"></div>
+    <div class="mini-editor">
+      <div class="mini-canvas">
+        <div class="ctrl-card" style="left:20px; top:18px;"><div class="hdr">pot1</div><div class="knob"></div></div>
+        <div class="ctrl-card" style="left:120px; top:70px;"><div class="hdr">btn1</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="notes">
+    <h3>OLED Embedding — evaluation notes</h3>
+    <div class="blk pro">
+      <h4>Variant A — tabbed</h4>
+      <ul>
+        <li>Preview gets the full panel height (220px) — legible at a real usable scale.</li>
+        <li>"Defaults to Preview when OLED is enabled" (per the requirement) maps directly onto
+            which tab opens first — no extra state to design.</li>
+        <li>Extends cleanly to future preview surfaces (pedal/board/rack): each just becomes
+            another tab, or the Preview tab's content switches on what's enabled.</li>
+      </ul>
+    </div>
+    <div class="blk con">
+      <h4>Variant A — trade-off</h4>
+      <ul>
+        <li>Can't see the OLED and drag a control's position at the same time — you switch tabs.</li>
+      </ul>
+    </div>
+    <div class="blk pro">
+      <h4>Variant B — docked strip</h4>
+      <ul>
+        <li>Layout and preview are both visible simultaneously — useful if a control's behavior
+            is meant to be checked against the OLED output while placing it.</li>
+      </ul>
+    </div>
+    <div class="blk con">
+      <h4>Variant B — trade-off</h4>
+      <ul>
+        <li>Preview is cramped (~130px) — a 128×64 display only reads clearly around 2x scale.</li>
+        <li>Doesn't scale to future preview surfaces: a second docked strip (e.g. a pedal graphic)
+            stacks on top of this one, eating canvas height every time something new is added.</li>
+        <li>Canvas area shrinks whenever `oled` is enabled, even while the user is only doing
+            layout work and not looking at the strip.</li>
+      </ul>
+    </div>
+    <div class="blk opn">
+      <h4>Open questions</h4>
+      <ul>
+        <li>Both variants keep the pop-out ("↗") affordance opening today's unchanged standalone
+            <code>OledPanel</code> — confirm that's still wanted once embedded, or whether pop-out
+            becomes redundant for most workflows.</li>
+        <li>"Enabled, no frame yet" state shown here as a dim canvas with a caption — good enough,
+            or should it show the last frame from a previous run if one exists?</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let oledState = 'off';   // off | wait | live
+let tabA = 'layout';
+
+function setState(s) {
+  oledState = s;
+  ['off','wait','live'].forEach(k => document.getElementById(`btn-${k === 'off' ? 'off' : k}`).classList.toggle('on', k === s));
+  if (s !== 'off' && tabA === 'layout') { tabA = 'preview'; } // "defaults to Preview when enabled"
+  if (s === 'off') { tabA = 'layout'; }
+  render();
+}
+function setTabA(t) {
+  if (oledState === 'off' && t === 'preview') return; // nothing to preview
+  tabA = t;
+  render();
+}
+
+function oledCanvasHtml(scale, withPopout) {
+  const w = 128 * scale, h = 64 * scale;
+  const id = 'oled-' + Math.random().toString(36).slice(2, 8);
+  setTimeout(() => drawSample(id, oledState), 0);
+  return `
+    <div class="oled-wrap" style="width:100%; height:100%;">
+      ${withPopout ? '<button class="popout-btn" onclick="alert(\'Opens the existing standalone OLED panel — unchanged from today.\')">↗ Pop out</button>' : ''}
+      <canvas id="${id}" width="${w}" height="${h}" style="width:${w}px;height:${h}px; image-rendering: pixelated;"></canvas>
+      <div class="foot">SSD1306 · 128×64 · SPI1 · ${oledState === 'live' ? '30' : '0'} fps</div>
+    </div>`;
+}
+
+function drawSample(id, state) {
+  const c = document.getElementById(id);
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  const scale = c.width / 128;
+  ctx.imageSmoothingEnabled = false;
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 128, 64);
+  if (state !== 'live') return;
+  ctx.fillStyle = '#fff';
+  ctx.font = '10px monospace';
+  ctx.fillText('DELAY', 4, 12);
+  ctx.fillText('120ms  62%', 4, 24);
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
+  ctx.strokeRect(2, 30, 124, 30);
+  ctx.beginPath();
+  for (let x = 0; x < 120; x++) {
+    const y = 45 + Math.sin(x / 8) * 10;
+    x === 0 ? ctx.moveTo(4 + x, y) : ctx.lineTo(4 + x, y);
+  }
+  ctx.stroke();
+}
+
+function render() {
+  // ---- Variant A ----
+  document.getElementById('A-tab-layout').classList.toggle('active', tabA === 'layout');
+  document.getElementById('A-tab-preview').classList.toggle('active', tabA === 'preview');
+  document.getElementById('A-tab-preview').disabled = (oledState === 'off');
+  const bodyA = document.getElementById('A-body');
+  if (tabA === 'layout') {
+    bodyA.innerHTML = `
+      <div class="mini-editor">
+        <div class="mini-canvas">
+          <div class="ctrl-card" style="left:20px; top:18px;"><div class="hdr">pot1</div><div class="knob"></div></div>
+          <div class="ctrl-card" style="left:120px; top:70px;"><div class="hdr">btn1</div></div>
+        </div>
+      </div>`;
+  } else {
+    bodyA.innerHTML = `<div class="previewA">${oledCanvasHtml(2, true)}</div>`;
+  }
+
+  // ---- Variant B ----
+  const strip = document.getElementById('B-strip');
+  if (oledState === 'off') {
+    strip.className = 'strip collapsed';
+    strip.innerHTML = '';
+  } else {
+    strip.className = 'strip';
+    strip.innerHTML = `<div class="strip-label">OLED preview</div>${oledCanvasHtml(1.4, true)}`;
+  }
+}
+
+render();
+</script>
+
+</body>
+</html>

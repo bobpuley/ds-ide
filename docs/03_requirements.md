@@ -30,10 +30,12 @@ transmits (`SendMessage`), shown in the same webview as inbound traffic — not 
 
 ### M49 — Controls Editor as Preview Surface (OLED Embedding)
 
-**FR-CE-2 — OLED live view embeds in the Controls Editor by default, with a pop-out option**
-When the `oled` peripheral is enabled, the Controls Editor's default view renders the OLED
-framebuffer (today only visible via the separate `OledPanel`) instead of requiring the user to
-open a second panel; a "show in separate view" action still opens the existing standalone OLED
-panel for detailed inspection. This is the first step toward the Controls Editor as a general
-real-world preview surface (future: pedal/board/rack layouts) — that broader reframing, and any
-panel rename, is explicitly out of scope for this milestone (see `02_assumptions-and-risks.md`).
+**FR-CE-2 — OLED live view is docked in the Controls Editor, with a pop-out option**
+When the `oled` peripheral is enabled, the Controls Editor shows the OLED framebuffer in a docked
+strip above the controls-layout canvas — visible at the same time as the layout, not a mode the
+user switches into — instead of requiring the user to open a separate panel. A "show in separate
+view" action still opens the existing standalone OLED panel for detailed inspection. Disabling
+`oled` collapses the strip back to today's exact layout. This is the first step toward the
+Controls Editor as a general real-world preview surface (future: pedal/board/rack layouts) — that
+broader reframing, and any panel rename, is explicitly out of scope for this milestone (see
+`02_assumptions-and-risks.md`).

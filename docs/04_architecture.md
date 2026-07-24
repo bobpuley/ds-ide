@@ -33,9 +33,14 @@ below, one per requirement.
   `src/webview/oled-panel.ts`) are separate infrastructure today with no shared abstraction.
   Embedding requires: (1) `EmulatorManager`'s `'message'` → `oledFrame` subscription, currently
   only wired in `OledPanel`'s constructor, relocated or dual-subscribed so `ControlsViewProvider`
-  also receives frames when `oled` is enabled; (2) `controls-webview.js` gains a canvas render path
-  reusing `oled-frame.ts`'s existing render logic; (3) a new embedded-view message contract in
-  `messages.ts` (distinct from the pop-out path). The pop-out ("show in separate view") action
-  reuses today's `hasLiveView`/`viewPeripheral` flow unchanged — `OledPanel` itself doesn't change.
-  No change to `wiring-webview.ts`'s existing View button for other `hasLiveView` peripherals
-  (midiTrs/midiUsb) — this milestone only embeds OLED.
+  also receives frames when `oled` is enabled; (2) `controls-webview.js` gains a docked-strip
+  canvas render path (a new `#oled-strip` element above the existing `#design-area`, collapsed to
+  zero height when `oled` is disabled) reusing `oled-frame.ts`'s existing render logic — the
+  layout canvas below it is otherwise untouched, both are visible at once (mockup Variant B,
+  `docs/mockups/m49-oled-embed.html`); (3) a new embedded-view message contract in `messages.ts`
+  (distinct from the pop-out path). The pop-out ("show in separate view") action reuses today's
+  `hasLiveView`/`viewPeripheral` flow unchanged — `OledPanel` itself doesn't change. No change to
+  `wiring-webview.ts`'s existing View button for other `hasLiveView` peripherals (midiTrs/midiUsb)
+  — this milestone only embeds OLED. Note: the mockup's mini layout editor deliberately omits
+  `#palette` — real code still has it, but it isn't rendered in practice today (kept for now in
+  case pre-stability work needs it again).
