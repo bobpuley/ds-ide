@@ -263,6 +263,13 @@ class DeployCoordinator {
     private readonly extensionPath: string,
     private readonly loadControllerConfig: () => Promise<ControllerConfig>,
     private readonly workspaceState: vscode.Memento,
+    // FR-CE-1 follow-up: the single shared, staleness-guarded computation
+    // every other controls-refresh trigger also routes through (see
+    // computeControlsConfig() in activate()) — deploy needs the computed
+    // value even in debug mode (for togglePins below) but only pushes it
+    // to the Controls Editor outside debug mode, so it can't use the
+    // simpler refreshControlsView() wrapper those triggers share.
+    private readonly computeControlsConfig: (folder: string, cfg: ControllerConfig) => Promise<ControlsConfig | undefined>,
   ) {}
 
   private setDeploying(): void {
@@ -330,8 +337,8 @@ class DeployCoordinator {
     // see docs/milestones/v14/Milestone_M44.md's scope note); their pins are
     // recovered from the code annotation convention instead (FR-DEV-7).
     const folder = resolveActiveFolder(this.workspaceState)?.uri.fsPath ?? '';
-    const controlsConfig = await buildControlsConfig(folder, cfg);
-    const togglePins = controlsConfig.controls.filter(c => c.kind === 'toggle').map(c => c.pin);
+    const controlsConfig = await this.computeControlsConfig(folder, cfg);
+    const togglePins = (controlsConfig?.controls ?? []).filter(c => c.kind === 'toggle').map(c => c.pin);
     this.toggleStore.setDefaults(togglePins);
 
     if (opts.debug) {
@@ -354,7 +361,7 @@ class DeployCoordinator {
     void this.showOledIfEnabled();
     void this.showMidiIfEnabled();
     this.controlsProvider.loadEditor(cfg);
-    this.controlsProvider.postControlsConfig(controlsConfig);
+    if (controlsConfig) this.controlsProvider.postControlsConfig(controlsConfig);
     void vscode.commands.executeCommand('workbench.view.extension.ds-ide-controls');
     const deployed = await deployToEmulator(this.manager, this.emulatorChannel);
     if (!deployed) {
@@ -483,17 +490,12 @@ export function activate(context: vscode.ExtensionContext): void {
       const folder = resolveActiveFolder(context.workspaceState);
       if (!folder) return;
       const yamlPath = path.join(folder.uri.fsPath, 'controllers.yaml');
-      // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed fixed.
-      console.log('[ds-ide:controls] onEditorSave: writing', yamlPath,
-        'pots=', cfg.pots.map(p => p.id), 'buttons=', cfg.buttons.map(b => b.id), 'leds=', cfg.leds.map(l => l.id));
       void fs.promises.writeFile(yamlPath, serializeControllerConfig(cfg), 'utf8')
         .then(async () => {
-          console.log('[ds-ide:controls] onEditorSave: write succeeded, refreshing provider cache + pushing controlsConfig');
           // Keep the provider's cache in sync with what's now on disk — otherwise the next
           // onDidChangeVisibility flush re-sends the stale pre-save snapshot and clobbers the
           // positions just saved (FR-CE-1).
-          controlsProvider.loadEditor(cfg);
-          await pushControlsConfig(folder.uri.fsPath, cfg);
+          await refreshControlsView(folder.uri.fsPath, cfg);
         })
         .catch((err: unknown) => {
           void vscode.window.showErrorMessage(`ds-ide: could not write controllers.yaml: ${String(err)}`);
@@ -526,28 +528,41 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   );
 
-  // FR-CE-1 follow-up: buildControlsConfig() is called from several
-  // independent triggers (initial load, layout save, wirePin/unwirePin,
-  // effect-source save) that can overlap — e.g. the initial-load refresh
-  // is still in flight when the user immediately saves a layout change.
-  // Without a guard, whichever call happens to *resolve* last wins,
-  // regardless of which was *started* last — a slower, earlier, now-stale
-  // refresh can silently overwrite the correct just-saved state (observed:
-  // a control disappearing from the canvas right after a successful save).
-  // requestId tracks the most recently *started* request; a response only
-  // applies if it's still the latest one by the time it resolves.
+  // FR-CE-1 follow-up: buildControlsConfig() used to be independently
+  // called and pushed from six separate triggers (activation, layout save,
+  // wirePin, unwirePin, any yaml/cpp save, deploy) — each doing its own
+  // "read the effect source, parse, rebuild placements" round trip with no
+  // shared sequencing. Beyond the duplicated work, this is how a
+  // slower-but-earlier-started refresh could resolve *after* a
+  // faster-but-later one and silently revert it (observed: a control
+  // disappearing from the canvas right after a successful save).
+  // computeControlsConfig() is now the single place that performs this
+  // read; requestId discards a response that's no longer the most recently
+  // *started* one before it's ever handed back to a caller.
   let controlsConfigRequestId = 0;
-  async function pushControlsConfig(folder: string, cfg: ControllerConfig): Promise<void> {
+  async function computeControlsConfig(folder: string, cfg: ControllerConfig): Promise<ControlsConfig | undefined> {
     const requestId = ++controlsConfigRequestId;
     // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed fixed.
-    console.log(`[ds-ide:controls] pushControlsConfig #${requestId} started (folder=${folder})`);
+    console.log(`[ds-ide:controls] computeControlsConfig #${requestId} started (folder=${folder})`);
     const result = await buildControlsConfig(folder, cfg);
     if (requestId !== controlsConfigRequestId) {
-      console.log(`[ds-ide:controls] pushControlsConfig #${requestId} DISCARDED as stale (latest is #${controlsConfigRequestId}) — would have applied controls=${result.controls.map(c => c.id)} missingBlock=${result.missingBlock}`);
-      return;
+      console.log(`[ds-ide:controls] computeControlsConfig #${requestId} DISCARDED as stale (latest is #${controlsConfigRequestId}) — would have returned controls=${result.controls.map(c => c.id)} missingBlock=${result.missingBlock}`);
+      return undefined;
     }
-    console.log(`[ds-ide:controls] pushControlsConfig #${requestId} APPLIED — controls=${result.controls.map(c => c.id)} placements=${result.placements.map(p => p.id)} missingBlock=${result.missingBlock}`);
-    controlsProvider.postControlsConfig(result);
+    console.log(`[ds-ide:controls] computeControlsConfig #${requestId} resolved — controls=${result.controls.map(c => c.id)} placements=${result.placements.map(p => p.id)} missingBlock=${result.missingBlock}`);
+    return result;
+  }
+
+  // Refreshes both halves of what the Controls Editor shows — the layout
+  // (loadEditor) and the convention-derived control set (postControlsConfig)
+  // — as one unit. Used by every trigger that always wants both pushed
+  // unconditionally; DeployCoordinator is the one exception (it needs the
+  // computed value even when not pushing, in debug mode — see
+  // performDeploy), so it calls computeControlsConfig directly instead.
+  async function refreshControlsView(folder: string, cfg: ControllerConfig): Promise<void> {
+    controlsProvider.loadEditor(cfg);
+    const result = await computeControlsConfig(folder, cfg);
+    if (result) controlsProvider.postControlsConfig(result);
   }
 
   const oledPanel = new OledPanel(context.extensionUri, manager);
@@ -621,7 +636,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const wiredPinList: WiredPin[] = expandToWiredPins(controls);
       wiringProvider?.postWiredPins(wiredPinList);
       const cfg = await loadControllerConfig();
-      await pushControlsConfig(folder, cfg);
+      await refreshControlsView(folder, cfg);
     },
     async (pinNumber: number, id: string) => {
       const folder = resolveActiveFolder(context.workspaceState)?.uri.fsPath ?? '';
@@ -652,7 +667,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const wiredPinList: WiredPin[] = expandToWiredPins(controls);
       wiringProvider?.postWiredPins(wiredPinList);
       const cfg = await loadControllerConfig();
-      await pushControlsConfig(folder, cfg);
+      await refreshControlsView(folder, cfg);
     },
     async (peripheralId: string, enabled: boolean) => {
       const folder = resolveActiveFolder(context.workspaceState)?.uri.fsPath ?? '';
@@ -835,7 +850,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const deployCoordinator = new DeployCoordinator(
     manager, statusBar, potStore, buttonStore, toggleStore, session, scopePanel, oledPanel, midiPanel,
     controlsProvider, diagnostics, buildChannel, emulatorChannel, context.extensionPath, loadControllerConfig,
-    context.workspaceState,
+    context.workspaceState, computeControlsConfig,
   );
 
   const runConfigProvider = new DaisyRunConfigurationProvider(
@@ -851,8 +866,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     const folder = activeFolder.uri.fsPath;
     const cfg = await loadControllerConfig();
-    controlsProvider.loadEditor(cfg);
-    await pushControlsConfig(folder, cfg);
+    await refreshControlsView(folder, cfg);
     const effectPath = await findEffectSource(folder);
     // Scopes the ds-ide.* keybindings (package.json) so they don't fire in
     // unrelated workspaces (FR-QA-EXT-6).
@@ -911,8 +925,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!isYaml && !mightBeSource) return;
 
       const cfg = await loadControllerConfig();
-      controlsProvider.loadEditor(cfg);
-      await pushControlsConfig(folder, cfg);
+      await refreshControlsView(folder, cfg);
 
       if (mightBeSource) {
         const effectPath = await findEffectSource(folder);
