@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<!--
+  MOCKUP — not production code.
+  M48: SD card content viewer (embedded in Controls Editor) + complete MIDI monitor
+  (existing virtual keyboard + new Program Change/Control Change sender + unified
+  inbound/outbound traffic list).
+
+  Palette and layout patterns lifted from the real webviews:
+    - src/sidebar/controls-editor-panel.ts (Controls Editor chrome, .palette-title pattern)
+    - src/wiring/wiring-panel.ts (#peripherals collapsible section — .section-hdr/.periph rows)
+    - src/webview/midi-panel.ts + midi-webview.ts (today's keyboard + inbound-only monitor)
+
+  Open questions this mockup exists to resolve (see notes panels):
+    SD viewer  — inline accordion preview vs. side flyout drawer?
+    MIDI panel — stacked single column vs. two-column (inputs | monitor)?
+
+  DECISION (2026-07-24): Variant A chosen for both — inline accordion for the SD viewer
+  (matches the existing Peripherals-section pattern), stacked layout for the MIDI monitor
+  (fits today's narrow sidebar footprint). Variant B kept below for reference only.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>ds-ide M48 — SD viewer &amp; MIDI monitor mockup (decided: Variant A)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #1e1e1e; color: #d4d4d4; font-family: monospace; font-size: 12px; }
+
+  #chrome { background: #111; border-bottom: 1px solid #3c3c3c; padding: 10px 16px; }
+  #chrome h1 { font-size: 13px; color: #f4c430; font-weight: normal; }
+  #chrome p { font-size: 11px; color: #6a6a6a; margin-top: 3px; }
+
+  #tabs { display: flex; gap: 2px; background: #111; padding: 0 16px; border-bottom: 1px solid #3c3c3c; }
+  #tabs button { background: transparent; border: none; border-bottom: 2px solid transparent; color: #9a9a9a;
+                 padding: 9px 14px; font-family: monospace; font-size: 12px; cursor: pointer; }
+  #tabs button:hover { color: #d4d4d4; }
+  #tabs button.active { color: #9cdcfe; border-bottom-color: #9cdcfe; }
+
+  section.feature { display: none; }
+  section.feature.active { display: block; }
+
+  #stage { display: flex; gap: 16px; padding: 16px; align-items: flex-start; }
+  .panel { background: #1e1e1e; border: 1px solid #3c3c3c; border-radius: 4px; width: 380px; flex-shrink: 0; }
+  .panel h2 { padding: 8px 14px; font-size: 12px; color: #9cdcfe; background: #252526;
+              border-bottom: 1px solid #3c3c3c; font-weight: normal; display: flex; justify-content: space-between; }
+  .panel h2 .tag { font-size: 9px; color: #6a6a6a; font-weight: normal; }
+  .hint { padding: 4px 14px 6px; font-size: 11px; color: #6a6a6a; background: #252526; border-bottom: 1px solid #3c3c3c; }
+
+  .state-toggle { display: flex; gap: 6px; padding: 8px 14px; border-bottom: 1px solid #3c3c3c; background: #1a1a1a; }
+  .state-toggle button { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; padding: 4px 9px;
+                          border-radius: 2px; cursor: pointer; font-family: monospace; font-size: 10px; }
+  .state-toggle button.on { background: #0e639c; border-color: #1177bb; color: #fff; }
+
+  /* ---- shared collapsible-section look (mirrors Wiring Editor's #peripherals) ---- */
+  .section-hdr { padding: 6px 14px; font-size: 11px; color: #9cdcfe; background: #252526;
+                 border-bottom: 1px solid #3c3c3c; display: flex; justify-content: space-between; }
+  .section-hdr .count { color: #6a6a6a; }
+
+  /* ---- SD viewer: variant A (inline accordion) ---- */
+  .sd-list { max-height: 260px; overflow: auto; }
+  .sd-row { display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-bottom: 1px solid #2a2a2a; cursor: pointer; }
+  .sd-row:hover { background: #252526; }
+  .sd-row .name { flex: 1; }
+  .sd-row.txt .name { color: #d4d4d4; }
+  .sd-row.bin .name { color: #8a8a8a; }
+  .sd-row .icon { color: #6a6a6a; width: 14px; }
+  .sd-row .size { color: #6a6a6a; font-size: 10px; }
+  .sd-row.selected { background: #252526; }
+  .sd-preview { padding: 8px 14px 10px 36px; background: #161616; border-bottom: 1px solid #2a2a2a;
+                color: #ce9178; font-size: 11px; white-space: pre-wrap; }
+  .sd-preview.unavailable { color: #6a6a6a; font-style: italic; }
+  .empty-state { padding: 24px 14px; text-align: center; color: #6a6a6a; font-size: 11px; }
+
+  /* ---- SD viewer: variant B (flyout drawer) ---- */
+  .sd-flyout-wrap { display: flex; height: 260px; }
+  .sd-flyout-list { width: 160px; overflow: auto; border-right: 1px solid #3c3c3c; flex-shrink: 0; }
+  .sd-flyout-drawer { flex: 1; padding: 10px 12px; overflow: auto; }
+  .sd-flyout-drawer .fname { color: #9cdcfe; font-size: 11px; margin-bottom: 8px; }
+  .sd-flyout-drawer .body { color: #ce9178; font-size: 11px; white-space: pre-wrap; }
+  .sd-flyout-drawer .unavailable { color: #6a6a6a; font-style: italic; font-size: 11px; }
+  .sd-flyout-drawer .placeholder { color: #6a6a6a; font-size: 11px; font-style: italic; }
+
+  /* ---- MIDI: keyboard ---- */
+  .keyboard { display: flex; height: 64px; border-bottom: 1px solid #3c3c3c; }
+  .keyboard .key { flex: 1; background: #3c3c3c; border-right: 1px solid #1e1e1e; display: flex;
+                   align-items: flex-end; justify-content: center; padding-bottom: 4px; font-size: 9px;
+                   color: #9a9a9a; cursor: pointer; }
+  .keyboard .key:hover { background: #4a4a4a; }
+  .keyboard .key.pressed { background: #4ec9b0; color: #0a0a0a; }
+
+  /* ---- MIDI: PC/CC sender toolbar ---- */
+  .sender { padding: 8px 14px; border-bottom: 1px solid #3c3c3c; background: #1a1a1a; }
+  .sender .row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .sender .row:last-child { margin-bottom: 0; }
+  .sender label { width: 46px; color: #9a9a9a; font-size: 10px; }
+  .sender select, .sender input { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4;
+                                    padding: 3px 5px; font-family: monospace; font-size: 11px; width: 70px; }
+  .sender button { background: #0e639c; border: 1px solid #1177bb; color: #fff; padding: 3px 10px;
+                    border-radius: 2px; cursor: pointer; font-family: monospace; font-size: 10px; margin-left: auto; }
+  .sender button:hover { background: #1177bb; }
+
+  /* ---- MIDI: monitor table ---- */
+  .monitor { max-height: 220px; overflow: auto; font-size: 11px; }
+  .monitor table { width: 100%; border-collapse: collapse; }
+  .monitor th { position: sticky; top: 0; background: #252526; color: #9a9a9a; text-align: left;
+                padding: 4px 10px; font-weight: normal; border-bottom: 1px solid #3c3c3c; font-size: 10px; }
+  .monitor td { padding: 3px 10px; border-bottom: 1px solid #2a2a2a; }
+  .monitor tr:hover td { background: #252526; }
+  .dir-rx { color: #4ec9b0; }
+  .dir-tx { color: #569cd6; }
+  .monitor tr.new td { animation: flash 0.6s ease-out; }
+  @keyframes flash { 0% { background: #2a3a2a; } 100% { background: transparent; } }
+
+  .legend { display: flex; gap: 14px; padding: 6px 14px; font-size: 10px; color: #9a9a9a; background: #1a1a1a;
+            border-top: 1px solid #3c3c3c; }
+  .legend .sw { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+  .legend .sw.rx { background: #4ec9b0; } .legend .sw.tx { background: #569cd6; }
+
+  .demo-controls { padding: 7px 14px; border-top: 1px dashed #4a4a4a; background: #1a1a1a; display: flex;
+                    align-items: center; gap: 8px; }
+  .demo-controls .lbl { font-size: 9px; color: #7a5a20; }
+  .demo-controls button { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; padding: 3px 8px;
+                           border-radius: 2px; cursor: pointer; font-family: monospace; font-size: 10px; }
+
+  /* ---- two-column MIDI variant ---- */
+  .midi-2col { display: flex; }
+  .midi-2col .inputs { width: 220px; border-right: 1px solid #3c3c3c; flex-shrink: 0; }
+  .midi-2col .outputs { flex: 1; }
+  .midi-2col .monitor { max-height: 340px; }
+
+  /* ---- notes sidebar (same convention as v14-peripheral-ux.html) ---- */
+  #notes { flex: 1; min-width: 280px; max-width: 420px; }
+  #notes h3 { font-size: 12px; color: #9cdcfe; margin-bottom: 8px; font-weight: normal; }
+  #notes .blk { background: #252526; border: 1px solid #3c3c3c; border-radius: 4px; padding: 12px 14px; margin-bottom: 12px; }
+  #notes .blk h4 { font-size: 11px; margin-bottom: 6px; font-weight: normal; }
+  #notes .pro h4 { color: #4ec9b0; } #notes .con h4 { color: #f48771; } #notes .opn h4 { color: #f4c430; }
+  #notes ul { list-style: none; }
+  #notes li { padding: 3px 0 3px 14px; position: relative; line-height: 1.5; color: #b8b8b8; }
+  #notes li::before { content: "·"; position: absolute; left: 4px; color: #6a6a6a; }
+  code { color: #ce9178; }
+</style>
+</head>
+<body>
+
+<div id="chrome">
+  <h1>⚠ MOCKUP — ds-ide M48, SD content viewer &amp; complete MIDI monitor</h1>
+  <p>Switch feature via the tabs below. Toggle SD/MIDI state buttons to see empty and edge-case
+     states. Click SD rows to preview; press keyboard keys or use the PC/CC sender to add live
+     Rx rows to the MIDI monitor.</p>
+</div>
+
+<div id="tabs">
+  <button class="active" onclick="showTab('sd')">SD Card Content Viewer</button>
+  <button onclick="showTab('midi')">MIDI Monitor</button>
+</div>
+
+<!-- ============================= SD CARD SECTION ============================= -->
+<section id="sd-section" class="feature active">
+<div id="stage">
+
+  <div class="panel">
+    <h2>Variant A — inline accordion <span class="tag">below #design-area, mirrors Peripherals section</span></h2>
+    <div class="state-toggle">
+      <button id="sdA-btn-empty" onclick="setSdState('empty')">Empty</button>
+      <button id="sdA-btn-few" class="on" onclick="setSdState('few')">Few files</button>
+      <button id="sdA-btn-many" onclick="setSdState('many')">Many files</button>
+    </div>
+    <div class="section-hdr">SD Card <span class="count" id="sdA-count">3 files</span></div>
+    <div class="sd-list" id="sdA-list"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Variant B — flyout drawer <span class="tag">list stays narrow, preview gets width</span></h2>
+    <div class="hint">Same data as Variant A (state toggle is shared) — click a row on the left.</div>
+    <div class="section-hdr">SD Card <span class="count" id="sdB-count">3 files</span></div>
+    <div class="sd-flyout-wrap" id="sdB-wrap">
+      <div class="sd-flyout-list" id="sdB-list"></div>
+      <div class="sd-flyout-drawer" id="sdB-drawer"><div class="placeholder">Select a file to preview</div></div>
+    </div>
+  </div>
+
+  <div id="notes">
+    <h3>SD Card Content Viewer — evaluation notes</h3>
+    <div class="blk pro">
+      <h4>Variant A — inline accordion</h4>
+      <ul>
+        <li>Matches the Peripherals section pattern exactly — zero new layout concept for the user.</li>
+        <li>Preview appears right where you clicked, no eye movement.</li>
+      </ul>
+    </div>
+    <div class="blk con">
+      <h4>Variant A — trade-off</h4>
+      <ul>
+        <li>A long preview pushes every row below it down — awkward with many files.</li>
+      </ul>
+    </div>
+    <div class="blk pro">
+      <h4>Variant B — flyout drawer</h4>
+      <ul>
+        <li>List stays a fixed height; switching files doesn't reflow anything.</li>
+        <li>More horizontal room for the preview text itself.</li>
+      </ul>
+    </div>
+    <div class="blk con">
+      <h4>Variant B — trade-off</h4>
+      <ul>
+        <li>Two-pane layout is a new shape not used elsewhere in the Controls Editor yet.</li>
+        <li>160px list column truncates longer filenames more aggressively.</li>
+      </ul>
+    </div>
+    <div class="blk opn">
+      <h4>Open questions</h4>
+      <ul>
+        <li>Both variants shown with root-level files only, per FR-SD-1 scope — confirm that's still right before committing.</li>
+        <li>Empty state text ("SD card is empty" today) — good enough, or should it hint at how files get created (e.g. the effect calling <code>f_open</code>)?</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+</section>
+
+<!-- ============================= MIDI MONITOR SECTION ============================= -->
+<section id="midi-section" class="feature">
+<div id="stage">
+
+  <div class="panel" style="width: 360px;">
+    <h2>Variant A — stacked <span class="tag">keyboard → sender → monitor</span></h2>
+    <div class="keyboard" id="mA-kb"></div>
+    <div class="sender">
+      <div class="row">
+        <label>Program</label>
+        <select id="mA-pc"></select>
+        <button onclick="sendPC('A')">Send PC</button>
+      </div>
+      <div class="row">
+        <label>CC</label>
+        <input id="mA-ccnum" type="number" min="0" max="127" value="1" style="width:44px"/>
+        <input id="mA-ccval" type="number" min="0" max="127" value="64" style="width:44px"/>
+        <button onclick="sendCC('A')">Send CC</button>
+      </div>
+    </div>
+    <div class="monitor"><table>
+      <thead><tr><th>Dir</th><th>Ch</th><th>Type</th><th>D1</th><th>D2</th></tr></thead>
+      <tbody id="mA-rows"></tbody>
+    </table></div>
+    <div class="legend"><span><span class="sw rx"></span>Rx — received by effect</span><span><span class="sw tx"></span>Tx — sent by effect</span></div>
+    <div class="demo-controls">
+      <span class="lbl">mockup-only:</span>
+      <button onclick="simulateTx('A')">▶ Simulate effect output</button>
+      <button onclick="setMidiState('A','empty')">Clear</button>
+    </div>
+  </div>
+
+  <div class="panel" style="width: 460px;">
+    <h2>Variant B — two-column <span class="tag">inputs | taller monitor</span></h2>
+    <div class="midi-2col">
+      <div class="inputs">
+        <div class="keyboard" id="mB-kb" style="height: 90px;"></div>
+        <div class="sender">
+          <div class="row">
+            <label>Program</label>
+            <select id="mB-pc"></select>
+          </div>
+          <div class="row"><button style="margin-left:0; width:100%;" onclick="sendPC('B')">Send PC</button></div>
+          <div class="row" style="margin-top:10px;">
+            <label>CC</label>
+            <input id="mB-ccnum" type="number" min="0" max="127" value="1" style="width:44px"/>
+            <input id="mB-ccval" type="number" min="0" max="127" value="64" style="width:44px"/>
+          </div>
+          <div class="row"><button style="margin-left:0; width:100%;" onclick="sendCC('B')">Send CC</button></div>
+        </div>
+        <div class="demo-controls" style="border-top:1px dashed #4a4a4a;">
+          <span class="lbl">mockup-only:</span>
+          <button onclick="simulateTx('B')">▶ Sim. Tx</button>
+        </div>
+      </div>
+      <div class="outputs">
+        <div class="monitor"><table>
+          <thead><tr><th>Dir</th><th>Ch</th><th>Type</th><th>D1</th><th>D2</th></tr></thead>
+          <tbody id="mB-rows"></tbody>
+        </table></div>
+        <div class="legend"><span><span class="sw rx"></span>Rx</span><span><span class="sw tx"></span>Tx</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="notes">
+    <h3>MIDI Monitor — evaluation notes</h3>
+    <div class="blk pro">
+      <h4>Variant A — stacked</h4>
+      <ul>
+        <li>Single column fits the existing sidebar-webview footprint (MIDI panel is currently narrow).</li>
+        <li>Keyboard, sender, and monitor read top-to-bottom in the order a user acts.</li>
+      </ul>
+    </div>
+    <div class="blk con">
+      <h4>Variant A — trade-off</h4>
+      <ul>
+        <li>Monitor gets squeezed to ~220px tall — long sessions scroll a lot.</li>
+      </ul>
+    </div>
+    <div class="blk pro">
+      <h4>Variant B — two-column</h4>
+      <ul>
+        <li>Monitor is the tallest element on screen — matches "this is mainly an observability tool" framing.</li>
+        <li>Inputs stay visible while scrolling monitor history.</li>
+      </ul>
+    </div>
+    <div class="blk con">
+      <h4>Variant B — trade-off</h4>
+      <ul>
+        <li>Needs more total width than today's MIDI panel — check it still fits a docked sidebar,
+            or if this variant implies the panel should default to a wider editor-column placement.</li>
+      </ul>
+    </div>
+    <div class="blk opn">
+      <h4>Open questions</h4>
+      <ul>
+        <li>PC dropdown shows a plain 0–127 list here — real instrument/GM patch names would need a
+            lookup table we don't have; confirm plain numbers are fine for v15.</li>
+        <li>Tx rows here are simulated (no real emulator) — direction color-coding (teal Rx / blue
+            Tx) is the thing to evaluate, not the exact sample data.</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+</section>
+
+<script>
+function showTab(name) {
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.remove('active'));
+  document.querySelector(`#tabs button:nth-child(${name === 'sd' ? 1 : 2})`).classList.add('active');
+  document.getElementById('sd-section').classList.toggle('active', name === 'sd');
+  document.getElementById('midi-section').classList.toggle('active', name === 'midi');
+}
+
+/* ---------------- SD card mock data ---------------- */
+const SD_STATES = {
+  empty: [],
+  few: [
+    { name: 'PRESETS.TXT', size: '412 B', kind: 'txt', body: 'preset=1\ncutoff=0.62\nres=0.30\n\npreset=2\ncutoff=0.40\nres=0.55\n' },
+    { name: 'IR_HALL.WAV', size: '1.8 MB', kind: 'bin' },
+    { name: 'LOG.TXT', size: '96 B', kind: 'txt', body: '[boot] sdcard mounted ok\n[boot] 2 presets loaded\n' },
+  ],
+  many: Array.from({ length: 14 }, (_, i) => i % 4 === 0
+    ? { name: `NOTE${i}.TXT`, size: `${20 + i * 3} B`, kind: 'txt', body: `note file #${i}\ngenerated for mockup scroll test\n` }
+    : { name: `SAMPLE${i}.WAV`, size: `${(1.1 + i * 0.3).toFixed(1)} MB`, kind: 'bin' }),
+};
+let sdCurrent = 'few';
+
+function setSdState(state) {
+  sdCurrent = state;
+  ['empty','few','many'].forEach(s => {
+    document.getElementById(`sdA-btn-${s}`).classList.toggle('on', s === state);
+  });
+  renderSd();
+}
+
+function renderSd() {
+  const files = SD_STATES[sdCurrent];
+  document.getElementById('sdA-count').textContent = files.length ? `${files.length} files` : '';
+  document.getElementById('sdB-count').textContent = files.length ? `${files.length} files` : '';
+
+  const listA = document.getElementById('sdA-list');
+  if (!files.length) {
+    listA.innerHTML = '<div class="empty-state">SD card is empty</div>';
+  } else {
+    listA.innerHTML = files.map((f, i) => `
+      <div class="sd-row ${f.kind}" onclick="toggleAccordion(${i})">
+        <span class="icon">${f.kind === 'txt' ? '≣' : '▤'}</span>
+        <span class="name">${f.name}</span>
+        <span class="size">${f.size}</span>
+      </div>
+      <div class="sd-preview-slot" id="sdA-slot-${i}"></div>
+    `).join('');
+  }
+
+  const listB = document.getElementById('sdB-list');
+  const drawer = document.getElementById('sdB-drawer');
+  drawer.innerHTML = '<div class="placeholder">Select a file to preview</div>';
+  if (!files.length) {
+    listB.innerHTML = '<div class="empty-state">Empty</div>';
+  } else {
+    listB.innerHTML = files.map((f, i) => `
+      <div class="sd-row ${f.kind}" onclick="selectFlyout(${i})" id="sdB-row-${i}">
+        <span class="icon">${f.kind === 'txt' ? '≣' : '▤'}</span>
+        <span class="name">${f.name}</span>
+      </div>
+    `).join('');
+  }
+}
+
+function toggleAccordion(i) {
+  const f = SD_STATES[sdCurrent][i];
+  const slot = document.getElementById(`sdA-slot-${i}`);
+  if (slot.innerHTML) { slot.innerHTML = ''; return; }
+  slot.innerHTML = f.kind === 'txt'
+    ? `<div class="sd-preview">${f.body}</div>`
+    : `<div class="sd-preview unavailable">preview not available (${f.name.split('.').pop()})</div>`;
+}
+
+function selectFlyout(i) {
+  document.querySelectorAll('#sdB-list .sd-row').forEach(r => r.classList.remove('selected'));
+  document.getElementById(`sdB-row-${i}`).classList.add('selected');
+  const f = SD_STATES[sdCurrent][i];
+  const drawer = document.getElementById('sdB-drawer');
+  drawer.innerHTML = f.kind === 'txt'
+    ? `<div class="fname">${f.name}</div><div class="body">${f.body}</div>`
+    : `<div class="fname">${f.name}</div><div class="unavailable">preview not available</div>`;
+}
+
+/* ---------------- MIDI mock data ---------------- */
+const NOTE_NAMES = ['C4','C#4','D4','D#4','E4','F4','F#4','G4','G#4','A4','A#4','B4'];
+function buildKeyboard(id) {
+  const kb = document.getElementById(id);
+  kb.innerHTML = NOTE_NAMES.map((n, i) => `<div class="key" data-note="${i}">${n}</div>`).join('');
+  kb.querySelectorAll('.key').forEach(k => {
+    k.addEventListener('mousedown', () => { k.classList.add('pressed'); addRow(id[1], 'rx', 1, 'NoteOn', k.dataset.note, 100); });
+    k.addEventListener('mouseup', () => { k.classList.remove('pressed'); addRow(id[1], 'rx', 1, 'NoteOff', k.dataset.note, 0); });
+    k.addEventListener('mouseleave', () => k.classList.remove('pressed'));
+  });
+}
+function buildPcOptions(id) {
+  const sel = document.getElementById(id);
+  sel.innerHTML = Array.from({ length: 16 }, (_, i) => `<option value="${i}">${i}</option>`).join('');
+}
+
+const MIDI_ROWS = { A: [], B: [] };
+function addRow(variant, dir, ch, type, d1, d2) {
+  const rows = MIDI_ROWS[variant];
+  rows.unshift({ dir, ch, type, d1, d2 });
+  if (rows.length > 60) rows.pop();
+  renderMidi(variant);
+}
+function renderMidi(variant) {
+  const tbody = document.getElementById(`m${variant}-rows`);
+  const rows = MIDI_ROWS[variant];
+  tbody.innerHTML = rows.map((r, i) => `
+    <tr class="${i === 0 ? 'new' : ''}">
+      <td class="dir-${r.dir}">${r.dir === 'rx' ? '↓ Rx' : '↑ Tx'}</td>
+      <td>${r.ch}</td><td>${r.type}</td><td>${r.d1}</td><td>${r.d2}</td>
+    </tr>`).join('') || '<tr><td colspan="5" style="color:#6a6a6a; text-align:center; padding:16px;">No MIDI traffic yet</td></tr>';
+}
+function sendPC(variant) {
+  const prog = document.getElementById(`m${variant}-pc`).value;
+  addRow(variant, 'rx', 1, 'ProgramChange', prog, '—');
+}
+function sendCC(variant) {
+  const num = document.getElementById(`m${variant}-ccnum`).value;
+  const val = document.getElementById(`m${variant}-ccval`).value;
+  addRow(variant, 'rx', 1, 'ControlChange', num, val);
+}
+function simulateTx(variant) {
+  const sample = [['ControlChange', 7, Math.floor(Math.random()*128)], ['NoteOn', 60, 90], ['ProgramChange', 3, '—']];
+  const [type, d1, d2] = sample[Math.floor(Math.random()*sample.length)];
+  addRow(variant, 'tx', 1, type, d1, d2);
+}
+function setMidiState(variant) { MIDI_ROWS[variant] = []; renderMidi(variant); }
+
+/* seed a few rows so the "populated" view is visible on load */
+['A','B'].forEach(v => {
+  addRow(v, 'rx', 1, 'NoteOn', 0, 100);
+  addRow(v, 'tx', 1, 'ControlChange', 7, 110);
+  addRow(v, 'rx', 1, 'ProgramChange', 2, '—');
+});
+
+buildKeyboard('mA-kb'); buildKeyboard('mB-kb');
+buildPcOptions('mA-pc'); buildPcOptions('mB-pc');
+renderSd();
+</script>
+
+</body>
+</html>

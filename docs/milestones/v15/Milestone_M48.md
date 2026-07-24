@@ -43,21 +43,22 @@ The `sdcard` peripheral already mirrors its simulated storage to a real, workspa
 read-only root-level listing (name, size) to the Controls Editor when `sdcard` is enabled, with
 `.txt` file preview as a nice-to-have.
 
-Before implementation: build a standalone-HTML mockup of the listing (and `.txt` preview) and
-have it reviewed/approved — this is a new UI surface inside the Controls Editor, not a copy of an
-existing one.
+Mockup reviewed and approved (`docs/mockups/m48-io-monitors.html`, "SD Card Content Viewer" tab):
+**inline accordion** layout — a `#sdcard-contents` section below `#design-area`, styled like the
+Wiring Editor's `#peripherals` (`.section-hdr` + row list); clicking a row expands its preview
+directly beneath it, mirroring the mockup's Variant A.
 
-**Affected files:** `src/webview/controls-webview.ts`, `src/extension.ts`,
-`src/webview/messages.ts`
+**Affected files:** `src/webview/controls-webview.ts`, `src/sidebar/controls-editor-panel.ts`,
+`src/extension.ts`, `src/webview/messages.ts`
 
 **DoD:**
-- Enabling `sdcard` and opening the Controls Editor shows `./sdcard/`'s root entries (name, size);
-  disabling `sdcard` hides the section.
+- Enabling `sdcard` and opening the Controls Editor shows `./sdcard/`'s root entries (name, size)
+  in the inline-accordion section below the canvas; disabling `sdcard` hides the section.
 - Listing refreshes on webview focus and via an explicit refresh action — no stale content if
   files changed on disk since last open.
-- Selecting a `.txt` entry shows its contents inline; a non-UTF-8 file is still listed but shows
-  "preview not available" instead of erroring.
-- Mockup reviewed and approved before the real webview implementation lands.
+- Clicking a `.txt` row expands an inline preview directly below that row (collapses on a second
+  click); a non-UTF-8 file expands to "preview not available" instead of erroring.
+- Empty state (`sdcard` enabled, no files) renders "SD card is empty" rather than a blank section.
 
 ---
 
@@ -71,8 +72,10 @@ with a Program Change / Control Change sender and a real-time outbound-message l
 same webview as the existing keyboard and inbound monitor (one "complete MIDI monitor", not a
 second panel).
 
-Before implementation: build a standalone-HTML mockup of the unified panel (keyboard + PC/CC
-sender + inbound/outbound lists) and have it reviewed/approved.
+Mockup reviewed and approved (`docs/mockups/m48-io-monitors.html`, "MIDI Monitor" tab): **stacked**
+layout — keyboard, then a Program Change / Control Change sender toolbar, then the unified
+Rx/Tx monitor table, top to bottom in the same narrow sidebar-webview footprint the MIDI panel
+already uses, matching the mockup's Variant A.
 
 **Affected files:** `emulator/shim/include/daisy/midi_usb_handler.h`,
 `emulator/shim/src/midi_usb_handler.cpp`, `emulator/shim/include/daisy/midi_uart_handler.h`,
@@ -92,4 +95,4 @@ sender + inbound/outbound lists) and have it reviewed/approved.
   direction.
 - Unit tests cover: `SendMessage` → `midiTx` enqueue (both shim classes), the PC/CC webview →
   byte-triplet translation, and the monitor reducer handling both message kinds.
-- Mockup reviewed and approved before the real webview implementation lands.
+- Monitor rows visually distinguish direction (Rx vs Tx) via a label/color, not just raw data.
