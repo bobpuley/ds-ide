@@ -33,6 +33,7 @@ import { DaisyDebugAdapterFactory, DaisyDebugAdapterTrackerFactory } from './deb
 import { buildForHardware } from './commands/hardware-build';
 import { flashToHardware } from './commands/dfu-flash';
 import { SineParams, SINE_DEFAULTS, AudioSource, AUDIO_SOURCE_DEFAULTS } from './webview/scope-panel';
+import { SdEntry, sortSdEntries, SD_PREVIEW_MAX_BYTES } from './webview/sd-viewer';
 import { ControlsViewProvider } from './sidebar/controls-editor-panel';
 import { WiringViewProvider } from './sidebar/wiring-editor-panel';
 import { createEffectProject } from './commands/create-effect-project';
@@ -157,6 +158,43 @@ async function confirmAppendMarkerBlocks(): Promise<boolean> {
     'Append',
   );
   return choice === 'Append';
+}
+
+// FR-SD-1: root-level listing only (matches the request's "root content
+// list" scope — recursive browsing is future work). Missing ./sdcard/
+// (peripheral never enabled, or nothing written yet) is treated as empty
+// rather than an error.
+async function readSdCardEntries(folder: string): Promise<SdEntry[]> {
+  const dir = path.join(folder, 'sdcard');
+  try {
+    const names = await fs.promises.readdir(dir);
+    const entries = await Promise.all(names.map(async (name): Promise<SdEntry | null> => {
+      try {
+        const stat = await fs.promises.stat(path.join(dir, name));
+        return stat.isFile() ? { name, size: stat.size } : null;
+      } catch {
+        return null;
+      }
+    }));
+    return sortSdEntries(entries.filter((e): e is SdEntry => e !== null));
+  } catch {
+    return [];
+  }
+}
+
+// `name` is untrusted webview input — reject anything that isn't a bare
+// root-level filename before it ever reaches path.join (FR-IPC-3-style
+// guard, same convention as the wiring handlers' id-regex checks).
+async function readSdCardPreview(folder: string, name: string): Promise<string | null> {
+  if (!name || name.includes('/') || name.includes('\\') || name === '..') return null;
+  const filePath = path.join(folder, 'sdcard', name);
+  try {
+    const buf = await fs.promises.readFile(filePath);
+    const capped = buf.subarray(0, SD_PREVIEW_MAX_BYTES);
+    return new TextDecoder('utf-8', { fatal: true }).decode(capped);
+  } catch {
+    return null;
+  }
 }
 
 async function buildControlsConfig(folder: string, yamlCfg: ControllerConfig): Promise<ControlsConfig> {
@@ -471,6 +509,16 @@ export function activate(context: vscode.ExtensionContext): void {
     },
     (gpioPin, position) => {
       manager?.sendEncoder(gpioPin, position);
+    },
+    () => {
+      const folder = resolveActiveFolder(context.workspaceState);
+      if (!folder) { controlsProvider.postSdContents([]); return; }
+      void readSdCardEntries(folder.uri.fsPath).then(entries => controlsProvider.postSdContents(entries));
+    },
+    (name) => {
+      const folder = resolveActiveFolder(context.workspaceState);
+      if (!folder) { controlsProvider.postSdPreview(name, null); return; }
+      void readSdCardPreview(folder.uri.fsPath, name).then(content => controlsProvider.postSdPreview(name, content));
     },
   );
 
@@ -793,6 +841,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     wiringProvider.postWiredPins(wiredPins);
     wiringProvider.postPeripherals(peripherals);
+    controlsProvider.postSdCardEnabled(peripherals.some(p => p.id === 'sdcard' && p.enabled));
   }
 
   void initViewsFromProject();
@@ -855,6 +904,7 @@ export function activate(context: vscode.ExtensionContext): void {
           } catch { /* unreadable */ }
           wiringProvider.postWiredPins(pins);
           wiringProvider.postPeripherals(peripherals);
+          controlsProvider.postSdCardEnabled(peripherals.some(p => p.id === 'sdcard' && p.enabled));
         }
       }
     }),

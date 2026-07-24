@@ -8,6 +8,7 @@ import { computeKnobGeometry, KNOB_SVG_SIZE, KNOB_CENTER } from './knob-math';
 import { createRafCoalescer } from './raf-coalesce';
 import { TOGGLE_POSITIONS } from '../devices/codegen/toggle';
 import { ENCODER_POSITION_MODULUS, wrapEncoderPosition } from '../devices/codegen/encoder';
+import { SdEntry, isTxtEntryName, formatSdSize } from './sd-viewer';
 
 interface VsCodeApiForControls {
   postMessage(msg: ControlsWebviewMessage): void;
@@ -507,6 +508,89 @@ el<HTMLElement>('save-btn').addEventListener('click', () => {
   setTimeout(() => { st.textContent = ''; }, 2000);
 });
 
+// ── SD card content viewer (FR-SD-1) ────────────────────────────────────
+let sdEnabled = false;
+let sdEntries: SdEntry[] = [];
+let sdExpandedName: string | null = null;
+const sdPreviews: Record<string, string | null> = {};
+
+function applySdCardEnabled(enabled: boolean): void {
+  sdEnabled = enabled;
+  const section = document.getElementById('sdcard-contents');
+  if (section) section.style.display = enabled ? 'flex' : 'none';
+  if (!enabled) {
+    sdExpandedName = null;
+  }
+}
+
+function applySdContents(entries: SdEntry[]): void {
+  sdEntries = entries;
+  // Stale preview state for a file that's no longer listed (or whose
+  // content may have changed) is dropped on every fresh listing.
+  for (const name of Object.keys(sdPreviews)) {
+    if (!entries.some(e => e.name === name)) delete sdPreviews[name];
+  }
+  if (sdExpandedName && !entries.some(e => e.name === sdExpandedName)) sdExpandedName = null;
+  renderSdSection();
+}
+
+function applySdPreview(name: string, content: string | null): void {
+  sdPreviews[name] = content;
+  if (sdExpandedName === name) renderSdSection();
+}
+
+function renderSdSection(): void {
+  const countEl = document.getElementById('sd-count');
+  if (countEl) countEl.textContent = sdEntries.length ? `${sdEntries.length} file${sdEntries.length === 1 ? '' : 's'}` : '';
+
+  const list = document.getElementById('sd-list');
+  if (!list) return;
+  if (!sdEntries.length) {
+    list.innerHTML = '<div class="sd-empty-state">SD card is empty</div>';
+    return;
+  }
+  list.innerHTML = sdEntries.map(e => {
+    const isTxt = isTxtEntryName(e.name);
+    const expanded = sdExpandedName === e.name;
+    let previewHtml = '';
+    if (expanded) {
+      if (!isTxt) {
+        previewHtml = '<div class="sd-preview unavailable">preview not available</div>';
+      } else if (!(e.name in sdPreviews)) {
+        previewHtml = '<div class="sd-preview unavailable">loading…</div>';
+      } else if (sdPreviews[e.name] === null) {
+        previewHtml = '<div class="sd-preview unavailable">preview not available</div>';
+      } else {
+        previewHtml = '<div class="sd-preview">' + escJ(sdPreviews[e.name] || '') + '</div>';
+      }
+    }
+    return (
+      '<div class="sd-row" data-name="' + escJ(e.name) + '">' +
+        '<span class="name" title="' + escJ(e.name) + '">' + escJ(e.name) + '</span>' +
+        '<span class="size">' + formatSdSize(e.size) + '</span>' +
+      '</div>' + previewHtml
+    );
+  }).join('');
+  list.querySelectorAll('.sd-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const name = (row as HTMLElement).dataset['name'] || '';
+      if (sdExpandedName === name) {
+        sdExpandedName = null;
+      } else {
+        sdExpandedName = name;
+        if (isTxtEntryName(name) && !(name in sdPreviews)) {
+          vscode.postMessage({ command: 'sdPreview', name });
+        }
+      }
+      renderSdSection();
+    });
+  });
+}
+
+document.getElementById('sd-refresh-btn')?.addEventListener('click', () => {
+  vscode.postMessage({ command: 'sdRefresh' });
+});
+
 // ── LED state from emulator ───────────────────────────────────────────────
 function applyLed(gpioPin: number, lit: boolean): void {
   document.querySelectorAll('.vled-dot[data-pin="' + gpioPin + '"]').forEach(dot => {
@@ -536,6 +620,12 @@ window.addEventListener('message', (e: MessageEvent<ControlsHostMessage>) => {
     applyLed(msg.gpioPin, msg.lit);
   } else if (msg.command === 'rgbLed') {
     applyRgbLed(msg.gpioPin, msg.r, msg.g, msg.b);
+  } else if (msg.command === 'sdCardEnabled') {
+    applySdCardEnabled(msg.enabled);
+  } else if (msg.command === 'sdContents') {
+    applySdContents(msg.entries);
+  } else if (msg.command === 'sdPreview') {
+    applySdPreview(msg.name, msg.content);
   }
 });
 

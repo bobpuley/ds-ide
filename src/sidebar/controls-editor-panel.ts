@@ -7,12 +7,15 @@ import { ControlsConfig } from '../webview/scope-panel';
 import { REGISTRY, wiredControlIds } from '../devices/registry';
 import { TOGGLE_POSITIONS } from '../devices/codegen/toggle';
 import { ENCODER_POSITION_MODULUS } from '../devices/codegen/encoder';
+import { SdEntry } from '../webview/sd-viewer';
 
 export class ControlsViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
   private lastControlsConfig: ControlsConfig | undefined;
   private lastEditorCfg: ControllerConfig | undefined;
   private lastStatus: IpcMessage | undefined;
+  private lastSdEnabled = false;
+  private lastSdEntries: SdEntry[] = [];
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -21,6 +24,12 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
     private readonly onButtonChange: (gpioPin: number, pressed: boolean) => void,
     private readonly onToggleChange: (gpioPin: number, position: number) => void,
     private readonly onEncoderChange: (gpioPin: number, position: number) => void,
+    // FR-SD-1: fire-and-forget — the host re-reads ./sdcard/ from disk and
+    // pushes the result back via postSdContents/postSdPreview, rather than
+    // this provider owning any fs access itself (mirrors every other
+    // callback here).
+    private readonly onSdRefresh: () => void,
+    private readonly onSdPreview: (name: string) => void,
   ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -42,6 +51,7 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
       const m = msg as Record<string, unknown>;
       if (m['command'] === 'webviewReady') {
         this._flush();
+        this.onSdRefresh();
         return;
       }
       if (m['command'] === 'editorSave') {
@@ -79,11 +89,18 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
           Number.isInteger(m['position']) && m['position'] >= 0 && m['position'] < ENCODER_POSITION_MODULUS) {
         this.onEncoderChange(m['gpioPin'], m['position']);
       }
+      if (m['command'] === 'sdRefresh') {
+        this.onSdRefresh();
+      }
+      if (m['command'] === 'sdPreview' && typeof m['name'] === 'string') {
+        this.onSdPreview(m['name']);
+      }
     });
 
     webviewView.onDidChangeVisibility(() => {
       if (webviewView.visible) {
         this._flush();
+        this.onSdRefresh();
       }
     });
 
@@ -125,6 +142,21 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
     void this.view?.webview.postMessage({ command: 'editorLoad', cfg });
   }
 
+  // FR-SD-1
+  postSdCardEnabled(enabled: boolean): void {
+    this.lastSdEnabled = enabled;
+    void this.view?.webview.postMessage({ command: 'sdCardEnabled', enabled });
+  }
+
+  postSdContents(entries: SdEntry[]): void {
+    this.lastSdEntries = entries;
+    void this.view?.webview.postMessage({ command: 'sdContents', entries });
+  }
+
+  postSdPreview(name: string, content: string | null): void {
+    void this.view?.webview.postMessage({ command: 'sdPreview', name, content });
+  }
+
   private _flush(): void {
     if (this.lastEditorCfg) {
       void this.view?.webview.postMessage({ command: 'editorLoad', cfg: this.lastEditorCfg });
@@ -135,6 +167,8 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
     if (this.lastStatus) {
       void this.view?.webview.postMessage(statusPayload(this.lastStatus));
     }
+    void this.view?.webview.postMessage({ command: 'sdCardEnabled', enabled: this.lastSdEnabled });
+    void this.view?.webview.postMessage({ command: 'sdContents', entries: this.lastSdEntries });
   }
 }
 
@@ -245,6 +279,21 @@ ${ctrlCardCssRules()}
     .enc-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: ns-resize; user-select: none; padding: 2px 4px; }
     .enc-value { color: #dcdcaa; font-size: 10px; font-family: monospace; min-width: 24px; text-align: center; }
     .section-label { color: #9cdcfe; align-self: center; }
+    /* SD card content viewer (FR-SD-1) — inline accordion, mirrors the
+       Wiring Editor's #peripherals section (.section-hdr/.periph rows). */
+    #sdcard-contents { display: none; flex-direction: column; flex-shrink: 0; max-height: 260px; border-top: 1px solid #3c3c3c; overflow: auto; }
+    #sdcard-contents .section-hdr { padding: 6px 14px; font-size: 11px; color: #9cdcfe; background: #252526; border-bottom: 1px solid #3c3c3c; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+    #sdcard-contents .section-hdr .count { color: #6a6a6a; font-weight: normal; }
+    #sd-refresh-btn { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; padding: 2px 8px; border-radius: 2px; cursor: pointer; font-family: monospace; font-size: 10px; }
+    #sd-refresh-btn:hover { background: #4a4a4a; }
+    #sd-list { overflow: auto; }
+    .sd-row { display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-bottom: 1px solid #2a2a2a; cursor: pointer; }
+    .sd-row:hover { background: #252526; }
+    .sd-row .name { flex: 1; color: #d4d4d4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sd-row .size { color: #6a6a6a; font-size: 10px; }
+    .sd-preview { padding: 8px 14px 10px 22px; background: #161616; border-bottom: 1px solid #2a2a2a; color: #ce9178; font-size: 11px; white-space: pre-wrap; word-break: break-word; }
+    .sd-preview.unavailable { color: #6a6a6a; font-style: italic; }
+    .sd-empty-state { padding: 16px 14px; text-align: center; color: #6a6a6a; font-size: 11px; }
   </style>
 </head>
 <body>
@@ -265,6 +314,13 @@ ${paletteItemsHtml()}
     <div id="canvas-area">
       <div id="canvas-hint">Drag a control from the palette</div>
     </div>
+  </div>
+  <div id="sdcard-contents">
+    <div class="section-hdr">
+      <span>SD Card <span class="count" id="sd-count"></span></span>
+      <button id="sd-refresh-btn" title="Refresh listing">&#x21bb; Refresh</button>
+    </div>
+    <div id="sd-list"></div>
   </div>
   <script id="yaml-init" type="application/json" nonce="${nonce}">${safeJson({ pots: [], buttons: [], leds: [] })}</script>
   <script nonce="${nonce}" src="${scriptUri}"></script>

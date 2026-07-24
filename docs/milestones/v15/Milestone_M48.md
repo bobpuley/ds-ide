@@ -36,7 +36,7 @@ just-saved positions with the pre-save/default layout.
 
 ---
 
-### [ ] feat: add SD card root content viewer to Controls Editor (FR-SD-1)
+### [x] feat: add SD card root content viewer to Controls Editor (FR-SD-1)
 
 The `sdcard` peripheral already mirrors its simulated storage to a real, workspace-relative
 `./sdcard/` folder (M45) — trivially browsable on disk, but invisible from inside ds-ide. Add a

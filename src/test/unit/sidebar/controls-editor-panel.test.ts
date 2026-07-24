@@ -43,6 +43,8 @@ describe('ControlsViewProvider', () => {
   let onButtonChange: ReturnType<typeof vi.fn>;
   let onToggleChange: ReturnType<typeof vi.fn>;
   let onEncoderChange: ReturnType<typeof vi.fn>;
+  let onSdRefresh: ReturnType<typeof vi.fn>;
+  let onSdPreview: ReturnType<typeof vi.fn>;
   let provider: ControlsViewProvider;
 
   beforeEach(() => {
@@ -52,9 +54,12 @@ describe('ControlsViewProvider', () => {
     onButtonChange = vi.fn();
     onToggleChange = vi.fn();
     onEncoderChange = vi.fn();
+    onSdRefresh = vi.fn();
+    onSdPreview = vi.fn();
     provider = new ControlsViewProvider(
       { fsPath: '/ext' } as unknown as vscode.Uri,
       onEditorSave, onPotChange, onButtonChange, onToggleChange, onEncoderChange,
+      onSdRefresh, onSdPreview,
     );
   });
 
@@ -358,6 +363,92 @@ describe('ControlsViewProvider', () => {
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);
     expect(view.webview.html).toContain('box-shadow: 0 3px 0 #111');
+  });
+
+  // ── SD card content viewer (FR-SD-1) ──────────────────────────────────
+
+  it('calls onSdRefresh when sdRefresh message received', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'sdRefresh' });
+    expect(onSdRefresh).toHaveBeenCalled();
+  });
+
+  it('calls onSdRefresh on webviewReady (initial load) and on regaining visibility', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => void;
+    onSdRefresh.mockClear();
+    handler({ command: 'webviewReady' });
+    expect(onSdRefresh).toHaveBeenCalledTimes(1);
+    view._simulateVisibilityChange(true);
+    expect(onSdRefresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not call onSdRefresh when visibility changes to false', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    onSdRefresh.mockClear();
+    view._simulateVisibilityChange(false);
+    expect(onSdRefresh).not.toHaveBeenCalled();
+  });
+
+  it('calls onSdPreview with the requested name when sdPreview message received', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'sdPreview', name: 'LOG.TXT' });
+    expect(onSdPreview).toHaveBeenCalledWith('LOG.TXT');
+  });
+
+  it('ignores an sdPreview message with a non-string name', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'sdPreview', name: 42 });
+    expect(onSdPreview).not.toHaveBeenCalled();
+  });
+
+  it('postSdCardEnabled sends sdCardEnabled message to webview', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    view.webview.postMessage.mockClear();
+    provider.postSdCardEnabled(true);
+    expect(view.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'sdCardEnabled', enabled: true }),
+    );
+  });
+
+  it('postSdContents sends sdContents message to webview', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    view.webview.postMessage.mockClear();
+    const entries = [{ name: 'LOG.TXT', size: 96 }];
+    provider.postSdContents(entries);
+    expect(view.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'sdContents', entries }),
+    );
+  });
+
+  it('postSdPreview sends sdPreview message to webview', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    view.webview.postMessage.mockClear();
+    provider.postSdPreview('LOG.TXT', 'hello\n');
+    expect(view.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'sdPreview', name: 'LOG.TXT', content: 'hello\n' }),
+    );
+  });
+
+  it('flushes sdCardEnabled and sdContents on resolve after being set pre-resolve', () => {
+    provider.postSdCardEnabled(true);
+    provider.postSdContents([{ name: 'LOG.TXT', size: 96 }]);
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const calls = view.webview.postMessage.mock.calls.map((c: unknown[]) => (c[0] as Record<string, unknown>)['command']);
+    expect(calls).toContain('sdCardEnabled');
+    expect(calls).toContain('sdContents');
   });
 });
 
