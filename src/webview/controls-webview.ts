@@ -39,14 +39,6 @@ const TRUNC_MAX_LEN = 15;
 const TRUNC_SUFFIX = '…';
 function truncId(id: string): string { return id.length > TRUNC_MAX_LEN ? id.slice(0, TRUNC_MAX_LEN - 1) + TRUNC_SUFFIX : id; }
 
-// TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed
-// fixed. Forwards to the extension host's "Daisy IDE Controls Debug" output
-// channel instead of console.log, so it lands in the same place as the
-// extension-host-side logs (no separate Webview Developer Tools needed).
-function debugLog(label: string, data: unknown): void {
-  vscode.postMessage({ command: 'debugLog', text: `${label} ${JSON.stringify(data)}` });
-}
-
 type DocListener = { event: string; fn: EventListener };
 const _docListeners: DocListener[] = [];
 function _addDocListener(event: string, fn: EventListener): void {
@@ -78,12 +70,6 @@ function escJ(s: unknown): string {
 type ControlsConfigMsg = Extract<ControlsHostMessage, { command: 'controlsConfig' }>;
 
 function applyControlsConfig(msg: ControlsConfigMsg): void {
-  // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed fixed.
-  debugLog('applyControlsConfig', {
-    controls: (msg.controls || []).map(c => c.id),
-    placements: (msg.placements || []).map(p => ({ id: p.id, pos: p.pos })),
-    missingBlock: msg.missingBlock,
-  });
   conventionControls = msg.controls || [];
   conventionPlacements = msg.placements || [];
   conventionMissing = !!msg.missingBlock;
@@ -130,9 +116,6 @@ function renderConventionCanvas(): void {
   }
   if (hint) hint.style.display = (conventionControls.length === 0 && conventionPlacements.length === 0) ? 'flex' : 'none';
   updateCeEmulatorState(ceEmulatorRunning);
-  // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed fixed.
-  debugLog('renderConventionCanvas rendered ids=',
-    Array.from(area.querySelectorAll('.ctrl-card[data-id]')).map(c => (c as HTMLElement).dataset['id']));
 }
 
 function buildKnobSvg(value: number): string {
@@ -385,12 +368,6 @@ function makeDraggable(card: HTMLElement, ctrl: { pos: [number, number] }): void
 
 // ── Legacy YAML editor (missingBlock mode) ───────────────────────────────
 function editorLoad(cfg: Partial<ControllerConfig>): void {
-  // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed fixed.
-  debugLog('editorLoad cfg=', {
-    pots: (cfg.pots || []).map(p => ({ id: p.id, pos: p.pos })),
-    buttons: (cfg.buttons || []).map(b => ({ id: b.id, pos: b.pos })),
-    leds: (cfg.leds || []).map(l => ({ id: l.id, pos: l.pos })),
-  });
   _yamlCfg = { pots: cfg.pots || [], buttons: cfg.buttons || [], leds: cfg.leds || [], errors: [] };
   editorControls = [];
   let ax = 20, ay = 20;
@@ -535,12 +512,6 @@ el<HTMLElement>('save-btn').addEventListener('click', () => {
     const leds    = editorControls.filter(c => c.kind === 'led').map(c => ({ id: c.id, label: c.label, gpioPin: c.gpioPin ?? 0, pos: c.pos }));
     cfg = { pots, buttons, leds, errors: [] };
   }
-  // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed fixed.
-  debugLog(`Save clicked, conventionMissing=${conventionMissing} posting editorSave cfg=`, {
-    pots: cfg.pots.map(p => ({ id: p.id, pos: p.pos })),
-    buttons: cfg.buttons.map(b => ({ id: b.id, pos: b.pos })),
-    leds: cfg.leds.map(l => ({ id: l.id, pos: l.pos })),
-  });
   vscode.postMessage({ command: 'editorSave', cfg });
   const st = el<HTMLElement>('save-status');
   st.textContent = 'Saved ✓';

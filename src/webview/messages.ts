@@ -84,9 +84,7 @@ export type ControlsWebviewMessage =
   | { command: 'toggle'; gpioPin: number; position: number }
   | { command: 'encoder'; gpioPin: number; position: number }
   | { command: 'sdRefresh' }
-  | { command: 'sdPreview'; name: string }
-  // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed fixed.
-  | { command: 'debugLog'; text: string };
+  | { command: 'sdPreview'; name: string };
 
 // ── Wiring Editor ────────────────────────────────────────────────────────
 

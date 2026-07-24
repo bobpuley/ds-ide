@@ -30,10 +30,6 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
     // callback here).
     private readonly onSdRefresh: () => void,
     private readonly onSdPreview: (name: string) => void,
-    // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is
-    // confirmed fixed. Defaulted so existing constructor call sites (and
-    // tests) don't need updating for a diagnostic-only param.
-    private readonly debugLog: (msg: string) => void = () => {},
   ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -99,10 +95,6 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
       if (m['command'] === 'sdPreview' && typeof m['name'] === 'string') {
         this.onSdPreview(m['name']);
       }
-      // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed fixed.
-      if (m['command'] === 'debugLog' && typeof m['text'] === 'string') {
-        this.debugLog(`[webview] ${m['text']}`);
-      }
     });
 
     webviewView.onDidChangeVisibility(() => {
@@ -123,8 +115,6 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
   get isVisible(): boolean { return this.view?.visible ?? false; }
 
   postControlsConfig(config: ControlsConfig): void {
-    // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed fixed.
-    this.debugLog(`[provider] postControlsConfig hasView=${!!this.view} controls=${config.controls.map(c => c.id)} missingBlock=${config.missingBlock}`);
     this.lastControlsConfig = config;
     void this.view?.webview.postMessage({ command: 'controlsConfig', ...config });
     if (this.lastStatus) {
@@ -148,8 +138,6 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
   }
 
   loadEditor(cfg: ControllerConfig): void {
-    // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed fixed.
-    this.debugLog(`[provider] loadEditor hasView=${!!this.view} pots=${cfg.pots.map(p => p.id)} buttons=${cfg.buttons.map(b => b.id)}`);
     this.lastEditorCfg = cfg;
     void this.view?.webview.postMessage({ command: 'editorLoad', cfg });
   }
@@ -170,8 +158,6 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
   }
 
   private _flush(): void {
-    // TEMP DIAGNOSTIC (FR-CE-1) — remove once the save/refresh race is confirmed fixed.
-    this.debugLog(`[provider] _flush hasEditorCfg=${!!this.lastEditorCfg} hasControlsConfig=${!!this.lastControlsConfig} controls=${this.lastControlsConfig?.controls.map(c => c.id)}`);
     if (this.lastEditorCfg) {
       void this.view?.webview.postMessage({ command: 'editorLoad', cfg: this.lastEditorCfg });
     }
