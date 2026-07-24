@@ -470,7 +470,7 @@ describe('controllers.yaml read robustness (FR-IPC-4)', () => {
     await saveCb({ uri: { fsPath: path.join('/proj', 'controllers.yaml') } });
   }
 
-  function getControlsEditorMessageHandler(): (msg: unknown) => void {
+  function getControlsEditorHandlerAndView() {
     const registerCalls = (vscode.window.registerWebviewViewProvider as ReturnType<typeof vi.fn>).mock.calls;
     const controlsEntry = registerCalls.find((c: unknown[]) => c[0] === 'ds-ide.controlsEditor');
     const controlsProvider = controlsEntry?.[1] as { resolveWebviewView: (view: unknown) => void };
@@ -488,7 +488,12 @@ describe('controllers.yaml read robustness (FR-IPC-4)', () => {
       show: vi.fn(),
     };
     controlsProvider.resolveWebviewView(mockView);
-    return (mockView.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => void;
+    const handler = (mockView.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => void;
+    return { handler, mockView };
+  }
+
+  function getControlsEditorMessageHandler(): (msg: unknown) => void {
+    return getControlsEditorHandlerAndView().handler;
   }
 
   it('treats a missing controllers.yaml (ENOENT) as empty, without an unreadable warning', async () => {
@@ -544,6 +549,45 @@ describe('controllers.yaml read robustness (FR-IPC-4)', () => {
     await Promise.resolve();
     expect(promisesMock['writeFile']).toHaveBeenCalledWith(
       expect.stringMatching(/controllers\.yaml$/), expect.anything(), 'utf8',
+    );
+  });
+
+  it('re-pushes the just-saved layout to the webview so a later flush cannot show a stale snapshot (FR-CE-1)', async () => {
+    promisesMock['readFile']!.mockImplementation((p: unknown) => {
+      const fp = String(p);
+      if (fp.endsWith('controllers.yaml')) return Promise.resolve('pots: []\nbuttons: []\nleds: []\n');
+      return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    });
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await triggerLoadViaSave(ctx);
+
+    const { handler, mockView } = getControlsEditorHandlerAndView();
+    const savedCfg = {
+      pots: [{ id: 'pot1', label: 'Pot 1', adcChannel: 0, range: [0, 1], taper: 'linear', default: 0, pos: [10, 20] }],
+      buttons: [], leds: [], errors: [],
+    };
+    handler({ command: 'editorSave', cfg: savedCfg });
+    // Allow the writeFile().then() chain (and the buildControlsConfig() await inside it) to settle.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // A later visibility-change flush must see the just-saved positions, not a stale
+    // pre-save cache — simulate switching back to the Controls Editor after the save.
+    mockView.webview.postMessage.mockClear();
+    const visibilityCb = (mockView.onDidChangeVisibility as ReturnType<typeof vi.fn>).mock.calls[0]![0] as () => void;
+    mockView.visible = true;
+    visibilityCb();
+
+    expect(mockView.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: 'editorLoad',
+        cfg: expect.objectContaining({
+          pots: expect.arrayContaining([expect.objectContaining({ id: 'pot1', pos: [10, 20] })]),
+        }),
+      }),
     );
   });
 });

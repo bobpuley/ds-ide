@@ -16,7 +16,7 @@ same observability principle FR-DEV-15/18 established for OLED and MIDI note inp
 
 ## Sprint Tasks
 
-### [ ] fix: keep Controls Editor cache in sync after layout save (FR-CE-1)
+### [x] fix: keep Controls Editor cache in sync after layout save (FR-CE-1)
 
 `onEditorSave` (`src/extension.ts:436-451`) writes `controllers.yaml` straight to disk via
 `fs.promises.writeFile`, bypassing VS Code's document model — so `ControlsViewProvider`'s cached

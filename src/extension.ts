@@ -445,9 +445,17 @@ export function activate(context: vscode.ExtensionContext): void {
       const folder = resolveActiveFolder(context.workspaceState);
       if (!folder) return;
       const yamlPath = path.join(folder.uri.fsPath, 'controllers.yaml');
-      void fs.promises.writeFile(yamlPath, serializeControllerConfig(cfg), 'utf8').catch((err: unknown) => {
-        void vscode.window.showErrorMessage(`ds-ide: could not write controllers.yaml: ${String(err)}`);
-      });
+      void fs.promises.writeFile(yamlPath, serializeControllerConfig(cfg), 'utf8')
+        .then(async () => {
+          // Keep the provider's cache in sync with what's now on disk — otherwise the next
+          // onDidChangeVisibility flush re-sends the stale pre-save snapshot and clobbers the
+          // positions just saved (FR-CE-1).
+          controlsProvider.loadEditor(cfg);
+          controlsProvider.postControlsConfig(await buildControlsConfig(folder.uri.fsPath, cfg));
+        })
+        .catch((err: unknown) => {
+          void vscode.window.showErrorMessage(`ds-ide: could not write controllers.yaml: ${String(err)}`);
+        });
     },
     (channel, value) => {
       potStore?.set(channel, value);
