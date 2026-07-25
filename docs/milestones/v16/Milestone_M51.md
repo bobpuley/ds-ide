@@ -1,7 +1,7 @@
 # M51 — Host MIDI Bridge Native-Addon ABI Fix
 
 **Version:** 0.16.0
-**Status:** planned
+**Status:** in progress
 **Source:** bug report — 2026-07-25 intake session (extension-startup console warning after a
 VS Code update)
 

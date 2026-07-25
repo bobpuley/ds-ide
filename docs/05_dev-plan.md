@@ -139,7 +139,7 @@ Full registry in [`docs/v15/05_dev-plan.md`](v15/05_dev-plan.md).
 
 | ID   | Name          | Status          | Version   | File                                              |
 |------|---------------|-----------------|-----------|----------------------------------------------------|
-| M51  | Host MIDI Bridge Native-Addon ABI Fix | **planned** | 0.16.0 | [Milestone_M51.md](milestones/v16/Milestone_M51.md) |
+| M51  | Host MIDI Bridge Native-Addon ABI Fix | **in progress** | 0.16.0 | [Milestone_M51.md](milestones/v16/Milestone_M51.md) |
 
 Source: 2026-07-25 intake session — bug report (host MIDI bridge silently unavailable after a
 VS Code update, native module ABI mismatch).
