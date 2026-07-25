@@ -65,5 +65,10 @@
   MIDI messages is needed. The Seed can also emit MIDI output, which should be shown in a
   real-time output message list. All of this should live in one unified MIDI monitor webview.
   (2026-07-24)
+- **Feature — persist Controls Editor canvas positions for encoder/toggle/rgbled.** Today only
+  pot/button/led have an `editor_pos` field in `controllers.yaml`; encoder/toggle/rgbled positions
+  are never persisted anywhere, so they always auto-layout fresh on every canvas render regardless
+  of how the user dragged them. Discovered during M48/FR-CE-1 manual testing as a distinct,
+  out-of-scope gap from the cache-sync bug that milestone fixed. (2026-07-24)
 
 *v15 milestones: see the Milestone Registry in `05_dev-plan.md`.*
