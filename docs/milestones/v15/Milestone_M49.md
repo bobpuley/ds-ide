@@ -1,7 +1,7 @@
 # M49 — Controls Editor as Preview Surface (OLED Embedding)
 
 **Version:** 0.15.1
-**Status:** planned
+**Status:** released
 **Source:** intake 2026-07-24 — feature request
 
 ## Goal
