@@ -1,4 +1,4 @@
-# 01 — Input Ideas (v15)
+# 01 — Input Ideas (v16)
 
 > **v1 complete** — ds-ide 0.1.0–0.1.7 (M0–M7), all ACs green. Full v1 ideas archived in
 > [`docs/v1/01_input-ideas.md`](v1/01_input-ideas.md).
@@ -41,34 +41,8 @@
 >
 > **v14 complete** — archived to `docs/v14/` on 2026-07-22. Full v14 ideas archived in
 > [`docs/v14/01_input-ideas.md`](v14/01_input-ideas.md).
+>
+> **v15 complete** — archived to `docs/v15/` on 2026-07-25. Full v15 ideas archived in
+> [`docs/v15/01_input-ideas.md`](v15/01_input-ideas.md).
 
----
-
-## v15 intake log
-
-- **Bug — Controls Editor layout not persisted across panel switch.** Steps: open Controls
-  Editor → rearrange controls → save layout → switch to Wiring Editor → switch back to Controls
-  Editor. Expected: controls stay positioned per the last save. Actual: controls reset to default
-  positions. (2026-07-24)
-- **Feature — SD card virtual filesystem surfaced to the user.** The SD card's simulated storage
-  should be mirrored into a project-relative folder (e.g. `./virtual-sd-fs/<sdid>/`) or an
-  equivalent structured mapping, so generated SD content is trivially browsable on disk. The
-  Controls Editor should show the SD card's root content list (text-file preview as a nice-to-have).
-  (2026-07-24)
-- **Feature — OLED monitor folded into the Controls Editor as its default view.** Currently the
-  OLED monitor is a separate webview. Proposal: make it the default embedded view within the
-  Controls Editor (with a "show in separate view" option for detailed inspection), and reframe the
-  Controls Editor's purpose more broadly — from "layout editor" to a general real-world preview
-  surface, which in future would also host pedal/board/rack layouts. (2026-07-24)
-- **Feature — Fuller MIDI I/O surface.** The virtual keyboard covers note testing, but a MIDI
-  controller can also send Program Change (and other) messages, so a simple UI to send specific
-  MIDI messages is needed. The Seed can also emit MIDI output, which should be shown in a
-  real-time output message list. All of this should live in one unified MIDI monitor webview.
-  (2026-07-24)
-- **Feature — persist Controls Editor canvas positions for encoder/toggle/rgbled.** Today only
-  pot/button/led have an `editor_pos` field in `controllers.yaml`; encoder/toggle/rgbled positions
-  are never persisted anywhere, so they always auto-layout fresh on every canvas render regardless
-  of how the user dragged them. Discovered during M48/FR-CE-1 manual testing as a distinct,
-  out-of-scope gap from the cache-sync bug that milestone fixed. (2026-07-24)
-
-*v15 milestones: see the Milestone Registry in `05_dev-plan.md`.*
+*v16 planning not yet started. Use `/doc-creator-driver:intake` or `/doc-creator-driver:start` to begin.*
