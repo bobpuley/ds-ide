@@ -135,6 +135,6 @@ M48 Controls Editor Fix & I/O Monitor UIs · M49 Controls Editor as Preview Surf
 M50 Persist Editor Positions for Encoder, Toggle, and RGB LED.
 Full registry in [`docs/v15/05_dev-plan.md`](v15/05_dev-plan.md).
 
-### v16 — planned
+### v16 (…) — planned
 
 *(no milestones yet)*
