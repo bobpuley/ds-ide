@@ -5,6 +5,14 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.16.0 — 2026-07-25
+
+**M51 — Host MIDI Bridge Native-Addon ABI Fix** *(FR-DEV-19 — DoD green)*
+
+- **FR-DEV-19** — Fixes a bug where an ordinary VS Code update (bumping its bundled Electron/Node.js version) silently broke the host MIDI bridge with a `NODE_MODULE_VERSION` mismatch, since `midi`'s native addon (`node_modules/midi/build/Release/midi.node`) was compiled against whatever plain Node.js ran `npm install`, never against Electron's actual ABI. `midi` uses NAN, not N-API, so this can't be fixed by a dependency swap — it needs rebuilding per Electron ABI. Adds `@electron/rebuild` as a devDependency, a `postinstall` step (`scripts/rebuild-midi-native.sh`, macOS-only, never blocks `npm install` on failure) that rebuilds the addon against a pinned target Electron version (`scripts/electron-target-version.txt`, currently `42.0.0` — the version needed for the reported `NODE_MODULE_VERSION 146`), and the same rebuild wired into `npm run package` (hard-fails on a bad rebuild, unlike the lenient postinstall path). `scripts/verify-vsix.sh`'s packaged-addon check is upgraded from "loads under system Node" (a misleading pass — the addon can load fine under system Node while still being wrong for Electron) to `scripts/check-native-abi.js`, which parses the exact `NODE_MODULE_VERSION` a mismatched addon reports and asserts it matches the pinned target's expected ABI. **Known limitation, not fully fixed here:** there is no supported way to auto-detect VS Code's exact bundled Electron version at install time (confirmed via `microsoft/vscode-discussions#768`) — the pinned target version must be bumped manually whenever VS Code's bundled Electron major version changes; `host-bridge.ts`'s existing try/catch degradation (no crash, just "bridge unavailable") remains the fallback if a rebuild is ever skipped, fails, or the pin goes stale.
+
+---
+
 ## 0.15.2 — 2026-07-25
 
 **M50 — Persist Editor Positions for Encoder, Toggle, and RGB LED** *(FR-CE-3 — DoD green)*
