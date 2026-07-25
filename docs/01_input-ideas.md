@@ -1,4 +1,4 @@
-# 01 — Input Ideas (v16)
+# 01 — Input Ideas (v17)
 
 > **v1 complete** — ds-ide 0.1.0–0.1.7 (M0–M7), all ACs green. Full v1 ideas archived in
 > [`docs/v1/01_input-ideas.md`](v1/01_input-ideas.md).
@@ -44,22 +44,8 @@
 >
 > **v15 complete** — archived to `docs/v15/` on 2026-07-25. Full v15 ideas archived in
 > [`docs/v15/01_input-ideas.md`](v15/01_input-ideas.md).
+>
+> **v16 complete** — archived to `docs/v16/` on 2026-07-25. Full v16 ideas archived in
+> [`docs/v16/01_input-ideas.md`](v16/01_input-ideas.md).
 
----
-
-## v16 intake log
-
-- **Bug — host MIDI bridge silently unavailable after a VS Code update (native module ABI
-  mismatch).** Observed: at extension activation, the console/Output shows `ds-ide: MIDI host
-  bridge unavailable — Error: The module '.../node_modules/midi/build/Release/midi.node' was
-  compiled against a different Node.js version using NODE_MODULE_VERSION 137. This version of
-  Node.js requires NODE_MODULE_VERSION 146.` after VS Code bumped its bundled Electron/Node.js
-  version. Expected: the host MIDI bridge (FR-DEV-18) keeps working across ordinary VS Code
-  updates on the same machine/arch, the way it's already documented to survive a missing/broken
-  addon gracefully (`host-bridge.ts`'s try/catch — no crash, just "bridge unavailable"). A
-  separate `(node:29036) [DEP0169] DeprecationWarning: url.parse() ...` line appeared in the same
-  console output — investigated and ruled out as unrelated to ds-ide: `dist/extension.js`
-  contains zero references to the `url` module, and neither runtime-loaded dependency in the MIDI
-  bridge's require chain (`bindings`, `file-uri-to-path`) uses `url.parse` anywhere in their
-  source. Out of scope for this bug — almost certainly VS Code/Electron internals or another
-  extension in the same window. (2026-07-25)
+*v17 planning not yet started. Use `/doc-creator-driver:intake` or `/doc-creator-driver:start` to begin.*

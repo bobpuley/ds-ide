@@ -1,4 +1,4 @@
-# 05 — Development Plan (v16)
+# 05 — Development Plan (v17)
 
 > **v1 complete** — M0–M7 released (0.1.0–0.1.7), all ACs green.
 > Archived: [`docs/v1/`](v1/).
@@ -44,8 +44,11 @@
 >
 > **v15 complete** — M48–M50 released (0.15.0–0.15.2), all ACs green.
 > Archived: [`docs/v15/`](v15/).
+>
+> **v16 complete** — M51 released (0.16.0), all ACs green.
+> Archived: [`docs/v16/`](v16/).
 
-*v16 milestones not yet planned.*
+*v17 milestones not yet planned.*
 
 ---
 
@@ -135,11 +138,11 @@ M48 Controls Editor Fix & I/O Monitor UIs · M49 Controls Editor as Preview Surf
 M50 Persist Editor Positions for Encoder, Toggle, and RGB LED.
 Full registry in [`docs/v15/05_dev-plan.md`](v15/05_dev-plan.md).
 
-### v16 (0.16.0–…) — planned
+### v16 (0.16.0) — archived in `docs/v16/`
 
-| ID   | Name          | Status          | Version   | File                                              |
-|------|---------------|-----------------|-----------|----------------------------------------------------|
-| M51  | Host MIDI Bridge Native-Addon ABI Fix | **released**    | 0.16.0 | [Milestone_M51.md](milestones/v16/Milestone_M51.md) |
+M51 Host MIDI Bridge Native-Addon ABI Fix.
+Full registry in [`docs/v16/05_dev-plan.md`](v16/05_dev-plan.md).
 
-Source: 2026-07-25 intake session — bug report (host MIDI bridge silently unavailable after a
-VS Code update, native module ABI mismatch).
+### v17 (…) — planned
+
+*(no milestones yet)*
