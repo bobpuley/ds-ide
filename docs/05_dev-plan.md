@@ -132,7 +132,7 @@ Full registry in [`docs/v14/05_dev-plan.md`](v14/05_dev-plan.md).
 |------|---------------|-----------------|-----------|----------------------------------------------------|
 | M48  | Controls Editor Fix & I/O Monitor UIs | **released**    | 0.15.0 | [Milestone_M48.md](milestones/v15/Milestone_M48.md) |
 | M49  | Controls Editor as Preview Surface (OLED Embedding) | **released**    | 0.15.1 | [Milestone_M49.md](milestones/v15/Milestone_M49.md) |
-| M50  | Persist Editor Positions for Encoder, Toggle, and RGB LED | **in progress** | 0.15.2 | [Milestone_M50.md](milestones/v15/Milestone_M50.md) |
+| M50  | Persist Editor Positions for Encoder, Toggle, and RGB LED | **released**    | 0.15.2 | [Milestone_M50.md](milestones/v15/Milestone_M50.md) |
 
 Source: 2026-07-24 intake session — bug report + 3 feature requests, split into two milestones
 (M48: concrete additive UI work; M49: the controls-editor reframing/OLED-embedding, kept separate

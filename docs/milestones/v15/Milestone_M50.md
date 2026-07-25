@@ -1,7 +1,7 @@
 # M50 — Persist Editor Positions for Encoder, Toggle, and RGB LED
 
 **Version:** 0.15.2
-**Status:** in progress
+**Status:** released
 **Source:** discovered during M48/FR-CE-1 manual testing (2026-07-24) — a distinct, out-of-scope
 gap from the cache-sync bug that milestone fixed
 
