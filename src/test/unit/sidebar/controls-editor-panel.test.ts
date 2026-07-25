@@ -45,6 +45,7 @@ describe('ControlsViewProvider', () => {
   let onEncoderChange: ReturnType<typeof vi.fn>;
   let onSdRefresh: ReturnType<typeof vi.fn>;
   let onSdPreview: ReturnType<typeof vi.fn>;
+  let onOledPopOut: ReturnType<typeof vi.fn>;
   let provider: ControlsViewProvider;
 
   beforeEach(() => {
@@ -56,10 +57,11 @@ describe('ControlsViewProvider', () => {
     onEncoderChange = vi.fn();
     onSdRefresh = vi.fn();
     onSdPreview = vi.fn();
+    onOledPopOut = vi.fn();
     provider = new ControlsViewProvider(
       { fsPath: '/ext' } as unknown as vscode.Uri,
       onEditorSave, onPotChange, onButtonChange, onToggleChange, onEncoderChange,
-      onSdRefresh, onSdPreview,
+      onSdRefresh, onSdPreview, onOledPopOut,
     );
   });
 
@@ -449,6 +451,61 @@ describe('ControlsViewProvider', () => {
     const calls = view.webview.postMessage.mock.calls.map((c: unknown[]) => (c[0] as Record<string, unknown>)['command']);
     expect(calls).toContain('sdCardEnabled');
     expect(calls).toContain('sdContents');
+  });
+
+  // ── OLED docked strip (FR-CE-2) ────────────────────────────────────────
+
+  it('resolveWebviewView sets HTML containing the OLED strip markup', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(view.webview.html).toContain('id="oled-strip"');
+    expect(view.webview.html).toContain('id="oled-popout-btn"');
+  });
+
+  it('postOledEnabled sends oledEnabled message with enabled and bus to webview', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    view.webview.postMessage.mockClear();
+    provider.postOledEnabled(true, 'SPI1');
+    expect(view.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'oledEnabled', enabled: true, bus: 'SPI1' }),
+    );
+  });
+
+  it('postOledFrame sends oledFrame message with data to webview', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    view.webview.postMessage.mockClear();
+    provider.postOledFrame('AAECAw==');
+    expect(view.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: 'oledFrame', data: 'AAECAw==' }),
+    );
+  });
+
+  it('calls onOledPopOut when oledPopOut message received', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'oledPopOut' });
+    expect(onOledPopOut).toHaveBeenCalled();
+  });
+
+  it('flushes oledEnabled and the last frame on resolve after being set pre-resolve', () => {
+    provider.postOledEnabled(true, 'SPI1');
+    provider.postOledFrame('AAECAw==');
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const calls = view.webview.postMessage.mock.calls.map((c: unknown[]) => (c[0] as Record<string, unknown>)['command']);
+    expect(calls).toContain('oledEnabled');
+    expect(calls).toContain('oledFrame');
+  });
+
+  it('does not flush an oledFrame on resolve when no frame has been received yet', () => {
+    provider.postOledEnabled(false, null);
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const calls = view.webview.postMessage.mock.calls.map((c: unknown[]) => (c[0] as Record<string, unknown>)['command']);
+    expect(calls).not.toContain('oledFrame');
   });
 });
 

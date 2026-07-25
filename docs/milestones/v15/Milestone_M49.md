@@ -15,7 +15,7 @@ without committing to a panel rename or the full reframing this milestone.
 
 ## Sprint Tasks
 
-### [ ] feat: dock OLED live view above the Controls Editor's layout canvas (FR-CE-2)
+### [x] feat: dock OLED live view above the Controls Editor's layout canvas (FR-CE-2)
 
 `ControlsViewProvider` (sidebar `WebviewView`) and `OledPanel` (editor-column `WebviewPanel`) are
 separate infrastructure with no shared abstraction today. Route the OLED framebuffer into a new

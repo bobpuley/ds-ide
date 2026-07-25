@@ -526,6 +526,10 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!folder) { controlsProvider.postSdPreview(name, null); return; }
       void readSdCardPreview(folder.uri.fsPath, name).then(content => controlsProvider.postSdPreview(name, content));
     },
+    // FR-CE-2: "show in separate view" reuses the same standalone OledPanel
+    // the Wiring Editor's View button opens (showOledPanel below) — the
+    // docked strip never owns its own panel lifecycle.
+    () => { void showOledPanel(); },
   );
 
   // FR-CE-1 follow-up: buildControlsConfig() used to be independently
@@ -560,6 +564,19 @@ export function activate(context: vscode.ExtensionContext): void {
   }
 
   const oledPanel = new OledPanel(context.extensionUri, manager);
+
+  // Shared by the Wiring Editor's "View" button (hasLiveView flow) and the
+  // Controls Editor's docked-strip pop-out (FR-CE-2) — both just want
+  // today's standalone OledPanel opened against the peripheral's current bus.
+  async function showOledPanel(): Promise<void> {
+    const folder = resolveActiveFolder(context.workspaceState)?.uri.fsPath ?? '';
+    const effectPath = await findEffectSource(folder);
+    if (!effectPath) return;
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
+    const state = computePeripheralDisplayStates(doc.getText()).find(p => p.id === 'oled');
+    oledPanel.show(state?.bus ?? null);
+  }
+
   const midiPanel = new MidiPanel(context.extensionUri, manager);
   const hostMidiBridge = new HostMidiBridge(manager);
   hostMidiBridge.start();
@@ -716,13 +733,7 @@ export function activate(context: vscode.ExtensionContext): void {
     },
     (peripheralId: string) => {
       if (peripheralId === 'oled') {
-        const folder = resolveActiveFolder(context.workspaceState)?.uri.fsPath ?? '';
-        void findEffectSource(folder).then(async (effectPath) => {
-          if (!effectPath) return;
-          const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
-          const state = computePeripheralDisplayStates(doc.getText()).find(p => p.id === 'oled');
-          oledPanel.show(state?.bus ?? null);
-        });
+        void showOledPanel();
       } else if (peripheralId === 'midiTrs' || peripheralId === 'midiUsb') {
         midiPanel.show();
       }
@@ -815,6 +826,13 @@ export function activate(context: vscode.ExtensionContext): void {
     if (msg['type'] === 'rgbLed') {
       controlsProvider?.postRgbLed(msg);
     }
+    // FR-CE-2: dual-subscribed alongside OledPanel's own 'message' listener
+    // (its constructor) — the docked strip needs live frames whether or not
+    // the standalone panel is open.
+    if (msg['type'] === 'oledFrame') {
+      const data = getString(msg, 'data');
+      if (data !== undefined) controlsProvider?.postOledFrame(data);
+    }
   });
 
   manager.on('disconnect', () => {
@@ -878,6 +896,8 @@ export function activate(context: vscode.ExtensionContext): void {
     wiringProvider.postWiredPins(wiredPins);
     wiringProvider.postPeripherals(peripherals);
     controlsProvider.postSdCardEnabled(peripherals.some(p => p.id === 'sdcard' && p.enabled));
+    const oledPeripheral = peripherals.find(p => p.id === 'oled');
+    controlsProvider.postOledEnabled(!!oledPeripheral?.enabled, oledPeripheral?.bus ?? null);
   }
 
   void initViewsFromProject();
@@ -940,6 +960,8 @@ export function activate(context: vscode.ExtensionContext): void {
           wiringProvider.postWiredPins(pins);
           wiringProvider.postPeripherals(peripherals);
           controlsProvider.postSdCardEnabled(peripherals.some(p => p.id === 'sdcard' && p.enabled));
+          const oledPeripheral = peripherals.find(p => p.id === 'oled');
+          controlsProvider.postOledEnabled(!!oledPeripheral?.enabled, oledPeripheral?.bus ?? null);
         }
       }
     }),

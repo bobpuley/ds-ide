@@ -16,6 +16,9 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
   private lastStatus: IpcMessage | undefined;
   private lastSdEnabled = false;
   private lastSdEntries: SdEntry[] = [];
+  private lastOledEnabled = false;
+  private lastOledBus: string | null = null;
+  private lastOledFrame: string | null = null;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -30,6 +33,9 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
     // callback here).
     private readonly onSdRefresh: () => void,
     private readonly onSdPreview: (name: string) => void,
+    // FR-CE-2: "show in separate view" — the docked strip never owns the
+    // standalone OledPanel's lifecycle, it just asks the host to open it.
+    private readonly onOledPopOut: () => void,
   ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -95,6 +101,9 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
       if (m['command'] === 'sdPreview' && typeof m['name'] === 'string') {
         this.onSdPreview(m['name']);
       }
+      if (m['command'] === 'oledPopOut') {
+        this.onOledPopOut();
+      }
     });
 
     webviewView.onDidChangeVisibility(() => {
@@ -157,6 +166,18 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
     void this.view?.webview.postMessage({ command: 'sdPreview', name, content });
   }
 
+  // FR-CE-2
+  postOledEnabled(enabled: boolean, bus: string | null): void {
+    this.lastOledEnabled = enabled;
+    this.lastOledBus = bus;
+    void this.view?.webview.postMessage({ command: 'oledEnabled', enabled, bus });
+  }
+
+  postOledFrame(data: string): void {
+    this.lastOledFrame = data;
+    void this.view?.webview.postMessage({ command: 'oledFrame', data });
+  }
+
   private _flush(): void {
     if (this.lastEditorCfg) {
       void this.view?.webview.postMessage({ command: 'editorLoad', cfg: this.lastEditorCfg });
@@ -169,6 +190,10 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
     }
     void this.view?.webview.postMessage({ command: 'sdCardEnabled', enabled: this.lastSdEnabled });
     void this.view?.webview.postMessage({ command: 'sdContents', entries: this.lastSdEntries });
+    void this.view?.webview.postMessage({ command: 'oledEnabled', enabled: this.lastOledEnabled, bus: this.lastOledBus });
+    if (this.lastOledFrame) {
+      void this.view?.webview.postMessage({ command: 'oledFrame', data: this.lastOledFrame });
+    }
   }
 }
 
@@ -239,6 +264,16 @@ export function buildHtml(nonce: string, scriptUri: string): string {
     .ce-emu-stopped { color: #f04a4a; }
     .emu-sep { color: #3c3c3c; user-select: none; }
     #convention-banner { display: none; align-items: center; gap: 8px; padding: 5px 12px; background: #3a2f00; border-bottom: 1px solid #7a6500; color: #f4c430; font-size: 11px; flex-shrink: 0; }
+    /* OLED docked strip (FR-CE-2) — collapses to nothing (display:none) when
+       the oled peripheral is disabled, so #design-area's flex:1 fills the
+       space exactly as it does today; mirrors #convention-banner's toggle. */
+    #oled-strip { display: none; flex-direction: column; align-items: center; justify-content: center; gap: 4px; height: 130px; flex-shrink: 0; background: #000; border-bottom: 1px solid #3c3c3c; position: relative; padding: 4px 0; }
+    #oled-strip.enabled { display: flex; }
+    #oled-strip-label { position: absolute; top: 5px; left: 8px; font-size: 9px; color: #6a6a6a; }
+    #oled-popout-btn { position: absolute; top: 4px; right: 8px; background: #252526; border: 1px solid #555; color: #9cdcfe; padding: 2px 7px; border-radius: 2px; cursor: pointer; font-family: monospace; font-size: 9px; }
+    #oled-popout-btn:hover { background: #2f2f2f; }
+    #oled-strip-canvas { image-rendering: pixelated; background: #000; width: 192px; height: 96px; }
+    #oled-strip-foot { font-size: 9px; color: #6a6a6a; }
     #design-area { display: flex; flex: 1; min-height: 0; overflow: hidden; }
     #palette { width: 140px; background: #252526; border-right: 1px solid #3c3c3c; padding: 10px 8px; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; overflow-y: auto; }
     .palette-title { font-size: 10px; color: #6a6a6a; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
@@ -306,6 +341,12 @@ ${ctrlCardCssRules()}
     </span>
   </div>
   <div id="convention-banner">&#9888; Code convention not detected &#8212; running in yaml-only mode</div>
+  <div id="oled-strip">
+    <span id="oled-strip-label">OLED preview</span>
+    <button id="oled-popout-btn" title="Show in separate view">&#8599; Pop out</button>
+    <canvas id="oled-strip-canvas" width="128" height="64"></canvas>
+    <div id="oled-strip-foot">SSD1306 &middot; 128&times;64 &middot; &mdash;</div>
+  </div>
   <div id="design-area">
     <div id="palette">
       <div class="palette-title">Palette</div>

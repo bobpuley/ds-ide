@@ -9,6 +9,7 @@ import { createRafCoalescer } from './raf-coalesce';
 import { TOGGLE_POSITIONS } from '../devices/codegen/toggle';
 import { ENCODER_POSITION_MODULUS, wrapEncoderPosition } from '../devices/codegen/encoder';
 import { SdEntry, isTxtEntryName, formatSdSize } from './sd-viewer';
+import { decodeOledFrame, computeFrameRate } from './oled-frame';
 
 interface VsCodeApiForControls {
   postMessage(msg: ControlsWebviewMessage): void;
@@ -601,6 +602,66 @@ document.getElementById('sd-refresh-btn')?.addEventListener('click', () => {
   vscode.postMessage({ command: 'sdRefresh' });
 });
 
+// ── OLED live preview strip (FR-CE-2) ───────────────────────────────────
+const OLED_STRIP_WIDTH = 128;
+const OLED_STRIP_HEIGHT = 64;
+const OLED_STRIP_MAX_TIMESTAMPS = 120;
+let oledBus: string | null = null;
+const oledFrameTimestamps: number[] = [];
+
+function updateOledStripFoot(): void {
+  const footEl = document.getElementById('oled-strip-foot');
+  if (!footEl) return;
+  const fps = computeFrameRate(oledFrameTimestamps, 1000);
+  footEl.textContent = 'SSD1306 \xb7 ' + OLED_STRIP_WIDTH + '\xd7' + OLED_STRIP_HEIGHT + ' \xb7 ' + (oledBus ?? '—') + ' \xb7 ' + fps.toFixed(0) + ' fps';
+}
+
+// SSD1306 GDDRAM layout — mirrors oled-webview.ts's drawFrame (one byte per
+// 8 vertically-stacked pixels, height/8 pages of width bytes each). Kept
+// local rather than shared so the docked strip doesn't pull the standalone
+// OLED panel's bundle in as a dependency.
+function drawOledStripFrame(bytes: Uint8Array): void {
+  const canvas = document.getElementById('oled-strip-canvas') as HTMLCanvasElement | null;
+  const ctx = canvas?.getContext('2d');
+  if (!ctx) return;
+  const imageData = ctx.createImageData(OLED_STRIP_WIDTH, OLED_STRIP_HEIGHT);
+  const pages = OLED_STRIP_HEIGHT / 8;
+  for (let page = 0; page < pages; page++) {
+    for (let x = 0; x < OLED_STRIP_WIDTH; x++) {
+      const byte = bytes[page * OLED_STRIP_WIDTH + x] ?? 0;
+      for (let bit = 0; bit < 8; bit++) {
+        const on = (byte & (1 << bit)) !== 0;
+        const y = page * 8 + bit;
+        const idx = (y * OLED_STRIP_WIDTH + x) * 4;
+        const v = on ? 255 : 0;
+        imageData.data[idx] = v;
+        imageData.data[idx + 1] = v;
+        imageData.data[idx + 2] = v;
+        imageData.data[idx + 3] = 255;
+      }
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+}
+
+function applyOledEnabled(enabled: boolean, bus: string | null): void {
+  oledBus = bus;
+  const strip = document.getElementById('oled-strip');
+  if (strip) strip.classList.toggle('enabled', enabled);
+  updateOledStripFoot();
+}
+
+function applyOledFrame(data: string): void {
+  drawOledStripFrame(decodeOledFrame(data));
+  oledFrameTimestamps.push(performance.now());
+  if (oledFrameTimestamps.length > OLED_STRIP_MAX_TIMESTAMPS) oledFrameTimestamps.shift();
+  updateOledStripFoot();
+}
+
+document.getElementById('oled-popout-btn')?.addEventListener('click', () => {
+  vscode.postMessage({ command: 'oledPopOut' });
+});
+
 // ── LED state from emulator ───────────────────────────────────────────────
 function applyLed(gpioPin: number, lit: boolean): void {
   document.querySelectorAll('.vled-dot[data-pin="' + gpioPin + '"]').forEach(dot => {
@@ -636,6 +697,10 @@ window.addEventListener('message', (e: MessageEvent<ControlsHostMessage>) => {
     applySdContents(msg.entries);
   } else if (msg.command === 'sdPreview') {
     applySdPreview(msg.name, msg.content);
+  } else if (msg.command === 'oledEnabled') {
+    applyOledEnabled(msg.enabled, msg.bus);
+  } else if (msg.command === 'oledFrame') {
+    applyOledFrame(msg.data);
   }
 });
 
