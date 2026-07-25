@@ -74,7 +74,13 @@ export type ControlsHostMessage =
   // on why this path deliberately doesn't share that cache).
   | { command: 'sdCardEnabled'; enabled: boolean }
   | { command: 'sdContents'; entries: SdEntry[] }
-  | { command: 'sdPreview'; name: string; content: string | null };
+  | { command: 'sdPreview'; name: string; content: string | null }
+  // FR-CE-2: `oledEnabled` gates the docked strip's visibility and carries
+  // the bus label for its footer (mirrors sdCardEnabled's gating role);
+  // `oledFrame` carries the live framebuffer, same wire shape OledHostMessage
+  // uses for the standalone panel.
+  | { command: 'oledEnabled'; enabled: boolean; bus: string | null }
+  | { command: 'oledFrame'; data: string };
 
 export type ControlsWebviewMessage =
   | { command: 'webviewReady' }
@@ -84,7 +90,10 @@ export type ControlsWebviewMessage =
   | { command: 'toggle'; gpioPin: number; position: number }
   | { command: 'encoder'; gpioPin: number; position: number }
   | { command: 'sdRefresh' }
-  | { command: 'sdPreview'; name: string };
+  | { command: 'sdPreview'; name: string }
+  // FR-CE-2: "show in separate view" — opens today's standalone OledPanel
+  // unchanged, same target the Wiring Editor's View button opens.
+  | { command: 'oledPopOut' };
 
 // ── Wiring Editor ────────────────────────────────────────────────────────
 
