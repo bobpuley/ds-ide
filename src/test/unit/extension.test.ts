@@ -527,7 +527,7 @@ describe('controllers.yaml read robustness (FR-IPC-4)', () => {
 
     const handler = getControlsEditorMessageHandler();
     promisesMock['writeFile']!.mockClear();
-    handler({ command: 'editorSave', cfg: { pots: [], buttons: [], leds: [], errors: [] } });
+    handler({ command: 'editorSave', cfg: { pots: [], buttons: [], leds: [], encoders: [], toggles: [], rgbleds: [], errors: [] } });
     await Promise.resolve();
     expect(promisesMock['writeFile']).not.toHaveBeenCalled();
   });
@@ -545,7 +545,7 @@ describe('controllers.yaml read robustness (FR-IPC-4)', () => {
 
     const handler = getControlsEditorMessageHandler();
     promisesMock['writeFile']!.mockClear();
-    handler({ command: 'editorSave', cfg: { pots: [], buttons: [], leds: [], errors: [] } });
+    handler({ command: 'editorSave', cfg: { pots: [], buttons: [], leds: [], encoders: [], toggles: [], rgbleds: [], errors: [] } });
     await Promise.resolve();
     expect(promisesMock['writeFile']).toHaveBeenCalledWith(
       expect.stringMatching(/controllers\.yaml$/), expect.anything(), 'utf8',
@@ -566,7 +566,7 @@ describe('controllers.yaml read robustness (FR-IPC-4)', () => {
     const { handler, mockView } = getControlsEditorHandlerAndView();
     const savedCfg = {
       pots: [{ id: 'pot1', label: 'Pot 1', adcChannel: 0, range: [0, 1], taper: 'linear', default: 0, pos: [10, 20] }],
-      buttons: [], leds: [], errors: [],
+      buttons: [], leds: [], encoders: [], toggles: [], rgbleds: [], errors: [],
     };
     handler({ command: 'editorSave', cfg: savedCfg });
     // Allow the writeFile().then() chain (and the buildControlsConfig() await inside it) to settle.
@@ -586,6 +586,66 @@ describe('controllers.yaml read robustness (FR-IPC-4)', () => {
         command: 'editorLoad',
         cfg: expect.objectContaining({
           pots: expect.arrayContaining([expect.objectContaining({ id: 'pot1', pos: [10, 20] })]),
+        }),
+      }),
+    );
+  });
+
+  // M50 (FR-CE-3) — encoder/toggle/rgbled positions previously had no
+  // persistence mechanism at all; this is the drag → save → reload
+  // regression the milestone's DoD asks for, at the same editorSave →
+  // flush level as FR-CE-1's pot test above, plus the controlsConfig
+  // placements a convention-mode canvas actually reads its position from.
+  it('persists a saved encoder position and reflects it in both editorLoad and controlsConfig placements (FR-CE-3)', async () => {
+    promisesMock['readFile']!.mockImplementation((p: unknown) => {
+      const fp = String(p);
+      if (fp.endsWith('controllers.yaml')) return Promise.resolve('pots: []\nbuttons: []\nleds: []\n');
+      return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    });
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await triggerLoadViaSave(ctx);
+
+    const { handler, mockView } = getControlsEditorHandlerAndView();
+    const savedCfg = {
+      pots: [], buttons: [], leds: [],
+      encoders: [{ id: 'enc1', pos: [15, 25] }], toggles: [], rgbleds: [],
+      errors: [],
+    };
+    handler({ command: 'editorSave', cfg: savedCfg });
+    // Let the writeFile().then() chain and buildControlsConfig()'s own
+    // fs-backed awaits (findEffectSource etc.) fully settle — a fixed
+    // Promise.resolve() count isn't enough for this deeper async chain.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockView.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: 'editorLoad',
+        cfg: expect.objectContaining({
+          encoders: expect.arrayContaining([expect.objectContaining({ id: 'enc1', pos: [15, 25] })]),
+        }),
+      }),
+    );
+    expect(mockView.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: 'controlsConfig',
+        placements: expect.arrayContaining([expect.objectContaining({ id: 'enc1', pos: [15, 25] })]),
+      }),
+    );
+
+    // Simulate switching away and back — the persisted position must still
+    // be there, not just present in the immediate post-save flush.
+    mockView.webview.postMessage.mockClear();
+    const visibilityCb = (mockView.onDidChangeVisibility as ReturnType<typeof vi.fn>).mock.calls[0]![0] as () => void;
+    mockView.visible = true;
+    visibilityCb();
+
+    expect(mockView.webview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: 'editorLoad',
+        cfg: expect.objectContaining({
+          encoders: expect.arrayContaining([expect.objectContaining({ id: 'enc1', pos: [15, 25] })]),
         }),
       }),
     );
@@ -639,7 +699,7 @@ describe('controllers.yaml read robustness (FR-IPC-4)', () => {
     const { handler, mockView } = getControlsEditorHandlerAndView();
     mockView.webview.postMessage.mockClear();
     const savedCfg = {
-      pots: [], leds: [], errors: [],
+      pots: [], leds: [], encoders: [], toggles: [], rgbleds: [], errors: [],
       buttons: [{ id: 'selectBtn', label: 'Select Effect', gpioPin: 11, mode: 'momentary', activeLevel: 'low', pos: [20, 20] }],
     };
     handler({ command: 'editorSave', cfg: savedCfg });

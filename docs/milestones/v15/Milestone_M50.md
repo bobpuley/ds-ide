@@ -15,7 +15,7 @@ panel-visibility round-trips, matching the existing pot/button/led behavior.
 
 ## Sprint Tasks
 
-### [ ] feat: persist encoder/toggle/rgbled canvas positions in controllers.yaml (FR-CE-3)
+### [x] feat: persist encoder/toggle/rgbled canvas positions in controllers.yaml (FR-CE-3)
 
 Extends `controllers.yaml` with a section per device kind (mirroring `controllers:`/`buttons:`/
 `leds:`), each entry carrying its own `editor_pos` — the same field/round-trip convention
