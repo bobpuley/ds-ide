@@ -5,6 +5,14 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.15.1 — 2026-07-25
+
+**M49 — Controls Editor as Preview Surface (OLED Embedding)** *(FR-CE-2 — DoD green)*
+
+- **FR-CE-2** — The Controls Editor now docks the OLED live view directly above the layout canvas when the `oled` peripheral is enabled, rather than requiring the separate standalone OLED panel to be opened first — both stay visible at once (mockup Variant B, `docs/mockups/m49-oled-embed.html`), instead of a tabbed Layout/Preview split that would hide one behind the other. `EmulatorManager`'s `oledFrame` message is now dual-subscribed: `OledPanel`'s own listener is unchanged, and a second forward in `extension.ts`'s central dispatcher feeds `ControlsViewProvider`. A "↗ Pop out" action in the strip opens today's unchanged standalone `OledPanel` via a shared `showOledPanel()` helper, now also reused by the Wiring Editor's existing View button. Disabling `oled` collapses the strip back to today's exact full-height layout — no command IDs, contribution labels, or panel naming changed.
+
+---
+
 ## 0.15.0 — 2026-07-25
 
 **M48 — Controls Editor Fix & I/O Monitor UIs** *(FR-CE-1, FR-SD-1, FR-MIDI-1 — all DoD green)*
