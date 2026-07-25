@@ -39,3 +39,14 @@ view" action still opens the existing standalone OLED panel for detailed inspect
 Controls Editor as a general real-world preview surface (future: pedal/board/rack layouts) — that
 broader reframing, and any panel rename, is explicitly out of scope for this milestone (see
 `02_assumptions-and-risks.md`).
+
+### M50 — Persist Editor Positions for Encoder, Toggle, and RGB LED
+
+**FR-CE-3 — Controls Editor persists canvas positions for encoder, toggle, and RGB LED**
+Today only pot/button/led carry an `editor_pos` field in `controllers.yaml`; encoder, toggle, and
+RGB LED positions have no persistence mechanism at all, so the canvas always auto-layouts them
+fresh on every render regardless of how the user dragged them (discovered during M48/FR-CE-1
+manual testing, confirmed distinct from that milestone's cache-sync bug — pot/button/led positions
+round-trip correctly). Add an equivalent position-persistence path for these three device kinds so
+dragging them in the Controls Editor sticks across saves and panel-visibility round-trips, matching
+the existing pot/button/led behavior.

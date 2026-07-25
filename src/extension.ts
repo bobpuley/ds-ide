@@ -33,6 +33,7 @@ import { DaisyDebugAdapterFactory, DaisyDebugAdapterTrackerFactory } from './deb
 import { buildForHardware } from './commands/hardware-build';
 import { flashToHardware } from './commands/dfu-flash';
 import { SineParams, SINE_DEFAULTS, AudioSource, AUDIO_SOURCE_DEFAULTS } from './webview/scope-panel';
+import { SdEntry, sortSdEntries, SD_PREVIEW_MAX_BYTES } from './webview/sd-viewer';
 import { ControlsViewProvider } from './sidebar/controls-editor-panel';
 import { WiringViewProvider } from './sidebar/wiring-editor-panel';
 import { createEffectProject } from './commands/create-effect-project';
@@ -159,6 +160,43 @@ async function confirmAppendMarkerBlocks(): Promise<boolean> {
   return choice === 'Append';
 }
 
+// FR-SD-1: root-level listing only (matches the request's "root content
+// list" scope — recursive browsing is future work). Missing ./sdcard/
+// (peripheral never enabled, or nothing written yet) is treated as empty
+// rather than an error.
+async function readSdCardEntries(folder: string): Promise<SdEntry[]> {
+  const dir = path.join(folder, 'sdcard');
+  try {
+    const names = await fs.promises.readdir(dir);
+    const entries = await Promise.all(names.map(async (name): Promise<SdEntry | null> => {
+      try {
+        const stat = await fs.promises.stat(path.join(dir, name));
+        return stat.isFile() ? { name, size: stat.size } : null;
+      } catch {
+        return null;
+      }
+    }));
+    return sortSdEntries(entries.filter((e): e is SdEntry => e !== null));
+  } catch {
+    return [];
+  }
+}
+
+// `name` is untrusted webview input — reject anything that isn't a bare
+// root-level filename before it ever reaches path.join (FR-IPC-3-style
+// guard, same convention as the wiring handlers' id-regex checks).
+async function readSdCardPreview(folder: string, name: string): Promise<string | null> {
+  if (!name || name.includes('/') || name.includes('\\') || name === '..') return null;
+  const filePath = path.join(folder, 'sdcard', name);
+  try {
+    const buf = await fs.promises.readFile(filePath);
+    const capped = buf.subarray(0, SD_PREVIEW_MAX_BYTES);
+    return new TextDecoder('utf-8', { fatal: true }).decode(capped);
+  } catch {
+    return null;
+  }
+}
+
 async function buildControlsConfig(folder: string, yamlCfg: ControllerConfig): Promise<ControlsConfig> {
   const placements: ControlsPlacement[] = [
     ...yamlCfg.pots.filter(p => p.pos).map(p => ({ id: p.id, pos: p.pos! })),
@@ -225,6 +263,13 @@ class DeployCoordinator {
     private readonly extensionPath: string,
     private readonly loadControllerConfig: () => Promise<ControllerConfig>,
     private readonly workspaceState: vscode.Memento,
+    // FR-CE-1 follow-up: the single shared, staleness-guarded computation
+    // every other controls-refresh trigger also routes through (see
+    // computeControlsConfig() in activate()) — deploy needs the computed
+    // value even in debug mode (for togglePins below) but only pushes it
+    // to the Controls Editor outside debug mode, so it can't use the
+    // simpler refreshControlsView() wrapper those triggers share.
+    private readonly computeControlsConfig: (folder: string, cfg: ControllerConfig) => Promise<ControlsConfig | undefined>,
   ) {}
 
   private setDeploying(): void {
@@ -292,8 +337,8 @@ class DeployCoordinator {
     // see docs/milestones/v14/Milestone_M44.md's scope note); their pins are
     // recovered from the code annotation convention instead (FR-DEV-7).
     const folder = resolveActiveFolder(this.workspaceState)?.uri.fsPath ?? '';
-    const controlsConfig = await buildControlsConfig(folder, cfg);
-    const togglePins = controlsConfig.controls.filter(c => c.kind === 'toggle').map(c => c.pin);
+    const controlsConfig = await this.computeControlsConfig(folder, cfg);
+    const togglePins = (controlsConfig?.controls ?? []).filter(c => c.kind === 'toggle').map(c => c.pin);
     this.toggleStore.setDefaults(togglePins);
 
     if (opts.debug) {
@@ -316,7 +361,7 @@ class DeployCoordinator {
     void this.showOledIfEnabled();
     void this.showMidiIfEnabled();
     this.controlsProvider.loadEditor(cfg);
-    this.controlsProvider.postControlsConfig(controlsConfig);
+    if (controlsConfig) this.controlsProvider.postControlsConfig(controlsConfig);
     void vscode.commands.executeCommand('workbench.view.extension.ds-ide-controls');
     const deployed = await deployToEmulator(this.manager, this.emulatorChannel);
     if (!deployed) {
@@ -445,9 +490,16 @@ export function activate(context: vscode.ExtensionContext): void {
       const folder = resolveActiveFolder(context.workspaceState);
       if (!folder) return;
       const yamlPath = path.join(folder.uri.fsPath, 'controllers.yaml');
-      void fs.promises.writeFile(yamlPath, serializeControllerConfig(cfg), 'utf8').catch((err: unknown) => {
-        void vscode.window.showErrorMessage(`ds-ide: could not write controllers.yaml: ${String(err)}`);
-      });
+      void fs.promises.writeFile(yamlPath, serializeControllerConfig(cfg), 'utf8')
+        .then(async () => {
+          // Keep the provider's cache in sync with what's now on disk — otherwise the next
+          // onDidChangeVisibility flush re-sends the stale pre-save snapshot and clobbers the
+          // positions just saved (FR-CE-1).
+          await refreshControlsView(folder.uri.fsPath, cfg);
+        })
+        .catch((err: unknown) => {
+          void vscode.window.showErrorMessage(`ds-ide: could not write controllers.yaml: ${String(err)}`);
+        });
     },
     (channel, value) => {
       potStore?.set(channel, value);
@@ -464,7 +516,48 @@ export function activate(context: vscode.ExtensionContext): void {
     (gpioPin, position) => {
       manager?.sendEncoder(gpioPin, position);
     },
+    () => {
+      const folder = resolveActiveFolder(context.workspaceState);
+      if (!folder) { controlsProvider.postSdContents([]); return; }
+      void readSdCardEntries(folder.uri.fsPath).then(entries => controlsProvider.postSdContents(entries));
+    },
+    (name) => {
+      const folder = resolveActiveFolder(context.workspaceState);
+      if (!folder) { controlsProvider.postSdPreview(name, null); return; }
+      void readSdCardPreview(folder.uri.fsPath, name).then(content => controlsProvider.postSdPreview(name, content));
+    },
   );
+
+  // FR-CE-1 follow-up: buildControlsConfig() used to be independently
+  // called and pushed from six separate triggers (activation, layout save,
+  // wirePin, unwirePin, any yaml/cpp save, deploy) — each doing its own
+  // "read the effect source, parse, rebuild placements" round trip with no
+  // shared sequencing. Beyond the duplicated work, this is how a
+  // slower-but-earlier-started refresh could resolve *after* a
+  // faster-but-later one and silently revert it (observed: a control
+  // disappearing from the canvas right after a successful save).
+  // computeControlsConfig() is now the single place that performs this
+  // read; requestId discards a response that's no longer the most recently
+  // *started* one before it's ever handed back to a caller.
+  let controlsConfigRequestId = 0;
+  async function computeControlsConfig(folder: string, cfg: ControllerConfig): Promise<ControlsConfig | undefined> {
+    const requestId = ++controlsConfigRequestId;
+    const result = await buildControlsConfig(folder, cfg);
+    if (requestId !== controlsConfigRequestId) return undefined;
+    return result;
+  }
+
+  // Refreshes both halves of what the Controls Editor shows — the layout
+  // (loadEditor) and the convention-derived control set (postControlsConfig)
+  // — as one unit. Used by every trigger that always wants both pushed
+  // unconditionally; DeployCoordinator is the one exception (it needs the
+  // computed value even when not pushing, in debug mode — see
+  // performDeploy), so it calls computeControlsConfig directly instead.
+  async function refreshControlsView(folder: string, cfg: ControllerConfig): Promise<void> {
+    controlsProvider.loadEditor(cfg);
+    const result = await computeControlsConfig(folder, cfg);
+    if (result) controlsProvider.postControlsConfig(result);
+  }
 
   const oledPanel = new OledPanel(context.extensionUri, manager);
   const midiPanel = new MidiPanel(context.extensionUri, manager);
@@ -537,7 +630,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const wiredPinList: WiredPin[] = expandToWiredPins(controls);
       wiringProvider?.postWiredPins(wiredPinList);
       const cfg = await loadControllerConfig();
-      controlsProvider?.postControlsConfig(await buildControlsConfig(folder, cfg));
+      await refreshControlsView(folder, cfg);
     },
     async (pinNumber: number, id: string) => {
       const folder = resolveActiveFolder(context.workspaceState)?.uri.fsPath ?? '';
@@ -568,7 +661,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const wiredPinList: WiredPin[] = expandToWiredPins(controls);
       wiringProvider?.postWiredPins(wiredPinList);
       const cfg = await loadControllerConfig();
-      controlsProvider?.postControlsConfig(await buildControlsConfig(folder, cfg));
+      await refreshControlsView(folder, cfg);
     },
     async (peripheralId: string, enabled: boolean) => {
       const folder = resolveActiveFolder(context.workspaceState)?.uri.fsPath ?? '';
@@ -751,7 +844,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const deployCoordinator = new DeployCoordinator(
     manager, statusBar, potStore, buttonStore, toggleStore, session, scopePanel, oledPanel, midiPanel,
     controlsProvider, diagnostics, buildChannel, emulatorChannel, context.extensionPath, loadControllerConfig,
-    context.workspaceState,
+    context.workspaceState, computeControlsConfig,
   );
 
   const runConfigProvider = new DaisyRunConfigurationProvider(
@@ -767,8 +860,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     const folder = activeFolder.uri.fsPath;
     const cfg = await loadControllerConfig();
-    controlsProvider.loadEditor(cfg);
-    controlsProvider.postControlsConfig(await buildControlsConfig(folder, cfg));
+    await refreshControlsView(folder, cfg);
     const effectPath = await findEffectSource(folder);
     // Scopes the ds-ide.* keybindings (package.json) so they don't fire in
     // unrelated workspaces (FR-QA-EXT-6).
@@ -785,6 +877,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     wiringProvider.postWiredPins(wiredPins);
     wiringProvider.postPeripherals(peripherals);
+    controlsProvider.postSdCardEnabled(peripherals.some(p => p.id === 'sdcard' && p.enabled));
   }
 
   void initViewsFromProject();
@@ -826,8 +919,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!isYaml && !mightBeSource) return;
 
       const cfg = await loadControllerConfig();
-      controlsProvider.loadEditor(cfg);
-      controlsProvider.postControlsConfig(await buildControlsConfig(folder, cfg));
+      await refreshControlsView(folder, cfg);
 
       if (mightBeSource) {
         const effectPath = await findEffectSource(folder);
@@ -847,6 +939,7 @@ export function activate(context: vscode.ExtensionContext): void {
           } catch { /* unreadable */ }
           wiringProvider.postWiredPins(pins);
           wiringProvider.postPeripherals(peripherals);
+          controlsProvider.postSdCardEnabled(peripherals.some(p => p.id === 'sdcard' && p.enabled));
         }
       }
     }),

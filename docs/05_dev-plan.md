@@ -130,9 +130,12 @@ Full registry in [`docs/v14/05_dev-plan.md`](v14/05_dev-plan.md).
 
 | ID   | Name          | Status          | Version   | File                                              |
 |------|---------------|-----------------|-----------|----------------------------------------------------|
-| M48  | Controls Editor Fix & I/O Monitor UIs | **in progress** | 0.15.0 | [Milestone_M48.md](milestones/v15/Milestone_M48.md) |
+| M48  | Controls Editor Fix & I/O Monitor UIs | **released** | 0.15.0 | [Milestone_M48.md](milestones/v15/Milestone_M48.md) |
 | M49  | Controls Editor as Preview Surface (OLED Embedding) | **planned**     | 0.15.1 | [Milestone_M49.md](milestones/v15/Milestone_M49.md) |
+| M50  | Persist Editor Positions for Encoder, Toggle, and RGB LED | **planned** | 0.15.2 | [Milestone_M50.md](milestones/v15/Milestone_M50.md) |
 
 Source: 2026-07-24 intake session — bug report + 3 feature requests, split into two milestones
 (M48: concrete additive UI work; M49: the controls-editor reframing/OLED-embedding, kept separate
-since it changes the panel's default view and warranted its own design pass).
+since it changes the panel's default view and warranted its own design pass). M50 added
+2026-07-24 from a gap discovered during M48/FR-CE-1 manual testing (encoder/toggle/rgbled canvas
+positions have no persistence mechanism at all — distinct from FR-CE-1's cache-sync bug).

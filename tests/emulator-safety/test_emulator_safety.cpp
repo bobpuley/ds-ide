@@ -12,6 +12,8 @@
 #include "session_player.h"
 #include "session_recorder.h"
 #include "daisy/gpio.h"
+#include "daisy/midi_usb_handler.h"
+#include "daisy/midi_uart_handler.h"
 
 #include <cassert>
 #include <chrono>
@@ -1293,6 +1295,102 @@ static void test_session_player_popblock_rt_safe_timing() {
     ::unlink(tmp);
 }
 
+// ---- FR-MIDI-1: MidiUsbHandler/MidiUartHandler::SendMessage ---------------
+
+// Drains g_state.midi_queue into a vector, so a test can inspect exactly
+// what SendMessage() enqueued without interference from anything else that
+// may have touched the shared queue.
+static std::vector<std::string> drain_midi_queue() {
+    std::vector<std::string> out;
+    std::string msg;
+    while (daisy_emu::g_state.midi_queue.pop(msg)) out.push_back(msg);
+    return out;
+}
+
+static void test_midi_usb_send_message_enqueues_midi_tx() {
+    std::printf("--- FR-MIDI-1: MidiUsbHandler::SendMessage enqueues a midiTx message ---\n");
+    drain_midi_queue();  // clear anything left over from an earlier test
+
+    daisy::MidiUsbHandler usb;
+    uint8_t control_change[3] = {0xB1, 7, 100};  // CC, channel 1, controller 7, value 100
+    usb.SendMessage(control_change, sizeof(control_change));
+
+    auto msgs = drain_midi_queue();
+    CHECK(msgs.size() == 1, "SendMessage enqueues exactly one message");
+    if (!msgs.empty()) {
+        CHECK(msgs[0].find("\"type\":\"midiTx\"") != std::string::npos, "message type is midiTx");
+        CHECK(msgs[0].find("\"status\":177") != std::string::npos, "status byte (0xB1=177) round-trips");
+        CHECK(msgs[0].find("\"data1\":7") != std::string::npos, "data1 (controller number) round-trips");
+        CHECK(msgs[0].find("\"data2\":100") != std::string::npos, "data2 (value) round-trips");
+        CHECK(msgs[0].find("\"channel\":1") != std::string::npos, "channel decoded from the low nibble of status");
+        CHECK(msgs[0].find("\"midiType\":2") != std::string::npos,
+              "midiType is ControlChange (2), matching MidiMessageType's enum value");
+    }
+}
+
+static void test_midi_usb_send_message_handles_short_program_change() {
+    std::printf("--- FR-MIDI-1: MidiUsbHandler::SendMessage tolerates a 2-byte message (Program Change) ---\n");
+    drain_midi_queue();
+
+    daisy::MidiUsbHandler usb;
+    uint8_t program_change[2] = {0xC2, 5};  // Program Change, channel 2, program 5 — no 3rd byte
+    usb.SendMessage(program_change, sizeof(program_change));
+
+    auto msgs = drain_midi_queue();
+    CHECK(msgs.size() == 1, "a 2-byte message still enqueues exactly one message");
+    if (!msgs.empty()) {
+        CHECK(msgs[0].find("\"data1\":5") != std::string::npos, "data1 (program number) round-trips");
+        CHECK(msgs[0].find("\"data2\":0") != std::string::npos,
+              "data2 defaults to 0 rather than reading past the 2-byte buffer");
+    }
+}
+
+static void test_midi_usb_send_message_ignores_null_or_empty_buffer() {
+    std::printf("--- FR-MIDI-1: MidiUsbHandler::SendMessage ignores a null/empty buffer ---\n");
+    drain_midi_queue();
+
+    daisy::MidiUsbHandler usb;
+    usb.SendMessage(nullptr, 3);
+    uint8_t empty[1] = {0};
+    usb.SendMessage(empty, 0);
+
+    auto msgs = drain_midi_queue();
+    CHECK(msgs.empty(), "a null buffer or zero size enqueues nothing (no crash either)");
+}
+
+static void test_midi_uart_send_message_enqueues_midi_tx() {
+    std::printf("--- FR-MIDI-1: MidiUartHandler::SendMessage enqueues a midiTx message ---\n");
+    drain_midi_queue();
+
+    daisy::MidiUartHandler uart;
+    uint8_t note_on[3] = {0x90, 60, 100};  // NoteOn, channel 0, note 60, velocity 100
+    uart.SendMessage(note_on, sizeof(note_on));
+
+    auto msgs = drain_midi_queue();
+    CHECK(msgs.size() == 1, "SendMessage enqueues exactly one message");
+    if (!msgs.empty()) {
+        CHECK(msgs[0].find("\"type\":\"midiTx\"") != std::string::npos, "message type is midiTx");
+        CHECK(msgs[0].find("\"midiType\":1") != std::string::npos,
+              "midiType is NoteOn (1), matching MidiMessageType's enum value");
+    }
+}
+
+static void test_midi_uart_and_usb_share_the_same_midi_queue() {
+    std::printf("--- FR-MIDI-1: MidiUsbHandler and MidiUartHandler share midi_queue (no second queue) ---\n");
+    drain_midi_queue();
+
+    daisy::MidiUsbHandler usb;
+    daisy::MidiUartHandler uart;
+    uint8_t msg1[3] = {0x90, 1, 1};
+    uint8_t msg2[3] = {0x90, 2, 2};
+    usb.SendMessage(msg1, sizeof(msg1));
+    uart.SendMessage(msg2, sizeof(msg2));
+
+    auto msgs = drain_midi_queue();
+    CHECK(msgs.size() == 2,
+          "both transports' SendMessage calls land in the same queue, drained together");
+}
+
 // ---- main ------------------------------------------------------------------
 
 int main() {
@@ -1336,6 +1434,11 @@ int main() {
     test_session_player_short_block_zero_fill();
     test_session_player_replay_deterministic();
     test_session_player_popblock_rt_safe_timing();
+    test_midi_usb_send_message_enqueues_midi_tx();
+    test_midi_usb_send_message_handles_short_program_change();
+    test_midi_usb_send_message_ignores_null_or_empty_buffer();
+    test_midi_uart_send_message_enqueues_midi_tx();
+    test_midi_uart_and_usb_share_the_same_midi_queue();
 
     std::printf("\nResult: %s\n", failures == 0 ? "all passed" : "FAILURES");
     return failures == 0 ? 0 : 1;

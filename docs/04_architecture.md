@@ -28,6 +28,15 @@ below, one per requirement.
   webview message kind alongside `midiRx`. Send-to-effect UI (Program Change/Control Change) uses
   the existing `midiEvent` wire message (extension→emulator) M47 already defined — no new inbound
   message type needed, just new webview UI producing more of the same byte-triplet shape.
+- **FR-CE-3 (persist encoder/toggle/rgbled positions):** extends `controllers.yaml` with a section
+  per device kind (mirroring `controllers:`/`buttons:`/`leds:`), each entry carrying its own
+  `editor_pos` — the same field/round-trip convention `ControllerDef`/`ButtonDef`/`LedDef` already
+  use, rather than inventing a new storage shape or piggybacking position onto the source
+  annotation. `buildControlsConfig()`'s `placements` array (currently only derived from
+  `yamlCfg.pots/buttons/leds`) gains these three kinds; the webview's convention-mode Save handler
+  needs a parallel `updatedEncoders`/`updatedToggles`/`updatedRgbLeds` branch alongside its existing
+  `updatedPots`/`updatedButtons`/`updatedLeds`. Not designed in further detail here — resolve the
+  concrete `ControllerConfig` shape change (new fields vs. new top-level arrays) when M50 starts.
 - **FR-CE-2 (OLED embedding in Controls Editor):** `ControlsViewProvider` (sidebar `WebviewView`,
   `src/sidebar/controls-editor-panel.ts`) and `OledPanel` (editor-column `WebviewPanel`,
   `src/webview/oled-panel.ts`) are separate infrastructure today with no shared abstraction.

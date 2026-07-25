@@ -52,6 +52,14 @@ v15 risk-tracking is underway — see below.
 > docked-strip layout (M49) was designed around the palette's *absence* — if the palette is
 > reinstated later, revisit the strip's placement/width alongside it.
 
+> ⚠️ ASSUMPTION (known gap, deliberately deferred): encoder/toggle/rgbled canvas positions have no
+> persistence mechanism at all — no `editor_pos`-equivalent field exists for them anywhere (they're
+> not declared in `controllers.yaml`, same M44 scope decision that excluded toggle), so
+> `renderConventionCanvas()` always falls back to auto-layout (`nextPos()`) for these kinds on every
+> render, independent of anything the user drags or saves. Discovered during M48/FR-CE-1 manual
+> testing and confirmed distinct from that milestone's cache-sync bug (pot/button/led positions do
+> round-trip correctly). Logged as a future feature request (01_input-ideas.md), not fixed here.
+
 ## Carried-over open items
 
 - **`MidiUartHandler::Config` field names unverified against real hardware** — M47

@@ -6,6 +6,7 @@ import type { ControllerConfig } from '../controllers/controller-config';
 import type { WiredPin, DeviceType } from '../wiring/wiring-panel';
 import type { ControlsPlacement } from './scope-panel';
 import type { PeripheralDisplayState } from '../wiring/peripheral-state';
+import type { SdEntry } from './sd-viewer';
 
 // ── Daisy Scope panel ────────────────────────────────────────────────────
 
@@ -45,15 +46,19 @@ export type OledWebviewMessage =
 // ── MIDI panel (FR-DEV-18) ───────────────────────────────────────────────
 
 // Relays the shim's parsed-event confirmation (emulator/runtime/ipc_server.cpp's
-// `midiRx` message) for the monitor — `midiType` is daisy::MidiMessageType's
+// `midiRx` message, and the shim's own SendMessage()-driven `midiTx` message —
+// FR-MIDI-1) for the monitor — `midiType` is daisy::MidiMessageType's
 // underlying int value (0=NoteOff, 1=NoteOn, 2=ControlChange, 3=Unknown).
 export type MidiHostMessage =
-  | { command: 'midiRx'; status: number; data1: number; data2: number; channel: number; midiType: number };
+  | { command: 'midiRx'; status: number; data1: number; data2: number; channel: number; midiType: number }
+  | { command: 'midiTx'; status: number; data1: number; data2: number; channel: number; midiType: number };
 
 export type MidiWebviewMessage =
   | { command: 'webviewReady' }
   | { command: 'noteOn'; note: number; velocity: number }
-  | { command: 'noteOff'; note: number; velocity: number };
+  | { command: 'noteOff'; note: number; velocity: number }
+  | { command: 'programChange'; program: number }
+  | { command: 'controlChange'; controller: number; value: number };
 
 // ── Controls Editor ──────────────────────────────────────────────────────
 
@@ -62,7 +67,14 @@ export type ControlsHostMessage =
   | { command: 'status'; running: boolean; sampleRate?: number; blockSize?: number }
   | { command: 'editorLoad'; cfg: ControllerConfig }
   | { command: 'led'; gpioPin: number; lit: boolean }
-  | { command: 'rgbLed'; gpioPin: number; r: number; g: number; b: number };
+  | { command: 'rgbLed'; gpioPin: number; r: number; g: number; b: number }
+  // FR-SD-1: `enabled` gates the whole accordion section; `entries` is the
+  // root-level listing, re-read from disk on webview focus/explicit refresh
+  // (not cached the way editorLoad/controlsConfig are — see FR-CE-1's note
+  // on why this path deliberately doesn't share that cache).
+  | { command: 'sdCardEnabled'; enabled: boolean }
+  | { command: 'sdContents'; entries: SdEntry[] }
+  | { command: 'sdPreview'; name: string; content: string | null };
 
 export type ControlsWebviewMessage =
   | { command: 'webviewReady' }
@@ -70,7 +82,9 @@ export type ControlsWebviewMessage =
   | { command: 'pot'; channel: number; value: number }
   | { command: 'button'; gpioPin: number; pressed: boolean }
   | { command: 'toggle'; gpioPin: number; position: number }
-  | { command: 'encoder'; gpioPin: number; position: number };
+  | { command: 'encoder'; gpioPin: number; position: number }
+  | { command: 'sdRefresh' }
+  | { command: 'sdPreview'; name: string };
 
 // ── Wiring Editor ────────────────────────────────────────────────────────
 
