@@ -5,6 +5,18 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.15.0 — 2026-07-25
+
+**M48 — Controls Editor Fix & I/O Monitor UIs** *(FR-CE-1, FR-SD-1, FR-MIDI-1 — all DoD green)*
+
+- **FR-CE-1** — Fixed the Controls Editor's layout-persistence bug: `onEditorSave` wrote `controllers.yaml` straight to disk via `fs.promises.writeFile`, bypassing VS Code's document model, so `ControlsViewProvider`'s cached `lastEditorCfg`/`lastControlsConfig` never refreshed — the next panel-visibility flush re-sent the stale pre-save snapshot and clobbered the just-saved positions. Manual testing surfaced two further, deeper issues past the original cache-sync fix: `editorLoad()` unconditionally re-rendered via the legacy YAML-editor path even in convention mode, momentarily (and, once the cache-sync fix started firing it right after every save, visibly) stomping the correctly-rendered canvas — canvas rendering now belongs solely to `applyControlsConfig()`, which knows the authoritative `missingBlock` state. And `buildControlsConfig()` was independently called and pushed from six separate, unsequenced triggers (activation, layout save, wirePin/unwirePin, any yaml/cpp save, deploy), so a slower-but-earlier-started refresh could resolve after a faster-but-later one and silently revert a just-saved layout — consolidated into one `computeControlsConfig()`/`refreshControlsView()` path guarded by a monotonic request id.
+- **FR-SD-1** — Adds a read-only SD card content viewer to the Controls Editor: an inline-accordion section below the canvas (mirroring the Wiring Editor's Peripherals section) showing `./sdcard/`'s root-level entries (name, size) when the `sdcard` peripheral is enabled. Refreshes on webview focus and an explicit Refresh action; clicking a `.txt` row lazily requests a size-capped, host-read preview (non-UTF-8 or non-`.txt` files show "preview not available"). Host-side filesystem access stays in `extension.ts`, matching the existing convention that `ControlsViewProvider` only routes messages and never touches the filesystem itself.
+- **FR-MIDI-1** — Adds `MidiUsbHandler::SendMessage()`/`MidiUartHandler::SendMessage()` to the emulator shim: an effect calling either now enqueues a `midiTx` message onto the existing `midi_queue` (M47) alongside inbound `midiRx` telemetry, rather than a second queue. Extends `MidiPanel` with a Program Change selector and Control Change sender alongside the existing virtual keyboard, and unifies the monitor into one bounded-history list showing both Rx and Tx traffic with a direction label/color.
+- Discovered a gap during FR-CE-1's manual testing, deliberately deferred rather than folded in: encoder/toggle/rgbled canvas positions have no persistence mechanism at all (no `editor_pos`-equivalent field anywhere), so they always auto-layout fresh on every render independent of dragging or saving — pot/button/led positions round-trip correctly. Filed as M50.
+- Fixed a pre-existing, unrelated gap surfaced while adding FR-MIDI-1's shim tests: `tests/emulator-safety/run_tests.sh` was missing `midi_event.cpp` from its link sources since M47, so the harness failed to build at all — now also compiles the MIDI shim sources.
+
+---
+
 ## 0.14.4 — 2026-07-22
 
 **M47 — MIDI: TRS & USB** *(FR-DEV-16, FR-DEV-17, FR-DEV-18 — all DoD green)*
