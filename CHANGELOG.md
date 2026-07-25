@@ -5,6 +5,14 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.15.2 — 2026-07-25
+
+**M50 — Persist Editor Positions for Encoder, Toggle, and RGB LED** *(FR-CE-3 — DoD green)*
+
+- **FR-CE-3** — `controllers.yaml` gains three new position-only sections — `encoders:`, `toggles:`, `rgbleds:` — each entry carrying just `id` + an optional `editor_pos`, mirroring the `editor_pos` field/round-trip convention `ControllerDef`/`ButtonDef`/`LedDef` already use for pot/button/led (these three device kinds have no other YAML-configurable fields; their pin/behavior comes entirely from the code annotation convention). `buildControlsConfig()`'s `placements` array now includes all three kinds, and the webview's convention-mode Save handler gained parallel `updatedEncoders`/`updatedToggles`/`updatedRgbLeds` branches. Dragging an encoder, toggle, or RGB LED in the Controls Editor now sticks across saves and panel-visibility round-trips, closing the gap discovered during M48/FR-CE-1 manual testing.
+
+---
+
 ## 0.15.1 — 2026-07-25
 
 **M49 — Controls Editor as Preview Surface (OLED Embedding)** *(FR-CE-2 — DoD green)*
