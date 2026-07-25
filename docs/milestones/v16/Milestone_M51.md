@@ -17,7 +17,7 @@ against Electron's ABI as a standard, repeatable step — for local dev and for 
 
 ## Sprint Tasks
 
-### [ ] fix: rebuild the host MIDI bridge's native addon against Electron's ABI (FR-DEV-19)
+### [x] fix: rebuild the host MIDI bridge's native addon against Electron's ABI (FR-DEV-19)
 
 `midi`'s native addon uses NAN (`node_modules/midi/binding.gyp` depends on `nan`), not
 N-API/Node-API — NAN addons are not ABI-stable across Node versions, so this can't be fixed by a

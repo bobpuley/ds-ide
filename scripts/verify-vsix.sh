@@ -28,6 +28,12 @@ echo ""
 
 cd "${REPO_ROOT}"
 node esbuild.js --production
+# FR-DEV-19: the packaged binary must be freshly rebuilt for Electron's ABI
+# right before packaging — reproduces what `npm run package` does, so this
+# smoke test catches a stale/wrong-ABI binary the same way a real release
+# would ship one. Not `|| true` here (unlike postinstall's leniency): a
+# rebuild failure at packaging time must fail loudly, not ship silently.
+npm run rebuild:native
 # No --no-dependencies (FR-DEV-18): 'midi' is a native addon esbuild can't
 # inline, so its runtime files must ship as real node_modules entries —
 # .vscodeignore carves the specific files needed back in from its blanket
@@ -60,14 +66,25 @@ check "node_modules/midi/build/Release/midi.node"
 check "node_modules/bindings/bindings.js"
 check "node_modules/file-uri-to-path/index.js"
 
-if node -e "require('${UNZIP_DIR}/extension/node_modules/midi/midi.js')" 2>/tmp/midi-load-err.txt; then
-  echo "  PASS  node_modules/midi loads successfully from the packaged layout"
+# FR-DEV-19: "loads under the system Node running this check" is a
+# misleading pass on its own — the addon might have been built against
+# system Node's ABI rather than Electron's target ABI, which is exactly the
+# real-world bug this whole check exists to catch (it silently degrades to
+# "host MIDI bridge unavailable" only once loaded inside VS Code's actual
+# Electron-hosted Extension Host, never during dev-mode testing on this
+# machine). check-native-abi.js requires the addon and, if it fails to load,
+# parses the exact NODE_MODULE_VERSION Node reports it was compiled for out
+# of the resulting error — the same diagnostic a user would see — and
+# compares that against the target Electron version's expected ABI.
+TARGET_ELECTRON_VERSION="$(cat "${REPO_ROOT}/scripts/electron-target-version.txt")"
+if node "${REPO_ROOT}/scripts/check-native-abi.js" \
+    "${UNZIP_DIR}/extension/node_modules/midi/build/Release/midi.node" \
+    "${TARGET_ELECTRON_VERSION}"; then
+  echo "  PASS  node_modules/midi's native addon matches Electron ${TARGET_ELECTRON_VERSION}'s ABI"
 else
-  echo "  FAIL  node_modules/midi failed to load from the packaged layout:"
-  sed 's/^/    /' /tmp/midi-load-err.txt
+  echo "  FAIL  node_modules/midi's native addon does not match Electron ${TARGET_ELECTRON_VERSION}'s ABI (see above)"
   fail=1
 fi
-rm -f /tmp/midi-load-err.txt
 
 # Bulk exclusion: midi's test suite and vendored RtMidi C++ source must NOT
 # be packaged (only the compiled runtime files above are needed).

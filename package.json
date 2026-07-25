@@ -203,10 +203,13 @@
     "test": "npm run gen:pins && vitest run",
     "test:watch": "npm run gen:pins && vitest",
     "lint": "npm run gen:pins && tsc --noEmit && tsc --noEmit -p tsconfig.webview.json",
-    "package": "npm run gen:pins && node esbuild.js --production && vsce package",
-    "verify:package": "bash scripts/verify-vsix.sh"
+    "package": "npm run gen:pins && node esbuild.js --production && npm run rebuild:native && vsce package",
+    "verify:package": "bash scripts/verify-vsix.sh",
+    "rebuild:native": "bash scripts/rebuild-midi-native.sh",
+    "postinstall": "npm run rebuild:native || true"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.2.0",
     "@types/node": "^18.0.0",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^3.0.0",
