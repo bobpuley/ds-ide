@@ -54,7 +54,9 @@ function clearDocListeners(): void {
 const _yamlInitEl = document.getElementById('yaml-init');
 const _yamlInit = JSON.parse(_yamlInitEl ? _yamlInitEl.textContent || '{}' : '{}') as Partial<ControllerConfig>;
 let _yamlCfg: ControllerConfig = {
-  pots: _yamlInit.pots || [], buttons: _yamlInit.buttons || [], leds: _yamlInit.leds || [], errors: [],
+  pots: _yamlInit.pots || [], buttons: _yamlInit.buttons || [], leds: _yamlInit.leds || [],
+  encoders: _yamlInit.encoders || [], toggles: _yamlInit.toggles || [], rgbleds: _yamlInit.rgbleds || [],
+  errors: [],
 };
 
 let conventionControls: ConventionControl[] = [];
@@ -369,7 +371,11 @@ function makeDraggable(card: HTMLElement, ctrl: { pos: [number, number] }): void
 
 // ── Legacy YAML editor (missingBlock mode) ───────────────────────────────
 function editorLoad(cfg: Partial<ControllerConfig>): void {
-  _yamlCfg = { pots: cfg.pots || [], buttons: cfg.buttons || [], leds: cfg.leds || [], errors: [] };
+  _yamlCfg = {
+    pots: cfg.pots || [], buttons: cfg.buttons || [], leds: cfg.leds || [],
+    encoders: cfg.encoders || [], toggles: cfg.toggles || [], rgbleds: cfg.rgbleds || [],
+    errors: [],
+  };
   editorControls = [];
   let ax = 20, ay = 20;
   function nextPos(): [number, number] { const p: [number, number] = [ax, ay]; ax += 190; if (ax > 580) { ax = 20; ay += 170; } return p; }
@@ -491,6 +497,13 @@ el<HTMLElement>('save-btn').addEventListener('click', () => {
     const yamlPotMap    = Object.fromEntries(_yamlCfg.pots.map(p => [p.id, p]));
     const yamlBtnMap    = Object.fromEntries(_yamlCfg.buttons.map(b => [b.id, b]));
     const yamlLedMap    = Object.fromEntries(_yamlCfg.leds.map(l => [l.id, l]));
+    // FR-CE-3: encoder/toggle/rgbled have no other YAML-configurable fields
+    // (pin/behavior comes from the code annotation), so their "existing
+    // entry" lookup only ever needs to carry forward `pos` — there's nothing
+    // else on a PosOnlyDef to spread the way pot/button/led do above.
+    const yamlEncoderMap = Object.fromEntries(_yamlCfg.encoders.map(e => [e.id, e]));
+    const yamlToggleMap  = Object.fromEntries(_yamlCfg.toggles.map(t => [t.id, t]));
+    const yamlRgbLedMap  = Object.fromEntries(_yamlCfg.rgbleds.map(r => [r.id, r]));
     const updatedPots    = conventionControls.filter(c => c.kind === 'pot').map(c => {
       const ex = yamlPotMap[c.id];
       const pos = domPos[c.id] || (ex && ex.pos) || [20, 20];
@@ -506,12 +519,36 @@ el<HTMLElement>('save-btn').addEventListener('click', () => {
       const pos = domPos[c.id] || (ex && ex.pos) || [20, 20];
       return ex ? { ...ex, pos } : { id: c.id, label: c.id, gpioPin: c.pin, pos };
     });
-    cfg = { pots: updatedPots, buttons: updatedButtons, leds: updatedLeds, errors: [] };
+    const updatedEncoders = conventionControls.filter(c => c.kind === 'encoder').map(c => {
+      const ex = yamlEncoderMap[c.id];
+      const pos = domPos[c.id] || (ex && ex.pos) || [20, 20];
+      return { id: c.id, pos };
+    });
+    const updatedToggles = conventionControls.filter(c => c.kind === 'toggle').map(c => {
+      const ex = yamlToggleMap[c.id];
+      const pos = domPos[c.id] || (ex && ex.pos) || [20, 20];
+      return { id: c.id, pos };
+    });
+    const updatedRgbLeds = conventionControls.filter(c => c.kind === 'rgbled').map(c => {
+      const ex = yamlRgbLedMap[c.id];
+      const pos = domPos[c.id] || (ex && ex.pos) || [20, 20];
+      return { id: c.id, pos };
+    });
+    cfg = {
+      pots: updatedPots, buttons: updatedButtons, leds: updatedLeds,
+      encoders: updatedEncoders, toggles: updatedToggles, rgbleds: updatedRgbLeds,
+      errors: [],
+    };
   } else {
     const pots    = editorControls.filter(c => c.kind === 'pot').map(c => ({ id: c.id, label: c.label, adcChannel: c.adcChannel ?? 0, range: c.range || [0, 1] as [number, number], taper: c.taper || 'linear' as Taper, default: c.def ?? 0.5, errors: [] as string[], pos: c.pos }));
     const buttons = editorControls.filter(c => c.kind === 'button').map(c => ({ id: c.id, label: c.label, gpioPin: c.gpioPin ?? 0, mode: c.mode || 'momentary' as ButtonMode, activeLevel: c.activeLevel || 'low' as ActiveLevel, pos: c.pos }));
     const leds    = editorControls.filter(c => c.kind === 'led').map(c => ({ id: c.id, label: c.label, gpioPin: c.gpioPin ?? 0, pos: c.pos }));
-    cfg = { pots, buttons, leds, errors: [] };
+    // The legacy YAML-editor canvas (missingBlock mode) has no encoder/
+    // toggle/rgbled palette items (FR-DEV-9/7/8 are convention-only devices)
+    // — carry the last-loaded values through unchanged rather than dropping
+    // them, so a stray save while missingBlock can't silently wipe positions
+    // saved earlier in convention mode.
+    cfg = { pots, buttons, leds, encoders: _yamlCfg.encoders, toggles: _yamlCfg.toggles, rgbleds: _yamlCfg.rgbleds, errors: [] };
   }
   vscode.postMessage({ command: 'editorSave', cfg });
   const st = el<HTMLElement>('save-status');

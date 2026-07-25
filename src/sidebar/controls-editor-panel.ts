@@ -363,7 +363,7 @@ ${paletteItemsHtml()}
     </div>
     <div id="sd-list"></div>
   </div>
-  <script id="yaml-init" type="application/json" nonce="${nonce}">${safeJson({ pots: [], buttons: [], leds: [] })}</script>
+  <script id="yaml-init" type="application/json" nonce="${nonce}">${safeJson({ pots: [], buttons: [], leds: [], encoders: [], toggles: [], rgbleds: [] })}</script>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;

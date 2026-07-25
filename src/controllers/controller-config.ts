@@ -30,16 +30,34 @@ export interface LedDef {
   pos?: [number, number]; // editor_pos — canvas position (x, y); ignored by runtime
 }
 
+// M50 (FR-CE-3): encoder/toggle/RGB LED aren't independently configured in
+// controllers.yaml the way pots/buttons/leds are — their pin/behavior comes
+// entirely from the code annotation convention (controls-convention-parser.ts).
+// These `encoders:`/`toggles:`/`rgbleds:` sections exist solely to persist
+// each one's Controls Editor canvas position across saves, mirroring the
+// `editor_pos` field/round-trip convention the other three device kinds use.
+export interface PosOnlyDef {
+  id: string;
+  pos?: [number, number]; // editor_pos — canvas position (x, y); ignored by runtime
+}
+export type EncoderPosDef = PosOnlyDef;
+export type TogglePosDef = PosOnlyDef;
+export type RgbLedPosDef = PosOnlyDef;
+
 export interface ParseResult {
   defs: ControllerDef[];
   errors: string[];
 }
 
-// Full controller config: pots (the `controllers:` section), buttons, and LEDs.
+// Full controller config: pots (the `controllers:` section), buttons, LEDs,
+// and the position-only sections for encoder/toggle/RGB LED (FR-CE-3).
 export interface ControllerConfig {
   pots: ControllerDef[];
   buttons: ButtonDef[];
   leds: LedDef[];
+  encoders: EncoderPosDef[];
+  toggles: TogglePosDef[];
+  rgbleds: RgbLedPosDef[];
   errors: string[];
 }
 
@@ -331,6 +349,34 @@ function parseLeds(rawItems: Record<string, unknown>[]): { leds: LedDef[]; error
   return { leds, errors };
 }
 
+// Validate a position-only section (`encoders:`/`toggles:`/`rgbleds:` —
+// FR-CE-3): just `id` + optional `editor_pos`, since these device kinds'
+// pin/behavior comes from the code annotation convention, not this file.
+function parsePosOnlyEntries(rawItems: Record<string, unknown>[], kindLabel: string): { entries: PosOnlyDef[]; errors: string[] } {
+  const entries: PosOnlyDef[] = [];
+  const errors: string[] = [];
+  const seenIds = new Set<string>();
+
+  for (let i = 0; i < rawItems.length; i++) {
+    const raw = rawItems[i]!;
+    const ctx = `${kindLabel} ${i + 1}`;
+    const id = raw['id'];
+
+    if (typeof id !== 'string' || !id.trim()) {
+      errors.push(`${ctx}: 'id' is required and must be a non-empty string`);
+      continue;
+    }
+    if (seenIds.has(id)) {
+      errors.push(`${ctx}: duplicate id '${id}'`);
+      continue;
+    }
+    seenIds.add(id);
+    entries.push({ id, pos: parseEditorPos(raw['editor_pos']) });
+  }
+
+  return { entries, errors };
+}
+
 /**
  * Parse `controllers.yaml` text and validate the pots (`controllers:`) section.
  * Returns all valid ControllerDefs and any errors found. (Backward compatible.)
@@ -350,7 +396,13 @@ export function parseControllerConfig(text: string): ControllerConfig {
   const { pots, errors: potErrors } = parsePots(sections['controllers'] ?? []);
   const { buttons, errors: buttonErrors } = parseButtons(sections['buttons'] ?? []);
   const { leds, errors: ledErrors } = parseLeds(sections['leds'] ?? []);
-  return { pots, buttons, leds, errors: [...sectionErrors, ...potErrors, ...buttonErrors, ...ledErrors] };
+  const { entries: encoders, errors: encoderErrors } = parsePosOnlyEntries(sections['encoders'] ?? [], 'encoder');
+  const { entries: toggles, errors: toggleErrors } = parsePosOnlyEntries(sections['toggles'] ?? [], 'toggle');
+  const { entries: rgbleds, errors: rgbledErrors } = parsePosOnlyEntries(sections['rgbleds'] ?? [], 'rgbled');
+  return {
+    pots, buttons, leds, encoders, toggles, rgbleds,
+    errors: [...sectionErrors, ...potErrors, ...buttonErrors, ...ledErrors, ...encoderErrors, ...toggleErrors, ...rgbledErrors],
+  };
 }
 
 /**
@@ -396,7 +448,22 @@ export function serializeControllerConfig(cfg: ControllerConfig): string {
     }
   }
 
+  serializePosOnlySection(lines, 'encoders', cfg.encoders);
+  serializePosOnlySection(lines, 'toggles', cfg.toggles);
+  serializePosOnlySection(lines, 'rgbleds', cfg.rgbleds);
+
   return lines.join('\n') + '\n';
+}
+
+// FR-CE-3: shared serialization for the position-only encoder/toggle/rgbled
+// sections — just `id` + optional `editor_pos`.
+function serializePosOnlySection(lines: string[], sectionName: string, entries: PosOnlyDef[]): void {
+  if (entries.length === 0) return;
+  lines.push(`${sectionName}:`);
+  for (const e of entries) {
+    lines.push(`  - id: ${yamlQuote(e.id)}`);
+    if (e.pos) lines.push(`    editor_pos: [${Math.round(e.pos[0])}, ${Math.round(e.pos[1])}]`);
+  }
 }
 
 // Quote a label value for YAML: wraps in double-quotes if it contains

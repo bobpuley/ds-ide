@@ -202,6 +202,10 @@ async function buildControlsConfig(folder: string, yamlCfg: ControllerConfig): P
     ...yamlCfg.pots.filter(p => p.pos).map(p => ({ id: p.id, pos: p.pos! })),
     ...yamlCfg.buttons.filter(b => b.pos).map(b => ({ id: b.id, pos: b.pos! })),
     ...yamlCfg.leds.filter(l => l.pos).map(l => ({ id: l.id, pos: l.pos! })),
+    // FR-CE-3
+    ...yamlCfg.encoders.filter(e => e.pos).map(e => ({ id: e.id, pos: e.pos! })),
+    ...yamlCfg.toggles.filter(t => t.pos).map(t => ({ id: t.id, pos: t.pos! })),
+    ...yamlCfg.rgbleds.filter(r => r.pos).map(r => ({ id: r.id, pos: r.pos! })),
   ];
   const effectPath = await findEffectSource(folder);
   if (!effectPath) return { controls: [], placements, missingBlock: true };
@@ -392,7 +396,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const folder = resolveActiveFolder(context.workspaceState);
     if (!folder) {
       controllerConfigUnreadable = false;
-      return { pots: [], buttons: [], leds: [], errors: [] };
+      return { pots: [], buttons: [], leds: [], encoders: [], toggles: [], rgbleds: [], errors: [] };
     }
     const yamlPath = path.join(folder.uri.fsPath, 'controllers.yaml');
     try {
@@ -419,13 +423,13 @@ export function activate(context: vscode.ExtensionContext): void {
       // with an empty config (FR-IPC-4).
       if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
         controllerConfigUnreadable = false;
-        return { pots: [], buttons: [], leds: [], errors: [] };
+        return { pots: [], buttons: [], leds: [], encoders: [], toggles: [], rgbleds: [], errors: [] };
       }
       controllerConfigUnreadable = true;
       void vscode.window.showWarningMessage(
         `ds-ide: could not read controllers.yaml (${(err as NodeJS.ErrnoException)?.code ?? String(err)}) — treating as unreadable, not empty; edits will not be saved until this is resolved.`,
       );
-      return { pots: [], buttons: [], leds: [], errors: [] };
+      return { pots: [], buttons: [], leds: [], encoders: [], toggles: [], rgbleds: [], errors: [] };
     }
   }
 

@@ -186,7 +186,7 @@ describe('ControlsViewProvider', () => {
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);
     const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => void;
-    const cfg = { pots: [], buttons: [], leds: [], errors: [] };
+    const cfg = { pots: [], buttons: [], leds: [], encoders: [], toggles: [], rgbleds: [], errors: [] };
     handler({ command: 'editorSave', cfg });
     expect(onEditorSave).toHaveBeenCalledWith(expect.objectContaining({ pots: [], buttons: [], leds: [] }));
   });
@@ -278,7 +278,7 @@ describe('ControlsViewProvider', () => {
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);
     view.webview.postMessage.mockClear();
-    const cfg = { pots: [], buttons: [], leds: [], errors: [] };
+    const cfg = { pots: [], buttons: [], leds: [], encoders: [], toggles: [], rgbleds: [], errors: [] };
     provider.loadEditor(cfg);
     expect(view.webview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ command: 'editorLoad', cfg }),
@@ -287,7 +287,7 @@ describe('ControlsViewProvider', () => {
 
   // FR-TWE-6 — state restoration on initial resolve
   it('flushes last-known state to webview on resolveWebviewView (FR-TWE-6)', () => {
-    const editorCfg = { pots: [], buttons: [], leds: [], errors: [] };
+    const editorCfg = { pots: [], buttons: [], leds: [], encoders: [], toggles: [], rgbleds: [], errors: [] };
     const config = { controls: [], placements: [], missingBlock: false };
     const status = { type: 'status', running: false };
 
@@ -304,7 +304,7 @@ describe('ControlsViewProvider', () => {
   });
 
   it('flushes editorLoad before controlsConfig on resolve (FR-TWE-6)', () => {
-    const editorCfg = { pots: [], buttons: [], leds: [], errors: [] };
+    const editorCfg = { pots: [], buttons: [], leds: [], encoders: [], toggles: [], rgbleds: [], errors: [] };
     const config = { controls: [], placements: [], missingBlock: false };
     provider.loadEditor(editorCfg);
     provider.postControlsConfig(config);
@@ -321,7 +321,7 @@ describe('ControlsViewProvider', () => {
   it('webviewReady message triggers flush of pending state', () => {
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);
-    const editorCfg = { pots: [], buttons: [], leds: [], errors: [] };
+    const editorCfg = { pots: [], buttons: [], leds: [], encoders: [], toggles: [], rgbleds: [], errors: [] };
     provider.loadEditor(editorCfg);
     view.webview.postMessage.mockClear();
 
@@ -334,7 +334,7 @@ describe('ControlsViewProvider', () => {
 
   // FR-TWE-6 — state restored when visibility becomes true
   it('flushes state again when view becomes visible after being hidden (FR-TWE-6)', () => {
-    const editorCfg = { pots: [], buttons: [], leds: [], errors: [] };
+    const editorCfg = { pots: [], buttons: [], leds: [], encoders: [], toggles: [], rgbleds: [], errors: [] };
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);
     provider.loadEditor(editorCfg);
@@ -346,7 +346,7 @@ describe('ControlsViewProvider', () => {
   });
 
   it('does not flush state when visibility changes to false (FR-TWE-6)', () => {
-    const editorCfg = { pots: [], buttons: [], leds: [], errors: [] };
+    const editorCfg = { pots: [], buttons: [], leds: [], encoders: [], toggles: [], rgbleds: [], errors: [] };
     provider.loadEditor(editorCfg);
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);

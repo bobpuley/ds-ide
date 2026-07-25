@@ -492,6 +492,58 @@ controllers:
   });
 });
 
+// ---- M50: encoder/toggle/rgbled position-only sections (FR-CE-3) ----
+
+describe('encoder/toggle/rgbled editor_pos parsing (FR-CE-3)', () => {
+  it('parses editor_pos on an encoder', () => {
+    const yaml = `
+encoders:
+  - id: enc1
+    editor_pos: [120, 80]
+`;
+    const { encoders, errors } = parseControllerConfig(yaml);
+    expect(errors).toHaveLength(0);
+    expect(encoders).toEqual([{ id: 'enc1', pos: [120, 80] }]);
+  });
+
+  it('parses editor_pos on a toggle', () => {
+    const yaml = `
+toggles:
+  - id: tgl1
+    editor_pos: [250, 80]
+`;
+    const { toggles, errors } = parseControllerConfig(yaml);
+    expect(errors).toHaveLength(0);
+    expect(toggles).toEqual([{ id: 'tgl1', pos: [250, 80] }]);
+  });
+
+  it('parses editor_pos on a rgbled', () => {
+    const yaml = `
+rgbleds:
+  - id: rgb1
+    editor_pos: [380, 80]
+`;
+    const { rgbleds, errors } = parseControllerConfig(yaml);
+    expect(errors).toHaveLength(0);
+    expect(rgbleds).toEqual([{ id: 'rgb1', pos: [380, 80] }]);
+  });
+
+  it('leaves pos undefined when editor_pos is absent on an encoder', () => {
+    const { encoders } = parseControllerConfig('encoders:\n  - id: enc1\n');
+    expect(encoders[0]!.pos).toBeUndefined();
+  });
+
+  it('reports an error for a duplicate encoder id', () => {
+    const { errors } = parseControllerConfig('encoders:\n  - id: enc1\n  - id: enc1\n');
+    expect(errors).toContainEqual(expect.stringContaining("duplicate id 'enc1'"));
+  });
+
+  it('reports an error when an encoder entry has no id', () => {
+    const { errors } = parseControllerConfig('encoders:\n  - editor_pos: [10, 20]\n');
+    expect(errors).toContainEqual(expect.stringContaining("'id' is required"));
+  });
+});
+
 describe('serializeControllerConfig (M10b)', () => {
   it('round-trips a full config without editor_pos', () => {
     const yaml = `controllers:
@@ -549,6 +601,29 @@ leds:
     expect(reparsed.leds[0]!.pos).toEqual([380, 80]);
   });
 
+  // FR-CE-3 — the drag → save → reload round trip M50 exists to fix:
+  // encoder/toggle/rgbled positions must survive a full parse/serialize
+  // cycle exactly like pot/button/led already do above.
+  it('round-trips encoder/toggle/rgbled editor_pos positions', () => {
+    const cfg = parseControllerConfig(`
+encoders:
+  - id: enc1
+    editor_pos: [15, 25]
+toggles:
+  - id: tgl1
+    editor_pos: [35, 45]
+rgbleds:
+  - id: rgb1
+    editor_pos: [55, 65]
+`);
+    const out = serializeControllerConfig(cfg);
+    const reparsed = parseControllerConfig(out);
+    expect(reparsed.errors).toHaveLength(0);
+    expect(reparsed.encoders[0]!.pos).toEqual([15, 25]);
+    expect(reparsed.toggles[0]!.pos).toEqual([35, 45]);
+    expect(reparsed.rgbleds[0]!.pos).toEqual([55, 65]);
+  });
+
   it('omits editor_pos line when pos is undefined', () => {
     const cfg = parseControllerConfig(`
 leds:
@@ -595,7 +670,7 @@ leds:
   it('quotes a pot id containing a colon so it round-trips intact', () => {
     const cfg: ControllerConfig = {
       pots: [{ id: 'foo:bar', label: 'L', adcChannel: 0, range: [0, 1], taper: 'linear', default: 0.5 }],
-      buttons: [], leds: [], errors: [],
+      buttons: [], leds: [], encoders: [], toggles: [], rgbleds: [], errors: [],
     };
     const out = serializeControllerConfig(cfg);
     expect(out).toContain('id: "foo:bar"');
@@ -608,6 +683,7 @@ leds:
     const cfg: ControllerConfig = {
       pots: [], leds: [],
       buttons: [{ id: 'foo#bar', label: 'L', gpioPin: 5, mode: 'momentary', activeLevel: 'low' }],
+      encoders: [], toggles: [], rgbleds: [],
       errors: [],
     };
     const out = serializeControllerConfig(cfg);
@@ -621,6 +697,7 @@ leds:
     const cfg: ControllerConfig = {
       pots: [], buttons: [],
       leds: [{ id: 'foo#bar', label: 'L', gpioPin: 5 }],
+      encoders: [], toggles: [], rgbleds: [],
       errors: [],
     };
     const out = serializeControllerConfig(cfg);
@@ -633,7 +710,7 @@ leds:
   it('leaves plain identifier ids unquoted', () => {
     const cfg: ControllerConfig = {
       pots: [{ id: 'osc_pitch', label: 'L', adcChannel: 0, range: [0, 1], taper: 'linear', default: 0.5 }],
-      buttons: [], leds: [], errors: [],
+      buttons: [], leds: [], encoders: [], toggles: [], rgbleds: [], errors: [],
     };
     const out = serializeControllerConfig(cfg);
     expect(out).toContain('id: osc_pitch');
