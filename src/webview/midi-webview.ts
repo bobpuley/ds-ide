@@ -39,7 +39,9 @@ for (let i = 0; i < OCTAVE_LENGTH; i++) {
   keyboardEl.appendChild(key);
 }
 
-const MIDI_TYPE_NAMES = ['NoteOff', 'NoteOn', 'ControlChange', 'Unknown'];
+// Positionally indexed to match daisy::MidiMessageType's enum order
+// (emulator/shim/include/daisy/midi_event.h) — keep in sync with it.
+const MIDI_TYPE_NAMES = ['NoteOff', 'NoteOn', 'ControlChange', 'ProgramChange', 'Unknown'];
 
 let history: MidiMonitorEntry[] = [];
 

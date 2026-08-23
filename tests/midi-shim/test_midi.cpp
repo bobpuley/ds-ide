@@ -76,6 +76,20 @@ static void test_unrecognized_status_is_unknown_not_misparsed() {
     CHECK(ev.type == daisy::MidiMessageType::Unknown, "an unrecognized status byte is tagged Unknown, not guessed");
 }
 
+// FR-DEV-20: Program Change is a real 2-byte MIDI message (status, program) —
+// data2 is unused (matching midi-monitor.ts's programChangeToBytes, which
+// always sends 0 for it) and must not be read by AsProgramChange().
+static void test_parses_program_change() {
+    daisy::MidiEvent ev{};
+    bool ok = daisy::parse_midi_event(0xC4, 42, 0, ev);
+    CHECK(ok, "0xC4 status byte parses successfully");
+    CHECK(ev.type == daisy::MidiMessageType::ProgramChange, "0xC4 parses as ProgramChange, not Unknown");
+    CHECK(ev.channel == 4, "channel 4 decoded from low nibble 0x4");
+    auto pc = ev.AsProgramChange();
+    CHECK(pc.channel == 4, "AsProgramChange() carries the channel");
+    CHECK(pc.program == 42, "AsProgramChange() carries the program number from data[0]");
+}
+
 static void test_midi_in_queue_preserves_fifo_order() {
     daisy_emu::MidiInQueue q;
     daisy::MidiEvent a{}; a.channel = 1;
@@ -194,6 +208,7 @@ int main() {
     test_parses_note_off();
     test_parses_control_change();
     test_unrecognized_status_is_unknown_not_misparsed();
+    test_parses_program_change();
     test_midi_in_queue_preserves_fifo_order();
     test_midi_in_queue_drops_newest_when_full();
     test_uart_handler_has_events_and_pop_event_drain_shared_queue();

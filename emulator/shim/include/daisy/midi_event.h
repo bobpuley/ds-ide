@@ -16,6 +16,7 @@ enum class MidiMessageType : uint8_t {
     NoteOff,
     NoteOn,
     ControlChange,
+    ProgramChange,
     Unknown,
 };
 
@@ -37,6 +38,15 @@ struct ControlChangeEvent {
     uint8_t value;
 };
 
+// FR-DEV-20: Program Change is a real 2-byte MIDI message (status, program) —
+// data[1] is unused (midi-monitor.ts's programChangeToBytes always sends 0
+// for it) and deliberately not exposed here, matching real libDaisy's
+// ProgramChangeEvent shape.
+struct ProgramChangeEvent {
+    uint8_t channel;
+    uint8_t program;
+};
+
 // Real libDaisy's MidiEvent carries channel + a 2-byte data payload alongside
 // its type tag; AsNoteOn()/AsNoteOff()/AsControlChange() reinterpret that
 // payload for the matching type — matching daisy-seed-knowledge's
@@ -49,6 +59,7 @@ struct MidiEvent {
     NoteOnEvent AsNoteOn() const { return {channel, data[0], data[1]}; }
     NoteOffEvent AsNoteOff() const { return {channel, data[0], data[1]}; }
     ControlChangeEvent AsControlChange() const { return {channel, data[0], data[1]}; }
+    ProgramChangeEvent AsProgramChange() const { return {channel, data[0]}; }
 };
 
 // Decodes a 3-byte MIDI message (status, data1, data2) into `out`. Returns
