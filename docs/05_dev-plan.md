@@ -1,4 +1,4 @@
-# 05 — Development Plan (v17)
+# 05 — Development Plan (v18)
 
 > **v1 complete** — M0–M7 released (0.1.0–0.1.7), all ACs green.
 > Archived: [`docs/v1/`](v1/).
@@ -47,8 +47,11 @@
 >
 > **v16 complete** — M51 released (0.16.0), all ACs green.
 > Archived: [`docs/v16/`](v16/).
+>
+> **v17 complete** — M52 released (0.17.0), all ACs green.
+> Archived: [`docs/v17/`](v17/).
 
-*v17 milestones not yet planned.*
+*v18 milestones not yet planned.*
 
 ---
 
@@ -143,7 +146,11 @@ Full registry in [`docs/v15/05_dev-plan.md`](v15/05_dev-plan.md).
 M51 Host MIDI Bridge Native-Addon ABI Fix.
 Full registry in [`docs/v16/05_dev-plan.md`](v16/05_dev-plan.md).
 
-### v17 (…) — planned
+### v17 (0.17.0) — archived in `docs/v17/`
 
-M52 MIDI Program Change Typed Support — released.
-File: [`docs/milestones/v17/Milestone_M52.md`](milestones/v17/Milestone_M52.md).
+M52 MIDI Program Change Typed Support.
+Full registry in [`docs/v17/05_dev-plan.md`](v17/05_dev-plan.md).
+
+### v18 (…) — planned
+
+*(no milestones yet)*

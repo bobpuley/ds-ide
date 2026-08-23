@@ -1,4 +1,4 @@
-# 01 — Input Ideas (v17)
+# 01 — Input Ideas (v18)
 
 > **v1 complete** — ds-ide 0.1.0–0.1.7 (M0–M7), all ACs green. Full v1 ideas archived in
 > [`docs/v1/01_input-ideas.md`](v1/01_input-ideas.md).
@@ -47,7 +47,8 @@
 >
 > **v16 complete** — archived to `docs/v16/` on 2026-07-25. Full v16 ideas archived in
 > [`docs/v16/01_input-ideas.md`](v16/01_input-ideas.md).
+>
+> **v17 complete** — archived to `docs/v17/` on 2026-08-23. Full v17 ideas archived in
+> [`docs/v17/01_input-ideas.md`](v17/01_input-ideas.md).
 
-## v17 ideas
-
-- **Feature (2026-08-23):** Add support for MIDI Program Change as a first-class typed message in the emulator shim — mirroring real libDaisy's `MidiMessageType::ProgramChange` + `AsProgramChange()`. Surfaced during MIDI host-bridge testing (`ds-ide-test-proj/tremolo-filter-midi/`): the emulator currently only classifies NoteOff/NoteOn/ControlChange (`emulator/shim/src/midi_event.cpp`); Program Change bytes are forwarded (send-only, monitor-visible per M47/M48's `FR-MIDI-1` scope — `src/webview/midi-monitor.ts:16-22`) but arrive at effect code as `MidiMessageType::Unknown`, with the program number recoverable only by reading `data[0]` off that fallback — an undocumented implementation detail, not a supported API. Scope explicitly excludes PitchBend, ChannelPressure/PolyKeyPressure, and SystemCommon/SystemRealTime — those remain unmodeled and out of scope for this idea.
+*v18 planning not yet started. Use `/doc-creator-driver:intake` or `/doc-creator-driver:start` to begin.*
