@@ -19,7 +19,7 @@ effect authors can `switch` on `ProgramChange` directly instead of reverse-engin
 
 ## Sprint Tasks
 
-### [ ] feat: add MidiMessageType::ProgramChange and AsProgramChange() to the emulator shim (FR-DEV-20)
+### [x] feat: add MidiMessageType::ProgramChange and AsProgramChange() to the emulator shim (FR-DEV-20)
 
 `emulator/shim/include/daisy/midi_event.h`'s `MidiMessageType` enum gains a `ProgramChange` value
 and a `ProgramChangeEvent` struct (`channel`, `program`), mirroring the existing
