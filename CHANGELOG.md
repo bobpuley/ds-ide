@@ -5,6 +5,14 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.17.0 — 2026-08-23
+
+**M52 — MIDI Program Change Typed Support** *(FR-DEV-20 — DoD green)*
+
+- **FR-DEV-20** — The emulator shim's `MidiEvent` model gains a first-class `MidiMessageType::ProgramChange` and matching `AsProgramChange()` accessor (`emulator/shim/include/daisy/midi_event.h`), mirroring real libDaisy's shape. `parse_midi_event` (`emulator/shim/src/midi_event.cpp`) now recognizes status byte `0xC0` and classifies it as `ProgramChange` instead of falling through to `Unknown` — previously a Program Change was forwarded correctly over IPC and visible in the MIDI monitor (send-only per M47/M48's `FR-MIDI-1` scope), but effect code could only recover the program number by reading `data[0]` off the `Unknown` fallback, an undocumented implementation detail rather than a supported API. Also fixes `MIDI_TYPE_NAMES` in `src/webview/midi-webview.ts`, which is positionally indexed to the C++ enum's order and would otherwise mislabel Program Change messages in the on-screen MIDI monitor after the new enum value was inserted. Surfaced during manual MIDI host-bridge testing; out of scope: PitchBend, ChannelPressure/PolyKeyPressure, SystemCommon/SystemRealTime remain unmodeled.
+
+---
+
 ## 0.16.0 — 2026-07-25
 
 **M51 — Host MIDI Bridge Native-Addon ABI Fix** *(FR-DEV-19 — DoD green)*

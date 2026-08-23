@@ -1,7 +1,7 @@
 # M52 — MIDI Program Change Typed Support
 
 **Version:** 0.17.0
-**Status:** in progress
+**Status:** released
 **Source:** feature request — 2026-08-23 intake session (surfaced during MIDI host-bridge testing
 with `ds-ide-test-proj/tremolo-filter-midi/`)
 

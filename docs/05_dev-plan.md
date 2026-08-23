@@ -145,5 +145,5 @@ Full registry in [`docs/v16/05_dev-plan.md`](v16/05_dev-plan.md).
 
 ### v17 (…) — planned
 
-M52 MIDI Program Change Typed Support — in progress.
+M52 MIDI Program Change Typed Support — released.
 File: [`docs/milestones/v17/Milestone_M52.md`](milestones/v17/Milestone_M52.md).
