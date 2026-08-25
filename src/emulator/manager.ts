@@ -113,6 +113,10 @@ export class EmulatorManager extends EventEmitter {
   private intentionalDisconnect = false;
   private lastKnownRunning: boolean | undefined = undefined;
   private deployLock: Promise<void> | null = null;
+  // FR-EXT-18: dispose() can race an in-flight deploy() — set the instant
+  // dispose() runs, checked right after deploy() assigns this.childProcess
+  // so a child spawned in that race window is killed instead of orphaned.
+  private disposed = false;
 
   private readonly spawn: typeof cp.spawn;
   private readonly ipcClientFactory: () => IpcClient;
@@ -236,6 +240,13 @@ export class EmulatorManager extends EventEmitter {
               // not to a new child spawned by a subsequent deploy.
               if (this.childProcess === child) this.childProcess = null;
             });
+
+            // FR-EXT-18: dispose() may have run during the mkdir/killStalePid
+            // await above, before this.childProcess existed for it to kill —
+            // it found nothing and had no way to reach this child. Catch that
+            // race here (now that the close listener above is wired, so the
+            // resulting exit is actually observed) instead of orphaning it.
+            if (this.disposed) child.kill();
           });
         });
     });
@@ -382,6 +393,7 @@ export class EmulatorManager extends EventEmitter {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.killExisting();
     this.ipcClient?.disconnect();
     this.ipcClient = null;

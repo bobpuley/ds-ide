@@ -775,6 +775,42 @@ describe('EmulatorManager', () => {
     });
   });
 
+  describe('dispose()/deploy() race (FR-EXT-18)', () => {
+    it('kills a child spawned by an in-flight deploy() that dispose() raced before it existed', async () => {
+      await manager.build(
+        { projectRoot: '/proj', effectSrc: '/proj/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+
+      let killed = false;
+      spawnMock.mockImplementation((cmd: string) => {
+        if (cmd === 'cmake') return makeCmakeProcess(0);
+        const proc = new EventEmitter() as EventEmitter & {
+          stdout: EventEmitter; stderr: EventEmitter; kill: () => void; pid: number;
+        };
+        proc.stdout = new EventEmitter();
+        proc.stderr = new EventEmitter();
+        proc.pid = 12345;
+        proc.kill = vi.fn(() => { killed = true; proc.emit('close', null); });
+        return proc;
+      });
+
+      // Hold deploy() at the mkdir await so dispose() can run while
+      // this.childProcess is still null — the race window this FR closes.
+      let resolveMkdir!: () => void;
+      mkdirMock.mockImplementation(() => new Promise<void>((res) => { resolveMkdir = res; }));
+
+      const deployPromise = manager.deploy(() => undefined);
+      manager.dispose();
+      expect(killed).toBe(false); // nothing to kill yet — this is the race window
+
+      resolveMkdir();
+      await deployPromise.catch(() => { /* expected: the raced child gets killed, deploy rejects */ });
+
+      expect(killed).toBe(true);
+    });
+  });
+
   describe('killExisting() escalation (FR-EXT-13)', () => {
     afterEach(() => {
       vi.restoreAllMocks();

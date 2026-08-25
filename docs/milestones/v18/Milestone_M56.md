@@ -81,7 +81,7 @@ None of `make`, `dfu-util`, or emulator build/deploy accept an `AbortSignal`/can
 
 ---
 
-### [ ] fix: prevent dispose()/deploy() race from orphaning a spawned child (FR-EXT-18)
+### [x] fix: prevent dispose()/deploy() race from orphaning a spawned child (FR-EXT-18)
 
 `deploy()` assigns `this.childProcess` only after `spawn()` returns; if `dispose()` runs in between, it finds `childProcess === null` and does nothing, but the deploy's `spawn()` still executes afterward with nothing left to kill it.
 
