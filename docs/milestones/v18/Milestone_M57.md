@@ -105,7 +105,7 @@ None of the five `onDidReceiveMessage`/`postMessage` handlers import the message
 
 ---
 
-### [ ] perf: batch MIDI monitor DOM rebuilds (FR-EXT-35)
+### [x] perf: batch MIDI monitor DOM rebuilds (FR-EXT-35)
 
 `renderMonitor()` clears and rebuilds up to 50 rows synchronously on every single `midiRx`/`midiTx` message with no batching, thrashing full DOM teardown/rebuild on a rapid CC stream.
 
