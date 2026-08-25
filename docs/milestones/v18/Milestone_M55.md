@@ -35,7 +35,7 @@ Close the six remaining HIGH-severity findings from the Node.js/TypeScript revie
 
 ---
 
-### [ ] fix: guard WiringViewProvider's message handler against unhandled rejection (FR-EXT-8)
+### [x] fix: guard WiringViewProvider's message handler against unhandled rejection (FR-EXT-8)
 
 The `async onDidReceiveMessage` callback awaits three file-I/O-performing handlers with no surrounding try/catch, unlike the equivalent handler in `controls-editor-panel.ts`.
 

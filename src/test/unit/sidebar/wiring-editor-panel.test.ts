@@ -267,4 +267,42 @@ describe('WiringViewProvider', () => {
       expect.objectContaining({ command: 'peripherals', peripherals }),
     );
   });
+
+  // ── FR-EXT-8: the async message handler must not produce an unhandled
+  // rejection when a file-I/O-performing handler throws ─────────────────────
+
+  describe('message handler error guarding (FR-EXT-8)', () => {
+    it('surfaces a thrown wirePin error via showErrorMessage instead of rejecting', async () => {
+      onWirePin.mockRejectedValue(new Error('EACCES: permission denied'));
+      const view = makeWebviewViewMock();
+      provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+      const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
+      await expect(handler({ command: 'wirePin', pinNumber: 15, deviceType: 'pot', id: 'vol' })).resolves.toBeUndefined();
+      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+        expect.stringContaining('EACCES: permission denied'),
+      );
+    });
+
+    it('surfaces a thrown unwirePin error via showErrorMessage instead of rejecting', async () => {
+      onUnwirePin.mockRejectedValue(new Error('EACCES: permission denied'));
+      const view = makeWebviewViewMock();
+      provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+      const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
+      await expect(handler({ command: 'unwirePin', pinNumber: 15, id: 'vol' })).resolves.toBeUndefined();
+      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+        expect.stringContaining('EACCES: permission denied'),
+      );
+    });
+
+    it('surfaces a thrown setPeripheralEnabled error via showErrorMessage instead of rejecting', async () => {
+      onSetPeripheralEnabled.mockRejectedValue(new Error('EACCES: permission denied'));
+      const view = makeWebviewViewMock();
+      provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+      const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
+      await expect(handler({ command: 'setPeripheralEnabled', peripheralId: 'sdcard', enabled: true })).resolves.toBeUndefined();
+      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+        expect.stringContaining('EACCES: permission denied'),
+      );
+    });
+  });
 });
