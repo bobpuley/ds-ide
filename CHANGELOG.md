@@ -5,6 +5,17 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.17.1 — 2026-08-25
+
+**M53 — Multi-Root Debug-Attach Fix** *(FR-UX-6 — DoD green)*
+
+- **FR-UX-6** — `src/commands/debug-deploy.ts` (`ds-ide.debug` PID-attach) and `src/debug/run-config-provider.ts` (F5 launch-configuration attach) both read `vscode.workspace.workspaceFolders?.[0]` directly instead of routing through `resolveActiveFolder()` (`src/workspace/active-folder.ts`, established in v11/v12's FR-UX-4). In a multi-root workspace with a non-first folder selected active, build/deploy targeted the correct folder but the `daisy-debug` attach session's folder association silently fell back to the first workspace folder. Both call sites now thread the resolved active folder into `vscode.debug.startDebugging(...)`, matching every other workspace-scoped command. Single-root workspace behavior is unchanged.
+- **FR-UX-6** — Adds `scripts/check-active-folder-convention.sh`, wired into `npm run lint`, which greps `src/` (excluding `src/workspace/active-folder.ts` and `src/test/`) for direct indexed/optional-chained access to `workspace.workspaceFolders` and fails the build if any is found — closing the tooling gap that let this exact regression class land silently twice (FR-UX-4, then this fix) with no static guard against a third recurrence.
+
+*Found during manual sprint-close testing: stopping a `daisy-debug` attach session surfaces `Exception has occurred: signal SIGSTOP` in the Debug Console. Confirmed pre-existing on `main` prior to this branch and unrelated to the active-folder fix — logged in `docs/01_input-ideas.md` for future triage, out of scope for FR-UX-6.*
+
+---
+
 ## 0.17.0 — 2026-08-23
 
 **M52 — MIDI Program Change Typed Support** *(FR-DEV-20 — DoD green)*
