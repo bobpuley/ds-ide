@@ -52,4 +52,11 @@ describe('midiUsbCodegen (FR-DEV-17)', () => {
   it('busOfDeclLine returns null for an unrelated line', () => {
     expect(midiUsbCodegen.busOfDeclLine!('  MidiUsbHandler ds_ide_midi_usb;')).toBeNull();
   });
+
+  // FR-EXT-31: unrecognized mode is structurally-impossible input (only
+  // registry.ts's own busChoices should ever reach here) — throws instead
+  // of silently falling back to the default mode.
+  it('initLines throws a descriptive error for an unrecognized mode', () => {
+    expect(() => midiUsbCodegen.initLines('BLUETOOTH')).toThrow(/BLUETOOTH/);
+  });
 });

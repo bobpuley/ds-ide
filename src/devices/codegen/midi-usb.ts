@@ -32,8 +32,12 @@ function declLine(): string {
   return `  MidiUsbHandler ${HANDLE_NAME};`;
 }
 
+// FR-EXT-31: unrecognized mode is structurally impossible (only registry.ts's
+// own busChoices should ever reach here) — throws instead of silently
+// falling back to DEFAULT_MODE, matching oled.ts's driverFor() contract.
 function initLines(bus: string = DEFAULT_MODE): string[] {
-  const periph = MODE_TO_PERIPH[bus] ?? MODE_TO_PERIPH[DEFAULT_MODE];
+  const periph = MODE_TO_PERIPH[bus];
+  if (!periph) throw new Error(`midiUsbCodegen: unknown mode '${bus}'`);
   return [
     CFG_DECL_PREFIX,
     `${PERIPH_PREFIX}${periph};`,

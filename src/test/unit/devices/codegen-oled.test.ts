@@ -40,4 +40,11 @@ describe('oledCodegen (FR-DEV-14)', () => {
     }
     expect(oledCodegen.isInitLine('  led1.Init(daisy::seed::D5, false);')).toBe(false);
   });
+
+  // FR-EXT-31: unrecognized bus is structurally-impossible input (only
+  // registry.ts's own busChoices should ever reach here) — throws instead
+  // of silently emitting a plausible-but-wrong declaration.
+  it('declLine throws a descriptive error for an unrecognized bus', () => {
+    expect(() => oledCodegen.declLine('SPI9')).toThrow(/SPI9/);
+  });
 });

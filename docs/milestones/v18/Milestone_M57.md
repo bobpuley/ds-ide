@@ -57,7 +57,7 @@ A single constructor accepts 17 positional arguments, several of the same type a
 
 ---
 
-### [ ] fix: adopt one error contract across codegen/*.ts strategies (FR-EXT-31)
+### [x] fix: adopt one error contract across codegen/*.ts strategies (FR-EXT-31)
 
 The same category of problem — bad input reaching a codegen function — is handled four different ways across `oled.ts` (throws), `midi-usb.ts` (silent fallback), `pot.ts`/`toggle.ts` (silent clamp), producing plausible-but-wrong generated code with zero diagnostic in the silent-fallback cases.
 

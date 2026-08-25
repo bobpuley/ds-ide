@@ -31,6 +31,10 @@ const DRIVER_BY_BUS: Record<string, string> = {
 
 const DEFAULT_BUS = 'SPI1';
 
+// FR-EXT-31: unrecognized bus is structurally impossible (only registry.ts's
+// own busChoices should ever reach here) — throws instead of silently
+// falling back to DEFAULT_BUS, the shared codegen error contract every
+// codegen/*.ts strategy now follows (see midi-usb.ts's initLines()).
 function driverFor(bus: string): string {
   const driver = DRIVER_BY_BUS[bus];
   if (!driver) throw new Error(`oledCodegen: unknown bus '${bus}'`);
