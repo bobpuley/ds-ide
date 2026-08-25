@@ -5,6 +5,17 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.17.2 — 2026-08-25
+
+**M54 — Emulator RT & Concurrency Safety** *(FR-EMU-9, FR-EMU-10, FR-EMU-11 — DoD green)*
+
+- **FR-EMU-9** — `ipc_queue` and `midi_queue` were documented single-producer/single-consumer ring buffers, but LED/RGB-LED shim code and the audio RT thread both pushed into `ipc_queue`, and the IPC-dispatch thread and MIDI UART/USB handlers both pushed into `midi_queue` — an unsynchronized data race on a shared `std::string` under entirely ordinary use. LED/RGB-LED telemetry now has its own dedicated `led_queue` (effect-thread-owned); `midi_queue` splits into `midi_tx_queue` (effect-thread TX) and `midi_rx_queue` (IPC-thread RX telemetry). No two threads call `push()` on the same `SpscIpcQueue` instance anywhere in the tree, verified by code inspection of every call site.
+- **FR-EMU-10** — `build_scope_json`/`build_spectrum_json`/`fft_radix2` (up to ~5,000 `snprintf` calls plus two FFTs per emission) ran synchronously inside the audio RT callback in both simulated and real-time mode. `processBlock`/`process_one_block` now only memcpy raw interleaved samples into a new RT-safe `ScopeBlockQueue` (mirroring `SessionRecorder`'s existing `enqueueBlock` ring-buffer pattern); all scope/spectrum JSON building and FFT work moved to the existing non-RT drain thread. Each queued block is tagged with the `config_generation` its producer was entered under, so a mid-session sample-rate change can't have its stale-rate backlog drained (and its stale `binHz` reported) ahead of freshly-produced blocks — a regression this fix's own testing surfaced and closed.
+- **FR-EMU-11** — `main.cpp`'s detached `shutdown_watcher` called `std::_Exit(0)` almost immediately after shutdown was requested, racing the "normal" join/return-0 path (itself dead code, since `effect_main()` never returns under a signal-driven stop) and discarding not-yet-drained `ipc_queue`/`oled_queue`/`led_queue`/`midi_tx_queue`/`midi_rx_queue` telemetry on every shutdown. `shutdown_watcher` is now the single authoritative termination path in every case: it wakes `mode_cv`/`callback_cv` (nothing previously notified them, even though their wait predicates already checked the shutdown flag — audio_thread could otherwise block forever past a shutdown request, verified by manually reproducing the hang), joins `audio_thread` so its drain thread finishes flushing before the socket is torn down (`ipc_server.cpp`'s per-client read loop now waits on a new `telemetry_drained` flag instead of closing the connection the instant `shutdown` flips, which previously raced ahead of and cut off that flush), then exits cleanly.
+- **chore** — `package.json`'s `version` field is bumped to match `CHANGELOG.md`'s latest entry; it was left at `0.17.0` during the prior M53 release, tripping `package-metadata.test.ts`'s version-parity check.
+
+---
+
 ## 0.17.1 — 2026-08-25
 
 **M53 — Multi-Root Debug-Attach Fix** *(FR-UX-6 — DoD green)*
