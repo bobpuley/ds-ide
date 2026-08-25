@@ -5,6 +5,20 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.17.3 — 2026-08-25
+
+**M55 — Extension Critical Fixes** *(FR-EXT-6, FR-EXT-7, FR-EXT-8, FR-EXT-9, FR-EXT-10, FR-EXT-11 — DoD green)*
+
+- **FR-EXT-6** — `activate()` never registered a `manager.on('error', ...)` listener; Node's `EventEmitter` throws in-process on an unhandled `'error'` emission, so any raw IPC socket error could crash the entire Extension Host for the window. `activate()` now registers an `'error'` listener that surfaces the error via `showErrorMessage` and the `Daisy IDE Emulator` output channel instead.
+- **FR-EXT-7** — `EmulatorManager.connectIpc()`'s rejection path (connect timeout, malformed/version-mismatched handshake) only closed the socket, leaving the already-spawned `effect_emu` child orphaned until the next stale-PID reaper. The connect/handshake sequence is now wrapped so any failure explicitly kills the spawned child before the rejection propagates.
+- **FR-EXT-8** — `WiringViewProvider`'s `async onDidReceiveMessage` callback awaited three file-I/O-performing handlers (wirePin/unwirePin/setPeripheralEnabled) with no surrounding try/catch, unlike the equivalent `controls-editor-panel.ts` handler — a thrown error (e.g. a permission error) would have produced an unhandled promise rejection. All three calls are now wrapped, surfacing failures via `showErrorMessage`.
+- **FR-EXT-9** — `extension.ts`'s `activate()` was a single ~640-line function building every store, panel, provider, and command registration inline — the same file where the FR-EXT-6 and FR-EXT-10 gaps both lived, a direct consequence of the function being too large to review as a whole. View-provider construction (`createControlsProvider`, `createWiringProvider`), command registration (`registerCommands`), the save-listener (`createSaveListener`), and manager message/disconnect/error routing (`wireManagerEvents`) are now named factory functions that `activate()` merely composes; `activate()` itself is ~335 lines, down from ~648. No behavior change — all existing tests pass unmodified.
+- **FR-EXT-10** — `build.ts` called `findEffectSource(projectRoot)` with a single argument, so the `ds-ide.effectSource` configured-path branch was always skipped, even though the build failure message told the user to set it. The resolution/error-handling wrapper previously duplicated inside `extension.ts` is now `resolveConfiguredEffectSource()`, exported from `find-effect-source.ts` and shared by both the build command and every `extension.ts` call site — eliminating the duplication that let the setting silently drift out of sync between them.
+- **FR-EXT-11** — `validateId()` only checked for emptiness and duplication; a free-text wiring id like `x; SystemInit(); //` was interpolated unescaped into generated C++ declaration/init lines. `validateId()` now rejects any value that isn't a valid C++ identifier or that collides with a C++17 reserved keyword, closing this off before it ever reaches `controls-writer.ts`.
+- **chore** — `package.json`'s `version` field is bumped to `0.17.3` to match this entry.
+
+---
+
 ## 0.17.2 — 2026-08-25
 
 **M54 — Emulator RT & Concurrency Safety** *(FR-EMU-9, FR-EMU-10, FR-EMU-11 — DoD green)*
