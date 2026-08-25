@@ -153,7 +153,7 @@ The same truncation constant and logic is defined twice — once exported from a
 
 ---
 
-### [ ] test: add integration coverage for EmulatorManager 'error' handling (FR-EXT-39)
+### [x] test: add integration coverage for EmulatorManager 'error' handling (FR-EXT-39)
 
 Unit tests for `IpcClient`/`EmulatorManager` register `'error'` listeners to make assertions, which means the test suite never exercised the "zero listeners attached" scenario that FR-EXT-6 fixes — a false sense of coverage on the exact path most likely to crash the Extension Host.
 
