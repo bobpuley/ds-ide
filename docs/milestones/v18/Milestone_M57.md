@@ -45,7 +45,7 @@ Config/state data embedded by the extension host into `<script type="application
 
 ---
 
-### [ ] refactor: replace DeployCoordinator's 17-parameter constructor with an options object (FR-EXT-30)
+### [x] refactor: replace DeployCoordinator's 17-parameter constructor with an options object (FR-EXT-30)
 
 A single constructor accepts 17 positional arguments, several of the same type adjacent to one another, making transposition errors at the call site easy to introduce and impossible for the type checker to catch.
 
