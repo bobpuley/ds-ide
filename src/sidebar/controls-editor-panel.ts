@@ -9,7 +9,12 @@ import { TOGGLE_POSITIONS } from '../devices/codegen/toggle';
 import { ENCODER_POSITION_MODULUS } from '../devices/codegen/encoder';
 import { SdEntry } from '../webview/sd-viewer';
 import { safeJson } from '../webview/html-safe';
+import { truncId, TRUNC_MAX_LEN } from '../webview/id-truncate';
 import { ControlsWebviewMessage } from '../webview/messages';
+
+// Re-exported for existing callers/tests — the implementation itself now
+// lives in webview/id-truncate.ts, shared with the webview side (FR-EXT-38).
+export { truncId, TRUNC_MAX_LEN };
 import { hasKnownCommand, assertNever } from '../webview/message-guard';
 
 // FR-EXT-33: the discriminated union's own command literals, kept as a
@@ -237,13 +242,6 @@ function statusPayload(msg: IpcMessage): Record<string, unknown> {
     sampleRate: getNumber(msg, 'sampleRate'),
     blockSize: getNumber(msg, 'blockSize'),
   };
-}
-
-export const TRUNC_MAX_LEN = 15;
-const TRUNC_SUFFIX = '…';
-
-export function truncId(id: string): string {
-  return id.length > TRUNC_MAX_LEN ? id.slice(0, TRUNC_MAX_LEN - 1) + TRUNC_SUFFIX : id;
 }
 
 // FR-DEV-2: one CSS rule per registry entry for both the palette item and

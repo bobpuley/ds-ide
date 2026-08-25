@@ -141,7 +141,7 @@ Four codegen strategy files independently redeclare the same shape — a handle-
 
 ---
 
-### [ ] refactor: move truncId/TRUNC_MAX_LEN into a shared webview-importable module (FR-EXT-38)
+### [x] refactor: move truncId/TRUNC_MAX_LEN into a shared webview-importable module (FR-EXT-38)
 
 The same truncation constant and logic is defined twice — once exported from a host-side panel file, once re-declared unexported in the webview file — because the two run under different tsconfigs.
 
