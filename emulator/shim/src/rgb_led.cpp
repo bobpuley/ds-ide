@@ -20,7 +20,7 @@ void emit_rgb_led_change(int pin, float r, float g, float b) {
                   "{\"type\":\"rgbLed\",\"gpioPin\":%d,\"r\":%.4f,\"g\":%.4f,\"b\":%.4f}",
                   pin, r, g, b);
 
-    daisy_emu::g_state.ipc_queue.push(buf);
+    daisy_emu::g_state.led_queue.push(buf);
 }
 
 void RgbLed::Init(dsy_gpio_pin r, dsy_gpio_pin g, dsy_gpio_pin b, bool invert) {

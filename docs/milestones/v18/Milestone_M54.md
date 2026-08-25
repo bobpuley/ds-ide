@@ -10,7 +10,7 @@ Close three RT-thread/concurrency gaps that survived the emulator's extensive pr
 
 ## Sprint Tasks
 
-### [ ] fix: eliminate multi-producer race on SpscIpcQueue (FR-EMU-9)
+### [x] fix: eliminate multi-producer race on SpscIpcQueue (FR-EMU-9)
 
 `ipc_queue` and `midi_queue` are documented single-producer/single-consumer ring buffers, but LED/RGB-LED shim code and the audio RT thread both push into `ipc_queue`, and the IPC thread and MIDI UART/USB handlers both push into `midi_queue` — an unsynchronized data race on a shared `std::string` under entirely ordinary use.
 

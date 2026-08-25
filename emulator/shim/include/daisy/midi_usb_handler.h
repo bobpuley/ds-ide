@@ -38,9 +38,11 @@ public:
     MidiEvent PopEvent();
 
     // FR-MIDI-1: outbound path — an effect calling this enqueues a `midiTx`
-    // message onto the same EmulatorState::midi_queue the inbound `midiRx`
-    // telemetry already uses (see midi_usb_handler.cpp), so the monitor sees
-    // both directions on one channel. `buff` is read as a status byte plus up
+    // message onto EmulatorState::midi_tx_queue (see midi_usb_handler.cpp).
+    // The inbound `midiRx` telemetry uses its own separate midi_rx_queue
+    // (FR-EMU-9: the two are produced by different threads), but both are
+    // drained to the same IPC socket, so the monitor still sees both
+    // directions on one channel. `buff` is read as a status byte plus up
     // to two data bytes (status[, data1[, data2]]) — the same triplet shape
     // ipc_server.cpp's `midiEvent` handler parses inbound, tolerating a
     // shorter 2-byte message (e.g. Program Change) by treating a missing

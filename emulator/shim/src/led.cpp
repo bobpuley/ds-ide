@@ -17,7 +17,7 @@ void emit_led_change(int pin, bool lit) {
                   "{\"type\":\"led\",\"gpioPin\":%d,\"lit\":%s}",
                   pin, lit ? "true" : "false");
 
-    daisy_emu::g_state.ipc_queue.push(buf);
+    daisy_emu::g_state.led_queue.push(buf);
 }
 
 void Led::Init(dsy_gpio_pin pin, bool invert) {

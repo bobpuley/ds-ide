@@ -26,7 +26,7 @@ static dsy_gpio_pin pin(uint8_t n) { return dsy_gpio_pin{0, n}; }
 static std::vector<std::string> drain_queue() {
     std::vector<std::string> result;
     std::string msg;
-    while (daisy_emu::g_state.ipc_queue.pop(msg))
+    while (daisy_emu::g_state.led_queue.pop(msg))
         result.push_back(msg);
     return result;
 }

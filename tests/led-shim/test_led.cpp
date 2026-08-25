@@ -2,7 +2,9 @@
 //
 // Verifies that DaisySeed::SetLed and Led::Set/Update emit `led` IPC messages
 // keyed to the right pin, with change-deduplication and invert handling.
-// After FR-RTS-3: messages are enqueued via ipc_queue (SPSC), not send_ipc.
+// After FR-RTS-3: messages are enqueued via an SPSC queue, not send_ipc.
+// FR-EMU-9: that queue is led_queue, a dedicated instance separate from
+// ipc_queue (which the audio RT thread also produces into).
 // Plain asserts; exit 0 on pass.
 
 #include "daisy/daisy_seed_class.h"
@@ -27,7 +29,7 @@ static int failures = 0;
 static std::vector<std::string> drain_queue() {
     std::vector<std::string> result;
     std::string msg;
-    while (daisy_emu::g_state.ipc_queue.pop(msg))
+    while (daisy_emu::g_state.led_queue.pop(msg))
         result.push_back(msg);
     return result;
 }

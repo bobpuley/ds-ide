@@ -275,6 +275,16 @@ struct EmulatorState {
     // Counts messages silently dropped when ipc_queue is full (FR-QA-1).
     std::atomic<uint32_t> ipc_queue_drops{0};
 
+    // FR-EMU-9: dedicated queue for LED/RGB-LED telemetry (`led`/`rgbLed`
+    // messages), owned solely by the effect thread — Led::Update() and
+    // RgbLed::Update() are both called from effect_main()'s while(1) loop,
+    // never from the audio engine's RT callback. Previously both pushed into
+    // ipc_queue alongside the RT thread's own scope/spectrum/event
+    // emissions, making ipc_queue a genuine two-producer queue and racing on
+    // its shared, non-atomic Slot::msg. Same "different producer thread"
+    // reasoning as oled_queue below.
+    SpscIpcQueue led_queue;
+
     // FR-DEV-14: a second, dedicated queue for OLED framebuffer frames — same
     // lock-free, non-allocating type as ipc_queue, but a separate instance.
     // OledDisplay::Update() is called from the effect's own while(1) loop
@@ -300,14 +310,27 @@ struct EmulatorState {
     // Counts inbound MIDI events dropped because midi_in_queue was full.
     std::atomic<uint32_t> midi_in_drops{0};
 
-    // Outbound `midiRx` telemetry (own SpscIpcQueue instance, same "different
-    // producer thread" reasoning as oled_queue) — emitted the moment the IPC
-    // thread parses an inbound event, regardless of whether the effect has
-    // called PopEvent() yet, so the message monitor (FR-DEV-18) shows
-    // real-time traffic rather than only what's been drained.
-    SpscIpcQueue midi_queue;
-    // Counts messages silently dropped when midi_queue is full.
-    std::atomic<uint32_t> midi_queue_drops{0};
+    // FR-EMU-9: outbound `midiTx` telemetry, produced by the effect thread
+    // via MidiUartHandler::SendMessage / MidiUsbHandler::SendMessage — only
+    // one MIDI transport is realistically enabled at a time, so both funnel
+    // into this single effect-thread-owned queue without violating its SPSC
+    // contract.
+    SpscIpcQueue midi_tx_queue;
+    // Counts messages silently dropped when midi_tx_queue is full.
+    std::atomic<uint32_t> midi_tx_queue_drops{0};
+
+    // FR-EMU-9: outbound `midiRx` telemetry (own SpscIpcQueue instance,
+    // separate from midi_tx_queue above) — emitted the moment the IPC thread
+    // parses an inbound `midiEvent` message, regardless of whether the
+    // effect has called PopEvent() yet, so the message monitor (FR-DEV-18)
+    // shows real-time traffic rather than only what's been drained. Split
+    // from a single shared midi_queue: the IPC thread (this queue's
+    // producer) and the effect thread (midi_tx_queue's producer) are
+    // different threads, so sharing one queue between them was a genuine
+    // two-producer race.
+    SpscIpcQueue midi_rx_queue;
+    // Counts messages silently dropped when midi_rx_queue is full.
+    std::atomic<uint32_t> midi_rx_queue_drops{0};
 
     EmulatorState() {
         for (auto& v : pot_values) v.store(0.f);

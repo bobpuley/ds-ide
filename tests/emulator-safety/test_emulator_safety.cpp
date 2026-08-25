@@ -1297,13 +1297,13 @@ static void test_session_player_popblock_rt_safe_timing() {
 
 // ---- FR-MIDI-1: MidiUsbHandler/MidiUartHandler::SendMessage ---------------
 
-// Drains g_state.midi_queue into a vector, so a test can inspect exactly
+// Drains g_state.midi_tx_queue into a vector, so a test can inspect exactly
 // what SendMessage() enqueued without interference from anything else that
 // may have touched the shared queue.
 static std::vector<std::string> drain_midi_queue() {
     std::vector<std::string> out;
     std::string msg;
-    while (daisy_emu::g_state.midi_queue.pop(msg)) out.push_back(msg);
+    while (daisy_emu::g_state.midi_tx_queue.pop(msg)) out.push_back(msg);
     return out;
 }
 
@@ -1376,7 +1376,7 @@ static void test_midi_uart_send_message_enqueues_midi_tx() {
 }
 
 static void test_midi_uart_and_usb_share_the_same_midi_queue() {
-    std::printf("--- FR-MIDI-1: MidiUsbHandler and MidiUartHandler share midi_queue (no second queue) ---\n");
+    std::printf("--- FR-MIDI-1: MidiUsbHandler and MidiUartHandler share midi_tx_queue (no second queue) ---\n");
     drain_midi_queue();
 
     daisy::MidiUsbHandler usb;

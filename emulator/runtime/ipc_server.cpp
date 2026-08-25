@@ -482,8 +482,8 @@ void dispatch(const std::string& line) {
                     std::snprintf(buf, sizeof(buf),
                         "{\"type\":\"midiRx\",\"status\":%u,\"data1\":%u,\"data2\":%u,\"channel\":%u,\"midiType\":%d}",
                         status, data1, data2, ev.channel, static_cast<int>(ev.type));
-                    if (!g_state.midi_queue.push(buf))
-                        g_state.midi_queue_drops.fetch_add(1, std::memory_order_relaxed);
+                    if (!g_state.midi_rx_queue.push(buf))
+                        g_state.midi_rx_queue_drops.fetch_add(1, std::memory_order_relaxed);
                 }
             } catch (...) { std::fprintf(stderr, "[daisy-emu] stof failed: midiEvent\n"); }
         }
