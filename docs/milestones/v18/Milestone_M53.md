@@ -23,7 +23,7 @@ Debug-attach sessions (`ds-ide.debug` PID-attach and the F5 launch-configuration
 
 ---
 
-### [ ] chore: add static check preventing new workspaceFolders[0] call sites (FR-UX-6)
+### [x] chore: add static check preventing new workspaceFolders[0] call sites (FR-UX-6)
 
 Nothing currently enforces that new workspace-scoped code routes through `resolveActiveFolder()` — the task above is fixing the second silent regression of this exact bug class since FR-UX-4 shipped, and there is no tooling gate to catch a third.
 
