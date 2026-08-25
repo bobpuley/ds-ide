@@ -202,7 +202,7 @@
     "typecheck": "npm run gen:pins && tsc --noEmit && tsc --noEmit -p tsconfig.webview.json",
     "test": "npm run gen:pins && vitest run",
     "test:watch": "npm run gen:pins && vitest",
-    "lint": "npm run gen:pins && tsc --noEmit && tsc --noEmit -p tsconfig.webview.json",
+    "lint": "npm run gen:pins && tsc --noEmit && tsc --noEmit -p tsconfig.webview.json && bash scripts/check-active-folder-convention.sh",
     "package": "npm run gen:pins && node esbuild.js --production && npm run rebuild:native && vsce package",
     "verify:package": "bash scripts/verify-vsix.sh",
     "rebuild:native": "bash scripts/rebuild-midi-native.sh",

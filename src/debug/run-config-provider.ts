@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { DAISY_DEBUG_TYPE } from '../commands/debug-deploy';
+import { resolveActiveFolder } from '../workspace/active-folder';
 
 export const DS_IDE_DEBUG_TYPE = 'ds-ide';
 
@@ -7,6 +8,7 @@ export class DaisyRunConfigurationProvider implements vscode.DebugConfigurationP
   constructor(
     private readonly onBuildAndDeploy: () => Promise<boolean>,
     private readonly getEmulatorPid: () => number | undefined,
+    private readonly workspaceState: vscode.Memento,
   ) {}
 
   provideDebugConfigurations(): vscode.DebugConfiguration[] {
@@ -39,7 +41,7 @@ export class DaisyRunConfigurationProvider implements vscode.DebugConfigurationP
       return undefined;
     }
 
-    const folder = vscode.workspace.workspaceFolders?.[0];
+    const folder = resolveActiveFolder(this.workspaceState);
     const started = await vscode.debug.startDebugging(folder, {
       type: DAISY_DEBUG_TYPE,
       request: 'attach',

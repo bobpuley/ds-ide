@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as vscode from 'vscode';
 import { DaisyRunConfigurationProvider, DsIdeDebugAdapterDescriptorFactory } from '../../../debug/run-config-provider';
 
@@ -8,14 +8,31 @@ const BASE_CONFIG: vscode.DebugConfiguration = {
   name: 'DS-IDE: Build, Deploy & Debug',
 };
 
+function makeWorkspaceState(initial: Record<string, unknown> = {}): vscode.Memento {
+  const store = { ...initial };
+  return {
+    get: vi.fn((key: string, defaultValue?: unknown) => (key in store ? store[key] : defaultValue)),
+    update: vi.fn((key: string, value: unknown) => { store[key] = value; return Promise.resolve(); }),
+    keys: () => Object.keys(store),
+  } as unknown as vscode.Memento;
+}
+
+function folder(fsPath: string, name: string): vscode.WorkspaceFolder {
+  return { uri: { fsPath }, name, index: 0 } as unknown as vscode.WorkspaceFolder;
+}
+
 describe('DaisyRunConfigurationProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
+  afterEach(() => {
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = undefined;
+  });
+
   describe('provideDebugConfigurations()', () => {
     it('returns one ds-ide launch configuration', () => {
-      const provider = new DaisyRunConfigurationProvider(vi.fn(), vi.fn());
+      const provider = new DaisyRunConfigurationProvider(vi.fn(), vi.fn(), makeWorkspaceState());
       const configs = provider.provideDebugConfigurations();
       expect(configs).toHaveLength(1);
       expect(configs[0]).toMatchObject({
@@ -30,7 +47,7 @@ describe('DaisyRunConfigurationProvider', () => {
     it('F5: calls buildAndDeploy, starts a daisy-debug attach session, returns undefined', async () => {
       const buildAndDeploy = vi.fn(() => Promise.resolve(true));
       const getEmulatorPid = vi.fn(() => 1234);
-      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid);
+      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid, makeWorkspaceState());
 
       const result = await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG });
 
@@ -40,10 +57,25 @@ describe('DaisyRunConfigurationProvider', () => {
       expect(result).toBeUndefined();
     });
 
+    it('starts the debug session against the persisted active folder in a multi-root workspace (FR-UX-6)', async () => {
+      const a = folder('/a', 'a');
+      const b = folder('/b', 'b');
+      (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [a, b];
+      const workspaceState = makeWorkspaceState({ 'ds-ide.activeFolder': '/b' });
+      const buildAndDeploy = vi.fn(() => Promise.resolve(true));
+      const getEmulatorPid = vi.fn(() => 1234);
+      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid, workspaceState);
+
+      await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG });
+
+      const call = (vscode.debug.startDebugging as ReturnType<typeof vi.fn>).mock.calls[0]!;
+      expect(call[0]).toBe(b);
+    });
+
     it('Ctrl+F5 (noDebug=true): calls buildAndDeploy, skips startDebugging, returns undefined', async () => {
       const buildAndDeploy = vi.fn(() => Promise.resolve(true));
       const getEmulatorPid = vi.fn(() => 1234);
-      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid);
+      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid, makeWorkspaceState());
 
       const result = await provider.resolveDebugConfiguration(undefined, {
         ...BASE_CONFIG,
@@ -58,7 +90,7 @@ describe('DaisyRunConfigurationProvider', () => {
     it('aborts and returns undefined when build+deploy fails', async () => {
       const buildAndDeploy = vi.fn(() => Promise.resolve(false));
       const getEmulatorPid = vi.fn(() => 1234);
-      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid);
+      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid, makeWorkspaceState());
 
       const result = await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG });
 
@@ -70,7 +102,7 @@ describe('DaisyRunConfigurationProvider', () => {
     it('shows an error and returns undefined when emulator PID is unavailable', async () => {
       const buildAndDeploy = vi.fn(() => Promise.resolve(true));
       const getEmulatorPid = vi.fn(() => undefined);
-      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid);
+      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid, makeWorkspaceState());
 
       const result = await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG });
 
@@ -85,7 +117,7 @@ describe('DaisyRunConfigurationProvider', () => {
       (vscode.debug.startDebugging as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
       const buildAndDeploy = vi.fn(() => Promise.resolve(true));
       const getEmulatorPid = vi.fn(() => 99);
-      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid);
+      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid, makeWorkspaceState());
 
       const result = await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG });
 
@@ -98,7 +130,7 @@ describe('DaisyRunConfigurationProvider', () => {
     it('does not query PID or call startDebugging for Ctrl+F5', async () => {
       const buildAndDeploy = vi.fn(() => Promise.resolve(true));
       const getEmulatorPid = vi.fn(() => 99);
-      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid);
+      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid, makeWorkspaceState());
 
       await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG, noDebug: true });
 
@@ -109,7 +141,7 @@ describe('DaisyRunConfigurationProvider', () => {
     it('reports build+deploy progress via withProgress instead of leaving F5 silent (FR-QA-EXT-9)', async () => {
       const buildAndDeploy = vi.fn(() => Promise.resolve(true));
       const getEmulatorPid = vi.fn(() => 1234);
-      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid);
+      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid, makeWorkspaceState());
 
       await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG });
 
