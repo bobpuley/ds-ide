@@ -4,6 +4,16 @@ import { EmulatorManager } from '../emulator/manager';
 import { IpcMessage } from '../emulator/ipc-client';
 import { startAudio, stopAudio } from '../commands/transport';
 import { getBoolean, getNumber } from '../ipc/narrow';
+import { ScopeWebviewMessage } from './messages';
+import { hasKnownCommand, assertNever } from './message-guard';
+
+// FR-EXT-33: see controls-editor-panel.ts's identical comment — the
+// switch's `default: assertNever(...)` is the actual drift-detector; this
+// Set only drives the runtime hasKnownCommand narrow.
+const SCOPE_WEBVIEW_COMMANDS = new Set<ScopeWebviewMessage['command']>([
+  'webviewReady', 'sine', 'audioSource', 'pickWav', 'startAudio', 'stopAudio',
+  'recordStart', 'recordStop', 'replayStart', 'outputVolume',
+]);
 
 export interface ControlsPlacement {
   id: string;
@@ -115,59 +125,83 @@ export class ScopePanel {
     );
     this.panel.webview.html = this.html();
 
-    this.msgDisposable = this.panel.webview.onDidReceiveMessage((msg: unknown) => {
-      if (!msg || typeof msg !== 'object') return;
-      const m = msg as Record<string, unknown>;
-      if (m['command'] === 'webviewReady') {
-        if (this.lastStatusMsg) this.postStatus(this.lastStatusMsg);
-        return;
-      }
-      if (m['command'] === 'sine' && typeof m['freq'] === 'number' && typeof m['amplitude'] === 'number') {
-        this.sineParams = { freq: m['freq'], amplitude: m['amplitude'] };
-        this.manager.sendSine(m['freq'], m['amplitude']);
-        this.onSineChange?.(m['freq'], m['amplitude']);
-      }
-      if (m['command'] === 'audioSource') {
-        const inputRaw = m['input'];
-        const input: AudioInputSource | undefined =
-          inputRaw === 'sine' || inputRaw === 'live' || inputRaw === 'wav' ? inputRaw : undefined;
-        const sampleRate = getNumber(m, 'sampleRate');
-        const bufferSize = getNumber(m, 'bufferSize');
-        const validSampleRates = [8000, 22050, 44100, 48000];
-        const validBufferSizes = [64, 128, 256, 512];
-        if (
-          input && sampleRate && bufferSize &&
-          validSampleRates.includes(sampleRate) &&
-          validBufferSizes.includes(bufferSize)
-        ) {
-          this.audioSource = {
-            ...this.audioSource,
-            input,
-            sampleRate,
-            bufferSize,
-            wavLoop: m['wavLoop'] === true,
-          };
-          this.onAudioSourceChange?.(this.audioSource);
+    this.msgDisposable = this.panel.webview.onDidReceiveMessage((raw: unknown) => {
+      if (!hasKnownCommand<ScopeWebviewMessage>(raw, SCOPE_WEBVIEW_COMMANDS)) return;
+      const msg = raw;
+      switch (msg.command) {
+        case 'webviewReady': {
+          if (this.lastStatusMsg) this.postStatus(this.lastStatusMsg);
+          break;
         }
-      }
-      if (m['command'] === 'pickWav') {
-        this.onPickWav?.();
-      }
-      if (m['command'] === 'startAudio') startAudio(this.manager);
-      if (m['command'] === 'stopAudio') {
-        stopAudio(this.manager);
-        this._synthesizeStopped();
-        this.onStopAudio?.();
-      }
-      if (m['command'] === 'recordStart') this.onRecordStart?.();
-      if (m['command'] === 'recordStop')  this.onRecordStop?.();
-      if (m['command'] === 'replayStart') this.onReplayStart?.();
-      if (m['command'] === 'outputVolume') {
-        const vol = getNumber(m, 'volume');
-        if (vol !== undefined && vol >= 0 && vol <= 1) {
-          this.manager.sendOutputVolume(vol);
-          this.onOutputVolume?.(vol);
+        case 'sine': {
+          const { freq, amplitude } = msg;
+          if (typeof freq === 'number' && typeof amplitude === 'number') {
+            this.sineParams = { freq, amplitude };
+            this.manager.sendSine(freq, amplitude);
+            this.onSineChange?.(freq, amplitude);
+          }
+          break;
         }
+        case 'audioSource': {
+          const inputRaw = msg.input;
+          const input: AudioInputSource | undefined =
+            inputRaw === 'sine' || inputRaw === 'live' || inputRaw === 'wav' ? inputRaw : undefined;
+          const sampleRate = typeof msg.sampleRate === 'number' ? msg.sampleRate : undefined;
+          const bufferSize = typeof msg.bufferSize === 'number' ? msg.bufferSize : undefined;
+          const validSampleRates = [8000, 22050, 44100, 48000];
+          const validBufferSizes = [64, 128, 256, 512];
+          if (
+            input && sampleRate && bufferSize &&
+            validSampleRates.includes(sampleRate) &&
+            validBufferSizes.includes(bufferSize)
+          ) {
+            this.audioSource = {
+              ...this.audioSource,
+              input,
+              sampleRate,
+              bufferSize,
+              wavLoop: msg.wavLoop === true,
+            };
+            this.onAudioSourceChange?.(this.audioSource);
+          }
+          break;
+        }
+        case 'pickWav': {
+          this.onPickWav?.();
+          break;
+        }
+        case 'startAudio': {
+          startAudio(this.manager);
+          break;
+        }
+        case 'stopAudio': {
+          stopAudio(this.manager);
+          this._synthesizeStopped();
+          this.onStopAudio?.();
+          break;
+        }
+        case 'recordStart': {
+          this.onRecordStart?.();
+          break;
+        }
+        case 'recordStop': {
+          this.onRecordStop?.();
+          break;
+        }
+        case 'replayStart': {
+          this.onReplayStart?.();
+          break;
+        }
+        case 'outputVolume': {
+          const vol = typeof msg.volume === 'number' ? msg.volume : undefined;
+          if (vol !== undefined && vol >= 0 && vol <= 1) {
+            this.manager.sendOutputVolume(vol);
+            this.onOutputVolume?.(vol);
+          }
+          break;
+        }
+        default:
+          assertNever(msg, 'ScopePanel');
       }
     });
 

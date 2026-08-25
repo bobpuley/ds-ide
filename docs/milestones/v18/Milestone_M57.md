@@ -81,7 +81,7 @@ One flat 744-line module owns convention-mode canvas rendering, the legacy YAML 
 
 ---
 
-### [ ] fix: enforce the messages.ts contract at webview/host message boundaries (FR-EXT-33)
+### [x] fix: enforce the messages.ts contract at webview/host message boundaries (FR-EXT-33)
 
 None of the five `onDidReceiveMessage`/`postMessage` handlers import the message-type unions from `messages.ts`; each re-derives per-field checks by hand, so an added/renamed variant produces no compile-time reminder to add a handler branch.
 
