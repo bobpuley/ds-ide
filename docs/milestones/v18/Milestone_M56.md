@@ -164,7 +164,7 @@ The last statement in the function — opening the newly-created folder — sits
 
 ---
 
-### [ ] fix: surface IpcClient 'warning' events through EmulatorManager (FR-EXT-25)
+### [x] fix: surface IpcClient 'warning' events through EmulatorManager (FR-EXT-25)
 
 `EmulatorManager.connectIpc` wires up `message`/`error`/`disconnect` listeners on `IpcClient` but never registers or re-exposes the `'warning'` event, so dropped/malformed IPC traffic is invisible outside `console.warn`.
 

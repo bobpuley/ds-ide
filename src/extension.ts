@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { EmulatorManager, workspaceRuntimeDir } from './emulator/manager';
-import { IpcMessage } from './emulator/ipc-client';
+import { IpcMessage, IpcWarning } from './emulator/ipc-client';
 import { ScopePanel } from './webview/scope-panel';
 import { OledPanel } from './webview/oled-panel';
 import { MidiPanel } from './webview/midi-panel';
@@ -420,6 +420,13 @@ function wireManagerEvents(
   manager.on('error', (err: Error) => {
     emulatorChannel.appendLine(`ds-ide: emulator error: ${err.message}`);
     void vscode.window.showErrorMessage(`ds-ide: emulator error: ${err.message}`);
+  });
+
+  // FR-EXT-25: dropped/malformed IPC traffic was previously visible only via
+  // console.warn in the extension host's dev console — surfaced here instead
+  // so it's visible in the same channel as every other emulator diagnostic.
+  manager.on('warning', (warning: IpcWarning) => {
+    emulatorChannel.appendLine(`ds-ide: ${warning.message} (${warning.count})`);
   });
 }
 

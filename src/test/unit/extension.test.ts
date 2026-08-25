@@ -197,6 +197,25 @@ describe('extension', () => {
     );
   });
 
+  // FR-EXT-25: dropped/malformed IPC traffic was previously visible only via
+  // console.warn — now forwarded through EmulatorManager and surfaced in the
+  // same emulatorChannel output channel every other emulator diagnostic uses.
+  it("appends the emulator channel when EmulatorManager emits a 'warning'", () => {
+    const ctx = makeContext();
+    activate(ctx);
+    const mgr = managerInstances[0]!;
+
+    const createCalls = (vscode.window.createOutputChannel as ReturnType<typeof vi.fn>).mock.calls;
+    const emulatorChannelIndex = createCalls.findIndex((c: unknown[]) => c[0] === 'Daisy IDE Emulator');
+    const emulatorChannel = (vscode.window.createOutputChannel as ReturnType<typeof vi.fn>)
+      .mock.results[emulatorChannelIndex]!.value as { appendLine: ReturnType<typeof vi.fn> };
+
+    expect(() => mgr.emit('warning', { message: 'dropped a malformed line', count: 1 })).not.toThrow();
+    expect(emulatorChannel.appendLine).toHaveBeenCalledWith(
+      expect.stringContaining('dropped a malformed line'),
+    );
+  });
+
   it('routes type:led manager messages to controlsProvider webview (FR-TWE-1)', async () => {
     const ctx = makeContext();
     activate(ctx);

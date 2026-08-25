@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { EventEmitter } from 'events';
-import { IpcClient, IpcMessage, CONNECT_TIMEOUT_MS } from './ipc-client';
+import { IpcClient, IpcMessage, IpcWarning, CONNECT_TIMEOUT_MS } from './ipc-client';
 import { potControlId, buttonControlId, toggleControlId, encoderControlId, narrowControlValue, narrowControlSnapshot } from '../ipc/control-values';
 import { PROTOCOL_VERSION } from '../ipc/protocol-version';
 
@@ -423,6 +423,10 @@ export class EmulatorManager extends EventEmitter {
       this.emit('message', msg);
     });
     client.on('error', (err: Error) => this.emit('error', err));
+    // FR-EXT-25: mirrors the 'error'/'disconnect' forwarding above — dropped
+    // or malformed IPC traffic was previously visible only via console.warn,
+    // invisible to anything outside the extension host's dev console.
+    client.on('warning', (warning: IpcWarning) => this.emit('warning', warning));
     client.on('disconnect', () => {
       if (!this.intentionalDisconnect) this.emit('disconnect');
     });

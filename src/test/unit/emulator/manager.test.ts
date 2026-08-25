@@ -298,6 +298,23 @@ describe('EmulatorManager', () => {
     });
   });
 
+  describe("IpcClient 'warning' forwarding (FR-EXT-25)", () => {
+    it("re-emits the IpcClient's 'warning' event", async () => {
+      await manager.build(
+        { projectRoot: '/proj', effectSrc: '/proj/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+
+      const warningHandler = vi.fn();
+      manager.on('warning', warningHandler);
+
+      ipcClientStub.emit('warning', { message: 'dropped a malformed line', count: 3 });
+
+      expect(warningHandler).toHaveBeenCalledWith({ message: 'dropped a malformed line', count: 3 });
+    });
+  });
+
   describe('protocol version handshake (FR-DEV-6)', () => {
     async function buildManager(): Promise<void> {
       await manager.build(
