@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { EmulatorManager } from '../emulator/manager';
 import { ControllerDef } from '../controllers/controller-config';
+import { resolveActiveFolder } from '../workspace/active-folder';
 
 export const DAISY_DEBUG_TYPE = 'daisy-debug';
 
@@ -11,6 +12,7 @@ export async function debugDeploy(
   getPotSnapshot: () => Record<number, number>,
   sendSine: (() => void) | undefined,
   outputChannel: vscode.OutputChannel,
+  workspaceState: vscode.Memento,
 ): Promise<void> {
   const channel = outputChannel;
   channel.show();
@@ -36,7 +38,7 @@ export async function debugDeploy(
     return;
   }
 
-  const folder = vscode.workspace.workspaceFolders?.[0];
+  const folder = resolveActiveFolder(workspaceState);
   const started = await vscode.debug.startDebugging(folder, {
     type: DAISY_DEBUG_TYPE,
     name: 'Daisy Debug',

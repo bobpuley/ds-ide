@@ -357,6 +357,7 @@ class DeployCoordinator {
         () => this.potStore.getSnapshot(),
         () => this.sendPostDeployState(),
         this.emulatorChannel,
+        this.workspaceState,
       );
       return true;
     }
@@ -872,6 +873,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const runConfigProvider = new DaisyRunConfigurationProvider(
     () => deployCoordinator.performDeploy({ build: true, debug: false }),
     () => manager?.childPid,
+    context.workspaceState,
   );
 
   async function initViewsFromProject(): Promise<void> {
