@@ -93,7 +93,7 @@ None of the five `onDidReceiveMessage`/`postMessage` handlers import the message
 
 ---
 
-### [ ] perf: coalesce scope/spectrum webview updates via raf-coalesce.ts (FR-EXT-34)
+### [x] perf: coalesce scope/spectrum webview updates via raf-coalesce.ts (FR-EXT-34)
 
 `scope-webview.ts` calls `draw()`/resizes+redraws synchronously on every incoming `'scope'`/`'spectrum'` message even though `raf-coalesce.ts` exists specifically to coalesce a high-frequency call stream to one-per-frame, and is already used for pot/encoder drag.
 
