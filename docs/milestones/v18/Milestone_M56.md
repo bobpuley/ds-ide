@@ -176,7 +176,7 @@ The last statement in the function — opening the newly-created folder — sits
 
 ---
 
-### [ ] refactor: centralize the duplicated safeJson() escaping helper (FR-EXT-26)
+### [x] refactor: centralize the duplicated safeJson() escaping helper (FR-EXT-26)
 
 The `</script>`-breakout-prevention helper used when embedding config/pin-def JSON into data islands is copy-pasted identically across two panel files instead of centralized.
 

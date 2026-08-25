@@ -8,6 +8,7 @@ import { REGISTRY, wiredControlIds } from '../devices/registry';
 import { TOGGLE_POSITIONS } from '../devices/codegen/toggle';
 import { ENCODER_POSITION_MODULUS } from '../devices/codegen/encoder';
 import { SdEntry } from '../webview/sd-viewer';
+import { safeJson } from '../webview/html-safe';
 
 export class ControlsViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
@@ -214,13 +215,6 @@ const TRUNC_SUFFIX = '…';
 
 export function truncId(id: string): string {
   return id.length > TRUNC_MAX_LEN ? id.slice(0, TRUNC_MAX_LEN - 1) + TRUNC_SUFFIX : id;
-}
-
-function safeJson(obj: unknown): string {
-  return JSON.stringify(obj)
-    .replace(/&/g, '\\u0026')
-    .replace(/</g, '\\u003c')
-    .replace(/>/g, '\\u003e');
 }
 
 // FR-DEV-2: one CSS rule per registry entry for both the palette item and

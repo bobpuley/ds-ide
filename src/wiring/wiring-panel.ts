@@ -5,6 +5,7 @@ import { REGISTRY, wiredControlIds } from '../devices/registry';
 import type { DeviceType } from '../devices/registry';
 import type { ConventionControl } from '../controllers/controls-convention-parser';
 import type { PeripheralDisplayState } from './peripheral-state';
+import { safeJson } from '../webview/html-safe';
 
 export type { DeviceType };
 export type { PeripheralDisplayState };
@@ -42,12 +43,6 @@ export type { PinDef };
 
 // ── HTML builder ─────────────────────────────────────────────────────────────
 
-function safeJson(obj: unknown): string {
-  return JSON.stringify(obj)
-    .replace(/&/g, '\\u0026')
-    .replace(/</g, '\\u003c')
-    .replace(/>/g, '\\u003e');
-}
 
 // FR-DEV-2: one CSS rule and one popup button per registry entry, so adding
 // a device changes what's generated here without editing this file again.
