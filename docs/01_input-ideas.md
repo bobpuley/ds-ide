@@ -1,4 +1,4 @@
-# 01 — Input Ideas (v18)
+# 01 — Input Ideas (v19)
 
 > **v1 complete** — ds-ide 0.1.0–0.1.7 (M0–M7), all ACs green. Full v1 ideas archived in
 > [`docs/v1/01_input-ideas.md`](v1/01_input-ideas.md).
@@ -50,13 +50,8 @@
 >
 > **v17 complete** — archived to `docs/v17/` on 2026-08-23. Full v17 ideas archived in
 > [`docs/v17/01_input-ideas.md`](v17/01_input-ideas.md).
+>
+> **v18 complete** — archived to `docs/v18/` on 2026-08-25. Full v18 ideas archived in
+> [`docs/v18/01_input-ideas.md`](v18/01_input-ideas.md).
 
-## Bugs received
-
-- **Debug-attach ignores the active workspace folder in multi-root workspaces** (reconciled from parallel code reviews `docs/06_nodejs_review.md` and `docs/06_vscode_extension_review.md`, 2026-08-25). Observed: `src/commands/debug-deploy.ts:39` and `src/debug/run-config-provider.ts:42` both read `vscode.workspace.workspaceFolders?.[0]` directly when starting the `daisy-debug` attach session, instead of going through `resolveActiveFolder()` (`src/workspace/active-folder.ts`) — the helper built in v11/v12 (FR-UX-4) specifically so multi-root workspaces respect the user's selected active folder. Build and deploy target the correct folder; the resulting debug session's folder association does not. Expected: the debug session started for both the `ds-ide.debug` (PID-attach) command and the F5 launch-configuration path should resolve the same active folder as every other workspace-scoped command. Severity reconciled at MEDIUM (correctness/consistency issue, not a crash or security issue; only affects multi-root workspaces).
-
-- **Remaining HIGH/MEDIUM findings from the 2026-08-25 parallel code reviews**, batch-intaked 2026-08-25 (all LOW findings and the VS Code review's LOW finding deferred — not intaked). Full evidence for every item lives in the source review file; only summary + FR-ID mapping is kept here.
-  - `docs/06_emulator_review.md` (2 HIGH, 1 MEDIUM) → FR-EMU-9, FR-EMU-10, FR-EMU-11 → M54
-  - `docs/06_nodejs_review.md` (6 remaining HIGH, 28 MEDIUM) → FR-EXT-6..FR-EXT-39 → M55, M56, M57
-
-- **`daisy-debug` attach session throws "Exception has occurred: signal SIGSTOP" on stop** (human-driven test finding, M53 sprint-close, 2026-08-25). Observed: during manual testing of the M53 debug-attach active-folder fix, stopping a `daisy-debug` attach session (lldb-dap, `src/debug/debug-adapter.ts`) surfaces `Exception has occurred: signal SIGSTOP` in the Debug Console. Confirmed present on `main` before the M53 branch — unrelated to `resolveActiveFolder()`/`startDebugging()` folder-argument changes, so out of scope for FR-UX-6. Not yet triaged into a requirement or milestone; needs `/doc-creator-driver:intake` to determine root cause (likely lldb-dap surfacing its own attach-time SIGSTOP as an "exception" event) and expected behavior (suppress/filter vs. document as expected).
+*v19 planning not yet started. Use `/doc-creator-driver:intake` or `/doc-creator-driver:start` to begin.*

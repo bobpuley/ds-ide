@@ -1,4 +1,4 @@
-# 05 — Development Plan (v18)
+# 05 — Development Plan (v19)
 
 > **v1 complete** — M0–M7 released (0.1.0–0.1.7), all ACs green.
 > Archived: [`docs/v1/`](v1/).
@@ -50,8 +50,11 @@
 >
 > **v17 complete** — M52 released (0.17.0), all ACs green.
 > Archived: [`docs/v17/`](v17/).
+>
+> **v18 complete** — M53–M57 released (0.17.1–0.17.5), all ACs green.
+> Archived: [`docs/v18/`](v18/).
 
-*v18 milestones not yet planned.*
+*v19 milestones not yet planned.*
 
 ---
 
@@ -151,14 +154,12 @@ Full registry in [`docs/v16/05_dev-plan.md`](v16/05_dev-plan.md).
 M52 MIDI Program Change Typed Support.
 Full registry in [`docs/v17/05_dev-plan.md`](v17/05_dev-plan.md).
 
-### v18 (0.17.1–0.17.5) — planned
+### v18 (0.17.1–0.17.5) — archived in `docs/v18/`
 
-| ID   | Name          | Status          | Version   | File                                              |
-|------|---------------|-----------------|-----------|----------------------------------------------------|
-| M53 | Multi-Root Debug-Attach Fix | **released**    | 0.17.1 | [Milestone_M53.md](milestones/v18/Milestone_M53.md) |
-| M54 | Emulator RT & Concurrency Safety | **released**    | 0.17.2 | [Milestone_M54.md](milestones/v18/Milestone_M54.md) |
-| M55 | Extension Critical Fixes | **released**    | 0.17.3 | [Milestone_M55.md](milestones/v18/Milestone_M55.md) |
-| M56 | Extension Reliability & Validation Hardening | **released**    | 0.17.4 | [Milestone_M56.md](milestones/v18/Milestone_M56.md) |
-| M57 | Extension API, Type & Maintainability Polish | **released**    | 0.17.5 | [Milestone_M57.md](milestones/v18/Milestone_M57.md) |
+M53 Multi-Root Debug-Attach Fix · M54 Emulator RT & Concurrency Safety · M55 Extension Critical Fixes ·
+M56 Extension Reliability & Validation Hardening · M57 Extension API, Type & Maintainability Polish.
+Full registry in [`docs/v18/05_dev-plan.md`](v18/05_dev-plan.md).
 
-Source: parallel code-review reconciliation (C/C++ emulator, Node.js/TS, VS Code extension reviews, 2026-08-25). All HIGH and MEDIUM findings intaked; LOW findings deferred. M53 covers the one bug two reviews flagged independently; M54 covers all emulator findings; M55–M57 split the 34 remaining Node.js/TS findings by severity and theme (critical fixes / reliability & validation / API & maintainability polish), mirroring the M31–M33 and M28–M30 precedent from earlier versions.
+### v19 (…) — planned
+
+*(no milestones yet)*
