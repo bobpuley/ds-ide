@@ -140,7 +140,7 @@ Every `window.addEventListener('message', ...)` handler annotates `e.data` with 
 
 ---
 
-### [ ] fix: distinguish ENOENT from other fs.stat failures in create-effect-project.ts (FR-EXT-23)
+### [x] fix: distinguish ENOENT from other fs.stat failures in create-effect-project.ts (FR-EXT-23)
 
 A blanket `catch {}` around a `stat` call assumes any failure means "not found," so a permission-denied or unavailable-drive failure is treated the same and the code proceeds to create the directory regardless.
 
@@ -152,7 +152,7 @@ A blanket `catch {}` around a `stat` call assumes any failure means "not found,"
 
 ---
 
-### [ ] fix: wrap create-effect-project.ts's final openFolder step in try/catch (FR-EXT-24)
+### [x] fix: wrap create-effect-project.ts's final openFolder step in try/catch (FR-EXT-24)
 
 The last statement in the function — opening the newly-created folder — sits outside both try/catch blocks in the file, unlike every other failure path in the same function.
 
