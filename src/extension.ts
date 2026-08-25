@@ -848,6 +848,14 @@ export function activate(context: vscode.ExtensionContext): void {
     );
   });
 
+  // FR-EXT-6: Node's EventEmitter throws in-process on an unhandled 'error'
+  // emission, which would otherwise crash the entire Extension Host on any
+  // raw IPC socket error.
+  manager.on('error', (err: Error) => {
+    emulatorChannel.appendLine(`ds-ide: emulator error: ${err.message}`);
+    void vscode.window.showErrorMessage(`ds-ide: emulator error: ${err.message}`);
+  });
+
   const debugAdapterFactory = new DaisyDebugAdapterFactory();
   const debugTrackerFactory = new DaisyDebugAdapterTrackerFactory((mode) => manager?.sendAudioMode(mode));
 

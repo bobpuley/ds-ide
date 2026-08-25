@@ -10,7 +10,7 @@ Close the six remaining HIGH-severity findings from the Node.js/TypeScript revie
 
 ## Sprint Tasks
 
-### [ ] fix: register production error listener on EmulatorManager (FR-EXT-6)
+### [x] fix: register production error listener on EmulatorManager (FR-EXT-6)
 
 `activate()` never registers an `'error'` listener on `EmulatorManager`. Node's `EventEmitter` throws in-process on an unhandled `'error'` emission, so any raw socket error can crash the Extension Host for the entire VS Code window.
 

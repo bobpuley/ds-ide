@@ -184,6 +184,19 @@ describe('extension', () => {
     );
   });
 
+  // FR-EXT-6 / FR-EXT-39: Node's EventEmitter throws in-process on an
+  // unhandled 'error' emission — without a production listener, any raw
+  // socket error from EmulatorManager would crash the entire Extension Host.
+  it('shows an error notification and does not throw when EmulatorManager emits an error', () => {
+    const ctx = makeContext();
+    activate(ctx);
+    const mgr = managerInstances[0]!;
+    expect(() => mgr.emit('error', new Error('socket blew up'))).not.toThrow();
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      expect.stringContaining('socket blew up'),
+    );
+  });
+
   it('routes type:led manager messages to controlsProvider webview (FR-TWE-1)', async () => {
     const ctx = makeContext();
     activate(ctx);
