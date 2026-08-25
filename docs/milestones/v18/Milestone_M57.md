@@ -1,7 +1,7 @@
 # M57 — Extension API, Type & Maintainability Polish
 
 **Version:** 0.17.5
-**Status:** in progress
+**Status:** released
 **Source:** parallel code-review reconciliation (`docs/06_nodejs_review.md`, 2026-08-25)
 
 ## Goal
