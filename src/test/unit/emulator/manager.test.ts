@@ -69,6 +69,27 @@ function makeCmakeProcess(exitCode = 0) {
   return proc;
 }
 
+// ---- CancellationToken stub (structurally matches manager.ts's local
+// CancellationToken interface, not vscode's — manager.ts stays UI-independent) ----
+
+function makeCancellationSource() {
+  let cancelled = false;
+  const listeners: Array<() => void> = [];
+  return {
+    token: {
+      get isCancellationRequested() { return cancelled; },
+      onCancellationRequested(cb: () => void) {
+        listeners.push(cb);
+        return { dispose: () => { /* no-op for tests */ } };
+      },
+    },
+    cancel(): void {
+      cancelled = true;
+      for (const cb of listeners) cb();
+    },
+  };
+}
+
 // ---- IpcClient stub ----
 
 function makeIpcClient() {
@@ -181,6 +202,41 @@ describe('EmulatorManager', () => {
     });
   });
 
+  describe('build() cancellation (FR-EXT-16)', () => {
+    it('kills the cmake process and rejects when the token is cancelled', async () => {
+      let killed = false;
+      let spawnedResolve!: () => void;
+      const spawned = new Promise<void>((res) => { spawnedResolve = res; });
+      spawnMock.mockImplementation((cmd: string) => {
+        if (cmd === 'cmake') {
+          const proc = new EventEmitter() as EventEmitter & {
+            stdout: EventEmitter; stderr: EventEmitter; kill: () => void; pid: number;
+          };
+          proc.stdout = new EventEmitter();
+          proc.stderr = new EventEmitter();
+          proc.pid = 9999;
+          proc.kill = vi.fn(() => { killed = true; proc.emit('close', null); });
+          // Never closes on its own — simulates a hung cmake configure.
+          spawnedResolve();
+          return proc;
+        }
+        return makeChildProcess(0, '/tmp/daisy_emu_test.sock');
+      });
+
+      const source = makeCancellationSource();
+      const buildPromise = manager.build(
+        { projectRoot: '/proj', effectSrc: '/proj/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+        source.token,
+      );
+      await spawned;
+      source.cancel();
+
+      await expect(buildPromise).rejects.toThrow(/cancelled/);
+      expect(killed).toBe(true);
+    });
+  });
+
   describe('deploy()', () => {
     it('throws if build was never called', async () => {
       await expect(manager.deploy(() => undefined)).rejects.toThrow('Build before deploying');
@@ -205,6 +261,40 @@ describe('EmulatorManager', () => {
       );
       await manager.deploy(() => undefined);
       expect(ipcClientStub.connect).toHaveBeenCalledWith('/tmp/daisy_emu_test.sock');
+    });
+  });
+
+  describe('deploy() cancellation (FR-EXT-16)', () => {
+    it('kills the spawned emulator child and rejects when the token is cancelled while waiting for the socket', async () => {
+      await manager.build(
+        { projectRoot: '/proj', effectSrc: '/proj/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+
+      let killed = false;
+      let spawnedResolve!: () => void;
+      const spawned = new Promise<void>((res) => { spawnedResolve = res; });
+      spawnMock.mockImplementation((cmd: string) => {
+        if (cmd === 'cmake') return makeCmakeProcess(0);
+        // effect_emu spawn — never announces a socket path.
+        const proc = new EventEmitter() as EventEmitter & {
+          stdout: EventEmitter; stderr: EventEmitter; kill: () => void; pid: number;
+        };
+        proc.stdout = new EventEmitter();
+        proc.stderr = new EventEmitter();
+        proc.pid = 12345;
+        proc.kill = vi.fn(() => { killed = true; proc.emit('close', null); });
+        spawnedResolve();
+        return proc;
+      });
+
+      const source = makeCancellationSource();
+      const deployPromise = manager.deploy(() => undefined, source.token);
+      await spawned;
+      source.cancel();
+
+      await expect(deployPromise).rejects.toThrow(/cancelled/);
+      expect(killed).toBe(true);
     });
   });
 

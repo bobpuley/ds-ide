@@ -43,10 +43,40 @@ const window = {
   showInputBox: vi.fn(),
   showQuickPick: vi.fn(),
   setStatusBarMessage: vi.fn(() => ({ dispose: vi.fn() })),
-  withProgress: vi.fn((_options: unknown, task: (progress: { report: (v: unknown) => void }) => unknown) =>
-    task({ report: vi.fn() }),
-  ),
+  withProgress: vi.fn((
+    _options: unknown,
+    task: (progress: { report: (v: unknown) => void }, token: CancellationToken) => unknown,
+  ) => {
+    const source = new CancellationTokenSource();
+    return task({ report: vi.fn() }, source.token);
+  }),
 };
+
+interface CancellationToken {
+  isCancellationRequested: boolean;
+  onCancellationRequested: (cb: () => void) => { dispose: () => void };
+}
+
+class CancellationTokenSource {
+  private listeners: Array<() => void> = [];
+  readonly token: CancellationToken = {
+    isCancellationRequested: false,
+    onCancellationRequested: (cb: () => void) => {
+      this.listeners.push(cb);
+      return { dispose: () => { this.listeners = this.listeners.filter((l) => l !== cb); } };
+    },
+  };
+
+  cancel(): void {
+    if (this.token.isCancellationRequested) return;
+    this.token.isCancellationRequested = true;
+    for (const cb of this.listeners) cb();
+  }
+
+  dispose(): void {
+    this.listeners = [];
+  }
+}
 
 const ProgressLocation = { SourceControl: 1, Window: 10, Notification: 15 } as const;
 
@@ -176,4 +206,5 @@ export {
   DiagnosticSeverity, Position, Range, WorkspaceEdit, Diagnostic,
   StatusBarAlignment, ProgressLocation, languages,
   debug, DebugAdapterExecutable, DebugAdapterInlineImplementation, EventEmitter,
+  CancellationTokenSource,
 };

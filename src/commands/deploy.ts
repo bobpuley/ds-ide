@@ -4,11 +4,12 @@ import { EmulatorManager } from '../emulator/manager';
 export async function deployToEmulator(
   manager: EmulatorManager,
   outputChannel: vscode.OutputChannel,
+  token?: vscode.CancellationToken,
 ): Promise<boolean> {
   outputChannel.show();
 
   try {
-    await manager.deploy((line) => outputChannel.appendLine(line));
+    await manager.deploy((line) => outputChannel.appendLine(line), token);
     // Routine success relies on the status bar (which already transitions to
     // "running" once the emulator's first status event arrives) — an
     // additional toast here would just duplicate that signal (FR-UX-2).

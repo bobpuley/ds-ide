@@ -313,10 +313,10 @@ class DeployCoordinator {
     }
   }
 
-  async performDeploy(opts: { build: boolean; debug: boolean }): Promise<boolean> {
+  async performDeploy(opts: { build: boolean; debug: boolean }, token?: vscode.CancellationToken): Promise<boolean> {
     if (opts.build) {
       const ok = await buildForEmulator(
-        this.manager, this.extensionPath, this.diagnostics, this.buildChannel, this.workspaceState,
+        this.manager, this.extensionPath, this.diagnostics, this.buildChannel, this.workspaceState, token,
       );
       if (!ok) return false;
     }
@@ -346,6 +346,7 @@ class DeployCoordinator {
         () => this.sendPostDeployState(),
         this.emulatorChannel,
         this.workspaceState,
+        token,
       );
       return true;
     }
@@ -356,7 +357,7 @@ class DeployCoordinator {
     this.controlsProvider.loadEditor(cfg);
     if (controlsConfig) this.controlsProvider.postControlsConfig(controlsConfig);
     void vscode.commands.executeCommand('workbench.view.extension.ds-ide-controls');
-    const deployed = await deployToEmulator(this.manager, this.emulatorChannel);
+    const deployed = await deployToEmulator(this.manager, this.emulatorChannel, token);
     if (!deployed) {
       this.setStopped();
       return false;
@@ -689,6 +690,20 @@ interface CommandDeps {
   initViewsFromProject: () => Promise<void>;
 }
 
+// FR-EXT-16: shared wrapper so a hung build/deploy/flash child process can
+// be aborted from the progress notification instead of reloading the
+// extension host window — every long-running command below routes through
+// this instead of calling vscode.window.withProgress ad hoc.
+async function withCancellableProgress<T>(
+  title: string,
+  task: (token: vscode.CancellationToken) => Promise<T>,
+): Promise<T> {
+  return vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title, cancellable: true },
+    (_progress, token) => task(token),
+  );
+}
+
 // FR-EXT-9: command registration extracted from activate() — every
 // vscode.commands.registerCommand('ds-ide.*', ...) call lives here.
 function registerCommands(deps: CommandDeps): vscode.Disposable[] {
@@ -699,13 +714,19 @@ function registerCommands(deps: CommandDeps): vscode.Disposable[] {
 
   return [
     vscode.commands.registerCommand('ds-ide.build', () =>
-      buildForEmulator(manager, extensionPath, diagnostics, buildChannel, workspaceState),
+      withCancellableProgress('ds-ide: building…', (token) =>
+        buildForEmulator(manager, extensionPath, diagnostics, buildChannel, workspaceState, token),
+      ),
     ),
     vscode.commands.registerCommand('ds-ide.buildAndDeploy', () =>
-      deployCoordinator.performDeploy({ build: true, debug: false }),
+      withCancellableProgress('ds-ide: building and deploying…', (token) =>
+        deployCoordinator.performDeploy({ build: true, debug: false }, token),
+      ),
     ),
     vscode.commands.registerCommand('ds-ide.deploy', () =>
-      deployCoordinator.performDeploy({ build: false, debug: false }),
+      withCancellableProgress('ds-ide: deploying…', (token) =>
+        deployCoordinator.performDeploy({ build: false, debug: false }, token),
+      ),
     ),
     vscode.commands.registerCommand('ds-ide.start', () => startAudio(manager)),
     vscode.commands.registerCommand('ds-ide.stop', () => {
@@ -719,7 +740,9 @@ function registerCommands(deps: CommandDeps): vscode.Disposable[] {
         void vscode.window.showErrorMessage('ds-ide: no workspace folder open');
         return;
       }
-      return buildForHardware(folder.uri.fsPath, diagnostics, hardwareChannel);
+      return withCancellableProgress('ds-ide: building for hardware…', (token) =>
+        buildForHardware(folder.uri.fsPath, diagnostics, hardwareChannel, {}, token),
+      );
     }),
     vscode.commands.registerCommand('ds-ide.flash', () => {
       const folder = resolveActiveFolder(workspaceState);
@@ -727,10 +750,14 @@ function registerCommands(deps: CommandDeps): vscode.Disposable[] {
         void vscode.window.showErrorMessage('ds-ide: no workspace folder open');
         return;
       }
-      return flashToHardware(folder.uri.fsPath, flashChannel);
+      return withCancellableProgress('ds-ide: flashing…', (token) =>
+        flashToHardware(folder.uri.fsPath, flashChannel, {}, token),
+      );
     }),
     vscode.commands.registerCommand('ds-ide.debug', () =>
-      deployCoordinator.performDeploy({ build: false, debug: true }),
+      withCancellableProgress('ds-ide: building and deploying…', (token) =>
+        deployCoordinator.performDeploy({ build: false, debug: true }, token),
+      ),
     ),
     vscode.commands.registerCommand('ds-ide.createNewEffectProject', createEffectProject),
     vscode.commands.registerCommand('ds-ide.selectActiveFolder', async () => {
@@ -1062,7 +1089,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   const runConfigProvider = new DaisyRunConfigurationProvider(
-    () => deployCoordinator.performDeploy({ build: true, debug: false }),
+    (token) => deployCoordinator.performDeploy({ build: true, debug: false }, token),
     () => manager?.childPid,
     context.workspaceState,
   );

@@ -57,7 +57,7 @@ The `Input` instance created solely to call `getPortCount()` is discarded withou
 
 ---
 
-### [ ] feat: add timeout/cancellation to long-running child processes (FR-EXT-16)
+### [x] feat: add timeout/cancellation to long-running child processes (FR-EXT-16)
 
 None of `make`, `dfu-util`, or emulator build/deploy accept an `AbortSignal`/cancellation token, and their progress UI isn't marked cancellable, so a hung process leaves the command's promise pending forever with no way to abort short of reloading the extension host window.
 

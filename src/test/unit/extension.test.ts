@@ -1694,6 +1694,25 @@ describe('deploy sequencing via DeployCoordinator (FR-IPC-7)', () => {
     expect(mgr.sendAudioMode).toHaveBeenCalled();
   });
 
+  it('ds-ide.build/buildAndDeploy/deploy/debug report progress via a cancellable withProgress notification (FR-EXT-16)', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flush();
+
+    (vscode.window.withProgress as ReturnType<typeof vi.fn>).mockClear();
+
+    for (const id of ['ds-ide.build', 'ds-ide.buildAndDeploy', 'ds-ide.deploy', 'ds-ide.debug']) {
+      await getCommand(id)!();
+    }
+
+    const calls = (vscode.window.withProgress as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls.length).toBeGreaterThanOrEqual(4);
+    for (const [options] of calls) {
+      expect(options).toMatchObject({ cancellable: true });
+    }
+  });
+
   it('ds-ide.deploy sets the status bar to deploying, then back to stopped when deploy fails', async () => {
     const { activate: act } = await import('../../extension');
     const ctx = makeContext();

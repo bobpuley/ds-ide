@@ -16,6 +16,7 @@ export async function buildForHardware(
   diagnostics: vscode.DiagnosticCollection,
   outputChannel: vscode.OutputChannel,
   deps: HardwareBuildDeps = {},
+  token?: vscode.CancellationToken,
 ): Promise<void> {
   const spawnFn = deps.spawn ?? cp.spawn;
 
@@ -40,7 +41,7 @@ export async function buildForHardware(
       channel.appendLine(line);
       const d = parseBuildLine(line);
       if (d) parsed.push(d);
-    });
+    }, token);
     applyDiagnostics(diagnostics, parsed, projectRoot);
     void vscode.window.showInformationMessage('ds-ide: hardware build succeeded');
   } catch (err) {
@@ -65,6 +66,7 @@ function runMake(
   env: NodeJS.ProcessEnv,
   spawnFn: typeof cp.spawn,
   onOutput: (line: string) => void,
+  token?: vscode.CancellationToken,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawnFn('make', [], { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -72,14 +74,24 @@ function runMake(
     const stdoutSplitter = createLineSplitter(onOutput);
     const stderrSplitter = createLineSplitter(onOutput);
 
+    // FR-EXT-16: a hung `make` invocation otherwise leaves the build
+    // command's promise pending forever with no way to abort it.
+    const cancelSub = token?.onCancellationRequested(() => proc.kill());
+
     proc.stdout?.on('data', (data: Buffer) => stdoutSplitter.push(data));
     proc.stderr?.on('data', (data: Buffer) => stderrSplitter.push(data));
-    proc.on('error', reject);
+    proc.on('error', (err) => { cancelSub?.dispose(); reject(err); });
     proc.on('close', (code) => {
+      cancelSub?.dispose();
       stdoutSplitter.flush();
       stderrSplitter.flush();
-      if (code === 0) resolve();
-      else reject(new Error(`make exited with code ${code ?? 'null'}`));
+      if (token?.isCancellationRequested) {
+        reject(new Error('make cancelled'));
+      } else if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`make exited with code ${code ?? 'null'}`));
+      }
     });
   });
 }

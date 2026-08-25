@@ -13,6 +13,7 @@ export async function debugDeploy(
   sendSine: (() => void) | undefined,
   outputChannel: vscode.OutputChannel,
   workspaceState: vscode.Memento,
+  token?: vscode.CancellationToken,
 ): Promise<void> {
   const channel = outputChannel;
   channel.show();
@@ -20,7 +21,7 @@ export async function debugDeploy(
   try {
     const defs = loadDefs();
     showPanel(defs, getPotSnapshot());
-    await manager.deploy((line) => channel.appendLine(line));
+    await manager.deploy((line) => channel.appendLine(line), token);
     // Debug-attach path only ever replayed pot state (button snapshot was
     // never sent here even before FR-DEV-1) — preserved as-is by passing an
     // empty button-values map into the now-unified controlSnapshot.

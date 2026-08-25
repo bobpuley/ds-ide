@@ -125,6 +125,36 @@ describe('buildForHardware()', () => {
     expect(channel.show).toHaveBeenCalled();
   });
 
+  it('kills the make process when the cancellation token fires (FR-EXT-16)', async () => {
+    let killed = false;
+    let spawnedResolve!: () => void;
+    const spawned = new Promise<void>((res) => { spawnedResolve = res; });
+    const spawn = vi.fn(() => {
+      const proc = new EventEmitter() as ReturnType<typeof import('child_process').spawn>;
+      (proc as unknown as Record<string, unknown>)['stdout'] = new EventEmitter();
+      (proc as unknown as Record<string, unknown>)['stderr'] = new EventEmitter();
+      proc.kill = vi.fn(() => {
+        killed = true;
+        proc.emit('close', null);
+        return true;
+      });
+      // Never closes on its own — simulates a hung `make`.
+      spawnedResolve();
+      return proc;
+    }) as unknown as typeof import('child_process').spawn;
+
+    const source = new vscode.CancellationTokenSource();
+    const resultPromise = buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn }, source.token);
+    await spawned; // wait until runMake has spawned + wired the cancellation listener
+    source.cancel();
+    await resultPromise;
+
+    expect(killed).toBe(true);
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      expect.stringContaining('hardware build failed'),
+    );
+  });
+
   it('still parses a diagnostic line split across two stderr chunks (FR-EXT-12)', async () => {
     const diagnosticLine =
       "/project/effect.cpp:10:5: error: use of undeclared identifier 'foo'";
