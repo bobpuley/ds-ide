@@ -22,7 +22,7 @@ Both `hardware-build.ts` and `dfu-flash.ts` split each raw `'data'` chunk on `'\
 
 ---
 
-### [ ] fix: escalate killExisting() to SIGKILL like killStalePid (FR-EXT-13)
+### [x] fix: escalate killExisting() to SIGKILL like killStalePid (FR-EXT-13)
 
 `killExisting()` sends SIGTERM only, unlike `killStalePid`'s documented SIGTERM → wait → SIGKILL escalation, so a live child that ignores/misses SIGTERM (e.g. blocked in a native audio callback) is never force-terminated.
 

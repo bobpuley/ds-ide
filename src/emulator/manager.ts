@@ -10,8 +10,24 @@ import { PROTOCOL_VERSION } from '../ipc/protocol-version';
 
 const SOCKET_TIMEOUT_MS = 10_000;
 // Grace period between SIGTERM and SIGKILL escalation when reclaiming a
-// stale emulator process (FR-EXT-2).
+// stale emulator process (FR-EXT-2) or terminating the manager's own live
+// child (FR-EXT-13).
 const KILL_ESCALATION_MS = 200;
+
+// SIGTERM first, escalating to SIGKILL only if `pid` is still alive after a
+// short grace period. Never throws — safe to call fire-and-forget.
+async function escalateKill(pid: number): Promise<void> {
+  try { process.kill(pid, 'SIGTERM'); } catch { return; }
+  const deadline = Date.now() + KILL_ESCALATION_MS;
+  let alive = true;
+  while (Date.now() < deadline) {
+    try { process.kill(pid, 0); } catch { alive = false; break; }
+    await new Promise<void>((r) => setTimeout(r, 10));
+  }
+  if (alive) {
+    try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
+  }
+}
 
 function pidFilePath(buildDir: string): string {
   return path.join(buildDir, 'emu.pid');
@@ -49,16 +65,7 @@ export async function killStalePid(buildDir: string, execFileFn: typeof cp.execF
     if (pid > 0 && await isEffectEmuProcess(pid, execFileFn)) {
       // SIGTERM first, escalating to SIGKILL only if the process is still
       // alive after a short grace period (FR-EXT-2).
-      try { process.kill(pid, 'SIGTERM'); } catch { /* already gone */ }
-      const deadline = Date.now() + KILL_ESCALATION_MS;
-      let alive = true;
-      while (Date.now() < deadline) {
-        try { process.kill(pid, 0); } catch { alive = false; break; }
-        await new Promise<void>((r) => setTimeout(r, 10));
-      }
-      if (alive) {
-        try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
-      }
+      await escalateKill(pid);
     }
     // A PID that doesn't identify as effect_emu (reused by an unrelated
     // process) is left alone entirely — only the stale pid file is cleared.
@@ -461,8 +468,12 @@ export class EmulatorManager extends EventEmitter {
   private killExisting(): void {
     this.intentionalDisconnect = true;  // suppress the subsequent disconnect event
     if (this.childProcess) {
-      this.childProcess.kill();
+      const pid = this.childProcess.pid;
       this.childProcess = null;
+      // SIGTERM → wait KILL_ESCALATION_MS → SIGKILL, matching killStalePid's
+      // escalation so a child that ignores/misses SIGTERM (e.g. blocked in a
+      // native audio callback) is still force-terminated (FR-EXT-13).
+      if (pid) void escalateKill(pid);
     }
     if (this.ipcClient) {
       this.ipcClient.disconnect();

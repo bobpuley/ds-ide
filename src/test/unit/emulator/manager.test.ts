@@ -685,6 +685,46 @@ describe('EmulatorManager', () => {
     });
   });
 
+  describe('killExisting() escalation (FR-EXT-13)', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('sends SIGTERM only when the child is already gone by the first poll', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => {
+        throw Object.assign(new Error('ESRCH'), { code: 'ESRCH' });
+      });
+
+      manager.dispose();
+
+      expect(killSpy).toHaveBeenCalledWith(12345, 'SIGTERM');
+      expect(killSpy).not.toHaveBeenCalledWith(12345, 'SIGKILL');
+    });
+
+    it('escalates to SIGKILL within KILL_ESCALATION_MS when the child ignores SIGTERM', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+
+      const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
+
+      manager.dispose();
+
+      await new Promise<void>((r) => setTimeout(r, 250));
+
+      expect(killSpy).toHaveBeenCalledWith(12345, 'SIGTERM');
+      expect(killSpy).toHaveBeenCalledWith(12345, 'SIGKILL');
+    });
+  });
+
   describe('childPid', () => {
     it('returns the PID of the running emulator process', async () => {
       await manager.build(
