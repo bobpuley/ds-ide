@@ -6,7 +6,7 @@ export const DS_IDE_DEBUG_TYPE = 'ds-ide';
 
 export class DaisyRunConfigurationProvider implements vscode.DebugConfigurationProvider {
   constructor(
-    private readonly onBuildAndDeploy: () => Promise<boolean>,
+    private readonly onBuildAndDeploy: (token: vscode.CancellationToken) => Promise<boolean>,
     private readonly getEmulatorPid: () => number | undefined,
     private readonly workspaceState: vscode.Memento,
   ) {}
@@ -25,9 +25,11 @@ export class DaisyRunConfigurationProvider implements vscode.DebugConfigurationP
   ): Promise<vscode.DebugConfiguration | undefined> {
     // F5 otherwise sits silent for however long the cmake build + deploy
     // takes, with no indication anything is happening (FR-QA-EXT-9).
+    // cancellable: true lets the user abort a hung build/deploy instead of
+    // reloading the extension host window (FR-EXT-16).
     const ok = await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: 'ds-ide: building and deploying…' },
-      () => this.onBuildAndDeploy(),
+      { location: vscode.ProgressLocation.Notification, title: 'ds-ide: building and deploying…', cancellable: true },
+      (_progress, token) => this.onBuildAndDeploy(token),
     );
     if (!ok) return undefined;
 

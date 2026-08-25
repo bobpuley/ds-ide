@@ -63,6 +63,40 @@ describe('HostMidiBridge (FR-DEV-18)', () => {
     expect(manager.sendMidiEvent).toHaveBeenCalledWith(0x90, 60, 100);
   });
 
+  it('closes the enumeration probe port after reading the port count (FR-EXT-15)', () => {
+    const handlerLists: Array<Array<(dt: number, msg: number[]) => void>> = [];
+    const probes: MidiInputLike[] = [];
+    let call = 0;
+    const factory: MidiInputFactory = () => {
+      call++;
+      const input = fakeInput(1, handlerLists);
+      if (call === 1) probes.push(input);
+      return input;
+    };
+    const bridge = new HostMidiBridge(fakeManager(), factory, 'darwin');
+    bridge.start();
+    expect(probes[0]?.closePort).toHaveBeenCalledOnce();
+  });
+
+  it('one bad port does not prevent other ports from opening or throw out of start() (FR-EXT-14)', () => {
+    const handlerLists: Array<Array<(dt: number, msg: number[]) => void>> = [];
+    const opened: number[] = [];
+    let call = 0;
+    const factory: MidiInputFactory = () => {
+      call++;
+      const input = fakeInput(3, handlerLists);
+      const portIndex = call - 2; // call 1 is the probe; calls 2..4 are ports 0..2
+      input.openPort = vi.fn((i: number) => {
+        if (portIndex === 1) throw new Error('port 1 is busy');
+        opened.push(i);
+      });
+      return input;
+    };
+    const bridge = new HostMidiBridge(fakeManager(), factory, 'darwin');
+    expect(() => bridge.start()).not.toThrow();
+    expect(opened.sort()).toEqual([0, 2]);
+  });
+
   it('stop() closes every opened port', () => {
     const handlerLists: Array<Array<(dt: number, msg: number[]) => void>> = [];
     const closedPorts: MidiInputLike[] = [];
@@ -74,6 +108,7 @@ describe('HostMidiBridge (FR-DEV-18)', () => {
     };
     const bridge = new HostMidiBridge(fakeManager(), factory, 'darwin');
     bridge.start();
+    closedPorts.length = 0; // start() also closes the enumeration probe (FR-EXT-15); isolate stop()'s own closes
     bridge.stop();
     expect(closedPorts).toHaveLength(1);
   });

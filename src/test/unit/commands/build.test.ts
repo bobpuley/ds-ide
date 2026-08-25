@@ -187,6 +187,7 @@ describe('buildForEmulator active folder resolution (FR-UX-4)', () => {
     expect(manager.build).toHaveBeenCalledWith(
       expect.objectContaining({ projectRoot: '/b' }),
       expect.anything(),
+      undefined,
     );
   });
 });
@@ -220,6 +221,7 @@ describe('buildForEmulator honors ds-ide.effectSource (FR-EXT-10)', () => {
     expect(manager.build).toHaveBeenCalledWith(
       expect.objectContaining({ effectSrc: '/proj/custom.cpp' }),
       expect.anything(),
+      undefined,
     );
   });
 
@@ -238,6 +240,7 @@ describe('buildForEmulator honors ds-ide.effectSource (FR-EXT-10)', () => {
     expect(manager.build).toHaveBeenCalledWith(
       expect.objectContaining({ effectSrc: '/proj/custom.cpp' }),
       expect.anything(),
+      undefined,
     );
   });
 });

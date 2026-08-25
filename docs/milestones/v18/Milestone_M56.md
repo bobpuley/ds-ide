@@ -10,7 +10,7 @@ Close the 15 MEDIUM findings spanning runtime safety, async/concurrency, validat
 
 ## Sprint Tasks
 
-### [ ] fix: buffer partial stdout/stderr lines across chunk boundaries (FR-EXT-12)
+### [x] fix: buffer partial stdout/stderr lines across chunk boundaries (FR-EXT-12)
 
 Both `hardware-build.ts` and `dfu-flash.ts` split each raw `'data'` chunk on `'\n'` independently with no carry-over buffer, so a diagnostic or the dfu-util success string split across a chunk boundary is dropped or misreported.
 
@@ -22,7 +22,7 @@ Both `hardware-build.ts` and `dfu-flash.ts` split each raw `'data'` chunk on `'\
 
 ---
 
-### [ ] fix: escalate killExisting() to SIGKILL like killStalePid (FR-EXT-13)
+### [x] fix: escalate killExisting() to SIGKILL like killStalePid (FR-EXT-13)
 
 `killExisting()` sends SIGTERM only, unlike `killStalePid`'s documented SIGTERM → wait → SIGKILL escalation, so a live child that ignores/misses SIGTERM (e.g. blocked in a native audio callback) is never force-terminated.
 
@@ -34,7 +34,7 @@ Both `hardware-build.ts` and `dfu-flash.ts` split each raw `'data'` chunk on `'\
 
 ---
 
-### [ ] fix: guard each HostMidiBridge port-open call individually (FR-EXT-14)
+### [x] fix: guard each HostMidiBridge port-open call individually (FR-EXT-14)
 
 Only the initial port-count probe is try/caught; a throw from `openPort(i)` inside the per-port loop propagates out of `start()` and, since it's called unguarded during `activate()`, out of `activate()` itself.
 
@@ -46,7 +46,7 @@ Only the initial port-count probe is try/caught; a throw from `openPort(i)` insi
 
 ---
 
-### [ ] fix: close HostMidiBridge's probe Input after port-count read (FR-EXT-15)
+### [x] fix: close HostMidiBridge's probe Input after port-count read (FR-EXT-15)
 
 The `Input` instance created solely to call `getPortCount()` is discarded without `closePort()`, holding an underlying native handle GC won't necessarily reclaim promptly.
 
@@ -57,7 +57,7 @@ The `Input` instance created solely to call `getPortCount()` is discarded withou
 
 ---
 
-### [ ] feat: add timeout/cancellation to long-running child processes (FR-EXT-16)
+### [x] feat: add timeout/cancellation to long-running child processes (FR-EXT-16)
 
 None of `make`, `dfu-util`, or emulator build/deploy accept an `AbortSignal`/cancellation token, and their progress UI isn't marked cancellable, so a hung process leaves the command's promise pending forever with no way to abort short of reloading the extension host window.
 
@@ -69,7 +69,7 @@ None of `make`, `dfu-util`, or emulator build/deploy accept an `AbortSignal`/can
 
 ---
 
-### [ ] fix: guard atob()/decodeOledFrame against malformed base64 (FR-EXT-17)
+### [x] fix: guard atob()/decodeOledFrame against malformed base64 (FR-EXT-17)
 
 `decodeOledFrame` calls `atob(base64)`, which throws on invalid input, directly inside a `'message'` event listener with no try/catch — breaking the OLED preview for the rest of the session on a corrupted IPC frame.
 
@@ -81,7 +81,7 @@ None of `make`, `dfu-util`, or emulator build/deploy accept an `AbortSignal`/can
 
 ---
 
-### [ ] fix: prevent dispose()/deploy() race from orphaning a spawned child (FR-EXT-18)
+### [x] fix: prevent dispose()/deploy() race from orphaning a spawned child (FR-EXT-18)
 
 `deploy()` assigns `this.childProcess` only after `spawn()` returns; if `dispose()` runs in between, it finds `childProcess === null` and does nothing, but the deploy's `spawn()` still executes afterward with nothing left to kill it.
 
@@ -93,7 +93,7 @@ None of `make`, `dfu-util`, or emulator build/deploy accept an `AbortSignal`/can
 
 ---
 
-### [ ] fix: attach error handlers to fire-and-forget workspaceState.update() calls (FR-EXT-19)
+### [x] fix: attach error handlers to fire-and-forget workspaceState.update() calls (FR-EXT-19)
 
 Three store classes discard the promise returned by `workspaceState.update()` via bare `void`, so a rejection (storage error, disk full) becomes an unhandled promise rejection.
 
@@ -104,7 +104,7 @@ Three store classes discard the promise returned by `workspaceState.update()` vi
 
 ---
 
-### [ ] fix: round-trip labels with embedded newlines in the hand-rolled YAML parser (FR-EXT-20)
+### [x] fix: round-trip labels with embedded newlines in the hand-rolled YAML parser (FR-EXT-20)
 
 `yamlQuote()` escapes `\` and `"` but not newlines, and the reader is strictly line-based, so a label containing `\n` (freely typeable in the Controls Editor) is corrupted or lost on the next read.
 
@@ -116,7 +116,7 @@ Three store classes discard the promise returned by `workspaceState.update()` vi
 
 ---
 
-### [ ] fix: cross-validate gpio_pin upper bound against the pin table (FR-EXT-21)
+### [x] fix: cross-validate gpio_pin upper bound against the pin table (FR-EXT-21)
 
 `controller-config.ts` validates `gpio_pin` against a hardcoded upper bound of 31, but the pin table's highest defined pin is 30, so a `gpio_pin: 31` entry passes validation but can never render or participate in conflict checks.
 
@@ -128,7 +128,7 @@ Three store classes discard the promise returned by `workspaceState.update()` vi
 
 ---
 
-### [ ] fix: runtime-validate postMessage payloads in *-webview.ts files (FR-EXT-22)
+### [x] fix: runtime-validate postMessage payloads in *-webview.ts files (FR-EXT-22)
 
 Every `window.addEventListener('message', ...)` handler annotates `e.data` with a declared type but never checks at runtime that it matches, so a drift between the two sides fails silently instead of surfacing an error.
 
@@ -140,7 +140,7 @@ Every `window.addEventListener('message', ...)` handler annotates `e.data` with 
 
 ---
 
-### [ ] fix: distinguish ENOENT from other fs.stat failures in create-effect-project.ts (FR-EXT-23)
+### [x] fix: distinguish ENOENT from other fs.stat failures in create-effect-project.ts (FR-EXT-23)
 
 A blanket `catch {}` around a `stat` call assumes any failure means "not found," so a permission-denied or unavailable-drive failure is treated the same and the code proceeds to create the directory regardless.
 
@@ -152,7 +152,7 @@ A blanket `catch {}` around a `stat` call assumes any failure means "not found,"
 
 ---
 
-### [ ] fix: wrap create-effect-project.ts's final openFolder step in try/catch (FR-EXT-24)
+### [x] fix: wrap create-effect-project.ts's final openFolder step in try/catch (FR-EXT-24)
 
 The last statement in the function — opening the newly-created folder — sits outside both try/catch blocks in the file, unlike every other failure path in the same function.
 
@@ -164,7 +164,7 @@ The last statement in the function — opening the newly-created folder — sits
 
 ---
 
-### [ ] fix: surface IpcClient 'warning' events through EmulatorManager (FR-EXT-25)
+### [x] fix: surface IpcClient 'warning' events through EmulatorManager (FR-EXT-25)
 
 `EmulatorManager.connectIpc` wires up `message`/`error`/`disconnect` listeners on `IpcClient` but never registers or re-exposes the `'warning'` event, so dropped/malformed IPC traffic is invisible outside `console.warn`.
 
@@ -176,7 +176,7 @@ The last statement in the function — opening the newly-created folder — sits
 
 ---
 
-### [ ] refactor: centralize the duplicated safeJson() escaping helper (FR-EXT-26)
+### [x] refactor: centralize the duplicated safeJson() escaping helper (FR-EXT-26)
 
 The `</script>`-breakout-prevention helper used when embedding config/pin-def JSON into data islands is copy-pasted identically across two panel files instead of centralized.
 

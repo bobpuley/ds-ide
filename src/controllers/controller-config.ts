@@ -1,3 +1,10 @@
+import { PIN_DEFS } from '../devices/pin-table.gen';
+
+// The pin table's highest defined GPIO pin — derived rather than hardcoded
+// so validation can never silently drift from the actual pin table (e.g. if
+// the CSV/generator's pin count ever changes) (FR-EXT-21).
+const MAX_GPIO_PIN = Math.max(...PIN_DEFS.filter(p => p.pin !== null).map(p => p.pin as number));
+
 export type Taper = 'linear' | 'log' | 'antilog';
 export type ButtonMode = 'momentary' | 'toggle';
 export type ActiveLevel = 'high' | 'low';
@@ -16,7 +23,7 @@ export interface ControllerDef {
 export interface ButtonDef {
   id: string;
   label: string;
-  gpioPin: number;       // Daisy pin number 0–31 (matches hw.GetPin(n))
+  gpioPin: number;       // Daisy GPIO pin number (matches hw.GetPin(n)); see MAX_GPIO_PIN for the valid range
   mode: ButtonMode;      // momentary (held) | toggle (latched)
   activeLevel: ActiveLevel;  // wiring metadata; runtime returns the logical press
   pos?: [number, number]; // editor_pos — canvas position (x, y); ignored by runtime
@@ -74,8 +81,12 @@ function parseYamlScalar(raw: string): string | number | [number, number] {
     }
   }
 
-  // Quoted string — preserve content verbatim (no comment stripping inside quotes).
-  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+  // Double-quoted string — unescape yamlQuote()'s escape sequences (FR-EXT-20).
+  if (v.startsWith('"') && v.endsWith('"')) {
+    return unescapeYamlString(v.slice(1, -1));
+  }
+  // Single-quoted string — never produced by yamlQuote(); preserved verbatim.
+  if (v.startsWith("'") && v.endsWith("'")) {
     return v.slice(1, -1);
   }
 
@@ -278,8 +289,8 @@ function validateDigitalEntry(
     ok = false;
   }
 
-  if (typeof gpio_pin !== 'number' || !Number.isInteger(gpio_pin) || gpio_pin < 0 || gpio_pin > 31) {
-    errors.push(`${ctx}: 'gpio_pin' must be an integer 0–31`);
+  if (typeof gpio_pin !== 'number' || !Number.isInteger(gpio_pin) || gpio_pin < 0 || gpio_pin > MAX_GPIO_PIN) {
+    errors.push(`${ctx}: 'gpio_pin' must be an integer 0–${MAX_GPIO_PIN}`);
     ok = false;
   } else if (seenPins.has(gpio_pin)) {
     errors.push(`${ctx}: duplicate gpio_pin ${gpio_pin}`);
@@ -467,10 +478,46 @@ function serializePosOnlySection(lines: string[], sectionName: string, entries: 
 }
 
 // Quote a label value for YAML: wraps in double-quotes if it contains
-// characters that could be misread as YAML syntax (colon, hash, quote, etc.).
+// characters that could be misread as YAML syntax (colon, hash, quote, etc.)
+// or that would corrupt the line-based reader below — newlines/carriage
+// returns/other control characters are escaped rather than emitted literally,
+// so a label containing one still serializes on a single physical line and
+// round-trips intact (FR-EXT-20).
 function yamlQuote(s: string): string {
-  if (/[:#\[\]{},'"&*?|<>=!%@`]/.test(s) || s.trim() !== s || s === '' || /^[0-9]/.test(s)) {
-    return '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  if (/[:#\[\]{},'"&*?|<>=!%@`\x00-\x1f]/.test(s) || s.trim() !== s || s === '' || /^[0-9]/.test(s)) {
+    return '"' + escapeYamlString(s) + '"';
   }
   return s;
+}
+
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHAR_RE = /[\\"\x00-\x1f]/g;
+
+function escapeYamlString(s: string): string {
+  return s.replace(CONTROL_CHAR_RE, (ch) => {
+    switch (ch) {
+      case '\\': return '\\\\';
+      case '"': return '\\"';
+      case '\n': return '\\n';
+      case '\r': return '\\r';
+      case '\t': return '\\t';
+      default: return '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0');
+    }
+  });
+}
+
+const ESCAPE_SEQUENCE_RE = /\\(\\|"|n|r|t|u[0-9a-fA-F]{4})/g;
+
+function unescapeYamlString(s: string): string {
+  return s.replace(ESCAPE_SEQUENCE_RE, (_m, esc: string) => {
+    switch (esc[0]) {
+      case '\\': return '\\';
+      case '"': return '"';
+      case 'n': return '\n';
+      case 'r': return '\r';
+      case 't': return '\t';
+      case 'u': return String.fromCharCode(parseInt(esc.slice(1), 16));
+      default: return esc;
+    }
+  });
 }

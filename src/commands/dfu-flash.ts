@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { detectDfuUtil, DFU_UTIL_INSTALL_HINT } from '../hardware/toolchain';
+import { createLineSplitter } from '../hardware/line-buffer';
 
 export interface DfuFlashDeps {
   spawn?: typeof cp.spawn;
@@ -24,6 +25,7 @@ export async function flashToHardware(
   projectRoot: string,
   outputChannel: vscode.OutputChannel,
   deps: DfuFlashDeps = {},
+  token?: vscode.CancellationToken,
 ): Promise<void> {
   const spawnFn = deps.spawn ?? cp.spawn;
   const readdir = deps.readdir ?? fs.promises.readdir;
@@ -57,7 +59,7 @@ export async function flashToHardware(
   channel.appendLine(`Flashing ${path.basename(binPath)} …`);
 
   try {
-    await runDfuUtil(dfuUtil, binPath, spawnFn, (line) => channel.appendLine(line));
+    await runDfuUtil(dfuUtil, binPath, spawnFn, (line) => channel.appendLine(line), token);
     void vscode.window.showInformationMessage('ds-ide: flash succeeded — Daisy Seed is running your effect');
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -103,6 +105,7 @@ function runDfuUtil(
   binPath: string,
   spawnFn: typeof cp.spawn,
   onOutput: (line: string) => void,
+  token?: vscode.CancellationToken,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const args = ['-a', '0', '-s', DAISY_DFU_ADDRESS, '-D', binPath];
@@ -110,21 +113,30 @@ function runDfuUtil(
 
     let downloadSucceeded = false;
 
-    const handleData = (data: Buffer): void => {
-      for (const line of data.toString('utf8').split('\n')) {
-        if (line.trim()) {
-          onOutput(line);
-          if (line.includes('File downloaded successfully')) {
-            downloadSucceeded = true;
-          }
-        }
+    const handleLine = (line: string): void => {
+      onOutput(line);
+      if (line.includes('File downloaded successfully')) {
+        downloadSucceeded = true;
       }
     };
+    const stdoutSplitter = createLineSplitter(handleLine);
+    const stderrSplitter = createLineSplitter(handleLine);
 
-    proc.stdout?.on('data', handleData);
-    proc.stderr?.on('data', handleData);
-    proc.on('error', reject);
+    // FR-EXT-16: a hung dfu-util invocation otherwise leaves the flash
+    // command's promise pending forever with no way to abort it.
+    const cancelSub = token?.onCancellationRequested(() => proc.kill());
+
+    proc.stdout?.on('data', (data: Buffer) => stdoutSplitter.push(data));
+    proc.stderr?.on('data', (data: Buffer) => stderrSplitter.push(data));
+    proc.on('error', (err) => { cancelSub?.dispose(); reject(err); });
     proc.on('close', (code) => {
+      cancelSub?.dispose();
+      stdoutSplitter.flush();
+      stderrSplitter.flush();
+      if (token?.isCancellationRequested) {
+        reject(new Error('dfu-util cancelled'));
+        return;
+      }
       // The success string is a secondary confirmation only — it never
       // overrides an unrecognized exit code on its own.
       if (code === 0 || (code === DFU_LEAVE_QUIRK_EXIT_CODE && downloadSucceeded)) {

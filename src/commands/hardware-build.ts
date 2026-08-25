@@ -2,6 +2,7 @@ import * as cp from 'child_process';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { detectArmToolchain, ARM_GCC_INSTALL_HINT } from '../hardware/toolchain';
+import { createLineSplitter } from '../hardware/line-buffer';
 import { parseBuildLine, applyDiagnostics, ParsedDiagnostic } from '../diagnostics/build-diagnostics';
 
 export interface HardwareBuildDeps {
@@ -15,6 +16,7 @@ export async function buildForHardware(
   diagnostics: vscode.DiagnosticCollection,
   outputChannel: vscode.OutputChannel,
   deps: HardwareBuildDeps = {},
+  token?: vscode.CancellationToken,
 ): Promise<void> {
   const spawnFn = deps.spawn ?? cp.spawn;
 
@@ -39,7 +41,7 @@ export async function buildForHardware(
       channel.appendLine(line);
       const d = parseBuildLine(line);
       if (d) parsed.push(d);
-    });
+    }, token);
     applyDiagnostics(diagnostics, parsed, projectRoot);
     void vscode.window.showInformationMessage('ds-ide: hardware build succeeded');
   } catch (err) {
@@ -64,22 +66,32 @@ function runMake(
   env: NodeJS.ProcessEnv,
   spawnFn: typeof cp.spawn,
   onOutput: (line: string) => void,
+  token?: vscode.CancellationToken,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawnFn('make', [], { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
 
-    const handleData = (data: Buffer): void => {
-      for (const line of data.toString('utf8').split('\n')) {
-        if (line.trim()) onOutput(line);
-      }
-    };
+    const stdoutSplitter = createLineSplitter(onOutput);
+    const stderrSplitter = createLineSplitter(onOutput);
 
-    proc.stdout?.on('data', handleData);
-    proc.stderr?.on('data', handleData);
-    proc.on('error', reject);
+    // FR-EXT-16: a hung `make` invocation otherwise leaves the build
+    // command's promise pending forever with no way to abort it.
+    const cancelSub = token?.onCancellationRequested(() => proc.kill());
+
+    proc.stdout?.on('data', (data: Buffer) => stdoutSplitter.push(data));
+    proc.stderr?.on('data', (data: Buffer) => stderrSplitter.push(data));
+    proc.on('error', (err) => { cancelSub?.dispose(); reject(err); });
     proc.on('close', (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`make exited with code ${code ?? 'null'}`));
+      cancelSub?.dispose();
+      stdoutSplitter.flush();
+      stderrSplitter.flush();
+      if (token?.isCancellationRequested) {
+        reject(new Error('make cancelled'));
+      } else if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`make exited with code ${code ?? 'null'}`));
+      }
     });
   });
 }

@@ -4,14 +4,30 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { EventEmitter } from 'events';
-import { IpcClient, IpcMessage, CONNECT_TIMEOUT_MS } from './ipc-client';
+import { IpcClient, IpcMessage, IpcWarning, CONNECT_TIMEOUT_MS } from './ipc-client';
 import { potControlId, buttonControlId, toggleControlId, encoderControlId, narrowControlValue, narrowControlSnapshot } from '../ipc/control-values';
 import { PROTOCOL_VERSION } from '../ipc/protocol-version';
 
 const SOCKET_TIMEOUT_MS = 10_000;
 // Grace period between SIGTERM and SIGKILL escalation when reclaiming a
-// stale emulator process (FR-EXT-2).
+// stale emulator process (FR-EXT-2) or terminating the manager's own live
+// child (FR-EXT-13).
 const KILL_ESCALATION_MS = 200;
+
+// SIGTERM first, escalating to SIGKILL only if `pid` is still alive after a
+// short grace period. Never throws — safe to call fire-and-forget.
+async function escalateKill(pid: number): Promise<void> {
+  try { process.kill(pid, 'SIGTERM'); } catch { return; }
+  const deadline = Date.now() + KILL_ESCALATION_MS;
+  let alive = true;
+  while (Date.now() < deadline) {
+    try { process.kill(pid, 0); } catch { alive = false; break; }
+    await new Promise<void>((r) => setTimeout(r, 10));
+  }
+  if (alive) {
+    try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
+  }
+}
 
 function pidFilePath(buildDir: string): string {
   return path.join(buildDir, 'emu.pid');
@@ -49,16 +65,7 @@ export async function killStalePid(buildDir: string, execFileFn: typeof cp.execF
     if (pid > 0 && await isEffectEmuProcess(pid, execFileFn)) {
       // SIGTERM first, escalating to SIGKILL only if the process is still
       // alive after a short grace period (FR-EXT-2).
-      try { process.kill(pid, 'SIGTERM'); } catch { /* already gone */ }
-      const deadline = Date.now() + KILL_ESCALATION_MS;
-      let alive = true;
-      while (Date.now() < deadline) {
-        try { process.kill(pid, 0); } catch { alive = false; break; }
-        await new Promise<void>((r) => setTimeout(r, 10));
-      }
-      if (alive) {
-        try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
-      }
+      await escalateKill(pid);
     }
     // A PID that doesn't identify as effect_emu (reused by an unrelated
     // process) is left alone entirely — only the stale pid file is cleared.
@@ -81,6 +88,14 @@ export interface BuildOptions {
   emulatorSrc: string;
 }
 
+// Structurally compatible with vscode.CancellationToken (not imported here —
+// this module stays UI-independent/headless-testable) so callers can pass a
+// real one straight through (FR-EXT-16).
+export interface CancellationToken {
+  isCancellationRequested: boolean;
+  onCancellationRequested(listener: () => void): { dispose(): void };
+}
+
 export interface EmulatorManagerDeps {
   spawn?: typeof cp.spawn;
   ipcClientFactory?: () => IpcClient;
@@ -98,6 +113,10 @@ export class EmulatorManager extends EventEmitter {
   private intentionalDisconnect = false;
   private lastKnownRunning: boolean | undefined = undefined;
   private deployLock: Promise<void> | null = null;
+  // FR-EXT-18: dispose() can race an in-flight deploy() — set the instant
+  // dispose() runs, checked right after deploy() assigns this.childProcess
+  // so a child spawned in that race window is killed instead of orphaned.
+  private disposed = false;
 
   private readonly spawn: typeof cp.spawn;
   private readonly ipcClientFactory: () => IpcClient;
@@ -112,7 +131,7 @@ export class EmulatorManager extends EventEmitter {
     this.execFile = deps.execFile ?? cp.execFile;
   }
 
-  async build(opts: BuildOptions, onOutput: (line: string) => void): Promise<void> {
+  async build(opts: BuildOptions, onOutput: (line: string) => void, token?: CancellationToken): Promise<void> {
     this.buildDir = path.join(opts.projectRoot, '.ds-ide', 'build');
     await this.mkdir(this.buildDir, { recursive: true });
 
@@ -125,11 +144,11 @@ export class EmulatorManager extends EventEmitter {
       configureArgs.push(`-DDAISYSP_DIR=${opts.daisySpDir}`);
     }
 
-    await this.runProcess('cmake', configureArgs, onOutput);
-    await this.runProcess('cmake', ['--build', this.buildDir, '--', `-j${os.cpus().length}`], onOutput);
+    await this.runProcess('cmake', configureArgs, onOutput, token);
+    await this.runProcess('cmake', ['--build', this.buildDir, '--', `-j${os.cpus().length}`], onOutput, token);
   }
 
-  deploy(onOutput: (line: string) => void): Promise<void> {
+  deploy(onOutput: (line: string) => void, token?: CancellationToken): Promise<void> {
     if (!this.buildDir) {
       return Promise.reject(new Error('Build before deploying'));
     }
@@ -167,6 +186,18 @@ export class EmulatorManager extends EventEmitter {
               }
             }, SOCKET_TIMEOUT_MS);
 
+            // FR-EXT-16: lets a caller abort a deploy that's hung waiting for
+            // the socket-path announcement/handshake, killing the spawned
+            // child rather than leaving the promise pending indefinitely.
+            const cancelSub = token?.onCancellationRequested(() => {
+              if (!resolved) {
+                resolved = true;
+                clearTimeout(timeout);
+                child.kill();
+                reject(new Error('deploy cancelled'));
+              }
+            });
+
             const onStdout = (data: Buffer): void => {
               const text = data.toString('utf8');
               for (const line of text.split('\n')) {
@@ -177,6 +208,7 @@ export class EmulatorManager extends EventEmitter {
                 if (match && !resolved) {
                   resolved = true;
                   clearTimeout(timeout);
+                  cancelSub?.dispose();
                   // Persist PID so a future session can clean up this process
                   if (child.pid !== undefined) void writePid(this.buildDir, child.pid);
                   void this.connectIpc(match[1]!).then(resolve).catch(reject);
@@ -188,6 +220,7 @@ export class EmulatorManager extends EventEmitter {
               if (!resolved) {
                 resolved = true;
                 clearTimeout(timeout);
+                cancelSub?.dispose();
                 reject(err);
               }
             };
@@ -200,12 +233,20 @@ export class EmulatorManager extends EventEmitter {
               if (!resolved) {
                 resolved = true;
                 clearTimeout(timeout);
+                cancelSub?.dispose();
                 reject(new Error(`Emulator exited with code ${code ?? 'null'} before socket ready`));
               }
               // Guard: only clear the reference if it still points to this child,
               // not to a new child spawned by a subsequent deploy.
               if (this.childProcess === child) this.childProcess = null;
             });
+
+            // FR-EXT-18: dispose() may have run during the mkdir/killStalePid
+            // await above, before this.childProcess existed for it to kill —
+            // it found nothing and had no way to reach this child. Catch that
+            // race here (now that the close listener above is wired, so the
+            // resulting exit is actually observed) instead of orphaning it.
+            if (this.disposed) child.kill();
           });
         });
     });
@@ -352,6 +393,7 @@ export class EmulatorManager extends EventEmitter {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.killExisting();
     this.ipcClient?.disconnect();
     this.ipcClient = null;
@@ -381,6 +423,10 @@ export class EmulatorManager extends EventEmitter {
       this.emit('message', msg);
     });
     client.on('error', (err: Error) => this.emit('error', err));
+    // FR-EXT-25: mirrors the 'error'/'disconnect' forwarding above — dropped
+    // or malformed IPC traffic was previously visible only via console.warn,
+    // invisible to anything outside the extension host's dev console.
+    client.on('warning', (warning: IpcWarning) => this.emit('warning', warning));
     client.on('disconnect', () => {
       if (!this.intentionalDisconnect) this.emit('disconnect');
     });
@@ -461,8 +507,12 @@ export class EmulatorManager extends EventEmitter {
   private killExisting(): void {
     this.intentionalDisconnect = true;  // suppress the subsequent disconnect event
     if (this.childProcess) {
-      this.childProcess.kill();
+      const pid = this.childProcess.pid;
       this.childProcess = null;
+      // SIGTERM → wait KILL_ESCALATION_MS → SIGKILL, matching killStalePid's
+      // escalation so a child that ignores/misses SIGTERM (e.g. blocked in a
+      // native audio callback) is still force-terminated (FR-EXT-13).
+      if (pid) void escalateKill(pid);
     }
     if (this.ipcClient) {
       this.ipcClient.disconnect();
@@ -475,7 +525,12 @@ export class EmulatorManager extends EventEmitter {
     if (this.buildDir) void clearPid(this.buildDir);
   }
 
-  private runProcess(cmd: string, args: string[], onOutput: (line: string) => void): Promise<void> {
+  private runProcess(
+    cmd: string,
+    args: string[],
+    onOutput: (line: string) => void,
+    token?: CancellationToken,
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       const proc = this.spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
@@ -487,10 +542,19 @@ export class EmulatorManager extends EventEmitter {
 
       proc.stdout?.on('data', handleOutput);
       proc.stderr?.on('data', handleOutput);
-      proc.on('error', reject);
+      // FR-EXT-16: a hung cmake configure/build otherwise leaves the
+      // command's promise pending forever with no way to abort it.
+      const cancelSub = token?.onCancellationRequested(() => proc.kill());
+      proc.on('error', (err) => { cancelSub?.dispose(); reject(err); });
       proc.on('close', (code) => {
-        if (code === 0) resolve();
-        else reject(new Error(`${cmd} exited with code ${code ?? 'null'}`));
+        cancelSub?.dispose();
+        if (token?.isCancellationRequested) {
+          reject(new Error(`${cmd} cancelled`));
+        } else if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(`${cmd} exited with code ${code ?? 'null'}`));
+        }
       });
     });
   }

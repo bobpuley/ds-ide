@@ -69,6 +69,27 @@ function makeCmakeProcess(exitCode = 0) {
   return proc;
 }
 
+// ---- CancellationToken stub (structurally matches manager.ts's local
+// CancellationToken interface, not vscode's — manager.ts stays UI-independent) ----
+
+function makeCancellationSource() {
+  let cancelled = false;
+  const listeners: Array<() => void> = [];
+  return {
+    token: {
+      get isCancellationRequested() { return cancelled; },
+      onCancellationRequested(cb: () => void) {
+        listeners.push(cb);
+        return { dispose: () => { /* no-op for tests */ } };
+      },
+    },
+    cancel(): void {
+      cancelled = true;
+      for (const cb of listeners) cb();
+    },
+  };
+}
+
 // ---- IpcClient stub ----
 
 function makeIpcClient() {
@@ -181,6 +202,41 @@ describe('EmulatorManager', () => {
     });
   });
 
+  describe('build() cancellation (FR-EXT-16)', () => {
+    it('kills the cmake process and rejects when the token is cancelled', async () => {
+      let killed = false;
+      let spawnedResolve!: () => void;
+      const spawned = new Promise<void>((res) => { spawnedResolve = res; });
+      spawnMock.mockImplementation((cmd: string) => {
+        if (cmd === 'cmake') {
+          const proc = new EventEmitter() as EventEmitter & {
+            stdout: EventEmitter; stderr: EventEmitter; kill: () => void; pid: number;
+          };
+          proc.stdout = new EventEmitter();
+          proc.stderr = new EventEmitter();
+          proc.pid = 9999;
+          proc.kill = vi.fn(() => { killed = true; proc.emit('close', null); });
+          // Never closes on its own — simulates a hung cmake configure.
+          spawnedResolve();
+          return proc;
+        }
+        return makeChildProcess(0, '/tmp/daisy_emu_test.sock');
+      });
+
+      const source = makeCancellationSource();
+      const buildPromise = manager.build(
+        { projectRoot: '/proj', effectSrc: '/proj/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+        source.token,
+      );
+      await spawned;
+      source.cancel();
+
+      await expect(buildPromise).rejects.toThrow(/cancelled/);
+      expect(killed).toBe(true);
+    });
+  });
+
   describe('deploy()', () => {
     it('throws if build was never called', async () => {
       await expect(manager.deploy(() => undefined)).rejects.toThrow('Build before deploying');
@@ -205,6 +261,57 @@ describe('EmulatorManager', () => {
       );
       await manager.deploy(() => undefined);
       expect(ipcClientStub.connect).toHaveBeenCalledWith('/tmp/daisy_emu_test.sock');
+    });
+  });
+
+  describe('deploy() cancellation (FR-EXT-16)', () => {
+    it('kills the spawned emulator child and rejects when the token is cancelled while waiting for the socket', async () => {
+      await manager.build(
+        { projectRoot: '/proj', effectSrc: '/proj/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+
+      let killed = false;
+      let spawnedResolve!: () => void;
+      const spawned = new Promise<void>((res) => { spawnedResolve = res; });
+      spawnMock.mockImplementation((cmd: string) => {
+        if (cmd === 'cmake') return makeCmakeProcess(0);
+        // effect_emu spawn — never announces a socket path.
+        const proc = new EventEmitter() as EventEmitter & {
+          stdout: EventEmitter; stderr: EventEmitter; kill: () => void; pid: number;
+        };
+        proc.stdout = new EventEmitter();
+        proc.stderr = new EventEmitter();
+        proc.pid = 12345;
+        proc.kill = vi.fn(() => { killed = true; proc.emit('close', null); });
+        spawnedResolve();
+        return proc;
+      });
+
+      const source = makeCancellationSource();
+      const deployPromise = manager.deploy(() => undefined, source.token);
+      await spawned;
+      source.cancel();
+
+      await expect(deployPromise).rejects.toThrow(/cancelled/);
+      expect(killed).toBe(true);
+    });
+  });
+
+  describe("IpcClient 'warning' forwarding (FR-EXT-25)", () => {
+    it("re-emits the IpcClient's 'warning' event", async () => {
+      await manager.build(
+        { projectRoot: '/proj', effectSrc: '/proj/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+
+      const warningHandler = vi.fn();
+      manager.on('warning', warningHandler);
+
+      ipcClientStub.emit('warning', { message: 'dropped a malformed line', count: 3 });
+
+      expect(warningHandler).toHaveBeenCalledWith({ message: 'dropped a malformed line', count: 3 });
     });
   });
 
@@ -682,6 +789,82 @@ describe('EmulatorManager', () => {
       expect(ipcClientStub.disconnect).toHaveBeenCalledOnce();
       // childProcess may already be null if close was emitted; test that disconnect was called
       expect(ipcClientStub.disconnect).toHaveBeenCalled();
+    });
+  });
+
+  describe('dispose()/deploy() race (FR-EXT-18)', () => {
+    it('kills a child spawned by an in-flight deploy() that dispose() raced before it existed', async () => {
+      await manager.build(
+        { projectRoot: '/proj', effectSrc: '/proj/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+
+      let killed = false;
+      spawnMock.mockImplementation((cmd: string) => {
+        if (cmd === 'cmake') return makeCmakeProcess(0);
+        const proc = new EventEmitter() as EventEmitter & {
+          stdout: EventEmitter; stderr: EventEmitter; kill: () => void; pid: number;
+        };
+        proc.stdout = new EventEmitter();
+        proc.stderr = new EventEmitter();
+        proc.pid = 12345;
+        proc.kill = vi.fn(() => { killed = true; proc.emit('close', null); });
+        return proc;
+      });
+
+      // Hold deploy() at the mkdir await so dispose() can run while
+      // this.childProcess is still null — the race window this FR closes.
+      let resolveMkdir!: () => void;
+      mkdirMock.mockImplementation(() => new Promise<void>((res) => { resolveMkdir = res; }));
+
+      const deployPromise = manager.deploy(() => undefined);
+      manager.dispose();
+      expect(killed).toBe(false); // nothing to kill yet — this is the race window
+
+      resolveMkdir();
+      await deployPromise.catch(() => { /* expected: the raced child gets killed, deploy rejects */ });
+
+      expect(killed).toBe(true);
+    });
+  });
+
+  describe('killExisting() escalation (FR-EXT-13)', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('sends SIGTERM only when the child is already gone by the first poll', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => {
+        throw Object.assign(new Error('ESRCH'), { code: 'ESRCH' });
+      });
+
+      manager.dispose();
+
+      expect(killSpy).toHaveBeenCalledWith(12345, 'SIGTERM');
+      expect(killSpy).not.toHaveBeenCalledWith(12345, 'SIGKILL');
+    });
+
+    it('escalates to SIGKILL within KILL_ESCALATION_MS when the child ignores SIGTERM', async () => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+
+      const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
+
+      manager.dispose();
+
+      await new Promise<void>((r) => setTimeout(r, 250));
+
+      expect(killSpy).toHaveBeenCalledWith(12345, 'SIGTERM');
+      expect(killSpy).toHaveBeenCalledWith(12345, 'SIGKILL');
     });
   });
 

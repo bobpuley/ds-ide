@@ -2,13 +2,20 @@
 // beyond atob(), a global in both the browser webview sandbox and Node 16+,
 // so this is unit-testable directly (FR-IPC-6's convention).
 
-// Decodes a base64-encoded framebuffer payload back to raw bytes.
-export function decodeOledFrame(base64: string): Uint8Array {
+// Decodes a base64-encoded framebuffer payload back to raw bytes. Returns
+// null (rather than throwing) on malformed input — a corrupted IPC frame
+// must degrade the OLED preview, not break the message listener that calls
+// this for the rest of the session (FR-EXT-17).
+export function decodeOledFrame(base64: string): Uint8Array | null {
   if (base64.length === 0) return new Uint8Array(0);
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
+  try {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  } catch {
+    return null;
+  }
 }
 
 // Frames per second over a trailing window, from an ordered list of frame

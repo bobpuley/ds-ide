@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type * as vscode from 'vscode';
 import { ToggleStore } from '../../../controllers/toggle-store';
 
@@ -61,5 +61,17 @@ describe('ToggleStore (FR-DEV-7)', () => {
     store.set(5, 2);
     store.set(6, 1);
     expect(store.getSnapshot()).toEqual({ 5: 2, 6: 1 });
+  });
+
+  it('does not produce an unhandled rejection when update() fails (FR-EXT-19)', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const failingMemento = { ...memento, update: () => Promise.reject(new Error('disk full')) } as vscode.Memento;
+    const failingStore = new ToggleStore(failingMemento);
+
+    failingStore.set(5, 2);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('failed to persist'), expect.any(Error));
+    warnSpy.mockRestore();
   });
 });

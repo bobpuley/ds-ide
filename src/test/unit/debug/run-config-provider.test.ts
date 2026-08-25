@@ -150,6 +150,20 @@ describe('DaisyRunConfigurationProvider', () => {
       expect(options).toMatchObject({ location: vscode.ProgressLocation.Notification });
       expect(typeof task).toBe('function');
     });
+
+    it('marks the progress notification cancellable and passes the token to onBuildAndDeploy (FR-EXT-16)', async () => {
+      const buildAndDeploy = vi.fn(() => Promise.resolve(true));
+      const getEmulatorPid = vi.fn(() => 1234);
+      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid, makeWorkspaceState());
+
+      await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG });
+
+      const [options] = (vscode.window.withProgress as ReturnType<typeof vi.fn>).mock.calls[0]!;
+      expect(options).toMatchObject({ cancellable: true });
+      expect(buildAndDeploy).toHaveBeenCalledWith(
+        expect.objectContaining({ isCancellationRequested: false }),
+      );
+    });
   });
 });
 

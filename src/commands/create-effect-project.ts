@@ -87,7 +87,19 @@ export async function createEffectProject(): Promise<void> {
     await vscode.workspace.fs.stat(projectUri);
     void vscode.window.showErrorMessage(`ds-ide: folder already exists: ${projectUri.fsPath}`);
     return;
-  } catch {
+  } catch (err) {
+    // FR-EXT-23: a blanket catch here previously treated ANY stat failure —
+    // including a permission-denied or an unavailable-drive error — as "the
+    // folder doesn't exist", proceeding to create it regardless. Only a
+    // genuine not-found result means it's safe to proceed.
+    const code = (err as { code?: unknown } | undefined)?.code;
+    if (code !== 'FileNotFound' && code !== 'ENOENT') {
+      const msg = err instanceof Error ? err.message : String(err);
+      void vscode.window.showErrorMessage(
+        `ds-ide: could not check destination folder ${projectUri.fsPath} — ${msg}`,
+      );
+      return;
+    }
     // expected — folder does not exist yet
   }
 
@@ -114,5 +126,12 @@ export async function createEffectProject(): Promise<void> {
     return;
   }
 
-  await vscode.commands.executeCommand('vscode.openFolder', projectUri, { forceNewWindow: false });
+  try {
+    await vscode.commands.executeCommand('vscode.openFolder', projectUri, { forceNewWindow: false });
+  } catch (err) {
+    // FR-EXT-24: this was the only failure path in the function not wrapped
+    // in try/catch — an unhandled rejection instead of the showErrorMessage
+    // pattern every other step here uses.
+    void vscode.window.showErrorMessage(`ds-ide: failed to open the new project folder: ${String(err)}`);
+  }
 }

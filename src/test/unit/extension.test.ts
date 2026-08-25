@@ -197,6 +197,25 @@ describe('extension', () => {
     );
   });
 
+  // FR-EXT-25: dropped/malformed IPC traffic was previously visible only via
+  // console.warn — now forwarded through EmulatorManager and surfaced in the
+  // same emulatorChannel output channel every other emulator diagnostic uses.
+  it("appends the emulator channel when EmulatorManager emits a 'warning'", () => {
+    const ctx = makeContext();
+    activate(ctx);
+    const mgr = managerInstances[0]!;
+
+    const createCalls = (vscode.window.createOutputChannel as ReturnType<typeof vi.fn>).mock.calls;
+    const emulatorChannelIndex = createCalls.findIndex((c: unknown[]) => c[0] === 'Daisy IDE Emulator');
+    const emulatorChannel = (vscode.window.createOutputChannel as ReturnType<typeof vi.fn>)
+      .mock.results[emulatorChannelIndex]!.value as { appendLine: ReturnType<typeof vi.fn> };
+
+    expect(() => mgr.emit('warning', { message: 'dropped a malformed line', count: 1 })).not.toThrow();
+    expect(emulatorChannel.appendLine).toHaveBeenCalledWith(
+      expect.stringContaining('dropped a malformed line'),
+    );
+  });
+
   it('routes type:led manager messages to controlsProvider webview (FR-TWE-1)', async () => {
     const ctx = makeContext();
     activate(ctx);
@@ -1692,6 +1711,25 @@ describe('deploy sequencing via DeployCoordinator (FR-IPC-7)', () => {
     expect(mgr.build).toHaveBeenCalled();
     expect(mgr.sendControlSnapshot).toHaveBeenCalled();
     expect(mgr.sendAudioMode).toHaveBeenCalled();
+  });
+
+  it('ds-ide.build/buildAndDeploy/deploy/debug report progress via a cancellable withProgress notification (FR-EXT-16)', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    act(ctx);
+    await flush();
+
+    (vscode.window.withProgress as ReturnType<typeof vi.fn>).mockClear();
+
+    for (const id of ['ds-ide.build', 'ds-ide.buildAndDeploy', 'ds-ide.deploy', 'ds-ide.debug']) {
+      await getCommand(id)!();
+    }
+
+    const calls = (vscode.window.withProgress as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls.length).toBeGreaterThanOrEqual(4);
+    for (const [options] of calls) {
+      expect(options).toMatchObject({ cancellable: true });
+    }
   });
 
   it('ds-ide.deploy sets the status bar to deploying, then back to stopped when deploy fails', async () => {

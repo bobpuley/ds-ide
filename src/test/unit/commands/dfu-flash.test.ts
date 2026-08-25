@@ -139,6 +139,65 @@ describe('flashToHardware()', () => {
     expect(args[args.indexOf('-D') + 1]).toContain('effect.bin');
   });
 
+  it('kills the dfu-util process when the cancellation token fires (FR-EXT-16)', async () => {
+    let killed = false;
+    let spawnedResolve!: () => void;
+    const spawned = new Promise<void>((res) => { spawnedResolve = res; });
+    const spawn = vi.fn(() => {
+      const proc = new EventEmitter() as ReturnType<typeof import('child_process').spawn>;
+      (proc as unknown as Record<string, unknown>)['stdout'] = new EventEmitter();
+      (proc as unknown as Record<string, unknown>)['stderr'] = new EventEmitter();
+      proc.kill = vi.fn(() => {
+        killed = true;
+        proc.emit('close', null);
+        return true;
+      });
+      // Never closes on its own — simulates a hung dfu-util.
+      spawnedResolve();
+      return proc;
+    }) as unknown as typeof import('child_process').spawn;
+
+    const deps: DfuFlashDeps = {
+      spawn,
+      readdir: vi.fn(() => Promise.resolve(['effect.bin'])) as unknown as DfuFlashDeps['readdir'],
+      stat: vi.fn(() => Promise.resolve({ mtimeMs: 1000 })) as unknown as DfuFlashDeps['stat'],
+    };
+    const source = new vscode.CancellationTokenSource();
+    const resultPromise = flashToHardware('/project', makeChannel(), deps, source.token);
+    await spawned;
+    source.cancel();
+    await resultPromise;
+
+    expect(killed).toBe(true);
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      expect.stringContaining('flash failed'),
+    );
+  });
+
+  it('still detects the success string when split across two stdout chunks (FR-EXT-12)', async () => {
+    const spawn = vi.fn(() => {
+      const proc = new EventEmitter() as ReturnType<typeof import('child_process').spawn>;
+      const stdout = new EventEmitter();
+      (proc as unknown as Record<string, unknown>)['stdout'] = stdout;
+      (proc as unknown as Record<string, unknown>)['stderr'] = new EventEmitter();
+      process.nextTick(() => {
+        stdout.emit('data', Buffer.from('File downloaded success'));
+        stdout.emit('data', Buffer.from('fully\n'));
+        proc.emit('close', 74);
+      });
+      return proc;
+    });
+    const deps: DfuFlashDeps = {
+      spawn: spawn as unknown as DfuFlashDeps['spawn'],
+      readdir: vi.fn(() => Promise.resolve(['effect.bin'])) as unknown as DfuFlashDeps['readdir'],
+      stat: vi.fn(() => Promise.resolve({ mtimeMs: 1000 })) as unknown as DfuFlashDeps['stat'],
+    };
+    await flashToHardware('/project', makeChannel(), deps);
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining('flash succeeded'),
+    );
+  });
+
   it('shows the bootloader prompt before flashing', async () => {
     const deps = makeFlashDeps(0);
     await flashToHardware('/project', makeChannel(), deps);

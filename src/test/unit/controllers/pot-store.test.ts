@@ -168,5 +168,16 @@ describe('PotStore', () => {
       expect(memento.update).toHaveBeenCalledOnce();
       expect(memento.update).toHaveBeenCalledWith('ds-ide.potValues', { 0: 0.5 });
     });
+
+    it('does not produce an unhandled rejection when update() fails (FR-EXT-19)', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      memento.update.mockReturnValueOnce(Promise.reject(new Error('disk full')));
+
+      store.setDefaults([DEF_0]);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('failed to persist'), expect.any(Error));
+      warnSpy.mockRestore();
+    });
   });
 });

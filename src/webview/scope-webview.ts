@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import type { ScopeHostMessage } from './messages';
+import { hasKnownCommand } from './message-guard';
 
 function el<T extends HTMLElement>(id: string): T {
   return document.getElementById(id) as T;
@@ -219,8 +220,14 @@ outputVolEl?.addEventListener('input', () => {
 window.addEventListener('resize', resize);
 resize();
 
-window.addEventListener('message', (e: MessageEvent<ScopeHostMessage>) => {
-  const msg = e.data;
+const SCOPE_HOST_COMMANDS = new Set<ScopeHostMessage['command']>([
+  'scope', 'status', 'wavSelected', 'event', 'xrun', 'latency', 'led',
+  'spectrum', 'recordingState', 'replayDone',
+]);
+
+window.addEventListener('message', (e: MessageEvent<unknown>) => {
+  if (!hasKnownCommand(e.data, SCOPE_HOST_COMMANDS)) return;
+  const msg = e.data as ScopeHostMessage;
   if (msg.command === 'scope') {
     lastIn  = msg.in  || [];
     lastOut = msg.out || [];

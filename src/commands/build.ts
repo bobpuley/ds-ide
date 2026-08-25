@@ -13,6 +13,7 @@ export async function buildForEmulator(
   diagnostics: vscode.DiagnosticCollection | undefined,
   outputChannel: vscode.OutputChannel,
   workspaceState: vscode.Memento,
+  token?: vscode.CancellationToken,
 ): Promise<boolean> {
   const folder = resolveActiveFolder(workspaceState);
   if (!folder) {
@@ -54,7 +55,7 @@ export async function buildForEmulator(
   };
 
   try {
-    await manager.build(opts, onLine);
+    await manager.build(opts, onLine, token);
     if (diagnostics) applyDiagnostics(diagnostics, parsed, projectRoot);
     // Routine success relies on the status bar, not a toast — a toast per
     // successful build/deploy drowns out the genuinely actionable warnings

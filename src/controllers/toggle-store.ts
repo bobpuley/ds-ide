@@ -22,7 +22,8 @@ export class ToggleStore {
   set(gpioPin: number, position: number): void {
     const vals = this.getAll();
     vals[gpioPin] = position;
-    void this.workspaceState.update(STATE_KEY, vals);
+    void this.workspaceState.update(STATE_KEY, vals)
+      .then(undefined, (err) => console.warn('ds-ide: failed to persist toggle state —', err));
   }
 
   /** Seed any not-yet-stored toggles to position 0. */

@@ -128,6 +128,38 @@ describe('createEffectProject', () => {
     expect(fsWriteFile).not.toHaveBeenCalled();
   });
 
+  it('shows a specific error and does not proceed when stat fails for a reason other than not-found (FR-EXT-23)', async () => {
+    showInputBox.mockResolvedValue('myEffect');
+    showOpenDialog.mockResolvedValue([DEST_URI]);
+    fsStat.mockRejectedValue(Object.assign(new Error('permission denied'), { code: 'NoPermissions' }));
+
+    await createEffectProject();
+
+    expect(showErrorMsg).toHaveBeenCalledWith(expect.stringContaining('could not check destination folder'));
+    expect(fsCreateDir).not.toHaveBeenCalled();
+    expect(fsWriteFile).not.toHaveBeenCalled();
+  });
+
+  it('proceeds to scaffold when stat fails with ENOENT (Node fs equivalent of FileNotFound) (FR-EXT-23)', async () => {
+    showInputBox.mockResolvedValue('myEffect');
+    showOpenDialog.mockResolvedValue([DEST_URI]);
+    fsStat.mockRejectedValue(Object.assign(new Error('no such file'), { code: 'ENOENT' }));
+
+    await createEffectProject();
+
+    expect(fsCreateDir).toHaveBeenCalledTimes(1);
+    expect(showErrorMsg).not.toHaveBeenCalled();
+  });
+
+  it('shows an error instead of an unhandled rejection when opening the new folder fails (FR-EXT-24)', async () => {
+    setupHappyPath();
+    execCmd.mockRejectedValue(new Error('window busy'));
+
+    await expect(createEffectProject()).resolves.toBeUndefined();
+
+    expect(showErrorMsg).toHaveBeenCalledWith(expect.stringContaining('failed to open the new project folder'));
+  });
+
   it('shows error when file write fails', async () => {
     showInputBox.mockResolvedValue('myEffect');
     showOpenDialog.mockResolvedValue([DEST_URI]);

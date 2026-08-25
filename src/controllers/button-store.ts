@@ -19,7 +19,8 @@ export class ButtonStore {
   set(gpioPin: number, pressed: boolean): void {
     const vals = this.getAll();
     vals[gpioPin] = pressed;
-    void this.workspaceState.update(STATE_KEY, vals);
+    void this.workspaceState.update(STATE_KEY, vals)
+      .then(undefined, (err) => console.warn('ds-ide: failed to persist button state —', err));
   }
 
   /** Seed any not-yet-stored buttons to released (false). */

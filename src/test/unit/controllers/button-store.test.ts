@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type * as vscode from 'vscode';
 import { ButtonStore } from '../../../controllers/button-store';
 import type { ButtonDef } from '../../../controllers/controller-config';
@@ -65,5 +65,17 @@ describe('ButtonStore', () => {
     store.set(28, true);
     store.set(25, false);
     expect(store.getSnapshot()).toEqual({ 28: true, 25: false });
+  });
+
+  it('does not produce an unhandled rejection when update() fails (FR-EXT-19)', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const failingMemento = { ...memento, update: () => Promise.reject(new Error('disk full')) } as vscode.Memento;
+    const failingStore = new ButtonStore(failingMemento);
+
+    failingStore.set(28, true);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('failed to persist'), expect.any(Error));
+    warnSpy.mockRestore();
   });
 });

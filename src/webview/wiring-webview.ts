@@ -6,6 +6,7 @@ import { defaultId, validateId } from '../wiring/id-validation';
 import { REGISTRY, wiredControlIds } from '../devices/registry';
 import { computeBusBrackets, type BusBracket } from '../wiring/bus-bracket';
 import { computePinOverlayStates } from '../wiring/pin-overlay-state';
+import { hasKnownCommand } from './message-guard';
 
 // FR-DEV-2: one popup button id per pin-attached registry entry —
 // generalizes what used to be a hardcoded ['btn-pot', 'btn-button', 'btn-led']
@@ -480,8 +481,11 @@ document.addEventListener('click', e => {
 });
 
 // Extension → webview messages
-window.addEventListener('message', (e: MessageEvent<WiringHostMessage>) => {
-  const msg = e.data;
+const WIRING_HOST_COMMANDS = new Set<WiringHostMessage['command']>(['wiredPins', 'peripherals']);
+
+window.addEventListener('message', (e: MessageEvent<unknown>) => {
+  if (!hasKnownCommand(e.data, WIRING_HOST_COMMANDS)) return;
+  const msg = e.data as WiringHostMessage;
   if (msg.command === 'wiredPins') {
     applyWiredPins(msg.pins || []);
     applyPeripheralPins();
