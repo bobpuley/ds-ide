@@ -5,6 +5,26 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.17.5 — 2026-08-25
+
+**M57 — Extension API, Type & Maintainability Polish** *(FR-EXT-27 .. FR-EXT-39 — DoD green)*
+
+- **FR-EXT-27** — Five webview-context files each redeclared the same `el<T>()` DOM-lookup helper, casting away `document.getElementById`'s `| null` return without checking it. A single shared `src/webview/dom-lookup.ts` now throws a descriptive error on a null lookup instead of silently returning `null` typed as non-null.
+- **FR-EXT-28** — Data embedded into `<script type="application/json">` data islands (`controls-webview.ts`, `wiring-webview.ts`) was `JSON.parse`'d and cast with no runtime shape check, so malformed JSON crashed webview module init outright. A new `src/webview/data-island.ts` validates parsed content against a light shape check before casting, falling back with a visible in-page error banner instead of silently defaulting to `{}`/`[]`.
+- **FR-EXT-29** — `controls-writer.ts`'s `removeFromSource` used optional chaining on a `REGISTRY[kind]` lookup while every other call site in the file used a non-null assertion. All call sites now consistently use `!`, backed by a documented invariant (every `DeviceType` has a `REGISTRY` entry, enforced by a new registry test).
+- **FR-EXT-30** — `DeployCoordinator`'s constructor took 17 positional parameters, several of the same type adjacent to each other (three stores, three panels) — a transposition error at the call site would type-check silently. It now takes one grouped options object (`{ manager, statusBar, stores, panels, channels, ... }`).
+- **FR-EXT-31** — Bad input reaching a codegen function was handled four different ways: `oled.ts` threw, `midi-usb.ts` silently fell back to a default mode, `pot.ts`/`toggle.ts` silently clamped. One documented contract now applies consistently: throw for structurally-impossible input (`pinToAdcChannel`, `midiUsbCodegen.initLines`), clamp only for values with a genuinely intended default (`clampTogglePosition`).
+- **FR-EXT-32** — `controls-webview.ts` was a flat 767-line module owning six unrelated concerns (convention canvas, legacy YAML editor canvas, drag-and-drop, save serialization, SD-card viewer, OLED live-preview strip) via 13+ module-scoped mutable variables. Split into per-concern modules under `src/webview/controls/`, each owning its own state; the entry point is now a ~130-line orchestrator.
+- **FR-EXT-33** — None of the five `onDidReceiveMessage`/`postMessage` handlers imported `messages.ts`'s discriminated-union types, each re-deriving per-field checks by hand with no compile-time reminder to add a branch for a new/renamed variant. All five now narrow via `hasKnownCommand<T>()` (upgraded to a real type predicate) and dispatch through an exhaustive `switch` with an `assertNever()` default branch.
+- **FR-EXT-34 / FR-EXT-35** — `scope-webview.ts` redrew the scope/spectrum canvases synchronously on every incoming IPC message, and `midi-webview.ts`'s MIDI monitor rebuilt its full row list on every message — both now route through `raf-coalesce.ts` (already used for pot/encoder drag), capping redraws/rebuilds at one per animation frame.
+- **FR-EXT-36** — The native `midi` dependency was declared with an unrestricted `^2.0.0` caret range despite being more prone to ABI/behavior breakage across minor bumps than a pure-JS package. Pinned to an exact `2.0.0`; a new smoke test verifies the installed package's `Input` class still satisfies the `MidiInputLike` shape `host-bridge.ts` depends on (tolerant of the expected Electron-vs-Node ABI mismatch outside the real Extension Host).
+- **FR-EXT-37** — `sdcard.ts`, `midi-trs.ts`, `midi-usb.ts`, and `oled.ts` each redeclared the same handle-name/decl-regex/init-prefix/strategy-object shape, ~70% copy-pasted across files. A new `makeSimplePeripheralCodegen()` (`src/devices/codegen/shared.ts`) factors out the bus-invariant case; `midi-usb.ts`/`oled.ts` build on it and override their bus-variant half.
+- **FR-EXT-38** — `truncId`/`TRUNC_MAX_LEN` were defined twice — once exported from `controls-editor-panel.ts` (host side), once re-declared unexported in the webview — because the two run under different tsconfigs. Both now import the one implementation in `src/webview/id-truncate.ts`.
+- **FR-EXT-39** — Confirmed the regression test added alongside FR-EXT-6 already covers "an `EmulatorManager` `'error'` emission with zero listeners crashes the process" — verified by temporarily removing the production listener and confirming the test fails.
+- **chore** — `package.json`'s `version` field is bumped to `0.17.5` to match this entry.
+
+---
+
 ## 0.17.4 — 2026-08-25
 
 **M56 — Extension Reliability & Validation Hardening** *(FR-EXT-12 .. FR-EXT-26 — DoD green)*
