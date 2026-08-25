@@ -707,6 +707,37 @@ leds:
     expect(reparsed.leds[0]!.id).toBe('foo#bar');
   });
 
+  // FR-EXT-20 — a label containing an embedded newline must round-trip
+  // through save/load without corrupting the (line-based) parser or losing data.
+  it('quotes and escapes a label containing an embedded newline so it round-trips intact', () => {
+    const cfg: ControllerConfig = {
+      pots: [{ id: 'osc_pitch', label: 'Line one\nLine two', adcChannel: 0, range: [0, 1], taper: 'linear', default: 0.5 }],
+      buttons: [], leds: [], encoders: [], toggles: [], rgbleds: [], errors: [],
+    };
+    const out = serializeControllerConfig(cfg);
+    // The escaped label must not introduce an actual newline into the file —
+    // same line count as an equivalent single-line label (7 lines: header +
+    // id/label/adc_channel/range/taper/default), not 8 from a raw newline.
+    expect(out.split('\n').filter(l => l.length > 0)).toHaveLength(7);
+    expect(out).toContain('\\n');
+
+    const reparsed = parseControllerConfig(out);
+    expect(reparsed.errors).toHaveLength(0);
+    expect(reparsed.pots[0]!.label).toBe('Line one\nLine two');
+  });
+
+  it('quotes and escapes a label containing a carriage return so it round-trips intact', () => {
+    const cfg: ControllerConfig = {
+      pots: [],
+      buttons: [{ id: 'a', label: 'A\rB', gpioPin: 5, mode: 'momentary', activeLevel: 'low' }],
+      leds: [], encoders: [], toggles: [], rgbleds: [], errors: [],
+    };
+    const out = serializeControllerConfig(cfg);
+    const reparsed = parseControllerConfig(out);
+    expect(reparsed.errors).toHaveLength(0);
+    expect(reparsed.buttons[0]!.label).toBe('A\rB');
+  });
+
   it('leaves plain identifier ids unquoted', () => {
     const cfg: ControllerConfig = {
       pots: [{ id: 'osc_pitch', label: 'L', adcChannel: 0, range: [0, 1], taper: 'linear', default: 0.5 }],

@@ -104,7 +104,7 @@ Three store classes discard the promise returned by `workspaceState.update()` vi
 
 ---
 
-### [ ] fix: round-trip labels with embedded newlines in the hand-rolled YAML parser (FR-EXT-20)
+### [x] fix: round-trip labels with embedded newlines in the hand-rolled YAML parser (FR-EXT-20)
 
 `yamlQuote()` escapes `\` and `"` but not newlines, and the reader is strictly line-based, so a label containing `\n` (freely typeable in the Controls Editor) is corrupted or lost on the next read.
 
