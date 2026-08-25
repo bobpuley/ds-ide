@@ -327,7 +327,9 @@ controllers:
       expect(leds).toHaveLength(0);
     });
 
-    it('accepts gpio_pin boundaries 0 and 31', () => {
+    // FR-EXT-21 — the pin table's actual highest defined pin is 30, not the
+    // previously-hardcoded 31; the upper bound must track PIN_DEFS.
+    it('accepts gpio_pin boundaries 0 and 30 (the pin table\'s actual max)', () => {
       const yaml = `
 buttons:
   - id: a
@@ -335,16 +337,23 @@ buttons:
     gpio_pin: 0
   - id: b
     label: B
-    gpio_pin: 31
+    gpio_pin: 30
 `;
       const { buttons, errors } = parseControllerConfig(yaml);
       expect(errors).toHaveLength(0);
       expect(buttons).toHaveLength(2);
     });
+
+    it('rejects gpio_pin 31 — beyond the pin table\'s actual maximum (FR-EXT-21)', () => {
+      const yaml = `buttons:\n  - id: a\n    label: A\n    gpio_pin: 31\n`;
+      const { buttons, errors } = parseControllerConfig(yaml);
+      expect(errors.some(e => e.includes("'gpio_pin'"))).toBe(true);
+      expect(buttons).toHaveLength(0);
+    });
   });
 
   describe('button validation', () => {
-    it('reports gpio_pin out of range (> 31)', () => {
+    it('reports gpio_pin out of range (> pin table max)', () => {
       const yaml = `buttons:\n  - id: a\n    label: A\n    gpio_pin: 32\n`;
       const { errors } = parseControllerConfig(yaml);
       expect(errors.some(e => e.includes("'gpio_pin'"))).toBe(true);

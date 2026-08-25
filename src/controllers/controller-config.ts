@@ -1,3 +1,10 @@
+import { PIN_DEFS } from '../devices/pin-table.gen';
+
+// The pin table's highest defined GPIO pin — derived rather than hardcoded
+// so validation can never silently drift from the actual pin table (e.g. if
+// the CSV/generator's pin count ever changes) (FR-EXT-21).
+const MAX_GPIO_PIN = Math.max(...PIN_DEFS.filter(p => p.pin !== null).map(p => p.pin as number));
+
 export type Taper = 'linear' | 'log' | 'antilog';
 export type ButtonMode = 'momentary' | 'toggle';
 export type ActiveLevel = 'high' | 'low';
@@ -16,7 +23,7 @@ export interface ControllerDef {
 export interface ButtonDef {
   id: string;
   label: string;
-  gpioPin: number;       // Daisy pin number 0–31 (matches hw.GetPin(n))
+  gpioPin: number;       // Daisy GPIO pin number (matches hw.GetPin(n)); see MAX_GPIO_PIN for the valid range
   mode: ButtonMode;      // momentary (held) | toggle (latched)
   activeLevel: ActiveLevel;  // wiring metadata; runtime returns the logical press
   pos?: [number, number]; // editor_pos — canvas position (x, y); ignored by runtime
@@ -282,8 +289,8 @@ function validateDigitalEntry(
     ok = false;
   }
 
-  if (typeof gpio_pin !== 'number' || !Number.isInteger(gpio_pin) || gpio_pin < 0 || gpio_pin > 31) {
-    errors.push(`${ctx}: 'gpio_pin' must be an integer 0–31`);
+  if (typeof gpio_pin !== 'number' || !Number.isInteger(gpio_pin) || gpio_pin < 0 || gpio_pin > MAX_GPIO_PIN) {
+    errors.push(`${ctx}: 'gpio_pin' must be an integer 0–${MAX_GPIO_PIN}`);
     ok = false;
   } else if (seenPins.has(gpio_pin)) {
     errors.push(`${ctx}: duplicate gpio_pin ${gpio_pin}`);

@@ -116,7 +116,7 @@ Three store classes discard the promise returned by `workspaceState.update()` vi
 
 ---
 
-### [ ] fix: cross-validate gpio_pin upper bound against the pin table (FR-EXT-21)
+### [x] fix: cross-validate gpio_pin upper bound against the pin table (FR-EXT-21)
 
 `controller-config.ts` validates `gpio_pin` against a hardcoded upper bound of 31, but the pin table's highest defined pin is 30, so a `gpio_pin: 31` entry passes validation but can never render or participate in conflict checks.
 
