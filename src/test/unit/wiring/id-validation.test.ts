@@ -48,4 +48,31 @@ describe('validateId (FR-IPC-6)', () => {
     const wired: WiredPin[] = [{ pinNumber: 20, deviceType: 'pot', id: 'vol1' }];
     expect(validateId('  vol1  ', wired)).toBe('id already used by pin 20');
   });
+
+  // FR-EXT-11: a free-text id is interpolated unescaped into generated C++
+  // declaration/init lines (controls-writer.ts) — an id that isn't a valid
+  // C++ identifier must never reach that far.
+  it('rejects an id containing a statement injection payload', () => {
+    expect(validateId('x; SystemInit(); //', [])).not.toBeNull();
+  });
+
+  it('rejects an id starting with a digit', () => {
+    expect(validateId('1vol', [])).not.toBeNull();
+  });
+
+  it('rejects an id containing a space', () => {
+    expect(validateId('my vol', [])).not.toBeNull();
+  });
+
+  it('rejects an id containing punctuation', () => {
+    expect(validateId('vol.1', [])).not.toBeNull();
+  });
+
+  it('rejects a C++ reserved keyword', () => {
+    expect(validateId('class', [])).not.toBeNull();
+  });
+
+  it('accepts an id with underscores and digits after the first character', () => {
+    expect(validateId('my_vol_1', [])).toBeNull();
+  });
 });

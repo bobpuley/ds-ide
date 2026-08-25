@@ -47,11 +47,19 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
           typeof deviceType !== 'string' || !isDeviceType(deviceType) ||
           typeof id !== 'string' || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id)
         ) return;
-        await this.onWirePin({
-          pinNumber:  pinNumber  as number,
-          deviceType: deviceType as WiredPin['deviceType'],
-          id:         id,
-        });
+        // FR-EXT-8: onWirePin performs file I/O (workspace edit + save) that
+        // can throw (e.g. a permission error) — left unguarded, that would
+        // reject this async onDidReceiveMessage callback with no listener,
+        // producing an unhandled promise rejection instead of user feedback.
+        try {
+          await this.onWirePin({
+            pinNumber:  pinNumber  as number,
+            deviceType: deviceType as WiredPin['deviceType'],
+            id:         id,
+          });
+        } catch (err) {
+          void vscode.window.showErrorMessage(`ds-ide: could not wire pin: ${String(err)}`);
+        }
       } else if (m['command'] === 'unwirePin') {
         const pinNumber = m['pinNumber'];
         const id        = m['id'];
@@ -60,7 +68,11 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
           (pinNumber as number) < 0 || (pinNumber as number) > 31 ||
           typeof id !== 'string' || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id)
         ) return;
-        await this.onUnwirePin(pinNumber as number, id);
+        try {
+          await this.onUnwirePin(pinNumber as number, id);
+        } catch (err) {
+          void vscode.window.showErrorMessage(`ds-ide: could not unwire pin: ${String(err)}`);
+        }
       } else if (m['command'] === 'setPeripheralEnabled') {
         const peripheralId = m['peripheralId'];
         const enabled      = m['enabled'];
@@ -68,7 +80,11 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
           typeof peripheralId !== 'string' || !peripheralIds().includes(peripheralId) ||
           typeof enabled !== 'boolean'
         ) return;
-        await this.onSetPeripheralEnabled(peripheralId, enabled);
+        try {
+          await this.onSetPeripheralEnabled(peripheralId, enabled);
+        } catch (err) {
+          void vscode.window.showErrorMessage(`ds-ide: could not update peripheral: ${String(err)}`);
+        }
       } else if (m['command'] === 'viewPeripheral') {
         const peripheralId = m['peripheralId'];
         if (typeof peripheralId !== 'string' || !peripheralIds().includes(peripheralId)) return;

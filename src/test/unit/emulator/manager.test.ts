@@ -266,6 +266,58 @@ describe('EmulatorManager', () => {
     });
   });
 
+  describe('orphaned child process cleanup on failed handshake (FR-EXT-7)', () => {
+    async function buildManager(): Promise<void> {
+      await manager.build(
+        { projectRoot: '/proj', effectSrc: '/proj/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+    }
+
+    it('kills the spawned child when the handshake reports a version mismatch', async () => {
+      ipcClientStub.connect = vi.fn(() => {
+        ipcClientStub.connected = true;
+        ipcClientStub.emit('message', { type: 'protocolVersion', version: PROTOCOL_VERSION + 1 });
+        return Promise.resolve();
+      }) as ReturnType<typeof vi.fn>;
+      await buildManager();
+      await expect(manager.deploy(() => undefined)).rejects.toThrow(/protocol version mismatch/i);
+
+      const childMock = spawnMock.mock.results[2]?.value as { kill: ReturnType<typeof vi.fn> };
+      expect(childMock.kill).toHaveBeenCalled();
+    });
+
+    it('kills the spawned child when the emulator sends a non-handshake first message', async () => {
+      ipcClientStub.connect = vi.fn(() => {
+        ipcClientStub.connected = true;
+        ipcClientStub.emit('message', { type: 'status', running: false });
+        return Promise.resolve();
+      }) as ReturnType<typeof vi.fn>;
+      await buildManager();
+      await expect(manager.deploy(() => undefined)).rejects.toThrow(/protocol version handshake/i);
+
+      const childMock = spawnMock.mock.results[2]?.value as { kill: ReturnType<typeof vi.fn> };
+      expect(childMock.kill).toHaveBeenCalled();
+    });
+
+    it('kills the spawned child when the IPC connect itself times out/fails', async () => {
+      ipcClientStub.connect = vi.fn(() => Promise.reject<void>(new Error('IPC connect timed out'))) as ReturnType<typeof vi.fn>;
+      await buildManager();
+      await expect(manager.deploy(() => undefined)).rejects.toThrow(/IPC connect timed out/);
+
+      const childMock = spawnMock.mock.results[2]?.value as { kill: ReturnType<typeof vi.fn> };
+      expect(childMock.kill).toHaveBeenCalled();
+    });
+
+    it('does NOT kill the spawned child when the handshake succeeds', async () => {
+      await buildManager();
+      await manager.deploy(() => undefined);
+
+      const childMock = spawnMock.mock.results[2]?.value as { kill: ReturnType<typeof vi.fn> };
+      expect(childMock.kill).not.toHaveBeenCalled();
+    });
+  });
+
   describe('sendPot()', () => {
     it('sends a controlValue with a potN id (FR-DEV-1)', async () => {
       await manager.build(

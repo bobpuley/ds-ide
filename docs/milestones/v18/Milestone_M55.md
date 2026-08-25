@@ -10,7 +10,7 @@ Close the six remaining HIGH-severity findings from the Node.js/TypeScript revie
 
 ## Sprint Tasks
 
-### [ ] fix: register production error listener on EmulatorManager (FR-EXT-6)
+### [x] fix: register production error listener on EmulatorManager (FR-EXT-6)
 
 `activate()` never registers an `'error'` listener on `EmulatorManager`. Node's `EventEmitter` throws in-process on an unhandled `'error'` emission, so any raw socket error can crash the Extension Host for the entire VS Code window.
 
@@ -23,7 +23,7 @@ Close the six remaining HIGH-severity findings from the Node.js/TypeScript revie
 
 ---
 
-### [ ] fix: kill spawned emulator child when the IPC handshake fails (FR-EXT-7)
+### [x] fix: kill spawned emulator child when the IPC handshake fails (FR-EXT-7)
 
 `connectIpc()`'s rejection path only closes the socket; the already-spawned `effect_emu` child process is left running, orphaned until the next stale-PID reaper or clean `dispose()`.
 
@@ -35,7 +35,7 @@ Close the six remaining HIGH-severity findings from the Node.js/TypeScript revie
 
 ---
 
-### [ ] fix: guard WiringViewProvider's message handler against unhandled rejection (FR-EXT-8)
+### [x] fix: guard WiringViewProvider's message handler against unhandled rejection (FR-EXT-8)
 
 The `async onDidReceiveMessage` callback awaits three file-I/O-performing handlers with no surrounding try/catch, unlike the equivalent handler in `controls-editor-panel.ts`.
 
@@ -47,7 +47,7 @@ The `async onDidReceiveMessage` callback awaits three file-I/O-performing handle
 
 ---
 
-### [ ] refactor: decompose activate() into named factory functions (FR-EXT-9)
+### [x] refactor: decompose activate() into named factory functions (FR-EXT-9)
 
 A single ~640-line function in `extension.ts` builds every store, panel, provider, and command registration inline via large inline closures — the same file where the `'error'`-listener gap and the `effectSource` gap both live, a direct consequence of the function's size making cross-cutting gaps easy to miss.
 
@@ -60,7 +60,7 @@ A single ~640-line function in `extension.ts` builds every store, panel, provide
 
 ---
 
-### [ ] fix: honor ds-ide.effectSource in the build command (FR-EXT-10)
+### [x] fix: honor ds-ide.effectSource in the build command (FR-EXT-10)
 
 `build.ts` calls `findEffectSource(projectRoot)` with a single argument, so the configured-path branch is always skipped, even though the build failure message tells the user to set `ds-ide.effectSource`.
 
@@ -72,7 +72,7 @@ A single ~640-line function in `extension.ts` builds every store, panel, provide
 
 ---
 
-### [ ] fix: reject invalid C++ identifiers in wiring id input (FR-EXT-11)
+### [x] fix: reject invalid C++ identifiers in wiring id input (FR-EXT-11)
 
 `validateId()` only checks for emptiness and duplication; the free-text `id` is interpolated unescaped into generated C++ declaration/init lines, so a value like `x; SystemInit(); //` can corrupt the generated `.cpp` file.
 
