@@ -69,7 +69,7 @@ The same category of problem — bad input reaching a codegen function — is ha
 
 ---
 
-### [ ] refactor: split controls-webview.ts into per-concern modules (FR-EXT-32)
+### [x] refactor: split controls-webview.ts into per-concern modules (FR-EXT-32)
 
 One flat 744-line module owns convention-mode canvas rendering, the legacy YAML editor canvas, drag-and-drop, save serialization, the SD-card viewer, and the OLED live-preview strip via 13+ module-scoped mutable variables with no encapsulation between concerns.
 
