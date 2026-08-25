@@ -24,7 +24,7 @@ Close three RT-thread/concurrency gaps that survived the emulator's extensive pr
 
 ---
 
-### [ ] fix: move scope/spectrum JSON serialization and FFT off the audio RT thread (FR-EMU-10)
+### [x] fix: move scope/spectrum JSON serialization and FFT off the audio RT thread (FR-EMU-10)
 
 `build_scope_json`/`build_spectrum_json`/`fft_radix2` currently run synchronously inside the CoreAudio render callback in both real-time and CoreAudio-driven simulated mode — up to ~5,000 `snprintf` calls plus two FFTs per emission, directly on the audio thread's deadline.
 

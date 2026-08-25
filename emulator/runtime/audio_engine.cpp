@@ -33,9 +33,15 @@ static void ipc_send(const char* msg) {
     if (!g_state.ipc_queue.push(msg))
         g_state.ipc_queue_drops.fetch_add(1, std::memory_order_relaxed);
 }
-static void ipc_send(const std::string& msg) {
-    if (!g_state.ipc_queue.push(msg))
-        g_state.ipc_queue_drops.fetch_add(1, std::memory_order_relaxed);
+// FR-EMU-10: sends a message built on the non-RT drain thread straight to
+// the IPC socket, bypassing ipc_queue (which that same thread already owns
+// as a consumer — routing through it would just be a redundant hop). Mirrors
+// the send_mutex-guarded forwarding drain_thread already does for every
+// other popped queue (see run_audio_engine() below). Never called from the
+// RT thread — unlike ipc_send() above, it acquires send_mutex directly.
+static void drain_send(const std::string& msg) {
+    std::lock_guard<std::mutex> lk(g_state.send_mutex);
+    if (g_state.send_ipc) g_state.send_ipc(msg);
 }
 
 // ---- Inline radix-2 FFT (Cooley-Tukey, power-of-2 N) -----------------------
@@ -148,6 +154,9 @@ struct FftState {
 
 // ---- Scope + Spectrum emit helper -------------------------------------------
 
+// FR-EMU-10: called from the non-RT drain thread only (see ScopeBlockQueue
+// above) — accumulation, FFT, and JSON building all happen off the audio
+// callback's deadline.
 static void emit_spectrum_if_ready(FftState& fft,
                                    const std::vector<float>& in_buf,
                                    const std::vector<float>& out_buf,
@@ -158,7 +167,7 @@ static void emit_spectrum_if_ready(FftState& fft,
     magnitude_spectrum(fft.in_samples,  fft.fft_work, fft.mag_in_buf);
     magnitude_spectrum(fft.out_samples, fft.fft_work, fft.mag_out_buf);
     build_spectrum_json(fft.mag_in_buf, fft.mag_out_buf, bin_hz, fft.json_buf);
-    ipc_send(fft.json_buf);
+    drain_send(fft.json_buf);
     fft.reset();
 }
 
@@ -280,6 +289,77 @@ struct ScopeState {
     }
 };
 
+// ---- RT-safe raw audio block hand-off (FR-EMU-10) ---------------------------
+//
+// The RT callback used to build scope/spectrum JSON and run the FFT inline
+// (up to ~5,000 snprintf calls plus two FFTs per emission) directly on the
+// audio thread's deadline. It now only memcpy's the raw interleaved in/out
+// block into this SPSC ring; the non-RT drain thread in run_audio_engine()
+// pops blocks and does the scope/spectrum accumulation, JSON, and FFT work.
+// Mirrors SessionRecorder's enqueueBlock/audio_slots_ pattern (FR-RTS-1):
+// pre-allocated slots, no heap allocation or blocking on the push() path.
+struct ScopeBlockQueue {
+    // 8192 frames covers all practical hardware buffer sizes (same rationale
+    // as SessionRecorder::kMaxFramesPerSlot) — a block larger than this is
+    // truncated rather than triggering a reallocation on the RT thread.
+    static constexpr size_t kMaxFramesPerSlot = 8192;
+    static constexpr size_t kSlotCount        = 64;
+
+    struct Slot {
+        std::vector<float> in_buf;   // interleaved stereo, kMaxFramesPerSlot*2
+        std::vector<float> out_buf;
+        size_t             frames{0};
+        float              sample_rate{48000.f};
+
+        Slot() {
+            in_buf.resize(kMaxFramesPerSlot * 2);
+            out_buf.resize(kMaxFramesPerSlot * 2);
+        }
+    };
+
+    ScopeBlockQueue() = default;
+
+    // RT-safe: no allocation, no mutex, no blocking. Returns false (block
+    // dropped, counted in `drops`) if the ring is full.
+    bool push(const float* in_buf, const float* out_buf, size_t frames, float sample_rate) {
+        size_t w    = write_.load(std::memory_order_relaxed);
+        size_t next = (w + 1) % kSlotCount;
+        if (next == read_.load(std::memory_order_acquire)) {
+            drops.fetch_add(1, std::memory_order_relaxed);
+            return false;
+        }
+        Slot& slot = slots_[w];
+        size_t f   = std::min(frames, kMaxFramesPerSlot);
+        std::memcpy(slot.in_buf.data(),  in_buf,  f * 2 * sizeof(float));
+        std::memcpy(slot.out_buf.data(), out_buf, f * 2 * sizeof(float));
+        slot.frames      = f;
+        slot.sample_rate = sample_rate;
+        write_.store(next, std::memory_order_release);
+        return true;
+    }
+
+    // Called from the drain thread. `out` must already be default-constructed
+    // (its buffers pre-sized to kMaxFramesPerSlot*2 by Slot's constructor).
+    bool pop(Slot& out) {
+        size_t r = read_.load(std::memory_order_relaxed);
+        if (r == write_.load(std::memory_order_acquire)) return false;
+        const Slot& slot = slots_[r];
+        out.frames      = slot.frames;
+        out.sample_rate = slot.sample_rate;
+        std::memcpy(out.in_buf.data(),  slot.in_buf.data(),  slot.frames * 2 * sizeof(float));
+        std::memcpy(out.out_buf.data(), slot.out_buf.data(), slot.frames * 2 * sizeof(float));
+        read_.store((r + 1) % kSlotCount, std::memory_order_release);
+        return true;
+    }
+
+    std::atomic<uint32_t> drops{0};
+
+private:
+    std::array<Slot, kSlotCount> slots_;
+    std::atomic<size_t> write_{0};
+    std::atomic<size_t> read_{0};
+};
+
 // ---- Simulated mode loop ----------------------------------------------------
 
 static void run_simulated(float sample_rate,
@@ -289,9 +369,8 @@ static void run_simulated(float sample_rate,
                           std::vector<float>& in_ch0,
                           std::vector<float>& in_ch1,
                           std::vector<float>& out_ch0,
-                          std::vector<float>& out_ch1) {
-    ScopeState scope;
-    FftState fft;
+                          std::vector<float>& out_ch1,
+                          ScopeBlockQueue& scope_queue) {
     double phase = 0.0;
 
     // WAV playhead (M9): fractional read position and generation counter.
@@ -444,13 +523,9 @@ static void run_simulated(float sample_rate,
             for (size_t i = 0; i < frames * 2; ++i) out_buf[i] *= vol_s;
         }
 
-        if (scope.accumulate(in_buf, out_buf, frames)) {
-            build_scope_json(scope.in, scope.out, scope.out_r, scope.json_buf);
-            ipc_send(scope.json_buf);
-            scope.reset();
-        }
-
-        emit_spectrum_if_ready(fft, in_buf, out_buf, frames, sample_rate);
+        // FR-EMU-10: hand the raw block to the non-RT drain thread instead of
+        // accumulating/JSON-building/FFT-ing inline — see ScopeBlockQueue.
+        scope_queue.push(in_buf.data(), out_buf.data(), frames, sample_rate);
         return true;
     };
 
@@ -524,7 +599,6 @@ static void run_simulated(float sample_rate,
     }
 
     device.stop();
-    scope.reset();
 }
 
 // ---- Real-time mode loop ----------------------------------------------------
@@ -533,7 +607,8 @@ static void run_realtime(float sample_rate,
                          std::vector<float>& in_ch0,
                          std::vector<float>& in_ch1,
                          std::vector<float>& out_ch0,
-                         std::vector<float>& out_ch1) {
+                         std::vector<float>& out_ch1,
+                         ScopeBlockQueue& scope_queue) {
     uint32_t buffer_size = static_cast<uint32_t>(g_state.rt_buffer_size.load());
 
     // FR-EMU-7: see run_simulated()'s cfg_gen_seen for rationale — wakes the
@@ -543,8 +618,6 @@ static void run_realtime(float sample_rate,
     uint64_t cfg_gen_seen = g_state.config_generation.load();
 
     // State captured by the CoreAudio render callback (called on the real-time thread).
-    ScopeState scope;
-    FftState fft;
     std::vector<float> in_buf(buffer_size * 2);
     std::vector<float> out_buf(buffer_size * 2);
     std::vector<float> local_in_ch0(buffer_size), local_in_ch1(buffer_size);
@@ -607,15 +680,9 @@ static void run_realtime(float sample_rate,
         }
         std::memcpy(ca_out, out_buf.data(), frames * 2 * sizeof(float));
 
-        // Scope tap
-        if (scope.accumulate(in_buf, out_buf, frames)) {
-            build_scope_json(scope.in, scope.out, scope.out_r, scope.json_buf);
-            ipc_send(scope.json_buf);
-            scope.reset();
-        }
-
-        emit_spectrum_if_ready(fft, in_buf, out_buf, frames,
-                               static_cast<float>(sample_rate));
+        // FR-EMU-10: hand the raw block to the non-RT drain thread instead of
+        // accumulating/JSON-building/FFT-ing inline — see ScopeBlockQueue.
+        scope_queue.push(in_buf.data(), out_buf.data(), frames, sample_rate);
 
         // Latency reporting (~once per SCOPE_BLOCKS)
         ++xrun_report_blocks;
@@ -687,7 +754,6 @@ static void run_realtime(float sample_rate,
     }
 
     device.stop();
-    scope.reset();
 }
 
 // ---- Engine entry point -----------------------------------------------------
@@ -712,6 +778,10 @@ void run_audio_engine() {
     std::vector<float> in_ch0(max_size), in_ch1(max_size);
     std::vector<float> out_ch0(max_size), out_ch1(max_size);
 
+    // FR-EMU-10: raw audio blocks handed off by the RT callback (in either
+    // mode) for scope/spectrum accumulation on the drain thread below.
+    ScopeBlockQueue scope_queue;
+
     // Drain thread: forwards messages from the SPSC queue to the IPC socket (AC-39).
     // Runs for the lifetime of the audio engine; the mutex and ::send() stay off
     // the real-time thread. Reports ipc_queue_drops periodically (FR-QA-1).
@@ -734,8 +804,36 @@ void run_audio_engine() {
         std::string midi_rx_msg;
         uint32_t last_reported_drops = 0;
         int idle_ticks = 0;
+
+        // FR-EMU-10: scope/spectrum accumulation state, owned by this thread
+        // now that the RT callback only pushes raw blocks (see
+        // ScopeBlockQueue). Reset whenever audio_mode changes, mirroring the
+        // previous per-mode-loop-entry reset (run_simulated()/run_realtime()
+        // each got a fresh ScopeState/FftState) so a scope frame never mixes
+        // samples accumulated under different modes.
+        ScopeState scope;
+        FftState fft;
+        ScopeBlockQueue::Slot popped_block;
+        int last_seen_mode = g_state.audio_mode.load();
+
         while (!g_state.shutdown.load()) {
             bool did_work = false;
+            int cur_mode = g_state.audio_mode.load();
+            if (cur_mode != last_seen_mode) {
+                last_seen_mode = cur_mode;
+                scope.reset();
+                fft.reset();
+            }
+            if (scope_queue.pop(popped_block)) {
+                if (scope.accumulate(popped_block.in_buf, popped_block.out_buf, popped_block.frames)) {
+                    build_scope_json(scope.in, scope.out, scope.out_r, scope.json_buf);
+                    drain_send(scope.json_buf);
+                    scope.reset();
+                }
+                emit_spectrum_if_ready(fft, popped_block.in_buf, popped_block.out_buf,
+                                       popped_block.frames, popped_block.sample_rate);
+                did_work = true;
+            }
             if (g_state.ipc_queue.pop(msg)) {
                 std::lock_guard<std::mutex> lk(g_state.send_mutex);
                 if (g_state.send_ipc) g_state.send_ipc(msg);
@@ -781,7 +879,8 @@ void run_audio_engine() {
                                    + g_state.midi_tx_queue.oversize_drops.load(std::memory_order_relaxed)
                                    + g_state.midi_rx_queue_drops.load(std::memory_order_relaxed)
                                    + g_state.midi_rx_queue.oversize_drops.load(std::memory_order_relaxed)
-                                   + g_state.midi_in_drops.load(std::memory_order_relaxed);
+                                   + g_state.midi_in_drops.load(std::memory_order_relaxed)
+                                   + scope_queue.drops.load(std::memory_order_relaxed);
                     if (drops != last_reported_drops) {
                         last_reported_drops = drops;
                         char buf[80];
@@ -794,6 +893,15 @@ void run_audio_engine() {
             }
         }
         // Flush any remaining messages after shutdown
+        while (scope_queue.pop(popped_block)) {
+            if (scope.accumulate(popped_block.in_buf, popped_block.out_buf, popped_block.frames)) {
+                build_scope_json(scope.in, scope.out, scope.out_r, scope.json_buf);
+                drain_send(scope.json_buf);
+                scope.reset();
+            }
+            emit_spectrum_if_ready(fft, popped_block.in_buf, popped_block.out_buf,
+                                   popped_block.frames, popped_block.sample_rate);
+        }
         while (g_state.ipc_queue.pop(msg)) {
             std::lock_guard<std::mutex> lk(g_state.send_mutex);
             if (g_state.send_ipc) g_state.send_ipc(msg);
@@ -831,9 +939,9 @@ void run_audio_engine() {
 
         if (mode == AudioMode::Simulated) {
             run_simulated(sample_rate, block_size,
-                          in_buf, out_buf, in_ch0, in_ch1, out_ch0, out_ch1);
+                          in_buf, out_buf, in_ch0, in_ch1, out_ch0, out_ch1, scope_queue);
         } else {
-            run_realtime(sample_rate, in_ch0, in_ch1, out_ch0, out_ch1);
+            run_realtime(sample_rate, in_ch0, in_ch1, out_ch0, out_ch1, scope_queue);
         }
     }
 
