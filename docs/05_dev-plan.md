@@ -158,7 +158,7 @@ Full registry in [`docs/v17/05_dev-plan.md`](v17/05_dev-plan.md).
 | M53 | Multi-Root Debug-Attach Fix | **released**    | 0.17.1 | [Milestone_M53.md](milestones/v18/Milestone_M53.md) |
 | M54 | Emulator RT & Concurrency Safety | **released**    | 0.17.2 | [Milestone_M54.md](milestones/v18/Milestone_M54.md) |
 | M55 | Extension Critical Fixes | **released**    | 0.17.3 | [Milestone_M55.md](milestones/v18/Milestone_M55.md) |
-| M56 | Extension Reliability & Validation Hardening | **planned**     | 0.17.4 | [Milestone_M56.md](milestones/v18/Milestone_M56.md) |
+| M56 | Extension Reliability & Validation Hardening | **in progress** | 0.17.4 | [Milestone_M56.md](milestones/v18/Milestone_M56.md) |
 | M57 | Extension API, Type & Maintainability Polish | **planned**     | 0.17.5 | [Milestone_M57.md](milestones/v18/Milestone_M57.md) |
 
 Source: parallel code-review reconciliation (C/C++ emulator, Node.js/TS, VS Code extension reviews, 2026-08-25). All HIGH and MEDIUM findings intaked; LOW findings deferred. M53 covers the one bug two reviews flagged independently; M54 covers all emulator findings; M55–M57 split the 34 remaining Node.js/TS findings by severity and theme (critical fixes / reliability & validation / API & maintainability polish), mirroring the M31–M33 and M28–M30 precedent from earlier versions.
