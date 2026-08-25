@@ -37,7 +37,7 @@ Close three RT-thread/concurrency gaps that survived the emulator's extensive pr
 
 ---
 
-### [ ] fix: make process shutdown single-owner (FR-EMU-11)
+### [x] fix: make process shutdown single-owner (FR-EMU-11)
 
 The detached `shutdown_watcher` thread's `std::_Exit(0)` races the "normal" join/return-0 shutdown path and almost always wins, making the normal path dead code and discarding any not-yet-drained telemetry on every shutdown, not just the signal-driven path it was designed for.
 

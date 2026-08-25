@@ -163,6 +163,14 @@ struct EmulatorState {
     // Transport
     std::atomic<bool> transport_running{false};
     std::atomic<bool> shutdown{false};
+    // FR-EMU-11: set by main.cpp's shutdown_watcher only after audio_thread
+    // has been joined — i.e. only once the drain thread has finished
+    // flushing ipc_queue/oled_queue/led_queue/midi_tx_queue/midi_rx_queue to
+    // send_ipc. run_ipc_server()'s per-client read loop waits on this
+    // (rather than tearing the connection down the instant `shutdown` flips)
+    // so it can't race ahead of and close the socket / null out send_ipc
+    // before that flush has actually reached the client.
+    std::atomic<bool> telemetry_drained{false};
 
     // Sine generator
     std::atomic<float> sine_freq{440.f};
