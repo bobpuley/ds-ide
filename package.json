@@ -219,6 +219,6 @@
     "vitest": "^1.5.0"
   },
   "dependencies": {
-    "midi": "^2.0.0"
+    "midi": "2.0.0"
   }
 }

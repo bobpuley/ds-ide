@@ -18,7 +18,11 @@ export interface MidiInputLike {
 
 export type MidiInputFactory = () => MidiInputLike;
 
-function defaultInputFactory(): MidiInputLike {
+// Exported so a smoke test (FR-EXT-36) can verify the installed 'midi'
+// package's Input class still satisfies MidiInputLike — not just that
+// HostMidiBridge's own injected-factory tests pass (those never touch the
+// real package).
+export function defaultInputFactory(): MidiInputLike {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const midi = require('midi') as { Input: new () => MidiInputLike };
   return new midi.Input();

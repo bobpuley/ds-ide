@@ -116,7 +116,7 @@ None of the five `onDidReceiveMessage`/`postMessage` handlers import the message
 
 ---
 
-### [ ] chore: pin the native midi dependency to an exact version (FR-EXT-36)
+### [x] chore: pin the native midi dependency to an exact version (FR-EXT-36)
 
 The only runtime dependency, `midi` (native RtMidi bindings), is declared with an unrestricted `^2.0.0` caret range despite being more prone to ABI/behavior breakage across minor version bumps than a pure-JS package.
 

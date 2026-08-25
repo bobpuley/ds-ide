@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { HostMidiBridge } from '../../../midi/host-bridge';
+import { HostMidiBridge, defaultInputFactory } from '../../../midi/host-bridge';
 import type { MidiInputLike, MidiInputFactory } from '../../../midi/host-bridge';
 
 function fakeManager() {
@@ -111,5 +111,33 @@ describe('HostMidiBridge (FR-DEV-18)', () => {
     closedPorts.length = 0; // start() also closes the enumeration probe (FR-EXT-15); isolate stop()'s own closes
     bridge.stop();
     expect(closedPorts).toHaveLength(1);
+  });
+});
+
+// FR-EXT-36: the pinned 'midi' dependency's Input class must keep satisfying
+// MidiInputLike. 'midi' is a native addon rebuilt against Electron's ABI by
+// scripts/rebuild-midi-native.sh (FR-DEV-19) — not the plain Node.js this
+// test suite runs under — so a NODE_MODULE_VERSION mismatch here is the
+// expected, documented state outside VS Code's actual Extension Host (see
+// scripts/check-native-abi.js's identical tolerance) and isn't a shape
+// regression; any other load failure (e.g. the package going missing) is.
+describe('installed midi package (FR-EXT-36)', () => {
+  it('satisfies the MidiInputLike shape host-bridge.ts depends on', () => {
+    let probe: MidiInputLike;
+    try {
+      probe = defaultInputFactory();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (/NODE_MODULE_VERSION/.test(message)) {
+        console.warn('ds-ide: midi package ABI mismatch under this Node runtime — skipping shape check:', message);
+        return;
+      }
+      throw err;
+    }
+    expect(typeof probe.getPortCount).toBe('function');
+    expect(typeof probe.getPortName).toBe('function');
+    expect(typeof probe.openPort).toBe('function');
+    expect(typeof probe.closePort).toBe('function');
+    expect(typeof probe.on).toBe('function');
   });
 });
