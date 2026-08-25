@@ -34,7 +34,7 @@ Both `hardware-build.ts` and `dfu-flash.ts` split each raw `'data'` chunk on `'\
 
 ---
 
-### [ ] fix: guard each HostMidiBridge port-open call individually (FR-EXT-14)
+### [x] fix: guard each HostMidiBridge port-open call individually (FR-EXT-14)
 
 Only the initial port-count probe is try/caught; a throw from `openPort(i)` inside the per-port loop propagates out of `start()` and, since it's called unguarded during `activate()`, out of `activate()` itself.
 
@@ -46,7 +46,7 @@ Only the initial port-count probe is try/caught; a throw from `openPort(i)` insi
 
 ---
 
-### [ ] fix: close HostMidiBridge's probe Input after port-count read (FR-EXT-15)
+### [x] fix: close HostMidiBridge's probe Input after port-count read (FR-EXT-15)
 
 The `Input` instance created solely to call `getPortCount()` is discarded without `closePort()`, holding an underlying native handle GC won't necessarily reclaim promptly.
 

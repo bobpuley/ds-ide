@@ -52,16 +52,25 @@ export class HostMidiBridge {
       return;
     }
     const count = probe.getPortCount();
+    // Only used to read the port count — close it immediately rather than
+    // leaking its underlying native handle (FR-EXT-15).
+    probe.closePort();
 
     for (let i = 0; i < count; i++) {
-      const input = this.inputFactory();
-      input.openPort(i);
-      input.on('message', (_deltaTime, message) => {
-        const [status, data1, data2] = message;
-        if (status === undefined) return;
-        this.manager.sendMidiEvent(status, data1 ?? 0, data2 ?? 0);
-      });
-      this.openInputs.push(input);
+      try {
+        const input = this.inputFactory();
+        input.openPort(i);
+        input.on('message', (_deltaTime, message) => {
+          const [status, data1, data2] = message;
+          if (status === undefined) return;
+          this.manager.sendMidiEvent(status, data1 ?? 0, data2 ?? 0);
+        });
+        this.openInputs.push(input);
+      } catch (err) {
+        // One bad/busy port must not stop the rest from opening, or
+        // propagate out of start() (and thus activate()) (FR-EXT-14).
+        console.warn(`ds-ide: failed to open MIDI port ${i} —`, err);
+      }
     }
   }
 
