@@ -128,7 +128,7 @@ The only runtime dependency, `midi` (native RtMidi bindings), is declared with a
 
 ---
 
-### [ ] refactor: factor a shared codegen strategy helper (FR-EXT-37)
+### [x] refactor: factor a shared codegen strategy helper (FR-EXT-37)
 
 Four codegen strategy files independently redeclare the same shape — a handle-name constant, a decl regex, an init-prefix constant, and the strategy object — roughly 70% copy-pasted across files.
 

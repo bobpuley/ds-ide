@@ -9,11 +9,11 @@
 // decl lines, so this "read the selection back from source" works the same
 // as OLED's despite living in a different line.
 import type { PeripheralCodegenStrategy } from './types';
+import { makeSimplePeripheralCodegen } from './shared';
 
 const HANDLE_NAME = 'ds_ide_midi_usb';
 const CFG_NAME = `${HANDLE_NAME}_cfg`;
 
-const DECL_RE = new RegExp(`^\\s*MidiUsbHandler\\s+${HANDLE_NAME}\\s*;\\s*$`);
 const CFG_DECL_PREFIX = `  MidiUsbHandler::Config ${CFG_NAME};`;
 const PERIPH_PREFIX = `  ${CFG_NAME}.transport_config.periph = MidiUsbTransport::Config::`;
 const INIT_PREFIX = `  ${HANDLE_NAME}.Init(`;
@@ -27,10 +27,6 @@ const MODE_TO_PERIPH: Record<string, string> = { INTERNAL: 'INTERNAL', USB_HS_D:
 const PERIPH_TO_MODE: Record<string, string> = { INTERNAL: 'INTERNAL', EXTERNAL: 'USB_HS_D' };
 
 const DEFAULT_MODE = 'INTERNAL';
-
-function declLine(): string {
-  return `  MidiUsbHandler ${HANDLE_NAME};`;
-}
 
 // FR-EXT-31: unrecognized mode is structurally impossible (only registry.ts's
 // own busChoices should ever reach here) — throws instead of silently
@@ -51,9 +47,17 @@ function busOfDeclLine(line: string): string | null {
   return PERIPH_TO_MODE[m[1]!] ?? null;
 }
 
+// FR-EXT-37: declLine()/isDeclLine are mode-invariant (unlike initLines()),
+// so this half is built directly on the shared simple-peripheral helper;
+// initLines/isInitLine/busOfDeclLine are overridden below for USB MIDI's
+// mode-dependent, three-line init shape.
+const base = makeSimplePeripheralCodegen({
+  declLine: `  MidiUsbHandler ${HANDLE_NAME};`,
+  initLinePrefixes: [INIT_PREFIX],
+});
+
 export const midiUsbCodegen: PeripheralCodegenStrategy = {
-  declLine,
-  isDeclLine: (line) => DECL_RE.test(line),
+  ...base,
   initLines,
   isInitLine: (line) => line.startsWith(CFG_DECL_PREFIX) || line.startsWith(PERIPH_PREFIX) || line.startsWith(INIT_PREFIX),
   busOfDeclLine,

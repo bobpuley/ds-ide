@@ -13,6 +13,7 @@
 // real libDaisy's WriteString/SetCursor depend on font bitmap tables this
 // project has no vendored copy of, and porting them is its own task.
 import type { PeripheralCodegenStrategy } from './types';
+import { makeSimplePeripheralCodegen } from './shared';
 
 const OLED_NAME = 'ds_ide_oled';
 
@@ -60,14 +61,18 @@ function busOfDeclLine(line: string): string | null {
   return entry ? entry[0] : null;
 }
 
-function initLines(): string[] {
-  return [`${INIT_PREFIX});`];
-}
+// FR-EXT-37: initLines()/isInitLine are bus-invariant (unlike declLine()),
+// so this half is built directly on the shared simple-peripheral helper;
+// declLine/isDeclLine/busOfDeclLine are overridden below for OLED's
+// bus-specific declared type.
+const base = makeSimplePeripheralCodegen({
+  declLine: `  OledDisplay<${DRIVER_BY_BUS[DEFAULT_BUS]}> ${OLED_NAME};`,
+  initLinePrefixes: [INIT_PREFIX],
+});
 
 export const oledCodegen: PeripheralCodegenStrategy = {
+  ...base,
   declLine,
   isDeclLine,
-  initLines,
-  isInitLine: (line) => line.startsWith(INIT_PREFIX),
   busOfDeclLine,
 };
