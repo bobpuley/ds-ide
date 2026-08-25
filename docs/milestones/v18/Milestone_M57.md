@@ -10,7 +10,7 @@ Close the remaining 13 MEDIUM findings covering type safety, API design, perform
 
 ## Sprint Tasks
 
-### [ ] refactor: consolidate the duplicated el<T>() DOM-lookup helper (FR-EXT-27)
+### [x] refactor: consolidate the duplicated el<T>() DOM-lookup helper (FR-EXT-27)
 
 Five webview-context files independently redeclare the same DOM-lookup helper, casting away `document.getElementById`'s `| null` return type without checking it.
 
@@ -22,7 +22,7 @@ Five webview-context files independently redeclare the same DOM-lookup helper, c
 
 ---
 
-### [ ] fix: validate JSON.parse'd data-island content before casting (FR-EXT-28)
+### [x] fix: validate JSON.parse'd data-island content before casting (FR-EXT-28)
 
 Config/state data embedded by the extension host into `<script type="application/json">` data islands is parsed and cast with no runtime shape validation.
 
@@ -34,7 +34,7 @@ Config/state data embedded by the extension host into `<script type="application
 
 ---
 
-### [ ] fix: use one consistent null-safety convention for REGISTRY[kind] (FR-EXT-29)
+### [x] fix: use one consistent null-safety convention for REGISTRY[kind] (FR-EXT-29)
 
 `removeFromSource` defensively uses optional chaining on a registry lookup while every other call site in the same file uses a non-null assertion.
 
@@ -45,7 +45,7 @@ Config/state data embedded by the extension host into `<script type="application
 
 ---
 
-### [ ] refactor: replace DeployCoordinator's 17-parameter constructor with an options object (FR-EXT-30)
+### [x] refactor: replace DeployCoordinator's 17-parameter constructor with an options object (FR-EXT-30)
 
 A single constructor accepts 17 positional arguments, several of the same type adjacent to one another, making transposition errors at the call site easy to introduce and impossible for the type checker to catch.
 
@@ -57,7 +57,7 @@ A single constructor accepts 17 positional arguments, several of the same type a
 
 ---
 
-### [ ] fix: adopt one error contract across codegen/*.ts strategies (FR-EXT-31)
+### [x] fix: adopt one error contract across codegen/*.ts strategies (FR-EXT-31)
 
 The same category of problem — bad input reaching a codegen function — is handled four different ways across `oled.ts` (throws), `midi-usb.ts` (silent fallback), `pot.ts`/`toggle.ts` (silent clamp), producing plausible-but-wrong generated code with zero diagnostic in the silent-fallback cases.
 
@@ -69,7 +69,7 @@ The same category of problem — bad input reaching a codegen function — is ha
 
 ---
 
-### [ ] refactor: split controls-webview.ts into per-concern modules (FR-EXT-32)
+### [x] refactor: split controls-webview.ts into per-concern modules (FR-EXT-32)
 
 One flat 744-line module owns convention-mode canvas rendering, the legacy YAML editor canvas, drag-and-drop, save serialization, the SD-card viewer, and the OLED live-preview strip via 13+ module-scoped mutable variables with no encapsulation between concerns.
 
@@ -81,7 +81,7 @@ One flat 744-line module owns convention-mode canvas rendering, the legacy YAML 
 
 ---
 
-### [ ] fix: enforce the messages.ts contract at webview/host message boundaries (FR-EXT-33)
+### [x] fix: enforce the messages.ts contract at webview/host message boundaries (FR-EXT-33)
 
 None of the five `onDidReceiveMessage`/`postMessage` handlers import the message-type unions from `messages.ts`; each re-derives per-field checks by hand, so an added/renamed variant produces no compile-time reminder to add a handler branch.
 
@@ -93,7 +93,7 @@ None of the five `onDidReceiveMessage`/`postMessage` handlers import the message
 
 ---
 
-### [ ] perf: coalesce scope/spectrum webview updates via raf-coalesce.ts (FR-EXT-34)
+### [x] perf: coalesce scope/spectrum webview updates via raf-coalesce.ts (FR-EXT-34)
 
 `scope-webview.ts` calls `draw()`/resizes+redraws synchronously on every incoming `'scope'`/`'spectrum'` message even though `raf-coalesce.ts` exists specifically to coalesce a high-frequency call stream to one-per-frame, and is already used for pot/encoder drag.
 
@@ -105,7 +105,7 @@ None of the five `onDidReceiveMessage`/`postMessage` handlers import the message
 
 ---
 
-### [ ] perf: batch MIDI monitor DOM rebuilds (FR-EXT-35)
+### [x] perf: batch MIDI monitor DOM rebuilds (FR-EXT-35)
 
 `renderMonitor()` clears and rebuilds up to 50 rows synchronously on every single `midiRx`/`midiTx` message with no batching, thrashing full DOM teardown/rebuild on a rapid CC stream.
 
@@ -116,7 +116,7 @@ None of the five `onDidReceiveMessage`/`postMessage` handlers import the message
 
 ---
 
-### [ ] chore: pin the native midi dependency to an exact version (FR-EXT-36)
+### [x] chore: pin the native midi dependency to an exact version (FR-EXT-36)
 
 The only runtime dependency, `midi` (native RtMidi bindings), is declared with an unrestricted `^2.0.0` caret range despite being more prone to ABI/behavior breakage across minor version bumps than a pure-JS package.
 
@@ -128,7 +128,7 @@ The only runtime dependency, `midi` (native RtMidi bindings), is declared with a
 
 ---
 
-### [ ] refactor: factor a shared codegen strategy helper (FR-EXT-37)
+### [x] refactor: factor a shared codegen strategy helper (FR-EXT-37)
 
 Four codegen strategy files independently redeclare the same shape — a handle-name constant, a decl regex, an init-prefix constant, and the strategy object — roughly 70% copy-pasted across files.
 
@@ -141,7 +141,7 @@ Four codegen strategy files independently redeclare the same shape — a handle-
 
 ---
 
-### [ ] refactor: move truncId/TRUNC_MAX_LEN into a shared webview-importable module (FR-EXT-38)
+### [x] refactor: move truncId/TRUNC_MAX_LEN into a shared webview-importable module (FR-EXT-38)
 
 The same truncation constant and logic is defined twice — once exported from a host-side panel file, once re-declared unexported in the webview file — because the two run under different tsconfigs.
 
@@ -153,7 +153,7 @@ The same truncation constant and logic is defined twice — once exported from a
 
 ---
 
-### [ ] test: add integration coverage for EmulatorManager 'error' handling (FR-EXT-39)
+### [x] test: add integration coverage for EmulatorManager 'error' handling (FR-EXT-39)
 
 Unit tests for `IpcClient`/`EmulatorManager` register `'error'` listeners to make assertions, which means the test suite never exercised the "zero listeners attached" scenario that FR-EXT-6 fixes — a false sense of coverage on the exact path most likely to crash the Extension Host.
 

@@ -21,6 +21,8 @@
     "src/webview/midi-webview.ts",
     "src/webview/midi-monitor.ts",
     "src/webview/webview-api.d.ts",
+    "src/webview/dom-lookup.ts",
+    "src/webview/data-island.ts",
     "src/webview/messages.ts",
     "src/webview/knob-math.ts",
     "src/wiring/id-validation.ts",

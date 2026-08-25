@@ -132,6 +132,10 @@ export const DEVICE_TYPES = ['pot', 'button', 'led', 'toggle', 'rgbled', 'encode
 
 export type DeviceType = typeof DEVICE_TYPES[number];
 
+// Invariant: every DEVICE_TYPES member has an entry here (enforced by
+// registry.test.ts's "every DeviceType has a REGISTRY entry" check) — so
+// `REGISTRY[kind]!` is safe for any `kind: DeviceType` across the codebase
+// (FR-EXT-29); only a lookup keyed by an unvalidated *string* needs `?.`.
 export const REGISTRY: Record<string, DeviceDescriptor> = {
   pot: {
     id: 'pot',

@@ -6,6 +6,15 @@ import {
 } from '../wiring/wiring-panel';
 import { isDeviceType } from '../devices/registry';
 import { peripheralIds } from '../wiring/peripheral-state';
+import { WiringWebviewMessage } from '../webview/messages';
+import { hasKnownCommand, assertNever } from '../webview/message-guard';
+
+// FR-EXT-33: see controls-editor-panel.ts's identical comment — the
+// switch's `default: assertNever(...)` is the actual drift-detector; this
+// Set only drives the runtime hasKnownCommand narrow.
+const WIRING_WEBVIEW_COMMANDS = new Set<WiringWebviewMessage['command']>([
+  'wirePin', 'unwirePin', 'setPeripheralEnabled', 'viewPeripheral',
+]);
 
 export class WiringViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
@@ -34,61 +43,72 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
     ).toString();
     webviewView.webview.html = buildHtml(this.lastWiredPins, this.lastPeripherals, nonce, scriptUri);
 
-    const msgDisposable = webviewView.webview.onDidReceiveMessage(async (msg: unknown) => {
-      if (!msg || typeof msg !== 'object') return;
-      const m = msg as Record<string, unknown>;
-      if (m['command'] === 'wirePin') {
-        const pinNumber  = m['pinNumber'];
-        const deviceType = m['deviceType'];
-        const id         = m['id'];
-        if (
-          !Number.isFinite(pinNumber) || !Number.isInteger(pinNumber) ||
-          (pinNumber as number) < 0 || (pinNumber as number) > 31 ||
-          typeof deviceType !== 'string' || !isDeviceType(deviceType) ||
-          typeof id !== 'string' || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id)
-        ) return;
-        // FR-EXT-8: onWirePin performs file I/O (workspace edit + save) that
-        // can throw (e.g. a permission error) — left unguarded, that would
-        // reject this async onDidReceiveMessage callback with no listener,
-        // producing an unhandled promise rejection instead of user feedback.
-        try {
-          await this.onWirePin({
-            pinNumber:  pinNumber  as number,
-            deviceType: deviceType as WiredPin['deviceType'],
-            id:         id,
-          });
-        } catch (err) {
-          void vscode.window.showErrorMessage(`ds-ide: could not wire pin: ${String(err)}`);
+    const msgDisposable = webviewView.webview.onDidReceiveMessage(async (raw: unknown) => {
+      if (!hasKnownCommand<WiringWebviewMessage>(raw, WIRING_WEBVIEW_COMMANDS)) return;
+      const msg = raw;
+      switch (msg.command) {
+        case 'wirePin': {
+          const pinNumber  = msg.pinNumber;
+          const deviceType = msg.deviceType;
+          const id         = msg.id;
+          if (
+            !Number.isFinite(pinNumber) || !Number.isInteger(pinNumber) ||
+            pinNumber < 0 || pinNumber > 31 ||
+            typeof deviceType !== 'string' || !isDeviceType(deviceType) ||
+            typeof id !== 'string' || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id)
+          ) return;
+          // FR-EXT-8: onWirePin performs file I/O (workspace edit + save) that
+          // can throw (e.g. a permission error) — left unguarded, that would
+          // reject this async onDidReceiveMessage callback with no listener,
+          // producing an unhandled promise rejection instead of user feedback.
+          try {
+            await this.onWirePin({
+              pinNumber:  pinNumber,
+              deviceType: deviceType as WiredPin['deviceType'],
+              id:         id,
+            });
+          } catch (err) {
+            void vscode.window.showErrorMessage(`ds-ide: could not wire pin: ${String(err)}`);
+          }
+          break;
         }
-      } else if (m['command'] === 'unwirePin') {
-        const pinNumber = m['pinNumber'];
-        const id        = m['id'];
-        if (
-          !Number.isFinite(pinNumber) || !Number.isInteger(pinNumber) ||
-          (pinNumber as number) < 0 || (pinNumber as number) > 31 ||
-          typeof id !== 'string' || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id)
-        ) return;
-        try {
-          await this.onUnwirePin(pinNumber as number, id);
-        } catch (err) {
-          void vscode.window.showErrorMessage(`ds-ide: could not unwire pin: ${String(err)}`);
+        case 'unwirePin': {
+          const pinNumber = msg.pinNumber;
+          const id        = msg.id;
+          if (
+            !Number.isFinite(pinNumber) || !Number.isInteger(pinNumber) ||
+            pinNumber < 0 || pinNumber > 31 ||
+            typeof id !== 'string' || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id)
+          ) return;
+          try {
+            await this.onUnwirePin(pinNumber, id);
+          } catch (err) {
+            void vscode.window.showErrorMessage(`ds-ide: could not unwire pin: ${String(err)}`);
+          }
+          break;
         }
-      } else if (m['command'] === 'setPeripheralEnabled') {
-        const peripheralId = m['peripheralId'];
-        const enabled      = m['enabled'];
-        if (
-          typeof peripheralId !== 'string' || !peripheralIds().includes(peripheralId) ||
-          typeof enabled !== 'boolean'
-        ) return;
-        try {
-          await this.onSetPeripheralEnabled(peripheralId, enabled);
-        } catch (err) {
-          void vscode.window.showErrorMessage(`ds-ide: could not update peripheral: ${String(err)}`);
+        case 'setPeripheralEnabled': {
+          const peripheralId = msg.peripheralId;
+          const enabled      = msg.enabled;
+          if (
+            typeof peripheralId !== 'string' || !peripheralIds().includes(peripheralId) ||
+            typeof enabled !== 'boolean'
+          ) return;
+          try {
+            await this.onSetPeripheralEnabled(peripheralId, enabled);
+          } catch (err) {
+            void vscode.window.showErrorMessage(`ds-ide: could not update peripheral: ${String(err)}`);
+          }
+          break;
         }
-      } else if (m['command'] === 'viewPeripheral') {
-        const peripheralId = m['peripheralId'];
-        if (typeof peripheralId !== 'string' || !peripheralIds().includes(peripheralId)) return;
-        this.onViewPeripheral(peripheralId);
+        case 'viewPeripheral': {
+          const peripheralId = msg.peripheralId;
+          if (typeof peripheralId !== 'string' || !peripheralIds().includes(peripheralId)) return;
+          this.onViewPeripheral(peripheralId);
+          break;
+        }
+        default:
+          assertNever(msg, 'WiringViewProvider');
       }
     });
 

@@ -3,10 +3,8 @@ import type { MidiHostMessage } from './messages';
 import { pushMonitorEntry, MAX_MONITOR_ENTRIES } from './midi-monitor';
 import { hasKnownCommand } from './message-guard';
 import type { MidiMonitorEntry } from './midi-monitor';
-
-function el<T extends HTMLElement>(id: string): T {
-  return document.getElementById(id) as T;
-}
+import { el } from './dom-lookup';
+import { createRafCoalescer } from './raf-coalesce';
 
 const vscode = acquireVsCodeApi();
 const keyboardEl = el<HTMLElement>('keyboard');
@@ -61,6 +59,12 @@ function renderMonitor(): void {
 
 const MIDI_HOST_COMMANDS = new Set<MidiHostMessage['command']>(['midiRx', 'midiTx']);
 
+// FR-EXT-35: a rapid CC stream can post several midiRx/midiTx messages per
+// frame; renderMonitor() clears and rebuilds up to MAX_MONITOR_ENTRIES rows,
+// so batching it to one rebuild per animation frame avoids full DOM
+// teardown/rebuild per message (mirrors scope-webview.ts's FR-EXT-34 fix).
+const flushRenderMonitor = createRafCoalescer<void>(() => renderMonitor(), (cb) => requestAnimationFrame(cb));
+
 window.addEventListener('message', (e: MessageEvent<unknown>) => {
   if (!hasKnownCommand(e.data, MIDI_HOST_COMMANDS)) return;
   const msg = e.data as MidiHostMessage;
@@ -70,7 +74,7 @@ window.addEventListener('message', (e: MessageEvent<unknown>) => {
       status: msg.status, data1: msg.data1, data2: msg.data2,
       channel: msg.channel, midiType: msg.midiType, timestamp: performance.now(),
     }, MAX_MONITOR_ENTRIES);
-    renderMonitor();
+    flushRenderMonitor();
   }
 });
 

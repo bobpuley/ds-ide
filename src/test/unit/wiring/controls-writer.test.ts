@@ -556,7 +556,9 @@ describe('pinToAdcChannel', () => {
   it('maps D16 to A1', () => expect(pinToAdcChannel(16)).toBe(1));
   it('maps D25 to A10', () => expect(pinToAdcChannel(25)).toBe(10));
   it('maps D28 to A11 (not A13)', () => expect(pinToAdcChannel(28)).toBe(11));
-  it('returns 0 for unknown pins', () => expect(pinToAdcChannel(0)).toBe(0));
+  // FR-EXT-31: a non-ADC pin is structurally-impossible input — throws
+  // instead of silently defaulting to A0 (see codegen-pot.test.ts).
+  it('throws for unknown pins', () => expect(() => pinToAdcChannel(0)).toThrow());
 });
 
 describe('insertInitIntoSource — D28 generates A11 (FR-PIN-1)', () => {

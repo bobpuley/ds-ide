@@ -10,11 +10,16 @@ const ADC_ARRAY_DECL_RE = /^\s*AdcChannelConfig\s+ds_ide_adc_cfg\[\d+\]\s*;\s*$/
 const ADC_INIT_PREFIX = '  hardware.adc.Init(';
 const ADC_ARRAY_INIT_RE = /^\s*ds_ide_adc_cfg\[\d+\]\.InitSingle\(/;
 
-// ADC channel mapping: D15–D25 → A0–A10 (pin - 15), D28 → A11.
+// ADC channel mapping: D15–D25 → A0–A10 (pin - 15), D28 → A11. A pin outside
+// this set is structurally impossible in the normal wiring flow (only an
+// ADC-capable pin should ever reach codegen for a pot) — throws instead of
+// silently defaulting to A0, which would emit a plausible-but-wrong
+// InitSingle line with zero diagnostic (FR-EXT-31's shared codegen error
+// contract).
 export function pinToAdcChannel(pin: number): number {
   if (pin >= 15 && pin <= 25) return pin - 15;
   if (pin === 28) return 11;
-  return 0;
+  throw new Error(`pinToAdcChannel: pin D${pin} is not ADC-capable`);
 }
 
 function declLine(instances: CodegenInstance[]): string {

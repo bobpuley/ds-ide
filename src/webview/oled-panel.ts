@@ -3,6 +3,11 @@ import { randomBytes } from 'node:crypto';
 import { EmulatorManager } from '../emulator/manager';
 import { IpcMessage } from '../emulator/ipc-client';
 import { getString } from '../ipc/narrow';
+import { OledWebviewMessage } from './messages';
+import { hasKnownCommand } from './message-guard';
+
+// FR-EXT-33: see controls-editor-panel.ts's identical comment.
+const OLED_WEBVIEW_COMMANDS = new Set<OledWebviewMessage['command']>(['webviewReady']);
 
 const PANEL_ID = 'daisy-oled';
 const PANEL_TITLE = 'Daisy OLED';
@@ -53,10 +58,16 @@ export class OledPanel {
     );
     this.panel.webview.html = this.html();
 
-    this.msgDisposable = this.panel.webview.onDidReceiveMessage((msg: unknown) => {
-      if (!msg || typeof msg !== 'object') return;
-      const m = msg as Record<string, unknown>;
-      if (m['command'] === 'webviewReady') {
+    this.msgDisposable = this.panel.webview.onDidReceiveMessage((raw: unknown) => {
+      if (!hasKnownCommand<OledWebviewMessage>(raw, OLED_WEBVIEW_COMMANDS)) return;
+      const msg = raw;
+      // OledWebviewMessage has exactly one variant today, so there's no
+      // `default: assertNever(...)` branch here (matching the other four
+      // handler sites) — TypeScript can't narrow a single-member union's
+      // switch default to `never` (it isn't a real UnionType internally
+      // until a second variant exists). Add the switch+assertNever pattern
+      // here once OledWebviewMessage grows a second command.
+      if (msg.command === 'webviewReady') {
         if (this.lastFrame) this.postFrameData(this.lastFrame);
         this.postBus(this.lastBus);
       }

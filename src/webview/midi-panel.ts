@@ -4,6 +4,13 @@ import { EmulatorManager } from '../emulator/manager';
 import { IpcMessage } from '../emulator/ipc-client';
 import { getNumber } from '../ipc/narrow';
 import { noteToBytes, programChangeToBytes, controlChangeToBytes } from './midi-monitor';
+import { MidiWebviewMessage } from './messages';
+import { hasKnownCommand, assertNever } from './message-guard';
+
+// FR-EXT-33: see controls-editor-panel.ts's identical comment.
+const MIDI_WEBVIEW_COMMANDS = new Set<MidiWebviewMessage['command']>([
+  'webviewReady', 'noteOn', 'noteOff', 'programChange', 'controlChange',
+]);
 
 // Program/CC numbers are 7-bit MIDI values (FR-MIDI-1) — same range every
 // other MIDI byte in this shim is validated against.
@@ -56,29 +63,40 @@ export class MidiPanel {
     );
     this.panel.webview.html = this.html();
 
-    this.msgDisposable = this.panel.webview.onDidReceiveMessage((msg: unknown) => {
-      if (!msg || typeof msg !== 'object') return;
-      const m = msg as Record<string, unknown>;
-      if (m['command'] === 'noteOn' || m['command'] === 'noteOff') {
-        const note = getNumber(m, 'note');
-        const velocity = getNumber(m, 'velocity');
-        if (note === undefined || velocity === undefined) return;
-        const { status, data1, data2 } = noteToBytes(m['command'], note, velocity);
-        this.manager.sendMidiEvent(status, data1, data2);
-      }
-      if (m['command'] === 'programChange') {
-        const program = getNumber(m, 'program');
-        if (program === undefined || !isValid7Bit(program)) return;
-        const { status, data1, data2 } = programChangeToBytes(program);
-        this.manager.sendMidiEvent(status, data1, data2);
-      }
-      if (m['command'] === 'controlChange') {
-        const controller = getNumber(m, 'controller');
-        const value = getNumber(m, 'value');
-        if (controller === undefined || value === undefined
-          || !isValid7Bit(controller) || !isValid7Bit(value)) return;
-        const { status, data1, data2 } = controlChangeToBytes(controller, value);
-        this.manager.sendMidiEvent(status, data1, data2);
+    this.msgDisposable = this.panel.webview.onDidReceiveMessage((raw: unknown) => {
+      if (!hasKnownCommand<MidiWebviewMessage>(raw, MIDI_WEBVIEW_COMMANDS)) return;
+      const msg = raw;
+      switch (msg.command) {
+        case 'webviewReady': {
+          break;
+        }
+        case 'noteOn':
+        case 'noteOff': {
+          const note = typeof msg.note === 'number' ? msg.note : undefined;
+          const velocity = typeof msg.velocity === 'number' ? msg.velocity : undefined;
+          if (note === undefined || velocity === undefined) return;
+          const { status, data1, data2 } = noteToBytes(msg.command, note, velocity);
+          this.manager.sendMidiEvent(status, data1, data2);
+          break;
+        }
+        case 'programChange': {
+          const program = typeof msg.program === 'number' ? msg.program : undefined;
+          if (program === undefined || !isValid7Bit(program)) return;
+          const { status, data1, data2 } = programChangeToBytes(program);
+          this.manager.sendMidiEvent(status, data1, data2);
+          break;
+        }
+        case 'controlChange': {
+          const controller = typeof msg.controller === 'number' ? msg.controller : undefined;
+          const value = typeof msg.value === 'number' ? msg.value : undefined;
+          if (controller === undefined || value === undefined
+            || !isValid7Bit(controller) || !isValid7Bit(value)) return;
+          const { status, data1, data2 } = controlChangeToBytes(controller, value);
+          this.manager.sendMidiEvent(status, data1, data2);
+          break;
+        }
+        default:
+          assertNever(msg, 'MidiPanel');
       }
     });
 

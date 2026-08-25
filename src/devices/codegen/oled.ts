@@ -13,6 +13,7 @@
 // real libDaisy's WriteString/SetCursor depend on font bitmap tables this
 // project has no vendored copy of, and porting them is its own task.
 import type { PeripheralCodegenStrategy } from './types';
+import { makeSimplePeripheralCodegen } from './shared';
 
 const OLED_NAME = 'ds_ide_oled';
 
@@ -31,6 +32,10 @@ const DRIVER_BY_BUS: Record<string, string> = {
 
 const DEFAULT_BUS = 'SPI1';
 
+// FR-EXT-31: unrecognized bus is structurally impossible (only registry.ts's
+// own busChoices should ever reach here) — throws instead of silently
+// falling back to DEFAULT_BUS, the shared codegen error contract every
+// codegen/*.ts strategy now follows (see midi-usb.ts's initLines()).
 function driverFor(bus: string): string {
   const driver = DRIVER_BY_BUS[bus];
   if (!driver) throw new Error(`oledCodegen: unknown bus '${bus}'`);
@@ -56,14 +61,18 @@ function busOfDeclLine(line: string): string | null {
   return entry ? entry[0] : null;
 }
 
-function initLines(): string[] {
-  return [`${INIT_PREFIX});`];
-}
+// FR-EXT-37: initLines()/isInitLine are bus-invariant (unlike declLine()),
+// so this half is built directly on the shared simple-peripheral helper;
+// declLine/isDeclLine/busOfDeclLine are overridden below for OLED's
+// bus-specific declared type.
+const base = makeSimplePeripheralCodegen({
+  declLine: `  OledDisplay<${DRIVER_BY_BUS[DEFAULT_BUS]}> ${OLED_NAME};`,
+  initLinePrefixes: [INIT_PREFIX],
+});
 
 export const oledCodegen: PeripheralCodegenStrategy = {
+  ...base,
   declLine,
   isDeclLine,
-  initLines,
-  isInitLine: (line) => line.startsWith(INIT_PREFIX),
   busOfDeclLine,
 };

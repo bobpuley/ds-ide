@@ -1,10 +1,8 @@
 /// <reference lib="dom" />
 import type { ScopeHostMessage } from './messages';
 import { hasKnownCommand } from './message-guard';
-
-function el<T extends HTMLElement>(id: string): T {
-  return document.getElementById(id) as T;
-}
+import { el } from './dom-lookup';
+import { createRafCoalescer } from './raf-coalesce';
 
 const vscode = acquireVsCodeApi();
 const canvas = el<HTMLCanvasElement>('scope');
@@ -220,6 +218,15 @@ outputVolEl?.addEventListener('input', () => {
 window.addEventListener('resize', resize);
 resize();
 
+// FR-EXT-34: 'scope'/'spectrum' IPC messages can arrive well above the
+// display refresh rate — draw()/drawSpectrum() read current module state
+// (lastIn/lastOut/lastSpecIn/lastSpecOut) rather than a passed argument, so
+// coalescing the *call* to one per frame is enough; the redraw always picks
+// up whatever the latest message left in that state (mirrors the pot/
+// encoder knob drag coalescing in controls/convention-canvas.ts).
+const flushScopeDraw = createRafCoalescer<void>(() => draw(), (cb) => requestAnimationFrame(cb));
+const flushSpectrumDraw = createRafCoalescer<void>(() => drawSpectrum(), (cb) => requestAnimationFrame(cb));
+
 const SCOPE_HOST_COMMANDS = new Set<ScopeHostMessage['command']>([
   'scope', 'status', 'wavSelected', 'event', 'xrun', 'latency', 'led',
   'spectrum', 'recordingState', 'replayDone',
@@ -231,7 +238,7 @@ window.addEventListener('message', (e: MessageEvent<unknown>) => {
   if (msg.command === 'scope') {
     lastIn  = msg.in  || [];
     lastOut = msg.out || [];
-    draw();
+    flushScopeDraw();
   } else if (msg.command === 'status') {
     hasStatus = true;
     showScope();
@@ -280,7 +287,7 @@ window.addEventListener('message', (e: MessageEvent<unknown>) => {
     lastBinHz   = msg.binHz   || 0;
     specCanvas.width = specCanvas.clientWidth;
     specCanvas.height = specCanvas.clientHeight;
-    drawSpectrum();
+    flushSpectrumDraw();
   } else if (msg.command === 'recordingState') {
     setRecordingState(!!msg.recording, !!msg.replaying, msg.fileName);
   } else if (msg.command === 'replayDone') {

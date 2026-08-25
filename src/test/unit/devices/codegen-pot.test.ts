@@ -58,4 +58,12 @@ describe('pinToAdcChannel (FR-PIN-1, re-exported from controls-writer.ts)', () =
     expect(pinToAdcChannel(25)).toBe(10);
     expect(pinToAdcChannel(28)).toBe(11);
   });
+
+  // FR-EXT-31: a non-ADC-capable pin reaching codegen is structurally
+  // impossible in the normal wiring flow — throws instead of silently
+  // defaulting to A0 and emitting a plausible-but-wrong InitSingle line.
+  it('throws a descriptive error for a pin with no ADC channel', () => {
+    expect(() => pinToAdcChannel(0)).toThrow(/0/);
+    expect(() => pinToAdcChannel(29)).toThrow(/29/);
+  });
 });

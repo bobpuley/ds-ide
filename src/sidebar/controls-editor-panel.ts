@@ -9,6 +9,22 @@ import { TOGGLE_POSITIONS } from '../devices/codegen/toggle';
 import { ENCODER_POSITION_MODULUS } from '../devices/codegen/encoder';
 import { SdEntry } from '../webview/sd-viewer';
 import { safeJson } from '../webview/html-safe';
+import { truncId, TRUNC_MAX_LEN } from '../webview/id-truncate';
+import { ControlsWebviewMessage } from '../webview/messages';
+
+// Re-exported for existing callers/tests — the implementation itself now
+// lives in webview/id-truncate.ts, shared with the webview side (FR-EXT-38).
+export { truncId, TRUNC_MAX_LEN };
+import { hasKnownCommand, assertNever } from '../webview/message-guard';
+
+// FR-EXT-33: the discriminated union's own command literals, kept as a
+// runtime Set so hasKnownCommand can narrow an incoming postMessage payload
+// to ControlsWebviewMessage; the switch below's `default: assertNever(...)`
+// is what actually catches a missing case at compile time if this list and
+// messages.ts's union ever drift.
+const CONTROLS_WEBVIEW_COMMANDS = new Set<ControlsWebviewMessage['command']>([
+  'webviewReady', 'editorSave', 'pot', 'button', 'toggle', 'encoder', 'sdRefresh', 'sdPreview', 'oledPopOut',
+]);
 
 export class ControlsViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
@@ -53,57 +69,75 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
     ).toString();
     webviewView.webview.html = buildHtml(nonce, scriptUri);
 
-    const msgDisposable = webviewView.webview.onDidReceiveMessage((msg: unknown) => {
-      if (!msg || typeof msg !== 'object') return;
-      const m = msg as Record<string, unknown>;
-      if (m['command'] === 'webviewReady') {
-        this._flush();
-        this.onSdRefresh();
-        return;
-      }
-      if (m['command'] === 'editorSave') {
-        const cfg = m['cfg'];
-        if (cfg && typeof cfg === 'object') {
-          // cfg is untrusted webview input — serializeControllerConfig assumes
-          // a well-formed ControllerConfig shape, so a missing/malformed field
-          // (e.g. { pots: [{}] }) throws rather than producing validation
-          // errors. Round trip is guarded so that never reaches the user as
-          // an uncaught exception (FR-IPC-3).
-          try {
-            const validated = parseControllerConfig(serializeControllerConfig(cfg as ControllerConfig));
-            if (validated.errors.length === 0) this.onEditorSave(validated);
-          } catch {
-            void vscode.window.showWarningMessage('ds-ide: could not save controls layout — malformed data from editor.');
+    const msgDisposable = webviewView.webview.onDidReceiveMessage((raw: unknown) => {
+      if (!hasKnownCommand<ControlsWebviewMessage>(raw, CONTROLS_WEBVIEW_COMMANDS)) return;
+      const msg = raw;
+      switch (msg.command) {
+        case 'webviewReady': {
+          this._flush();
+          this.onSdRefresh();
+          break;
+        }
+        case 'editorSave': {
+          const cfg = msg.cfg;
+          if (cfg && typeof cfg === 'object') {
+            // cfg is untrusted webview input — serializeControllerConfig assumes
+            // a well-formed ControllerConfig shape, so a missing/malformed field
+            // (e.g. { pots: [{}] }) throws rather than producing validation
+            // errors. Round trip is guarded so that never reaches the user as
+            // an uncaught exception (FR-IPC-3).
+            try {
+              const validated = parseControllerConfig(serializeControllerConfig(cfg));
+              if (validated.errors.length === 0) this.onEditorSave(validated);
+            } catch {
+              void vscode.window.showWarningMessage('ds-ide: could not save controls layout — malformed data from editor.');
+            }
           }
+          break;
         }
-      }
-      if (m['command'] === 'pot') {
-        const ch = m['channel'];
-        const val = m['value'];
-        if (typeof ch === 'number' && Number.isInteger(ch) && ch >= 0 && ch <= 11 &&
-            typeof val === 'number' && val >= 0 && val <= 1) {
-          this.onPotChange(ch, val);
+        case 'pot': {
+          const ch = msg.channel;
+          const val = msg.value;
+          if (typeof ch === 'number' && Number.isInteger(ch) && ch >= 0 && ch <= 11 &&
+              typeof val === 'number' && val >= 0 && val <= 1) {
+            this.onPotChange(ch, val);
+          }
+          break;
         }
-      }
-      if (m['command'] === 'button' && typeof m['gpioPin'] === 'number' && typeof m['pressed'] === 'boolean') {
-        this.onButtonChange(m['gpioPin'], m['pressed']);
-      }
-      if (m['command'] === 'toggle' && typeof m['gpioPin'] === 'number' && typeof m['position'] === 'number' &&
-          Number.isInteger(m['position']) && m['position'] >= 0 && m['position'] < TOGGLE_POSITIONS) {
-        this.onToggleChange(m['gpioPin'], m['position']);
-      }
-      if (m['command'] === 'encoder' && typeof m['gpioPin'] === 'number' && typeof m['position'] === 'number' &&
-          Number.isInteger(m['position']) && m['position'] >= 0 && m['position'] < ENCODER_POSITION_MODULUS) {
-        this.onEncoderChange(m['gpioPin'], m['position']);
-      }
-      if (m['command'] === 'sdRefresh') {
-        this.onSdRefresh();
-      }
-      if (m['command'] === 'sdPreview' && typeof m['name'] === 'string') {
-        this.onSdPreview(m['name']);
-      }
-      if (m['command'] === 'oledPopOut') {
-        this.onOledPopOut();
+        case 'button': {
+          if (typeof msg.gpioPin === 'number' && typeof msg.pressed === 'boolean') {
+            this.onButtonChange(msg.gpioPin, msg.pressed);
+          }
+          break;
+        }
+        case 'toggle': {
+          if (typeof msg.gpioPin === 'number' && typeof msg.position === 'number' &&
+              Number.isInteger(msg.position) && msg.position >= 0 && msg.position < TOGGLE_POSITIONS) {
+            this.onToggleChange(msg.gpioPin, msg.position);
+          }
+          break;
+        }
+        case 'encoder': {
+          if (typeof msg.gpioPin === 'number' && typeof msg.position === 'number' &&
+              Number.isInteger(msg.position) && msg.position >= 0 && msg.position < ENCODER_POSITION_MODULUS) {
+            this.onEncoderChange(msg.gpioPin, msg.position);
+          }
+          break;
+        }
+        case 'sdRefresh': {
+          this.onSdRefresh();
+          break;
+        }
+        case 'sdPreview': {
+          if (typeof msg.name === 'string') this.onSdPreview(msg.name);
+          break;
+        }
+        case 'oledPopOut': {
+          this.onOledPopOut();
+          break;
+        }
+        default:
+          assertNever(msg, 'ControlsViewProvider');
       }
     });
 
@@ -208,13 +242,6 @@ function statusPayload(msg: IpcMessage): Record<string, unknown> {
     sampleRate: getNumber(msg, 'sampleRate'),
     blockSize: getNumber(msg, 'blockSize'),
   };
-}
-
-export const TRUNC_MAX_LEN = 15;
-const TRUNC_SUFFIX = '…';
-
-export function truncId(id: string): string {
-  return id.length > TRUNC_MAX_LEN ? id.slice(0, TRUNC_MAX_LEN - 1) + TRUNC_SUFFIX : id;
 }
 
 // FR-DEV-2: one CSS rule per registry entry for both the palette item and

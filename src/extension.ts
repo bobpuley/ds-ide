@@ -237,32 +237,70 @@ class SessionState {
 // WAV), called identically by ds-ide.buildAndDeploy,
 // ds-ide.deploy, and ds-ide.debug so the sequence can no longer diverge
 // between commands (FR-IPC-7).
+// FR-EXT-30: grouped by concern (stores/panels/channels) rather than 17 flat
+// positional parameters — the prior constructor had three PotStore/
+// ButtonStore/ToggleStore params and three ScopePanel/OledPanel/MidiPanel
+// params sitting adjacent to each other, exactly the shape where a
+// transposed pair at a call site type-checks silently.
+interface DeployCoordinatorOptions {
+  manager: EmulatorManager;
+  statusBar: vscode.StatusBarItem;
+  stores: { pot: PotStore; button: ButtonStore; toggle: ToggleStore };
+  session: SessionState;
+  panels: { scope: ScopePanel; oled: OledPanel; midi: MidiPanel };
+  controlsProvider: ControlsViewProvider;
+  diagnostics: vscode.DiagnosticCollection;
+  channels: { build: vscode.OutputChannel; emulator: vscode.OutputChannel };
+  extensionPath: string;
+  loadControllerConfig: () => Promise<ControllerConfig>;
+  workspaceState: vscode.Memento;
+  // FR-CE-1 follow-up: the single shared, staleness-guarded computation
+  // every other controls-refresh trigger also routes through (see
+  // computeControlsConfig() in activate()) — deploy needs the computed
+  // value even in debug mode (for togglePins below) but only pushes it
+  // to the Controls Editor outside debug mode, so it can't use the
+  // simpler refreshControlsView() wrapper those triggers share.
+  computeControlsConfig: (folder: string, cfg: ControllerConfig) => Promise<ControlsConfig | undefined>;
+}
+
 class DeployCoordinator {
-  constructor(
-    private readonly manager: EmulatorManager,
-    private readonly statusBar: vscode.StatusBarItem,
-    private readonly potStore: PotStore,
-    private readonly buttonStore: ButtonStore,
-    private readonly toggleStore: ToggleStore,
-    private readonly session: SessionState,
-    private readonly scopePanel: ScopePanel,
-    private readonly oledPanel: OledPanel,
-    private readonly midiPanel: MidiPanel,
-    private readonly controlsProvider: ControlsViewProvider,
-    private readonly diagnostics: vscode.DiagnosticCollection,
-    private readonly buildChannel: vscode.OutputChannel,
-    private readonly emulatorChannel: vscode.OutputChannel,
-    private readonly extensionPath: string,
-    private readonly loadControllerConfig: () => Promise<ControllerConfig>,
-    private readonly workspaceState: vscode.Memento,
-    // FR-CE-1 follow-up: the single shared, staleness-guarded computation
-    // every other controls-refresh trigger also routes through (see
-    // computeControlsConfig() in activate()) — deploy needs the computed
-    // value even in debug mode (for togglePins below) but only pushes it
-    // to the Controls Editor outside debug mode, so it can't use the
-    // simpler refreshControlsView() wrapper those triggers share.
-    private readonly computeControlsConfig: (folder: string, cfg: ControllerConfig) => Promise<ControlsConfig | undefined>,
-  ) {}
+  private readonly manager: EmulatorManager;
+  private readonly statusBar: vscode.StatusBarItem;
+  private readonly potStore: PotStore;
+  private readonly buttonStore: ButtonStore;
+  private readonly toggleStore: ToggleStore;
+  private readonly session: SessionState;
+  private readonly scopePanel: ScopePanel;
+  private readonly oledPanel: OledPanel;
+  private readonly midiPanel: MidiPanel;
+  private readonly controlsProvider: ControlsViewProvider;
+  private readonly diagnostics: vscode.DiagnosticCollection;
+  private readonly buildChannel: vscode.OutputChannel;
+  private readonly emulatorChannel: vscode.OutputChannel;
+  private readonly extensionPath: string;
+  private readonly loadControllerConfig: () => Promise<ControllerConfig>;
+  private readonly workspaceState: vscode.Memento;
+  private readonly computeControlsConfig: (folder: string, cfg: ControllerConfig) => Promise<ControlsConfig | undefined>;
+
+  constructor(opts: DeployCoordinatorOptions) {
+    this.manager = opts.manager;
+    this.statusBar = opts.statusBar;
+    this.potStore = opts.stores.pot;
+    this.buttonStore = opts.stores.button;
+    this.toggleStore = opts.stores.toggle;
+    this.session = opts.session;
+    this.scopePanel = opts.panels.scope;
+    this.oledPanel = opts.panels.oled;
+    this.midiPanel = opts.panels.midi;
+    this.controlsProvider = opts.controlsProvider;
+    this.diagnostics = opts.diagnostics;
+    this.buildChannel = opts.channels.build;
+    this.emulatorChannel = opts.channels.emulator;
+    this.extensionPath = opts.extensionPath;
+    this.loadControllerConfig = opts.loadControllerConfig;
+    this.workspaceState = opts.workspaceState;
+    this.computeControlsConfig = opts.computeControlsConfig;
+  }
 
   private setDeploying(): void {
     this.statusBar.text = '$(loading~spin) Daisy: deploying…';
@@ -1089,11 +1127,18 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   });
 
-  const deployCoordinator = new DeployCoordinator(
-    manager, statusBar, potStore, buttonStore, toggleStore, session, scopePanel, oledPanel, midiPanel,
-    controlsProvider, diagnostics, buildChannel, emulatorChannel, context.extensionPath, loadControllerConfig,
-    context.workspaceState, computeControlsConfig,
-  );
+  const deployCoordinator = new DeployCoordinator({
+    manager, statusBar,
+    stores: { pot: potStore, button: buttonStore, toggle: toggleStore },
+    session,
+    panels: { scope: scopePanel, oled: oledPanel, midi: midiPanel },
+    controlsProvider, diagnostics,
+    channels: { build: buildChannel, emulator: emulatorChannel },
+    extensionPath: context.extensionPath,
+    loadControllerConfig,
+    workspaceState: context.workspaceState,
+    computeControlsConfig,
+  });
 
   const runConfigProvider = new DaisyRunConfigurationProvider(
     (token) => deployCoordinator.performDeploy({ build: true, debug: false }, token),
