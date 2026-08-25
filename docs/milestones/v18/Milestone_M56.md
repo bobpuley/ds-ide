@@ -10,7 +10,7 @@ Close the 15 MEDIUM findings spanning runtime safety, async/concurrency, validat
 
 ## Sprint Tasks
 
-### [ ] fix: buffer partial stdout/stderr lines across chunk boundaries (FR-EXT-12)
+### [x] fix: buffer partial stdout/stderr lines across chunk boundaries (FR-EXT-12)
 
 Both `hardware-build.ts` and `dfu-flash.ts` split each raw `'data'` chunk on `'\n'` independently with no carry-over buffer, so a diagnostic or the dfu-util success string split across a chunk boundary is dropped or misreported.
 

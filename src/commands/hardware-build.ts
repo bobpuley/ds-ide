@@ -2,6 +2,7 @@ import * as cp from 'child_process';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { detectArmToolchain, ARM_GCC_INSTALL_HINT } from '../hardware/toolchain';
+import { createLineSplitter } from '../hardware/line-buffer';
 import { parseBuildLine, applyDiagnostics, ParsedDiagnostic } from '../diagnostics/build-diagnostics';
 
 export interface HardwareBuildDeps {
@@ -68,16 +69,15 @@ function runMake(
   return new Promise((resolve, reject) => {
     const proc = spawnFn('make', [], { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
 
-    const handleData = (data: Buffer): void => {
-      for (const line of data.toString('utf8').split('\n')) {
-        if (line.trim()) onOutput(line);
-      }
-    };
+    const stdoutSplitter = createLineSplitter(onOutput);
+    const stderrSplitter = createLineSplitter(onOutput);
 
-    proc.stdout?.on('data', handleData);
-    proc.stderr?.on('data', handleData);
+    proc.stdout?.on('data', (data: Buffer) => stdoutSplitter.push(data));
+    proc.stderr?.on('data', (data: Buffer) => stderrSplitter.push(data));
     proc.on('error', reject);
     proc.on('close', (code) => {
+      stdoutSplitter.flush();
+      stderrSplitter.flush();
       if (code === 0) resolve();
       else reject(new Error(`make exited with code ${code ?? 'null'}`));
     });

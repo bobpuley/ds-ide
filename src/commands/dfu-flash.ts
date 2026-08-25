@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { detectDfuUtil, DFU_UTIL_INSTALL_HINT } from '../hardware/toolchain';
+import { createLineSplitter } from '../hardware/line-buffer';
 
 export interface DfuFlashDeps {
   spawn?: typeof cp.spawn;
@@ -110,21 +111,21 @@ function runDfuUtil(
 
     let downloadSucceeded = false;
 
-    const handleData = (data: Buffer): void => {
-      for (const line of data.toString('utf8').split('\n')) {
-        if (line.trim()) {
-          onOutput(line);
-          if (line.includes('File downloaded successfully')) {
-            downloadSucceeded = true;
-          }
-        }
+    const handleLine = (line: string): void => {
+      onOutput(line);
+      if (line.includes('File downloaded successfully')) {
+        downloadSucceeded = true;
       }
     };
+    const stdoutSplitter = createLineSplitter(handleLine);
+    const stderrSplitter = createLineSplitter(handleLine);
 
-    proc.stdout?.on('data', handleData);
-    proc.stderr?.on('data', handleData);
+    proc.stdout?.on('data', (data: Buffer) => stdoutSplitter.push(data));
+    proc.stderr?.on('data', (data: Buffer) => stderrSplitter.push(data));
     proc.on('error', reject);
     proc.on('close', (code) => {
+      stdoutSplitter.flush();
+      stderrSplitter.flush();
       // The success string is a secondary confirmation only — it never
       // overrides an unrecognized exit code on its own.
       if (code === 0 || (code === DFU_LEAVE_QUIRK_EXIT_CODE && downloadSucceeded)) {

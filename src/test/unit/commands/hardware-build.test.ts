@@ -124,4 +124,30 @@ describe('buildForHardware()', () => {
     expect(vscode.window.createOutputChannel).not.toHaveBeenCalled();
     expect(channel.show).toHaveBeenCalled();
   });
+
+  it('still parses a diagnostic line split across two stderr chunks (FR-EXT-12)', async () => {
+    const diagnosticLine =
+      "/project/effect.cpp:10:5: error: use of undeclared identifier 'foo'";
+    const spawn = vi.fn(() => {
+      const proc = new EventEmitter() as ReturnType<typeof import('child_process').spawn>;
+      const stderr = new EventEmitter() as NodeJS.ReadableStream;
+      (proc as unknown as Record<string, unknown>)['stdout'] = new EventEmitter();
+      (proc as unknown as Record<string, unknown>)['stderr'] = stderr;
+      process.nextTick(() => {
+        const splitPoint = diagnosticLine.indexOf('error:');
+        stderr.emit('data', Buffer.from(diagnosticLine.slice(0, splitPoint)));
+        stderr.emit('data', Buffer.from(diagnosticLine.slice(splitPoint) + '\n'));
+        proc.emit('close', 1);
+      });
+      return proc;
+    }) as unknown as typeof import('child_process').spawn;
+
+    const diagnostics = makeDiagnostics();
+    await buildForHardware('/project', diagnostics, makeChannel(), { spawn });
+
+    expect(diagnostics.set).toHaveBeenCalled();
+    const setCall = (diagnostics.set as ReturnType<typeof vi.fn>).mock.calls[0];
+    const diagArray = setCall?.[1] as { message: string }[];
+    expect(diagArray?.[0]?.message).toContain("undeclared identifier 'foo'");
+  });
 });
