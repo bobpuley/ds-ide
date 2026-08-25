@@ -34,7 +34,7 @@ Config/state data embedded by the extension host into `<script type="application
 
 ---
 
-### [ ] fix: use one consistent null-safety convention for REGISTRY[kind] (FR-EXT-29)
+### [x] fix: use one consistent null-safety convention for REGISTRY[kind] (FR-EXT-29)
 
 `removeFromSource` defensively uses optional chaining on a registry lookup while every other call site in the same file uses a non-null assertion.
 

@@ -95,7 +95,7 @@ export function removeFromSource(source: string, id: string): string {
   });
 
   for (const kind of removedKinds) {
-    const codegen = REGISTRY[kind]?.codegen;
+    const codegen = REGISTRY[kind]!.codegen;
     if (!codegen) continue;
     const remainingInstances: CodegenInstance[] = existing
       .filter(c => c.kind === kind && c.id !== id)

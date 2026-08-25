@@ -15,6 +15,15 @@ describe('REGISTRY (FR-DEV-2)', () => {
     expect(isDeviceType('servo')).toBe(false);
   });
 
+  // Backs the `REGISTRY[kind]!` non-null-assertion convention documented at
+  // REGISTRY's declaration (FR-EXT-29): every kind, statically typed as
+  // DeviceType, is guaranteed a REGISTRY entry.
+  it('has a REGISTRY entry for every DEVICE_TYPES member', () => {
+    for (const kind of DEVICE_TYPES) {
+      expect(REGISTRY[kind]).toBeDefined();
+    }
+  });
+
   it('declares pot, button, led and toggle as pin-attached (FR-DEV-3)', () => {
     expect(REGISTRY['pot']!.attachmentKind).toBe('pin');
     expect(REGISTRY['button']!.attachmentKind).toBe('pin');
