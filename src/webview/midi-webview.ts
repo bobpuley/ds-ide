@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 import type { MidiHostMessage } from './messages';
 import { pushMonitorEntry, MAX_MONITOR_ENTRIES } from './midi-monitor';
+import { hasKnownCommand } from './message-guard';
 import type { MidiMonitorEntry } from './midi-monitor';
 
 function el<T extends HTMLElement>(id: string): T {
@@ -58,8 +59,11 @@ function renderMonitor(): void {
   monitorEl.scrollTop = monitorEl.scrollHeight;
 }
 
-window.addEventListener('message', (e: MessageEvent<MidiHostMessage>) => {
-  const msg = e.data;
+const MIDI_HOST_COMMANDS = new Set<MidiHostMessage['command']>(['midiRx', 'midiTx']);
+
+window.addEventListener('message', (e: MessageEvent<unknown>) => {
+  if (!hasKnownCommand(e.data, MIDI_HOST_COMMANDS)) return;
+  const msg = e.data as MidiHostMessage;
   if (msg.command === 'midiRx' || msg.command === 'midiTx') {
     history = pushMonitorEntry(history, {
       direction: msg.command === 'midiRx' ? 'rx' : 'tx',

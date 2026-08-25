@@ -10,6 +10,7 @@ import { TOGGLE_POSITIONS } from '../devices/codegen/toggle';
 import { ENCODER_POSITION_MODULUS, wrapEncoderPosition } from '../devices/codegen/encoder';
 import { SdEntry, isTxtEntryName, formatSdSize } from './sd-viewer';
 import { decodeOledFrame, computeFrameRate } from './oled-frame';
+import { hasKnownCommand } from './message-guard';
 
 interface VsCodeApiForControls {
   postMessage(msg: ControlsWebviewMessage): void;
@@ -722,8 +723,14 @@ function applyRgbLed(gpioPin: number, r: number, g: number, b: number): void {
 }
 
 // ── Message handler ───────────────────────────────────────────────────────
-window.addEventListener('message', (e: MessageEvent<ControlsHostMessage>) => {
-  const msg = e.data;
+const CONTROLS_HOST_COMMANDS = new Set<ControlsHostMessage['command']>([
+  'controlsConfig', 'status', 'editorLoad', 'led', 'rgbLed',
+  'sdCardEnabled', 'sdContents', 'sdPreview', 'oledEnabled', 'oledFrame',
+]);
+
+window.addEventListener('message', (e: MessageEvent<unknown>) => {
+  if (!hasKnownCommand(e.data, CONTROLS_HOST_COMMANDS)) return;
+  const msg = e.data as ControlsHostMessage;
   if (msg.command === 'controlsConfig') {
     applyControlsConfig(msg);
   } else if (msg.command === 'status') {

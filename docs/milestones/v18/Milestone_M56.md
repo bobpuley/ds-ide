@@ -128,7 +128,7 @@ Three store classes discard the promise returned by `workspaceState.update()` vi
 
 ---
 
-### [ ] fix: runtime-validate postMessage payloads in *-webview.ts files (FR-EXT-22)
+### [x] fix: runtime-validate postMessage payloads in *-webview.ts files (FR-EXT-22)
 
 Every `window.addEventListener('message', ...)` handler annotates `e.data` with a declared type but never checks at runtime that it matches, so a drift between the two sides fails silently instead of surfacing an error.
 

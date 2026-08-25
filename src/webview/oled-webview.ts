@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 import type { OledHostMessage } from './messages';
 import { decodeOledFrame, computeFrameRate } from './oled-frame';
+import { hasKnownCommand } from './message-guard';
 
 function el<T extends HTMLElement>(id: string): T {
   return document.getElementById(id) as T;
@@ -49,8 +50,11 @@ function drawFrame(bytes: Uint8Array): void {
   ctx.putImageData(imageData, 0, 0);
 }
 
-window.addEventListener('message', (e: MessageEvent<OledHostMessage>) => {
-  const msg = e.data;
+const OLED_HOST_COMMANDS = new Set<OledHostMessage['command']>(['oledFrame', 'oledBus']);
+
+window.addEventListener('message', (e: MessageEvent<unknown>) => {
+  if (!hasKnownCommand(e.data, OLED_HOST_COMMANDS)) return;
+  const msg = e.data as OledHostMessage;
   if (msg.command === 'oledFrame') {
     const bytes = decodeOledFrame(msg.data);
     if (bytes === null) {
