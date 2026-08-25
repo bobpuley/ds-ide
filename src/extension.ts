@@ -378,6 +378,442 @@ class DeployCoordinator {
   }
 }
 
+// FR-EXT-9: status/message routing extracted from activate() — this is the
+// only place manager 'message'/'disconnect'/'error' events are translated
+// into status-bar and webview updates.
+function wireManagerEvents(
+  manager: EmulatorManager,
+  statusBar: vscode.StatusBarItem,
+  controlsProvider: ControlsViewProvider,
+  emulatorChannel: vscode.OutputChannel,
+): void {
+  manager.on('message', (msg: IpcMessage) => {
+    if (msg['type'] === 'event') {
+      const kind = getString(msg, 'kind');
+      if (kind === 'nan' || kind === 'inf') {
+        void vscode.window.showWarningMessage(
+          `ds-ide: audio ${kind.toUpperCase()} detected — effect may misbehave`,
+        );
+      }
+    }
+    if (msg['type'] === 'status') {
+      const running = getBoolean(msg, 'running') ?? false;
+      statusBar.text = running ? '$(play) Daisy: running' : '$(debug-stop) Daisy: stopped';
+      statusBar.tooltip = FIDELITY_CAVEAT;
+      controlsProvider?.postStatus(msg);
+    }
+    if (msg['type'] === 'led') {
+      controlsProvider?.postLed(msg);
+    }
+    if (msg['type'] === 'rgbLed') {
+      controlsProvider?.postRgbLed(msg);
+    }
+    // FR-CE-2: dual-subscribed alongside OledPanel's own 'message' listener
+    // (its constructor) — the docked strip needs live frames whether or not
+    // the standalone panel is open.
+    if (msg['type'] === 'oledFrame') {
+      const data = getString(msg, 'data');
+      if (data !== undefined) controlsProvider?.postOledFrame(data);
+    }
+  });
+
+  manager.on('disconnect', () => {
+    statusBar.text = '$(warning) Daisy: crashed';
+    statusBar.tooltip = FIDELITY_CAVEAT;
+    void vscode.window.showErrorMessage(
+      'ds-ide: emulator disconnected unexpectedly — redeploy to restart.',
+    );
+  });
+
+  // FR-EXT-6: Node's EventEmitter throws in-process on an unhandled 'error'
+  // emission, which would otherwise crash the entire Extension Host on any
+  // raw IPC socket error.
+  manager.on('error', (err: Error) => {
+    emulatorChannel.appendLine(`ds-ide: emulator error: ${err.message}`);
+    void vscode.window.showErrorMessage(`ds-ide: emulator error: ${err.message}`);
+  });
+}
+
+interface ControlsProviderDeps {
+  workspaceState: vscode.Memento;
+  isControllerConfigUnreadable: () => boolean;
+  refreshControlsView: (folder: string, cfg: ControllerConfig) => Promise<void>;
+  potStore: PotStore;
+  buttonStore: ButtonStore;
+  toggleStore: ToggleStore;
+  manager: EmulatorManager;
+  showOledPanel: () => Promise<void>;
+}
+
+// FR-EXT-9: view-provider construction extracted from activate() — builds
+// the Controls Editor's ControlsViewProvider and wires its callbacks to the
+// stores/manager/refresh logic passed in via deps.
+function createControlsProvider(context: vscode.ExtensionContext, deps: ControlsProviderDeps): ControlsViewProvider {
+  const {
+    workspaceState, isControllerConfigUnreadable, refreshControlsView,
+    potStore, buttonStore, toggleStore, manager, showOledPanel,
+  } = deps;
+
+  const controlsProvider = new ControlsViewProvider(
+    context.extensionUri,
+    (cfg) => {
+      if (isControllerConfigUnreadable()) {
+        void vscode.window.showWarningMessage(
+          'ds-ide: controllers.yaml could not be read earlier — refusing to overwrite it until the underlying issue is fixed and the file is reloaded.',
+        );
+        return;
+      }
+      const folder = resolveActiveFolder(workspaceState);
+      if (!folder) return;
+      const yamlPath = path.join(folder.uri.fsPath, 'controllers.yaml');
+      void fs.promises.writeFile(yamlPath, serializeControllerConfig(cfg), 'utf8')
+        .then(async () => {
+          // Keep the provider's cache in sync with what's now on disk — otherwise the next
+          // onDidChangeVisibility flush re-sends the stale pre-save snapshot and clobbers the
+          // positions just saved (FR-CE-1).
+          await refreshControlsView(folder.uri.fsPath, cfg);
+        })
+        .catch((err: unknown) => {
+          void vscode.window.showErrorMessage(`ds-ide: could not write controllers.yaml: ${String(err)}`);
+        });
+    },
+    (channel, value) => {
+      potStore?.set(channel, value);
+      manager?.sendPot(channel, value);
+    },
+    (gpioPin, pressed) => {
+      buttonStore?.set(gpioPin, pressed);
+      manager?.sendButton(gpioPin, pressed);
+    },
+    (gpioPin, position) => {
+      toggleStore?.set(gpioPin, position);
+      manager?.sendToggle(gpioPin, position);
+    },
+    (gpioPin, position) => {
+      manager?.sendEncoder(gpioPin, position);
+    },
+    () => {
+      const folder = resolveActiveFolder(workspaceState);
+      if (!folder) { controlsProvider.postSdContents([]); return; }
+      void readSdCardEntries(folder.uri.fsPath).then(entries => controlsProvider.postSdContents(entries));
+    },
+    (name) => {
+      const folder = resolveActiveFolder(workspaceState);
+      if (!folder) { controlsProvider.postSdPreview(name, null); return; }
+      void readSdCardPreview(folder.uri.fsPath, name).then(content => controlsProvider.postSdPreview(name, content));
+    },
+    // FR-CE-2: "show in separate view" reuses the same standalone OledPanel
+    // the Wiring Editor's View button opens (showOledPanel) — the docked
+    // strip never owns its own panel lifecycle.
+    () => { void showOledPanel(); },
+  );
+
+  return controlsProvider;
+}
+
+interface WiringProviderDeps {
+  workspaceState: vscode.Memento;
+  loadControllerConfig: () => Promise<ControllerConfig>;
+  refreshControlsView: (folder: string, cfg: ControllerConfig) => Promise<void>;
+  showOledPanel: () => Promise<void>;
+  midiPanel: MidiPanel;
+}
+
+// FR-EXT-9: view-provider construction extracted from activate() — builds
+// the Wiring Editor's WiringViewProvider and its four message handlers
+// (wirePin/unwirePin/setPeripheralEnabled/viewPeripheral).
+function createWiringProvider(context: vscode.ExtensionContext, deps: WiringProviderDeps): WiringViewProvider {
+  const { workspaceState, loadControllerConfig, refreshControlsView, showOledPanel, midiPanel } = deps;
+
+  const wiringProvider = new WiringViewProvider(
+    context.extensionUri,
+    async (wp: WiredPin) => {
+      const folder = resolveActiveFolder(workspaceState)?.uri.fsPath ?? '';
+      const effectPath = await findEffectSource(folder);
+      if (!effectPath) {
+        void vscode.window.showErrorMessage('ds-ide: no effect source file found — set ds-ide.effectSource');
+        return;
+      }
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
+      const oldText = doc.getText();
+
+      // FR-DEV-8: a 'pins'-attachment device (rgbled) auto-claims its
+      // remaining pins from the nearest free ones after the clicked pin,
+      // rather than requiring a redesigned multi-pin picker in the popup.
+      const pinCount = REGISTRY[wp.deviceType]!.pinCount;
+      let pins: number[] | undefined;
+      if (pinCount !== undefined) {
+        const { controls: existingControls } = parseControlsConvention(oldText);
+        const occupied = new Set(existingControls.flatMap(c => c.pins ?? [c.pin]));
+        const allocated = allocateAdjacentPins(wp.pinNumber, pinCount, PIN_DEFS, occupied);
+        if (!allocated) {
+          void vscode.window.showErrorMessage(
+            `ds-ide: not enough free pins after D${wp.pinNumber} to wire a ${REGISTRY[wp.deviceType]!.label} (needs ${pinCount}).`,
+          );
+          return;
+        }
+        pins = allocated;
+      }
+
+      // FR-DEV-13: wiring a control is also a pin-claiming action, so it must
+      // be refused on the same terms enabling a peripheral already is — a
+      // gap surfaced by manual testing (M46): wiring a button onto an
+      // enabled bus peripheral's pin (e.g. SD Card's D1-D6, OLED's D7-D10)
+      // previously succeeded silently. No peripheral is being toggled here,
+      // so nothing is excluded from the occupant set.
+      const candidateAttachment: Attachment = pins ? { kind: 'pins', pins } : { kind: 'pin', pin: wp.pinNumber };
+      const wireRejection = checkConflict(candidateAttachment, buildOccupants(oldText), PIN_DEFS, candidateBusesFor);
+      if (wireRejection) {
+        void vscode.window.showErrorMessage(
+          formatRejection(`${wp.id} (${REGISTRY[wp.deviceType]!.label})`, wireRejection),
+        );
+        return;
+      }
+
+      const afterDecl = insertIntoSource(oldText, wp.id, wp.deviceType, wp.pinNumber, pins);
+      const { controls: controlsAfterDecl } = parseControlsConvention(afterDecl);
+      const allPots = controlsAfterDecl.filter(c => c.kind === 'pot');
+      const newText = insertInitIntoSource(afterDecl, wp.id, wp.deviceType, wp.pinNumber, allPots, pins);
+      const { edit, needsAppendConfirmation } = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
+      if (needsAppendConfirmation && !(await confirmAppendMarkerBlocks())) {
+        return;
+      }
+      const applied = await vscode.workspace.applyEdit(edit);
+      if (!applied) {
+        void vscode.window.showErrorMessage('ds-ide: wiring edit could not be applied — source file was not changed.');
+        return;
+      }
+      // Saved immediately so buildControlsConfig's disk read below sees the
+      // same content as newText — otherwise the Controls view would disagree
+      // with the Wiring view until the user manually saves (FR-IPC-5).
+      await doc.save();
+      const { controls } = parseControlsConvention(newText);
+      const wiredPinList: WiredPin[] = expandToWiredPins(controls);
+      wiringProvider?.postWiredPins(wiredPinList);
+      const cfg = await loadControllerConfig();
+      await refreshControlsView(folder, cfg);
+    },
+    async (pinNumber: number, id: string) => {
+      const folder = resolveActiveFolder(workspaceState)?.uri.fsPath ?? '';
+      const effectPath = await findEffectSource(folder);
+      if (!effectPath) {
+        void vscode.window.showErrorMessage('ds-ide: no effect source file found — set ds-ide.effectSource');
+        return;
+      }
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
+      const oldText = doc.getText();
+      const afterDecl = removeFromSource(oldText, id);
+      const { controls: controlsAfterDecl } = parseControlsConvention(afterDecl);
+      const allPots = controlsAfterDecl.filter(c => c.kind === 'pot');
+      const newText = removeInitFromSource(afterDecl, id, allPots);
+      const { edit, needsAppendConfirmation } = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
+      if (needsAppendConfirmation && !(await confirmAppendMarkerBlocks())) {
+        return;
+      }
+      const applied = await vscode.workspace.applyEdit(edit);
+      if (!applied) {
+        void vscode.window.showErrorMessage('ds-ide: wiring edit could not be applied — source file was not changed.');
+        return;
+      }
+      // See the wire handler above (FR-IPC-5): save so the disk read inside
+      // buildControlsConfig matches newText instead of the pre-edit content.
+      await doc.save();
+      const { controls } = parseControlsConvention(newText);
+      const wiredPinList: WiredPin[] = expandToWiredPins(controls);
+      wiringProvider?.postWiredPins(wiredPinList);
+      const cfg = await loadControllerConfig();
+      await refreshControlsView(folder, cfg);
+    },
+    async (peripheralId: string, enabled: boolean) => {
+      const folder = resolveActiveFolder(workspaceState)?.uri.fsPath ?? '';
+      const effectPath = await findEffectSource(folder);
+      if (!effectPath) {
+        void vscode.window.showErrorMessage('ds-ide: no effect source file found — set ds-ide.effectSource');
+        return;
+      }
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
+      const oldText = doc.getText();
+
+      // FR-DEV-13: a colliding enable is refused before any mutation, never
+      // applied-and-flagged. Disabling a peripheral can never create a
+      // conflict, so only the enable path is checked. The bus checked is
+      // whichever `currentBusOf` resolves to — the peripheral's current
+      // declaration if already enabled, or its default first choice
+      // otherwise (FR-DEV-14).
+      const bus = currentBusOf(oldText, peripheralId);
+      if (enabled) {
+        if (bus) {
+          const occupants = buildOccupants(oldText, peripheralId);
+          const rejection = checkConflict(
+            { kind: 'bus', bus },
+            occupants,
+            PIN_DEFS,
+            candidateBusesFor,
+          );
+          if (rejection) {
+            void vscode.window.showErrorMessage(formatRejection(REGISTRY[peripheralId]!.label, rejection));
+            return;
+          }
+        }
+      }
+
+      const afterDecl = enabled
+        ? insertPeripheralIntoSource(oldText, peripheralId, bus ?? undefined)
+        : removePeripheralFromSource(oldText, peripheralId);
+      const newText = enabled
+        ? insertPeripheralInitIntoSource(afterDecl, peripheralId, bus ?? undefined)
+        : removePeripheralInitFromSource(afterDecl, peripheralId);
+      const { edit, needsAppendConfirmation } = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
+      if (needsAppendConfirmation && !(await confirmAppendMarkerBlocks())) {
+        return;
+      }
+      const applied = await vscode.workspace.applyEdit(edit);
+      if (!applied) {
+        void vscode.window.showErrorMessage('ds-ide: peripheral edit could not be applied — source file was not changed.');
+        return;
+      }
+      await doc.save();
+      wiringProvider?.postPeripherals(computePeripheralDisplayStates(newText));
+    },
+    (peripheralId: string) => {
+      if (peripheralId === 'oled') {
+        void showOledPanel();
+      } else if (peripheralId === 'midiTrs' || peripheralId === 'midiUsb') {
+        midiPanel.show();
+      }
+    },
+  );
+
+  return wiringProvider;
+}
+
+interface CommandDeps {
+  manager: EmulatorManager;
+  diagnostics: vscode.DiagnosticCollection;
+  buildChannel: vscode.OutputChannel;
+  hardwareChannel: vscode.OutputChannel;
+  flashChannel: vscode.OutputChannel;
+  workspaceState: vscode.Memento;
+  extensionPath: string;
+  deployCoordinator: DeployCoordinator;
+  scopePanel: ScopePanel;
+  controlsProvider: ControlsViewProvider;
+  initViewsFromProject: () => Promise<void>;
+}
+
+// FR-EXT-9: command registration extracted from activate() — every
+// vscode.commands.registerCommand('ds-ide.*', ...) call lives here.
+function registerCommands(deps: CommandDeps): vscode.Disposable[] {
+  const {
+    manager, diagnostics, buildChannel, hardwareChannel, flashChannel,
+    workspaceState, extensionPath, deployCoordinator, scopePanel, controlsProvider, initViewsFromProject,
+  } = deps;
+
+  return [
+    vscode.commands.registerCommand('ds-ide.build', () =>
+      buildForEmulator(manager, extensionPath, diagnostics, buildChannel, workspaceState),
+    ),
+    vscode.commands.registerCommand('ds-ide.buildAndDeploy', () =>
+      deployCoordinator.performDeploy({ build: true, debug: false }),
+    ),
+    vscode.commands.registerCommand('ds-ide.deploy', () =>
+      deployCoordinator.performDeploy({ build: false, debug: false }),
+    ),
+    vscode.commands.registerCommand('ds-ide.start', () => startAudio(manager)),
+    vscode.commands.registerCommand('ds-ide.stop', () => {
+      stopAudio(manager);
+      scopePanel?.notifyStopped();
+      controlsProvider?.postStatus({ type: 'status', running: false });
+    }),
+    vscode.commands.registerCommand('ds-ide.buildHardware', () => {
+      const folder = resolveActiveFolder(workspaceState);
+      if (!folder) {
+        void vscode.window.showErrorMessage('ds-ide: no workspace folder open');
+        return;
+      }
+      return buildForHardware(folder.uri.fsPath, diagnostics, hardwareChannel);
+    }),
+    vscode.commands.registerCommand('ds-ide.flash', () => {
+      const folder = resolveActiveFolder(workspaceState);
+      if (!folder) {
+        void vscode.window.showErrorMessage('ds-ide: no workspace folder open');
+        return;
+      }
+      return flashToHardware(folder.uri.fsPath, flashChannel);
+    }),
+    vscode.commands.registerCommand('ds-ide.debug', () =>
+      deployCoordinator.performDeploy({ build: false, debug: true }),
+    ),
+    vscode.commands.registerCommand('ds-ide.createNewEffectProject', createEffectProject),
+    vscode.commands.registerCommand('ds-ide.selectActiveFolder', async () => {
+      const chosen = await promptSelectActiveFolder(workspaceState);
+      if (chosen) void initViewsFromProject();
+    }),
+  ];
+}
+
+interface SaveListenerDeps {
+  workspaceState: vscode.Memento;
+  loadControllerConfig: () => Promise<ControllerConfig>;
+  refreshControlsView: (folder: string, cfg: ControllerConfig) => Promise<void>;
+  wiringProvider: WiringViewProvider;
+  controlsProvider: ControlsViewProvider;
+}
+
+// FR-EXT-9: save-listener logic extracted from activate() — the
+// onDidSaveTextDocument handler that keeps the Controls/Wiring editors in
+// sync with controllers.yaml and the effect source file.
+function createSaveListener(deps: SaveListenerDeps): vscode.Disposable {
+  const { workspaceState, loadControllerConfig, refreshControlsView, wiringProvider, controlsProvider } = deps;
+
+  return vscode.workspace.onDidSaveTextDocument(async (doc) => {
+    const activeFolder = resolveActiveFolder(workspaceState);
+    if (!activeFolder) return;
+    // Uses real workspace-folder membership (vscode.workspace.getWorkspaceFolder)
+    // rather than a raw path prefix check — a sibling directory that merely
+    // shares a string prefix with the active folder must not false-positive
+    // here (FR-UX-4).
+    const savedFolder = vscode.workspace.getWorkspaceFolder(doc.uri);
+    if (!savedFolder || savedFolder.uri.fsPath !== activeFolder.uri.fsPath) return;
+    const folder = activeFolder.uri.fsPath;
+    const saved = doc.uri.fsPath;
+    const yamlPath = path.join(folder, 'controllers.yaml');
+
+    // Early exit before any I/O: only proceed for the yaml or a .cpp — the
+    // getWorkspaceFolder check above already confirmed it's in-folder.
+    const isYaml = saved === yamlPath;
+    const mightBeSource = saved.endsWith('.cpp');
+    if (!isYaml && !mightBeSource) return;
+
+    const cfg = await loadControllerConfig();
+    await refreshControlsView(folder, cfg);
+
+    if (mightBeSource) {
+      const effectPath = await findEffectSource(folder);
+      if (effectPath && saved === effectPath) {
+        let pins: WiredPin[] = [];
+        let peripherals: PeripheralDisplayState[] = computePeripheralDisplayStates('');
+        try {
+          const text = await fs.promises.readFile(effectPath, 'utf8');
+          const { controls } = parseControlsConvention(text);
+          // Reuses the same expansion as the wirePin/unwirePin handlers
+          // above (FR-DEV-8/9) — this listener re-fires on the doc.save()
+          // those handlers themselves trigger, and previously used a
+          // single-pin mapping that clobbered a multi-pin instance's
+          // display down to one highlighted pin right after wiring it.
+          pins = expandToWiredPins(controls);
+          peripherals = computePeripheralDisplayStates(text);
+        } catch { /* unreadable */ }
+        wiringProvider.postWiredPins(pins);
+        wiringProvider.postPeripherals(peripherals);
+        controlsProvider.postSdCardEnabled(peripherals.some(p => p.id === 'sdcard' && p.enabled));
+        const oledPeripheral = peripherals.find(p => p.id === 'oled');
+        controlsProvider.postOledEnabled(!!oledPeripheral?.enabled, oledPeripheral?.bus ?? null);
+      }
+    }
+  });
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   const potStore    = new PotStore(context.workspaceState);
   const buttonStore = new ButtonStore(context.workspaceState);
@@ -483,60 +919,6 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBar.tooltip = FIDELITY_CAVEAT;
   statusBar.show();
 
-  const controlsProvider = new ControlsViewProvider(
-    context.extensionUri,
-    (cfg) => {
-      if (controllerConfigUnreadable) {
-        void vscode.window.showWarningMessage(
-          'ds-ide: controllers.yaml could not be read earlier — refusing to overwrite it until the underlying issue is fixed and the file is reloaded.',
-        );
-        return;
-      }
-      const folder = resolveActiveFolder(context.workspaceState);
-      if (!folder) return;
-      const yamlPath = path.join(folder.uri.fsPath, 'controllers.yaml');
-      void fs.promises.writeFile(yamlPath, serializeControllerConfig(cfg), 'utf8')
-        .then(async () => {
-          // Keep the provider's cache in sync with what's now on disk — otherwise the next
-          // onDidChangeVisibility flush re-sends the stale pre-save snapshot and clobbers the
-          // positions just saved (FR-CE-1).
-          await refreshControlsView(folder.uri.fsPath, cfg);
-        })
-        .catch((err: unknown) => {
-          void vscode.window.showErrorMessage(`ds-ide: could not write controllers.yaml: ${String(err)}`);
-        });
-    },
-    (channel, value) => {
-      potStore?.set(channel, value);
-      manager?.sendPot(channel, value);
-    },
-    (gpioPin, pressed) => {
-      buttonStore?.set(gpioPin, pressed);
-      manager?.sendButton(gpioPin, pressed);
-    },
-    (gpioPin, position) => {
-      toggleStore?.set(gpioPin, position);
-      manager?.sendToggle(gpioPin, position);
-    },
-    (gpioPin, position) => {
-      manager?.sendEncoder(gpioPin, position);
-    },
-    () => {
-      const folder = resolveActiveFolder(context.workspaceState);
-      if (!folder) { controlsProvider.postSdContents([]); return; }
-      void readSdCardEntries(folder.uri.fsPath).then(entries => controlsProvider.postSdContents(entries));
-    },
-    (name) => {
-      const folder = resolveActiveFolder(context.workspaceState);
-      if (!folder) { controlsProvider.postSdPreview(name, null); return; }
-      void readSdCardPreview(folder.uri.fsPath, name).then(content => controlsProvider.postSdPreview(name, content));
-    },
-    // FR-CE-2: "show in separate view" reuses the same standalone OledPanel
-    // the Wiring Editor's View button opens (showOledPanel below) — the
-    // docked strip never owns its own panel lifecycle.
-    () => { void showOledPanel(); },
-  );
-
   // FR-CE-1 follow-up: buildControlsConfig() used to be independently
   // called and pushed from six separate triggers (activation, layout save,
   // wirePin, unwirePin, any yaml/cpp save, deploy) — each doing its own
@@ -586,164 +968,21 @@ export function activate(context: vscode.ExtensionContext): void {
   const hostMidiBridge = new HostMidiBridge(manager);
   hostMidiBridge.start();
 
-  const wiringProvider = new WiringViewProvider(
-    context.extensionUri,
-    async (wp: WiredPin) => {
-      const folder = resolveActiveFolder(context.workspaceState)?.uri.fsPath ?? '';
-      const effectPath = await findEffectSource(folder);
-      if (!effectPath) {
-        void vscode.window.showErrorMessage('ds-ide: no effect source file found — set ds-ide.effectSource');
-        return;
-      }
-      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
-      const oldText = doc.getText();
+  const controlsProvider = createControlsProvider(context, {
+    workspaceState: context.workspaceState,
+    isControllerConfigUnreadable: () => controllerConfigUnreadable,
+    refreshControlsView,
+    potStore, buttonStore, toggleStore, manager,
+    showOledPanel,
+  });
 
-      // FR-DEV-8: a 'pins'-attachment device (rgbled) auto-claims its
-      // remaining pins from the nearest free ones after the clicked pin,
-      // rather than requiring a redesigned multi-pin picker in the popup.
-      const pinCount = REGISTRY[wp.deviceType]!.pinCount;
-      let pins: number[] | undefined;
-      if (pinCount !== undefined) {
-        const { controls: existingControls } = parseControlsConvention(oldText);
-        const occupied = new Set(existingControls.flatMap(c => c.pins ?? [c.pin]));
-        const allocated = allocateAdjacentPins(wp.pinNumber, pinCount, PIN_DEFS, occupied);
-        if (!allocated) {
-          void vscode.window.showErrorMessage(
-            `ds-ide: not enough free pins after D${wp.pinNumber} to wire a ${REGISTRY[wp.deviceType]!.label} (needs ${pinCount}).`,
-          );
-          return;
-        }
-        pins = allocated;
-      }
-
-      // FR-DEV-13: wiring a control is also a pin-claiming action, so it must
-      // be refused on the same terms enabling a peripheral already is — a
-      // gap surfaced by manual testing (M46): wiring a button onto an
-      // enabled bus peripheral's pin (e.g. SD Card's D1-D6, OLED's D7-D10)
-      // previously succeeded silently. No peripheral is being toggled here,
-      // so nothing is excluded from the occupant set.
-      const candidateAttachment: Attachment = pins ? { kind: 'pins', pins } : { kind: 'pin', pin: wp.pinNumber };
-      const wireRejection = checkConflict(candidateAttachment, buildOccupants(oldText), PIN_DEFS, candidateBusesFor);
-      if (wireRejection) {
-        void vscode.window.showErrorMessage(
-          formatRejection(`${wp.id} (${REGISTRY[wp.deviceType]!.label})`, wireRejection),
-        );
-        return;
-      }
-
-      const afterDecl = insertIntoSource(oldText, wp.id, wp.deviceType, wp.pinNumber, pins);
-      const { controls: controlsAfterDecl } = parseControlsConvention(afterDecl);
-      const allPots = controlsAfterDecl.filter(c => c.kind === 'pot');
-      const newText = insertInitIntoSource(afterDecl, wp.id, wp.deviceType, wp.pinNumber, allPots, pins);
-      const { edit, needsAppendConfirmation } = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
-      if (needsAppendConfirmation && !(await confirmAppendMarkerBlocks())) {
-        return;
-      }
-      const applied = await vscode.workspace.applyEdit(edit);
-      if (!applied) {
-        void vscode.window.showErrorMessage('ds-ide: wiring edit could not be applied — source file was not changed.');
-        return;
-      }
-      // Saved immediately so buildControlsConfig's disk read below sees the
-      // same content as newText — otherwise the Controls view would disagree
-      // with the Wiring view until the user manually saves (FR-IPC-5).
-      await doc.save();
-      const { controls } = parseControlsConvention(newText);
-      const wiredPinList: WiredPin[] = expandToWiredPins(controls);
-      wiringProvider?.postWiredPins(wiredPinList);
-      const cfg = await loadControllerConfig();
-      await refreshControlsView(folder, cfg);
-    },
-    async (pinNumber: number, id: string) => {
-      const folder = resolveActiveFolder(context.workspaceState)?.uri.fsPath ?? '';
-      const effectPath = await findEffectSource(folder);
-      if (!effectPath) {
-        void vscode.window.showErrorMessage('ds-ide: no effect source file found — set ds-ide.effectSource');
-        return;
-      }
-      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
-      const oldText = doc.getText();
-      const afterDecl = removeFromSource(oldText, id);
-      const { controls: controlsAfterDecl } = parseControlsConvention(afterDecl);
-      const allPots = controlsAfterDecl.filter(c => c.kind === 'pot');
-      const newText = removeInitFromSource(afterDecl, id, allPots);
-      const { edit, needsAppendConfirmation } = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
-      if (needsAppendConfirmation && !(await confirmAppendMarkerBlocks())) {
-        return;
-      }
-      const applied = await vscode.workspace.applyEdit(edit);
-      if (!applied) {
-        void vscode.window.showErrorMessage('ds-ide: wiring edit could not be applied — source file was not changed.');
-        return;
-      }
-      // See the wire handler above (FR-IPC-5): save so the disk read inside
-      // buildControlsConfig matches newText instead of the pre-edit content.
-      await doc.save();
-      const { controls } = parseControlsConvention(newText);
-      const wiredPinList: WiredPin[] = expandToWiredPins(controls);
-      wiringProvider?.postWiredPins(wiredPinList);
-      const cfg = await loadControllerConfig();
-      await refreshControlsView(folder, cfg);
-    },
-    async (peripheralId: string, enabled: boolean) => {
-      const folder = resolveActiveFolder(context.workspaceState)?.uri.fsPath ?? '';
-      const effectPath = await findEffectSource(folder);
-      if (!effectPath) {
-        void vscode.window.showErrorMessage('ds-ide: no effect source file found — set ds-ide.effectSource');
-        return;
-      }
-      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
-      const oldText = doc.getText();
-
-      // FR-DEV-13: a colliding enable is refused before any mutation, never
-      // applied-and-flagged. Disabling a peripheral can never create a
-      // conflict, so only the enable path is checked. The bus checked is
-      // whichever `currentBusOf` resolves to — the peripheral's current
-      // declaration if already enabled, or its default first choice
-      // otherwise (FR-DEV-14).
-      const bus = currentBusOf(oldText, peripheralId);
-      if (enabled) {
-        if (bus) {
-          const occupants = buildOccupants(oldText, peripheralId);
-          const rejection = checkConflict(
-            { kind: 'bus', bus },
-            occupants,
-            PIN_DEFS,
-            candidateBusesFor,
-          );
-          if (rejection) {
-            void vscode.window.showErrorMessage(formatRejection(REGISTRY[peripheralId]!.label, rejection));
-            return;
-          }
-        }
-      }
-
-      const afterDecl = enabled
-        ? insertPeripheralIntoSource(oldText, peripheralId, bus ?? undefined)
-        : removePeripheralFromSource(oldText, peripheralId);
-      const newText = enabled
-        ? insertPeripheralInitIntoSource(afterDecl, peripheralId, bus ?? undefined)
-        : removePeripheralInitFromSource(afterDecl, peripheralId);
-      const { edit, needsAppendConfirmation } = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
-      if (needsAppendConfirmation && !(await confirmAppendMarkerBlocks())) {
-        return;
-      }
-      const applied = await vscode.workspace.applyEdit(edit);
-      if (!applied) {
-        void vscode.window.showErrorMessage('ds-ide: peripheral edit could not be applied — source file was not changed.');
-        return;
-      }
-      await doc.save();
-      wiringProvider?.postPeripherals(computePeripheralDisplayStates(newText));
-    },
-    (peripheralId: string) => {
-      if (peripheralId === 'oled') {
-        void showOledPanel();
-      } else if (peripheralId === 'midiTrs' || peripheralId === 'midiUsb') {
-        midiPanel.show();
-      }
-    },
-  );
+  const wiringProvider = createWiringProvider(context, {
+    workspaceState: context.workspaceState,
+    loadControllerConfig,
+    refreshControlsView,
+    showOledPanel,
+    midiPanel,
+  });
 
   const scopePanel = new ScopePanel(
     context.extensionUri,
@@ -810,51 +1049,7 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   );
 
-  manager.on('message', (msg: IpcMessage) => {
-    if (msg['type'] === 'event') {
-      const kind = getString(msg, 'kind');
-      if (kind === 'nan' || kind === 'inf') {
-        void vscode.window.showWarningMessage(
-          `ds-ide: audio ${kind.toUpperCase()} detected — effect may misbehave`,
-        );
-      }
-    }
-    if (msg['type'] === 'status') {
-      const running = getBoolean(msg, 'running') ?? false;
-      statusBar.text = running ? '$(play) Daisy: running' : '$(debug-stop) Daisy: stopped';
-      statusBar.tooltip = FIDELITY_CAVEAT;
-      controlsProvider?.postStatus(msg);
-    }
-    if (msg['type'] === 'led') {
-      controlsProvider?.postLed(msg);
-    }
-    if (msg['type'] === 'rgbLed') {
-      controlsProvider?.postRgbLed(msg);
-    }
-    // FR-CE-2: dual-subscribed alongside OledPanel's own 'message' listener
-    // (its constructor) — the docked strip needs live frames whether or not
-    // the standalone panel is open.
-    if (msg['type'] === 'oledFrame') {
-      const data = getString(msg, 'data');
-      if (data !== undefined) controlsProvider?.postOledFrame(data);
-    }
-  });
-
-  manager.on('disconnect', () => {
-    statusBar.text = '$(warning) Daisy: crashed';
-    statusBar.tooltip = FIDELITY_CAVEAT;
-    void vscode.window.showErrorMessage(
-      'ds-ide: emulator disconnected unexpectedly — redeploy to restart.',
-    );
-  });
-
-  // FR-EXT-6: Node's EventEmitter throws in-process on an unhandled 'error'
-  // emission, which would otherwise crash the entire Extension Host on any
-  // raw IPC socket error.
-  manager.on('error', (err: Error) => {
-    emulatorChannel.appendLine(`ds-ide: emulator error: ${err.message}`);
-    void vscode.window.showErrorMessage(`ds-ide: emulator error: ${err.message}`);
-  });
+  wireManagerEvents(manager, statusBar, controlsProvider, emulatorChannel);
 
   const debugAdapterFactory = new DaisyDebugAdapterFactory();
   const debugTrackerFactory = new DaisyDebugAdapterTrackerFactory((mode) => manager?.sendAudioMode(mode));
@@ -916,6 +1111,17 @@ export function activate(context: vscode.ExtensionContext): void {
 
   void initViewsFromProject();
 
+  const commandDisposables = registerCommands({
+    manager, diagnostics, buildChannel, hardwareChannel, flashChannel,
+    workspaceState: context.workspaceState, extensionPath: context.extensionPath,
+    deployCoordinator, scopePanel, controlsProvider, initViewsFromProject,
+  });
+
+  const saveListener = createSaveListener({
+    workspaceState: context.workspaceState, loadControllerConfig, refreshControlsView,
+    wiringProvider, controlsProvider,
+  });
+
   context.subscriptions.push(
     diagnostics,
     buildChannel,
@@ -933,91 +1139,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.debug.registerDebugAdapterTrackerFactory(DAISY_DEBUG_TYPE, debugTrackerFactory),
     vscode.debug.registerDebugAdapterDescriptorFactory(DS_IDE_DEBUG_TYPE, new DsIdeDebugAdapterDescriptorFactory()),
     vscode.debug.registerDebugConfigurationProvider(DS_IDE_DEBUG_TYPE, runConfigProvider),
-    vscode.workspace.onDidSaveTextDocument(async (doc) => {
-      const activeFolder = resolveActiveFolder(context.workspaceState);
-      if (!activeFolder) return;
-      // Uses real workspace-folder membership (vscode.workspace.getWorkspaceFolder)
-      // rather than a raw path prefix check — a sibling directory that merely
-      // shares a string prefix with the active folder must not false-positive
-      // here (FR-UX-4).
-      const savedFolder = vscode.workspace.getWorkspaceFolder(doc.uri);
-      if (!savedFolder || savedFolder.uri.fsPath !== activeFolder.uri.fsPath) return;
-      const folder = activeFolder.uri.fsPath;
-      const saved = doc.uri.fsPath;
-      const yamlPath = path.join(folder, 'controllers.yaml');
-
-      // Early exit before any I/O: only proceed for the yaml or a .cpp — the
-      // getWorkspaceFolder check above already confirmed it's in-folder.
-      const isYaml = saved === yamlPath;
-      const mightBeSource = saved.endsWith('.cpp');
-      if (!isYaml && !mightBeSource) return;
-
-      const cfg = await loadControllerConfig();
-      await refreshControlsView(folder, cfg);
-
-      if (mightBeSource) {
-        const effectPath = await findEffectSource(folder);
-        if (effectPath && saved === effectPath) {
-          let pins: WiredPin[] = [];
-          let peripherals: PeripheralDisplayState[] = computePeripheralDisplayStates('');
-          try {
-            const text = await fs.promises.readFile(effectPath, 'utf8');
-            const { controls } = parseControlsConvention(text);
-            // Reuses the same expansion as the wirePin/unwirePin handlers
-            // above (FR-DEV-8/9) — this listener re-fires on the doc.save()
-            // those handlers themselves trigger, and previously used a
-            // single-pin mapping that clobbered a multi-pin instance's
-            // display down to one highlighted pin right after wiring it.
-            pins = expandToWiredPins(controls);
-            peripherals = computePeripheralDisplayStates(text);
-          } catch { /* unreadable */ }
-          wiringProvider.postWiredPins(pins);
-          wiringProvider.postPeripherals(peripherals);
-          controlsProvider.postSdCardEnabled(peripherals.some(p => p.id === 'sdcard' && p.enabled));
-          const oledPeripheral = peripherals.find(p => p.id === 'oled');
-          controlsProvider.postOledEnabled(!!oledPeripheral?.enabled, oledPeripheral?.bus ?? null);
-        }
-      }
-    }),
-    vscode.commands.registerCommand('ds-ide.build', () =>
-      buildForEmulator(manager, context.extensionPath, diagnostics, buildChannel, context.workspaceState),
-    ),
-    vscode.commands.registerCommand('ds-ide.buildAndDeploy', () =>
-      deployCoordinator.performDeploy({ build: true, debug: false }),
-    ),
-    vscode.commands.registerCommand('ds-ide.deploy', () =>
-      deployCoordinator.performDeploy({ build: false, debug: false }),
-    ),
-    vscode.commands.registerCommand('ds-ide.start', () => startAudio(manager)),
-    vscode.commands.registerCommand('ds-ide.stop', () => {
-      stopAudio(manager);
-      scopePanel?.notifyStopped();
-      controlsProvider?.postStatus({ type: 'status', running: false });
-    }),
-    vscode.commands.registerCommand('ds-ide.buildHardware', () => {
-      const folder = resolveActiveFolder(context.workspaceState);
-      if (!folder) {
-        void vscode.window.showErrorMessage('ds-ide: no workspace folder open');
-        return;
-      }
-      return buildForHardware(folder.uri.fsPath, diagnostics, hardwareChannel);
-    }),
-    vscode.commands.registerCommand('ds-ide.flash', () => {
-      const folder = resolveActiveFolder(context.workspaceState);
-      if (!folder) {
-        void vscode.window.showErrorMessage('ds-ide: no workspace folder open');
-        return;
-      }
-      return flashToHardware(folder.uri.fsPath, flashChannel);
-    }),
-    vscode.commands.registerCommand('ds-ide.debug', () =>
-      deployCoordinator.performDeploy({ build: false, debug: true }),
-    ),
-    vscode.commands.registerCommand('ds-ide.createNewEffectProject', createEffectProject),
-    vscode.commands.registerCommand('ds-ide.selectActiveFolder', async () => {
-      const chosen = await promptSelectActiveFolder(context.workspaceState);
-      if (chosen) void initViewsFromProject();
-    }),
+    saveListener,
+    ...commandDisposables,
     { dispose: () => {
       manager?.dispose(); scopePanel?.dispose(); oledPanel?.dispose(); midiPanel?.dispose();
       hostMidiBridge?.stop();

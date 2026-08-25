@@ -301,7 +301,7 @@ describe('EmulatorManager', () => {
     });
 
     it('kills the spawned child when the IPC connect itself times out/fails', async () => {
-      ipcClientStub.connect = vi.fn(() => Promise.reject(new Error('IPC connect timed out'))) as ReturnType<typeof vi.fn>;
+      ipcClientStub.connect = vi.fn(() => Promise.reject<void>(new Error('IPC connect timed out'))) as ReturnType<typeof vi.fn>;
       await buildManager();
       await expect(manager.deploy(() => undefined)).rejects.toThrow(/IPC connect timed out/);
 

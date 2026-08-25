@@ -47,7 +47,7 @@ The `async onDidReceiveMessage` callback awaits three file-I/O-performing handle
 
 ---
 
-### [ ] refactor: decompose activate() into named factory functions (FR-EXT-9)
+### [x] refactor: decompose activate() into named factory functions (FR-EXT-9)
 
 A single ~640-line function in `extension.ts` builds every store, panel, provider, and command registration inline via large inline closures — the same file where the `'error'`-listener gap and the `effectSource` gap both live, a direct consequence of the function's size making cross-cutting gaps easy to miss.
 
