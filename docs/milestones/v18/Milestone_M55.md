@@ -23,7 +23,7 @@ Close the six remaining HIGH-severity findings from the Node.js/TypeScript revie
 
 ---
 
-### [ ] fix: kill spawned emulator child when the IPC handshake fails (FR-EXT-7)
+### [x] fix: kill spawned emulator child when the IPC handshake fails (FR-EXT-7)
 
 `connectIpc()`'s rejection path only closes the socket; the already-spawned `effect_emu` child process is left running, orphaned until the next stale-PID reaper or clean `dispose()`.
 

@@ -388,8 +388,20 @@ export class EmulatorManager extends EventEmitter {
     // never miss a message delivered synchronously with (or immediately
     // after) the connection completing.
     const handshake = this.awaitProtocolHandshake(client, socketPath);
-    await client.connect(socketPath);
-    await handshake;
+    try {
+      await client.connect(socketPath);
+      await handshake;
+    } catch (err) {
+      // FR-EXT-7: the effect_emu child was already spawned before this
+      // handshake began — without this, a failed connect/handshake (timeout,
+      // malformed/version-mismatched response) leaves it orphaned until the
+      // next stale-PID reaper or an explicit dispose().
+      if (this.childProcess) {
+        this.childProcess.kill();
+        this.childProcess = null;
+      }
+      throw err;
+    }
   }
 
   // FR-DEV-6: the emulator's very first message on a new connection is a
