@@ -93,7 +93,7 @@ None of `make`, `dfu-util`, or emulator build/deploy accept an `AbortSignal`/can
 
 ---
 
-### [ ] fix: attach error handlers to fire-and-forget workspaceState.update() calls (FR-EXT-19)
+### [x] fix: attach error handlers to fire-and-forget workspaceState.update() calls (FR-EXT-19)
 
 Three store classes discard the promise returned by `workspaceState.update()` via bare `void`, so a rejection (storage error, disk full) becomes an unhandled promise rejection.
 

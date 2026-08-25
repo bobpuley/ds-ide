@@ -66,6 +66,7 @@ export class PotStore {
       clearTimeout(this.pendingFlush);
       this.pendingFlush = undefined;
     }
-    void this.workspaceState.update(STATE_KEY, this.cache);
+    void this.workspaceState.update(STATE_KEY, this.cache)
+      .then(undefined, (err) => console.warn('ds-ide: failed to persist pot state —', err));
   }
 }
