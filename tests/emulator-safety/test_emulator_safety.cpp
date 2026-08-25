@@ -1407,6 +1407,7 @@ struct TestScopeBlockQueue {
         std::vector<float> out_buf;
         size_t             frames{0};
         float              sample_rate{48000.f};
+        uint64_t           config_generation{0};
 
         Slot() {
             in_buf.resize(kMaxFramesPerSlot * 2);
@@ -1416,7 +1417,8 @@ struct TestScopeBlockQueue {
 
     std::atomic<uint32_t> drops{0};
 
-    bool push(const float* in_buf, const float* out_buf, size_t frames, float sample_rate) {
+    bool push(const float* in_buf, const float* out_buf, size_t frames,
+              float sample_rate, uint64_t config_generation) {
         size_t w    = write_.load(std::memory_order_relaxed);
         size_t next = (w + 1) % kSlotCount;
         if (next == read_.load(std::memory_order_acquire)) {
@@ -1427,8 +1429,9 @@ struct TestScopeBlockQueue {
         size_t f   = std::min(frames, kMaxFramesPerSlot);
         std::memcpy(slot.in_buf.data(),  in_buf,  f * 2 * sizeof(float));
         std::memcpy(slot.out_buf.data(), out_buf, f * 2 * sizeof(float));
-        slot.frames      = f;
-        slot.sample_rate = sample_rate;
+        slot.frames            = f;
+        slot.sample_rate       = sample_rate;
+        slot.config_generation = config_generation;
         write_.store(next, std::memory_order_release);
         return true;
     }
@@ -1437,8 +1440,9 @@ struct TestScopeBlockQueue {
         size_t r = read_.load(std::memory_order_relaxed);
         if (r == write_.load(std::memory_order_acquire)) return false;
         const Slot& slot = slots_[r];
-        out.frames      = slot.frames;
-        out.sample_rate = slot.sample_rate;
+        out.frames            = slot.frames;
+        out.sample_rate       = slot.sample_rate;
+        out.config_generation = slot.config_generation;
         std::memcpy(out.in_buf.data(),  slot.in_buf.data(),  slot.frames * 2 * sizeof(float));
         std::memcpy(out.out_buf.data(), slot.out_buf.data(), slot.frames * 2 * sizeof(float));
         read_.store((r + 1) % kSlotCount, std::memory_order_release);
@@ -1457,7 +1461,7 @@ static void test_scope_block_queue_push_pop_roundtrip() {
     TestScopeBlockQueue q;
     std::vector<float> in(8, 1.5f), out(8, -2.5f);
 
-    CHECK(q.push(in.data(), out.data(), 4, 44100.f), "push succeeds");
+    CHECK(q.push(in.data(), out.data(), 4, 44100.f, 0), "push succeeds");
 
     TestScopeBlockQueue::Slot popped;
     CHECK(q.pop(popped), "pop returns true");
@@ -1477,13 +1481,13 @@ static void test_scope_block_queue_full_drops_and_counts() {
     std::vector<float> in(2, 0.f), out(2, 0.f);
 
     int pushed = 0;
-    while (q.push(in.data(), out.data(), 1, 48000.f)) ++pushed;
+    while (q.push(in.data(), out.data(), 1, 48000.f, 0)) ++pushed;
 
     CHECK(pushed == static_cast<int>(TestScopeBlockQueue::kSlotCount) - 1,
           "queue accepts exactly kSlotCount-1 pushes before full (one slot reserved to "
           "distinguish full from empty)");
     CHECK(q.drops.load() == 1, "the push that found the queue full is counted as a drop");
-    CHECK(!q.push(in.data(), out.data(), 1, 48000.f), "further pushes keep failing while full");
+    CHECK(!q.push(in.data(), out.data(), 1, 48000.f, 0), "further pushes keep failing while full");
     CHECK(q.drops.load() == 2, "each rejected push increments drops");
 }
 
@@ -1496,7 +1500,7 @@ static void test_scope_block_queue_truncates_oversize_frame_count() {
     std::vector<float> in(TestScopeBlockQueue::kMaxFramesPerSlot * 2 + 20, 3.f);
     std::vector<float> out(TestScopeBlockQueue::kMaxFramesPerSlot * 2 + 20, 4.f);
 
-    CHECK(q.push(in.data(), out.data(), TestScopeBlockQueue::kMaxFramesPerSlot + 10, 48000.f),
+    CHECK(q.push(in.data(), out.data(), TestScopeBlockQueue::kMaxFramesPerSlot + 10, 48000.f, 0),
           "push of an oversize frame count still succeeds (truncated, not rejected)");
 
     TestScopeBlockQueue::Slot popped;
@@ -1516,7 +1520,7 @@ static void test_scope_block_queue_fifo_order_across_slots() {
     for (int i = 0; i < N; ++i) {
         float v = static_cast<float>(i);
         std::vector<float> in(2, v), out(2, v);
-        if (q.push(in.data(), out.data(), 1, 48000.f)) ++produced;
+        if (q.push(in.data(), out.data(), 1, 48000.f, 0)) ++produced;
 
         TestScopeBlockQueue::Slot popped;
         if (q.pop(popped)) {
@@ -1533,6 +1537,37 @@ static void test_scope_block_queue_fifo_order_across_slots() {
     CHECK(produced == N, "all pushes succeeded (queue never filled at this pace)");
     CHECK(consumed == produced, "every produced block was eventually consumed");
     CHECK(order_ok, "blocks are consumed in the same order they were produced (FIFO)");
+}
+
+static void test_scope_block_queue_carries_config_generation_tag() {
+    std::printf("--- FR-EMU-7/FR-EMU-10: ScopeBlockQueue tags each block with its "
+                "producer's config_generation ---\n");
+
+    // Regression test for a real bug found during manual verification: a
+    // mid-session sample-rate change (config_generation bump) stops the RT
+    // producer (device.stop() + mode-loop restart) but doesn't clear
+    // whatever old-rate blocks were already queued. Without a per-block
+    // generation tag the drain thread (audio_engine.cpp) would drain up to
+    // kSlotCount stale-rate blocks — and report their stale bin_hz — before
+    // any new-rate block ever arrived. The tag lets the drain thread
+    // recognize and discard that backlog instead of accumulating it.
+    TestScopeBlockQueue q;
+    std::vector<float> in(2, 1.f), out(2, 1.f);
+
+    CHECK(q.push(in.data(), out.data(), 1, 48000.f, /*config_generation=*/7),
+          "push tags the block with the given config_generation");
+
+    TestScopeBlockQueue::Slot popped;
+    CHECK(q.pop(popped), "pop succeeds");
+    CHECK(popped.config_generation == 7, "popped block's config_generation round-trips");
+
+    q.push(in.data(), out.data(), 1, 48000.f, /*config_generation=*/8);
+    TestScopeBlockQueue::Slot popped2;
+    CHECK(q.pop(popped2), "pop succeeds after a generation bump");
+    CHECK(popped2.config_generation == 8,
+          "a later push's config_generation is captured independently — "
+          "a consumer can compare it against the current live generation "
+          "to identify (and discard) stale backlog");
 }
 
 // ---- main ------------------------------------------------------------------
@@ -1587,6 +1622,7 @@ int main() {
     test_scope_block_queue_full_drops_and_counts();
     test_scope_block_queue_truncates_oversize_frame_count();
     test_scope_block_queue_fifo_order_across_slots();
+    test_scope_block_queue_carries_config_generation_tag();
 
     std::printf("\nResult: %s\n", failures == 0 ? "all passed" : "FAILURES");
     return failures == 0 ? 0 : 1;

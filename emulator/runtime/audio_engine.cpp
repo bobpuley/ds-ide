@@ -310,6 +310,16 @@ struct ScopeBlockQueue {
         std::vector<float> out_buf;
         size_t             frames{0};
         float              sample_rate{48000.f};
+        // FR-EMU-7/FR-EMU-10: the config_generation this block's producer
+        // (run_simulated()/run_realtime()) was entered with — lets the
+        // drain thread discard stale-rate backlog after a mid-session
+        // `config` update instead of mixing it with fresh-rate blocks. A
+        // rate change stops the *producer* (device.stop() + mode-loop
+        // restart) but doesn't clear whatever was already queued; without
+        // this tag, up to kSlotCount old-rate blocks could still be sitting
+        // in the ring and would be drained (and reflected in scope/spectrum
+        // output) before any new-rate block ever arrives.
+        uint64_t           config_generation{0};
 
         Slot() {
             in_buf.resize(kMaxFramesPerSlot * 2);
@@ -321,7 +331,8 @@ struct ScopeBlockQueue {
 
     // RT-safe: no allocation, no mutex, no blocking. Returns false (block
     // dropped, counted in `drops`) if the ring is full.
-    bool push(const float* in_buf, const float* out_buf, size_t frames, float sample_rate) {
+    bool push(const float* in_buf, const float* out_buf, size_t frames,
+              float sample_rate, uint64_t config_generation) {
         size_t w    = write_.load(std::memory_order_relaxed);
         size_t next = (w + 1) % kSlotCount;
         if (next == read_.load(std::memory_order_acquire)) {
@@ -332,8 +343,9 @@ struct ScopeBlockQueue {
         size_t f   = std::min(frames, kMaxFramesPerSlot);
         std::memcpy(slot.in_buf.data(),  in_buf,  f * 2 * sizeof(float));
         std::memcpy(slot.out_buf.data(), out_buf, f * 2 * sizeof(float));
-        slot.frames      = f;
-        slot.sample_rate = sample_rate;
+        slot.frames            = f;
+        slot.sample_rate       = sample_rate;
+        slot.config_generation = config_generation;
         write_.store(next, std::memory_order_release);
         return true;
     }
@@ -344,8 +356,9 @@ struct ScopeBlockQueue {
         size_t r = read_.load(std::memory_order_relaxed);
         if (r == write_.load(std::memory_order_acquire)) return false;
         const Slot& slot = slots_[r];
-        out.frames      = slot.frames;
-        out.sample_rate = slot.sample_rate;
+        out.frames            = slot.frames;
+        out.sample_rate       = slot.sample_rate;
+        out.config_generation = slot.config_generation;
         std::memcpy(out.in_buf.data(),  slot.in_buf.data(),  slot.frames * 2 * sizeof(float));
         std::memcpy(out.out_buf.data(), slot.out_buf.data(), slot.frames * 2 * sizeof(float));
         read_.store((r + 1) % kSlotCount, std::memory_order_release);
@@ -525,7 +538,7 @@ static void run_simulated(float sample_rate,
 
         // FR-EMU-10: hand the raw block to the non-RT drain thread instead of
         // accumulating/JSON-building/FFT-ing inline — see ScopeBlockQueue.
-        scope_queue.push(in_buf.data(), out_buf.data(), frames, sample_rate);
+        scope_queue.push(in_buf.data(), out_buf.data(), frames, sample_rate, cfg_gen_seen);
         return true;
     };
 
@@ -682,7 +695,7 @@ static void run_realtime(float sample_rate,
 
         // FR-EMU-10: hand the raw block to the non-RT drain thread instead of
         // accumulating/JSON-building/FFT-ing inline — see ScopeBlockQueue.
-        scope_queue.push(in_buf.data(), out_buf.data(), frames, sample_rate);
+        scope_queue.push(in_buf.data(), out_buf.data(), frames, sample_rate, cfg_gen_seen);
 
         // Latency reporting (~once per SCOPE_BLOCKS)
         ++xrun_report_blocks;
@@ -807,31 +820,47 @@ void run_audio_engine() {
 
         // FR-EMU-10: scope/spectrum accumulation state, owned by this thread
         // now that the RT callback only pushes raw blocks (see
-        // ScopeBlockQueue). Reset whenever audio_mode changes, mirroring the
-        // previous per-mode-loop-entry reset (run_simulated()/run_realtime()
-        // each got a fresh ScopeState/FftState) so a scope frame never mixes
-        // samples accumulated under different modes.
+        // ScopeBlockQueue). Reset whenever audio_mode OR config_generation
+        // changes, mirroring the previous per-mode-loop-entry reset
+        // (run_simulated()/run_realtime() each got a fresh ScopeState/
+        // FftState on every entry — and FR-EMU-7 made a config_generation
+        // bump alone, with no audio_mode change, trigger that same re-entry)
+        // so a scope/spectrum frame never mixes samples accumulated under a
+        // stale sample_rate with samples from after a config update.
         ScopeState scope;
         FftState fft;
         ScopeBlockQueue::Slot popped_block;
         int last_seen_mode = g_state.audio_mode.load();
+        uint64_t last_seen_cfg_gen = g_state.config_generation.load();
 
         while (!g_state.shutdown.load()) {
             bool did_work = false;
             int cur_mode = g_state.audio_mode.load();
-            if (cur_mode != last_seen_mode) {
+            uint64_t cur_cfg_gen = g_state.config_generation.load();
+            if (cur_mode != last_seen_mode || cur_cfg_gen != last_seen_cfg_gen) {
                 last_seen_mode = cur_mode;
+                last_seen_cfg_gen = cur_cfg_gen;
                 scope.reset();
                 fft.reset();
             }
             if (scope_queue.pop(popped_block)) {
-                if (scope.accumulate(popped_block.in_buf, popped_block.out_buf, popped_block.frames)) {
-                    build_scope_json(scope.in, scope.out, scope.out_r, scope.json_buf);
-                    drain_send(scope.json_buf);
-                    scope.reset();
+                // FR-EMU-7/FR-EMU-10: discard backlog produced under a
+                // now-stale config_generation instead of accumulating it —
+                // a rate change stops the producer (device.stop() + mode-
+                // loop restart) but doesn't clear whatever was already
+                // queued, so up to kSlotCount old-rate blocks could
+                // otherwise still be drained (and reflected in scope/
+                // spectrum output, at the *old* bin_hz) before any
+                // new-rate block ever arrives.
+                if (popped_block.config_generation == g_state.config_generation.load(std::memory_order_relaxed)) {
+                    if (scope.accumulate(popped_block.in_buf, popped_block.out_buf, popped_block.frames)) {
+                        build_scope_json(scope.in, scope.out, scope.out_r, scope.json_buf);
+                        drain_send(scope.json_buf);
+                        scope.reset();
+                    }
+                    emit_spectrum_if_ready(fft, popped_block.in_buf, popped_block.out_buf,
+                                           popped_block.frames, popped_block.sample_rate);
                 }
-                emit_spectrum_if_ready(fft, popped_block.in_buf, popped_block.out_buf,
-                                       popped_block.frames, popped_block.sample_rate);
                 did_work = true;
             }
             if (g_state.ipc_queue.pop(msg)) {
