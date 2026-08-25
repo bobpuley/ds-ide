@@ -72,7 +72,7 @@ A single ~640-line function in `extension.ts` builds every store, panel, provide
 
 ---
 
-### [ ] fix: reject invalid C++ identifiers in wiring id input (FR-EXT-11)
+### [x] fix: reject invalid C++ identifiers in wiring id input (FR-EXT-11)
 
 `validateId()` only checks for emptiness and duplication; the free-text `id` is interpolated unescaped into generated C++ declaration/init lines, so a value like `x; SystemInit(); //` can corrupt the generated `.cpp` file.
 
