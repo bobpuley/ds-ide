@@ -22,7 +22,7 @@ Five webview-context files independently redeclare the same DOM-lookup helper, c
 
 ---
 
-### [ ] fix: validate JSON.parse'd data-island content before casting (FR-EXT-28)
+### [x] fix: validate JSON.parse'd data-island content before casting (FR-EXT-28)
 
 Config/state data embedded by the extension host into `<script type="application/json">` data islands is parsed and cast with no runtime shape validation.
 

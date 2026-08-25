@@ -12,6 +12,7 @@ import { SdEntry, isTxtEntryName, formatSdSize } from './sd-viewer';
 import { decodeOledFrame, computeFrameRate } from './oled-frame';
 import { hasKnownCommand } from './message-guard';
 import { el } from './dom-lookup';
+import { readDataIsland, showDataIslandError } from './data-island';
 
 interface VsCodeApiForControls {
   postMessage(msg: ControlsWebviewMessage): void;
@@ -49,8 +50,20 @@ function clearDocListeners(): void {
   _docListeners.length = 0;
 }
 
-const _yamlInitEl = document.getElementById('yaml-init');
-const _yamlInit = JSON.parse(_yamlInitEl ? _yamlInitEl.textContent || '{}' : '{}') as Partial<ControllerConfig>;
+function isPartialControllerConfig(v: unknown): v is Partial<ControllerConfig> {
+  if (typeof v !== 'object' || v === null) return false;
+  const obj = v as Record<string, unknown>;
+  return (['pots', 'buttons', 'leds', 'encoders', 'toggles', 'rgbleds'] as const)
+    .every(field => obj[field] === undefined || Array.isArray(obj[field]));
+}
+
+const _yamlInitResult = readDataIsland<Partial<ControllerConfig>>(
+  el<HTMLElement>('yaml-init').textContent ?? '{}',
+  isPartialControllerConfig,
+  {},
+);
+if (_yamlInitResult.error) showDataIslandError('yaml-init', _yamlInitResult.error);
+const _yamlInit = _yamlInitResult.value;
 let _yamlCfg: ControllerConfig = {
   pots: _yamlInit.pots || [], buttons: _yamlInit.buttons || [], leds: _yamlInit.leds || [],
   encoders: _yamlInit.encoders || [], toggles: _yamlInit.toggles || [], rgbleds: _yamlInit.rgbleds || [],

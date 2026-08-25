@@ -8,6 +8,7 @@ import { computeBusBrackets, type BusBracket } from '../wiring/bus-bracket';
 import { computePinOverlayStates } from '../wiring/pin-overlay-state';
 import { hasKnownCommand } from './message-guard';
 import { el } from './dom-lookup';
+import { readDataIsland, showDataIslandError } from './data-island';
 
 // FR-DEV-2: one popup button id per pin-attached registry entry —
 // generalizes what used to be a hardcoded ['btn-pot', 'btn-button', 'btn-led']
@@ -32,12 +33,50 @@ const popup       = el<HTMLElement>('popup');
 const tooltip     = el<HTMLElement>('tooltip');
 const busPopover  = el<HTMLElement>('bus-popover');
 
+function isPinDefArray(v: unknown): v is PinDef[] {
+  return Array.isArray(v) && v.every(x =>
+    typeof x === 'object' && x !== null &&
+    typeof (x as Record<string, unknown>)['row'] === 'number' &&
+    typeof (x as Record<string, unknown>)['label'] === 'string',
+  );
+}
+
+function isWiredPinArray(v: unknown): v is WiredPin[] {
+  return Array.isArray(v) && v.every(x =>
+    typeof x === 'object' && x !== null &&
+    typeof (x as Record<string, unknown>)['pinNumber'] === 'number' &&
+    typeof (x as Record<string, unknown>)['deviceType'] === 'string' &&
+    typeof (x as Record<string, unknown>)['id'] === 'string',
+  );
+}
+
+function isPeripheralDisplayStateArray(v: unknown): v is PeripheralDisplayState[] {
+  return Array.isArray(v) && v.every(x =>
+    typeof x === 'object' && x !== null &&
+    typeof (x as Record<string, unknown>)['id'] === 'string' &&
+    typeof (x as Record<string, unknown>)['label'] === 'string' &&
+    typeof (x as Record<string, unknown>)['enabled'] === 'boolean' &&
+    Array.isArray((x as Record<string, unknown>)['pins']),
+  );
+}
+
 // ── Pin definitions (loaded from data island) ─────────────────────────────
-const PIN_DEFS: PinDef[] = JSON.parse(el<HTMLElement>('pin-defs').textContent || '[]');
+const pinDefsResult = readDataIsland<PinDef[]>(el<HTMLElement>('pin-defs').textContent ?? '[]', isPinDefArray, []);
+if (pinDefsResult.error) showDataIslandError('pin-defs', pinDefsResult.error);
+const PIN_DEFS: PinDef[] = pinDefsResult.value;
 
 // ── State ─────────────────────────────────────────────────────────────────
-let wiredPins: WiredPin[] = JSON.parse(el<HTMLElement>('init-data').textContent || '[]');
-let peripherals: PeripheralDisplayState[] = JSON.parse(el<HTMLElement>('peripherals-data').textContent || '[]');
+const initDataResult = readDataIsland<WiredPin[]>(el<HTMLElement>('init-data').textContent ?? '[]', isWiredPinArray, []);
+if (initDataResult.error) showDataIslandError('init-data', initDataResult.error);
+let wiredPins: WiredPin[] = initDataResult.value;
+
+const peripheralsResult = readDataIsland<PeripheralDisplayState[]>(
+  el<HTMLElement>('peripherals-data').textContent ?? '[]',
+  isPeripheralDisplayStateArray,
+  [],
+);
+if (peripheralsResult.error) showDataIslandError('peripherals-data', peripheralsResult.error);
+let peripherals: PeripheralDisplayState[] = peripheralsResult.value;
 // { pinNumber, adc } for unassigned; { pinNumber, id, deviceType } for assigned.
 let popupPin: { pinNumber: number; adc?: boolean; deviceType?: DeviceType; id?: string } | null = null;
 let selectedKind: DeviceType | null = null;
