@@ -69,7 +69,7 @@ None of `make`, `dfu-util`, or emulator build/deploy accept an `AbortSignal`/can
 
 ---
 
-### [ ] fix: guard atob()/decodeOledFrame against malformed base64 (FR-EXT-17)
+### [x] fix: guard atob()/decodeOledFrame against malformed base64 (FR-EXT-17)
 
 `decodeOledFrame` calls `atob(base64)`, which throws on invalid input, directly inside a `'message'` event listener with no try/catch — breaking the OLED preview for the rest of the session on a corrupted IPC frame.
 

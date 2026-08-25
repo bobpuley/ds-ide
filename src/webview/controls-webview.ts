@@ -689,7 +689,13 @@ function applyOledEnabled(enabled: boolean, bus: string | null): void {
 }
 
 function applyOledFrame(data: string): void {
-  drawOledStripFrame(decodeOledFrame(data));
+  const bytes = decodeOledFrame(data);
+  if (bytes === null) {
+    const footEl = document.getElementById('oled-strip-foot');
+    if (footEl) footEl.textContent = 'SSD1306 \xb7 frame decode error';
+    return;
+  }
+  drawOledStripFrame(bytes);
   oledFrameTimestamps.push(performance.now());
   if (oledFrameTimestamps.length > OLED_STRIP_MAX_TIMESTAMPS) oledFrameTimestamps.shift();
   updateOledStripFoot();

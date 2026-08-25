@@ -5,7 +5,7 @@ describe('decodeOledFrame (FR-DEV-15)', () => {
   it('decodes a base64 payload back to its original bytes', () => {
     const original = new Uint8Array([0x00, 0xff, 0x10, 0x81, 0x7f]);
     const base64 = btoa(String.fromCharCode(...original));
-    expect(Array.from(decodeOledFrame(base64))).toEqual(Array.from(original));
+    expect(Array.from(decodeOledFrame(base64) ?? [])).toEqual(Array.from(original));
   });
 
   it('decodes a full 1024-byte SSD1306 frame without truncation', () => {
@@ -15,12 +15,17 @@ describe('decodeOledFrame (FR-DEV-15)', () => {
     for (const b of original) binary += String.fromCharCode(b);
     const base64 = btoa(binary);
     const decoded = decodeOledFrame(base64);
-    expect(decoded.length).toBe(1024);
-    expect(Array.from(decoded)).toEqual(Array.from(original));
+    expect(decoded?.length).toBe(1024);
+    expect(Array.from(decoded ?? [])).toEqual(Array.from(original));
   });
 
   it('decodes an empty payload to an empty array', () => {
-    expect(decodeOledFrame('').length).toBe(0);
+    expect(decodeOledFrame('')?.length).toBe(0);
+  });
+
+  it('returns null instead of throwing on malformed base64 (FR-EXT-17)', () => {
+    expect(() => decodeOledFrame('not-valid-base64!!!')).not.toThrow();
+    expect(decodeOledFrame('not-valid-base64!!!')).toBeNull();
   });
 });
 

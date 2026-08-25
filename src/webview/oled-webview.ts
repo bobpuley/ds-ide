@@ -52,7 +52,12 @@ function drawFrame(bytes: Uint8Array): void {
 window.addEventListener('message', (e: MessageEvent<OledHostMessage>) => {
   const msg = e.data;
   if (msg.command === 'oledFrame') {
-    drawFrame(decodeOledFrame(msg.data));
+    const bytes = decodeOledFrame(msg.data);
+    if (bytes === null) {
+      footEl.textContent = 'SSD1306 \xb7 frame decode error';
+      return;
+    }
+    drawFrame(bytes);
     frameTimestamps.push(performance.now());
     if (frameTimestamps.length > MAX_TIMESTAMPS) frameTimestamps.shift();
     updateFoot();
