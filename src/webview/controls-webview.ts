@@ -11,13 +11,10 @@ import { ENCODER_POSITION_MODULUS, wrapEncoderPosition } from '../devices/codege
 import { SdEntry, isTxtEntryName, formatSdSize } from './sd-viewer';
 import { decodeOledFrame, computeFrameRate } from './oled-frame';
 import { hasKnownCommand } from './message-guard';
+import { el } from './dom-lookup';
 
 interface VsCodeApiForControls {
   postMessage(msg: ControlsWebviewMessage): void;
-}
-
-function el<T extends HTMLElement>(id: string): T {
-  return document.getElementById(id) as T;
 }
 
 // A row in the legacy (missingBlock) YAML editor canvas — unifies the three

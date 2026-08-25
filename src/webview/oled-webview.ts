@@ -2,10 +2,7 @@
 import type { OledHostMessage } from './messages';
 import { decodeOledFrame, computeFrameRate } from './oled-frame';
 import { hasKnownCommand } from './message-guard';
-
-function el<T extends HTMLElement>(id: string): T {
-  return document.getElementById(id) as T;
-}
+import { el } from './dom-lookup';
 
 const vscode = acquireVsCodeApi();
 const canvas = el<HTMLCanvasElement>('oled');

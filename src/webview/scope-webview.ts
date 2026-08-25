@@ -1,10 +1,7 @@
 /// <reference lib="dom" />
 import type { ScopeHostMessage } from './messages';
 import { hasKnownCommand } from './message-guard';
-
-function el<T extends HTMLElement>(id: string): T {
-  return document.getElementById(id) as T;
-}
+import { el } from './dom-lookup';
 
 const vscode = acquireVsCodeApi();
 const canvas = el<HTMLCanvasElement>('scope');

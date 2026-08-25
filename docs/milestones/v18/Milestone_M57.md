@@ -10,7 +10,7 @@ Close the remaining 13 MEDIUM findings covering type safety, API design, perform
 
 ## Sprint Tasks
 
-### [ ] refactor: consolidate the duplicated el<T>() DOM-lookup helper (FR-EXT-27)
+### [x] refactor: consolidate the duplicated el<T>() DOM-lookup helper (FR-EXT-27)
 
 Five webview-context files independently redeclare the same DOM-lookup helper, casting away `document.getElementById`'s `| null` return type without checking it.
 

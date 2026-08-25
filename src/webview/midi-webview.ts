@@ -3,10 +3,7 @@ import type { MidiHostMessage } from './messages';
 import { pushMonitorEntry, MAX_MONITOR_ENTRIES } from './midi-monitor';
 import { hasKnownCommand } from './message-guard';
 import type { MidiMonitorEntry } from './midi-monitor';
-
-function el<T extends HTMLElement>(id: string): T {
-  return document.getElementById(id) as T;
-}
+import { el } from './dom-lookup';
 
 const vscode = acquireVsCodeApi();
 const keyboardEl = el<HTMLElement>('keyboard');

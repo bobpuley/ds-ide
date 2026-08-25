@@ -7,6 +7,7 @@ import { REGISTRY, wiredControlIds } from '../devices/registry';
 import { computeBusBrackets, type BusBracket } from '../wiring/bus-bracket';
 import { computePinOverlayStates } from '../wiring/pin-overlay-state';
 import { hasKnownCommand } from './message-guard';
+import { el } from './dom-lookup';
 
 // FR-DEV-2: one popup button id per pin-attached registry entry —
 // generalizes what used to be a hardcoded ['btn-pot', 'btn-button', 'btn-led']
@@ -19,10 +20,6 @@ function deviceButtonIds(): string[] {
 
 function kindFromButtonId(btnId: string): DeviceType {
   return btnId.slice('btn-'.length) as DeviceType;
-}
-
-function el<T extends HTMLElement>(id: string): T {
-  return document.getElementById(id) as T;
 }
 
 interface VsCodeApiForWiring {
