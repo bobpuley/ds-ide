@@ -482,8 +482,8 @@ void dispatch(const std::string& line) {
                     std::snprintf(buf, sizeof(buf),
                         "{\"type\":\"midiRx\",\"status\":%u,\"data1\":%u,\"data2\":%u,\"channel\":%u,\"midiType\":%d}",
                         status, data1, data2, ev.channel, static_cast<int>(ev.type));
-                    if (!g_state.midi_queue.push(buf))
-                        g_state.midi_queue_drops.fetch_add(1, std::memory_order_relaxed);
+                    if (!g_state.midi_rx_queue.push(buf))
+                        g_state.midi_rx_queue_drops.fetch_add(1, std::memory_order_relaxed);
                 }
             } catch (...) { std::fprintf(stderr, "[daisy-emu] stof failed: midiEvent\n"); }
         }
@@ -745,10 +745,15 @@ void run_ipc_server(const char* socket_path) {
             send_line(client_fd, build_status_json());
         }
 
-        // Read messages from client until disconnect or shutdown
+        // Read messages from client until disconnect, or until shutdown AND
+        // the audio drain thread has finished flushing pending telemetry
+        // (FR-EMU-11) — closing client_fd/nulling send_ipc the instant
+        // `shutdown` flips (rather than waiting for telemetry_drained too)
+        // raced ahead of and could cut off that flush before it reached the
+        // client.
         char raw[4096];
         std::string partial;
-        while (!g_state.shutdown.load()) {
+        while (!g_state.telemetry_drained.load()) {
             struct timeval tv2{0, 50000};
             fd_set rfds2;
             FD_ZERO(&rfds2);

@@ -4,7 +4,7 @@
 // Exercises byte-triplet -> MidiEvent parsing, MidiInQueue's bounded FIFO
 // ordering and overflow-drops-newest behaviour, and a concurrent
 // producer(IPC thread)/consumer(effect thread) stress test against the real
-// EmulatorState::midi_in_queue/midi_queue instances (same shape as
+// EmulatorState::midi_in_queue/midi_tx_queue instances (same shape as
 // test_oled.cpp's stress test). No IPC socket or audio thread. Plain
 // asserts; exit 0 on success. Provides its own g_state definition (normally
 // in main.cpp).

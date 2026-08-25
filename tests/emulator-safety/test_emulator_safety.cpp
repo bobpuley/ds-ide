@@ -1297,13 +1297,13 @@ static void test_session_player_popblock_rt_safe_timing() {
 
 // ---- FR-MIDI-1: MidiUsbHandler/MidiUartHandler::SendMessage ---------------
 
-// Drains g_state.midi_queue into a vector, so a test can inspect exactly
+// Drains g_state.midi_tx_queue into a vector, so a test can inspect exactly
 // what SendMessage() enqueued without interference from anything else that
 // may have touched the shared queue.
 static std::vector<std::string> drain_midi_queue() {
     std::vector<std::string> out;
     std::string msg;
-    while (daisy_emu::g_state.midi_queue.pop(msg)) out.push_back(msg);
+    while (daisy_emu::g_state.midi_tx_queue.pop(msg)) out.push_back(msg);
     return out;
 }
 
@@ -1376,7 +1376,7 @@ static void test_midi_uart_send_message_enqueues_midi_tx() {
 }
 
 static void test_midi_uart_and_usb_share_the_same_midi_queue() {
-    std::printf("--- FR-MIDI-1: MidiUsbHandler and MidiUartHandler share midi_queue (no second queue) ---\n");
+    std::printf("--- FR-MIDI-1: MidiUsbHandler and MidiUartHandler share midi_tx_queue (no second queue) ---\n");
     drain_midi_queue();
 
     daisy::MidiUsbHandler usb;
@@ -1389,6 +1389,185 @@ static void test_midi_uart_and_usb_share_the_same_midi_queue() {
     auto msgs = drain_midi_queue();
     CHECK(msgs.size() == 2,
           "both transports' SendMessage calls land in the same queue, drained together");
+}
+
+// ---- FR-EMU-10: ScopeBlockQueue RT-safe raw audio block hand-off ----------
+//
+// audio_engine.cpp's ScopeBlockQueue is a file-local struct (not exposed via
+// a header, same as ScopeState/FftState) — this is a lightweight mirror for
+// isolated testing, matching the TestScopeState/TestScopeStateV2 pattern
+// already used above for the same reason.
+
+struct TestScopeBlockQueue {
+    static constexpr size_t kMaxFramesPerSlot = 8192;
+    static constexpr size_t kSlotCount        = 64;
+
+    struct Slot {
+        std::vector<float> in_buf;
+        std::vector<float> out_buf;
+        size_t             frames{0};
+        float              sample_rate{48000.f};
+        uint64_t           config_generation{0};
+
+        Slot() {
+            in_buf.resize(kMaxFramesPerSlot * 2);
+            out_buf.resize(kMaxFramesPerSlot * 2);
+        }
+    };
+
+    std::atomic<uint32_t> drops{0};
+
+    bool push(const float* in_buf, const float* out_buf, size_t frames,
+              float sample_rate, uint64_t config_generation) {
+        size_t w    = write_.load(std::memory_order_relaxed);
+        size_t next = (w + 1) % kSlotCount;
+        if (next == read_.load(std::memory_order_acquire)) {
+            drops.fetch_add(1, std::memory_order_relaxed);
+            return false;
+        }
+        Slot& slot = slots_[w];
+        size_t f   = std::min(frames, kMaxFramesPerSlot);
+        std::memcpy(slot.in_buf.data(),  in_buf,  f * 2 * sizeof(float));
+        std::memcpy(slot.out_buf.data(), out_buf, f * 2 * sizeof(float));
+        slot.frames            = f;
+        slot.sample_rate       = sample_rate;
+        slot.config_generation = config_generation;
+        write_.store(next, std::memory_order_release);
+        return true;
+    }
+
+    bool pop(Slot& out) {
+        size_t r = read_.load(std::memory_order_relaxed);
+        if (r == write_.load(std::memory_order_acquire)) return false;
+        const Slot& slot = slots_[r];
+        out.frames            = slot.frames;
+        out.sample_rate       = slot.sample_rate;
+        out.config_generation = slot.config_generation;
+        std::memcpy(out.in_buf.data(),  slot.in_buf.data(),  slot.frames * 2 * sizeof(float));
+        std::memcpy(out.out_buf.data(), slot.out_buf.data(), slot.frames * 2 * sizeof(float));
+        read_.store((r + 1) % kSlotCount, std::memory_order_release);
+        return true;
+    }
+
+private:
+    std::array<Slot, kSlotCount> slots_;
+    std::atomic<size_t> write_{0};
+    std::atomic<size_t> read_{0};
+};
+
+static void test_scope_block_queue_push_pop_roundtrip() {
+    std::printf("--- FR-EMU-10: ScopeBlockQueue push/pop round-trips a raw block ---\n");
+
+    TestScopeBlockQueue q;
+    std::vector<float> in(8, 1.5f), out(8, -2.5f);
+
+    CHECK(q.push(in.data(), out.data(), 4, 44100.f, 0), "push succeeds");
+
+    TestScopeBlockQueue::Slot popped;
+    CHECK(q.pop(popped), "pop returns true");
+    CHECK(popped.frames == 4, "popped frame count matches pushed frame count");
+    CHECK(popped.sample_rate == 44100.f, "popped sample_rate matches pushed sample_rate");
+    CHECK(popped.in_buf[0] == 1.5f && popped.in_buf[7] == 1.5f, "in_buf content round-trips");
+    CHECK(popped.out_buf[0] == -2.5f && popped.out_buf[7] == -2.5f, "out_buf content round-trips");
+
+    TestScopeBlockQueue::Slot empty;
+    CHECK(!q.pop(empty), "queue is empty after single push/pop");
+}
+
+static void test_scope_block_queue_full_drops_and_counts() {
+    std::printf("--- FR-EMU-10: ScopeBlockQueue drops and counts when full (RT thread never blocks) ---\n");
+
+    TestScopeBlockQueue q;
+    std::vector<float> in(2, 0.f), out(2, 0.f);
+
+    int pushed = 0;
+    while (q.push(in.data(), out.data(), 1, 48000.f, 0)) ++pushed;
+
+    CHECK(pushed == static_cast<int>(TestScopeBlockQueue::kSlotCount) - 1,
+          "queue accepts exactly kSlotCount-1 pushes before full (one slot reserved to "
+          "distinguish full from empty)");
+    CHECK(q.drops.load() == 1, "the push that found the queue full is counted as a drop");
+    CHECK(!q.push(in.data(), out.data(), 1, 48000.f, 0), "further pushes keep failing while full");
+    CHECK(q.drops.load() == 2, "each rejected push increments drops");
+}
+
+static void test_scope_block_queue_truncates_oversize_frame_count() {
+    std::printf("--- FR-EMU-10: ScopeBlockQueue truncates a block exceeding kMaxFramesPerSlot ---\n");
+
+    TestScopeBlockQueue q;
+    // A hardware frame count larger than kMaxFramesPerSlot must be truncated
+    // rather than reallocating the pre-sized slot on the RT thread.
+    std::vector<float> in(TestScopeBlockQueue::kMaxFramesPerSlot * 2 + 20, 3.f);
+    std::vector<float> out(TestScopeBlockQueue::kMaxFramesPerSlot * 2 + 20, 4.f);
+
+    CHECK(q.push(in.data(), out.data(), TestScopeBlockQueue::kMaxFramesPerSlot + 10, 48000.f, 0),
+          "push of an oversize frame count still succeeds (truncated, not rejected)");
+
+    TestScopeBlockQueue::Slot popped;
+    CHECK(q.pop(popped), "pop succeeds");
+    CHECK(popped.frames == TestScopeBlockQueue::kMaxFramesPerSlot,
+          "popped frame count is capped at kMaxFramesPerSlot — never larger");
+}
+
+static void test_scope_block_queue_fifo_order_across_slots() {
+    std::printf("--- FR-EMU-10: ScopeBlockQueue preserves FIFO order across many blocks ---\n");
+
+    TestScopeBlockQueue q;
+    static constexpr int N = 200;
+    int produced = 0, consumed = 0;
+    bool order_ok = true;
+
+    for (int i = 0; i < N; ++i) {
+        float v = static_cast<float>(i);
+        std::vector<float> in(2, v), out(2, v);
+        if (q.push(in.data(), out.data(), 1, 48000.f, 0)) ++produced;
+
+        TestScopeBlockQueue::Slot popped;
+        if (q.pop(popped)) {
+            if (popped.in_buf[0] != static_cast<float>(consumed)) order_ok = false;
+            ++consumed;
+        }
+    }
+    TestScopeBlockQueue::Slot popped;
+    while (q.pop(popped)) {
+        if (popped.in_buf[0] != static_cast<float>(consumed)) order_ok = false;
+        ++consumed;
+    }
+
+    CHECK(produced == N, "all pushes succeeded (queue never filled at this pace)");
+    CHECK(consumed == produced, "every produced block was eventually consumed");
+    CHECK(order_ok, "blocks are consumed in the same order they were produced (FIFO)");
+}
+
+static void test_scope_block_queue_carries_config_generation_tag() {
+    std::printf("--- FR-EMU-7/FR-EMU-10: ScopeBlockQueue tags each block with its "
+                "producer's config_generation ---\n");
+
+    // Regression test for a real bug found during manual verification: a
+    // mid-session sample-rate change (config_generation bump) stops the RT
+    // producer (device.stop() + mode-loop restart) but doesn't clear
+    // whatever old-rate blocks were already queued. Without a per-block
+    // generation tag the drain thread (audio_engine.cpp) would drain up to
+    // kSlotCount stale-rate blocks — and report their stale bin_hz — before
+    // any new-rate block ever arrived. The tag lets the drain thread
+    // recognize and discard that backlog instead of accumulating it.
+    TestScopeBlockQueue q;
+    std::vector<float> in(2, 1.f), out(2, 1.f);
+
+    CHECK(q.push(in.data(), out.data(), 1, 48000.f, /*config_generation=*/7),
+          "push tags the block with the given config_generation");
+
+    TestScopeBlockQueue::Slot popped;
+    CHECK(q.pop(popped), "pop succeeds");
+    CHECK(popped.config_generation == 7, "popped block's config_generation round-trips");
+
+    q.push(in.data(), out.data(), 1, 48000.f, /*config_generation=*/8);
+    TestScopeBlockQueue::Slot popped2;
+    CHECK(q.pop(popped2), "pop succeeds after a generation bump");
+    CHECK(popped2.config_generation == 8,
+          "a later push's config_generation is captured independently — "
+          "a consumer can compare it against the current live generation "
+          "to identify (and discard) stale backlog");
 }
 
 // ---- main ------------------------------------------------------------------
@@ -1439,6 +1618,11 @@ int main() {
     test_midi_usb_send_message_ignores_null_or_empty_buffer();
     test_midi_uart_send_message_enqueues_midi_tx();
     test_midi_uart_and_usb_share_the_same_midi_queue();
+    test_scope_block_queue_push_pop_roundtrip();
+    test_scope_block_queue_full_drops_and_counts();
+    test_scope_block_queue_truncates_oversize_frame_count();
+    test_scope_block_queue_fifo_order_across_slots();
+    test_scope_block_queue_carries_config_generation_tag();
 
     std::printf("\nResult: %s\n", failures == 0 ? "all passed" : "FAILURES");
     return failures == 0 ? 0 : 1;
