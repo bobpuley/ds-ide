@@ -190,3 +190,54 @@ describe('buildForEmulator active folder resolution (FR-UX-4)', () => {
     );
   });
 });
+
+// ── FR-EXT-10: ds-ide.effectSource must be honored by the build command ────
+
+describe('buildForEmulator honors ds-ide.effectSource (FR-EXT-10)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [
+      { uri: { fsPath: '/proj' } },
+    ];
+  });
+
+  afterEach(() => {
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = undefined;
+  });
+
+  it('builds the configured effectSource file when multiple heuristic-matched .cpp files are present', async () => {
+    vi.mocked(fs.promises.readdir).mockResolvedValue(['a.cpp', 'b.cpp'] as never);
+    vi.mocked(fs.promises.stat).mockRejectedValue(new Error('ENOENT'));
+    vi.mocked(fs.promises.access).mockResolvedValue(undefined);
+    vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+      get: vi.fn(() => 'custom.cpp'),
+    } as unknown as vscode.WorkspaceConfiguration);
+
+    const manager = { build: vi.fn().mockResolvedValue(undefined) } as unknown as EmulatorManager;
+    const ok = await buildForEmulator(manager, '/ext', undefined, makeChannel(), makeWorkspaceState());
+
+    expect(ok).toBe(true);
+    expect(manager.build).toHaveBeenCalledWith(
+      expect.objectContaining({ effectSrc: '/proj/custom.cpp' }),
+      expect.anything(),
+    );
+  });
+
+  it('builds the configured effectSource file when zero heuristic-matched .cpp files are present', async () => {
+    vi.mocked(fs.promises.readdir).mockResolvedValue([] as never);
+    vi.mocked(fs.promises.stat).mockRejectedValue(new Error('ENOENT'));
+    vi.mocked(fs.promises.access).mockResolvedValue(undefined);
+    vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+      get: vi.fn(() => 'custom.cpp'),
+    } as unknown as vscode.WorkspaceConfiguration);
+
+    const manager = { build: vi.fn().mockResolvedValue(undefined) } as unknown as EmulatorManager;
+    const ok = await buildForEmulator(manager, '/ext', undefined, makeChannel(), makeWorkspaceState());
+
+    expect(ok).toBe(true);
+    expect(manager.build).toHaveBeenCalledWith(
+      expect.objectContaining({ effectSrc: '/proj/custom.cpp' }),
+      expect.anything(),
+    );
+  });
+});

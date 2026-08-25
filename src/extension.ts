@@ -39,26 +39,14 @@ import { WiringViewProvider } from './sidebar/wiring-editor-panel';
 import { createEffectProject } from './commands/create-effect-project';
 import * as os from 'os';
 import { getString, getBoolean } from './ipc/narrow';
-import { findEffectSource as _findEffectSource, EffectSourceOutsideWorkspaceError } from './commands/find-effect-source';
+// FR-EXT-10: the resolution/error-handling wrapper is shared with the build
+// command (build.ts) rather than duplicated, so the ds-ide.effectSource
+// setting can't drift out of sync between call sites.
+import { resolveConfiguredEffectSource as findEffectSource } from './commands/find-effect-source';
 import { resolveActiveFolder, promptSelectActiveFolder } from './workspace/active-folder';
 
 const FIDELITY_CAVEAT =
   'Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget.';
-
-async function findEffectSource(folder: string): Promise<string | undefined> {
-  const configured = vscode.workspace.getConfiguration('ds-ide').get<string>('effectSource');
-  try {
-    return await _findEffectSource(folder, configured);
-  } catch (err) {
-    if (err instanceof EffectSourceOutsideWorkspaceError) {
-      void vscode.window.showErrorMessage(
-        `ds-ide: ds-ide.effectSource points outside the workspace folder — refusing to use '${err.resolvedPath}'. Fix the setting to point inside '${err.workspaceRoot}'.`,
-      );
-      return undefined;
-    }
-    throw err;
-  }
-}
 
 // Result of a marker-pair lookup: a unique, well-formed range; 'absent' when
 // neither begin nor end appears at all (a legacy file that has never been

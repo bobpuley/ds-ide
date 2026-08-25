@@ -60,7 +60,7 @@ A single ~640-line function in `extension.ts` builds every store, panel, provide
 
 ---
 
-### [ ] fix: honor ds-ide.effectSource in the build command (FR-EXT-10)
+### [x] fix: honor ds-ide.effectSource in the build command (FR-EXT-10)
 
 `build.ts` calls `findEffectSource(projectRoot)` with a single argument, so the configured-path branch is always skipped, even though the build failure message tells the user to set `ds-ide.effectSource`.
 

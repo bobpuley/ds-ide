@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import { EmulatorManager, BuildOptions } from '../emulator/manager';
 import { parseBuildLine, applyDiagnostics, ParsedDiagnostic } from '../diagnostics/build-diagnostics';
 import { detectNonPortableSymbol } from '../diagnostics/non-portable';
-import { findEffectSource } from './find-effect-source';
+import { resolveConfiguredEffectSource } from './find-effect-source';
 import { resolveActiveFolder } from '../workspace/active-folder';
 
 export async function buildForEmulator(
@@ -21,7 +21,11 @@ export async function buildForEmulator(
   }
   const projectRoot = folder.uri.fsPath;
 
-  const effectSrc = await findEffectSource(projectRoot);
+  // FR-EXT-10: shares the same ds-ide.effectSource resolution/error-handling
+  // wrapper extension.ts uses for the wiring-editor code paths, instead of
+  // calling findEffectSource() directly (which would silently skip the
+  // configured-path branch).
+  const effectSrc = await resolveConfiguredEffectSource(projectRoot);
   if (!effectSrc) {
     void vscode.window.showErrorMessage(
       'ds-ide: no effect .cpp found at project root, src/, or source/. ' +
