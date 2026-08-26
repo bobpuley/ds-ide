@@ -1,7 +1,7 @@
 # M58 — Debug-Attach Detach Noise Fix
 
-**Version:** 0.18.0
-**Status:** in progress
+**Version:** 0.17.6
+**Status:** released
 **Source:** human-driven test finding, M53 sprint-close (2026-08-25); triaged via `/doc-creator-driver:intake` (2026-08-26)
 
 ## Goal

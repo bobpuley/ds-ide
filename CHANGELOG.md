@@ -5,6 +5,15 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.17.6 — 2026-08-26
+
+**M58 — Debug-Attach Detach Noise Fix** *(FR-UX-7 — DoD green)*
+
+- **FR-UX-7** — Stopping a `daisy-debug` attach session surfaced a spurious `Exception has occurred: signal SIGSTOP` in the Debug Console — a benign artifact of lldb-dap's own PID-attach/detach mechanics (confirmed via code inspection and upstream LLDB issue history), not a real fault, but easily mistaken for a crash. `DaisyDebugAdapterFactory` now returns a filtering inline adapter (`FilteringLldbDapAdapter`) instead of a direct `DebugAdapterExecutable` passthrough — it proxies lldb-dap's stdio directly and drops only the one `stopped`/`exception` event referencing `SIGSTOP`, relaying every other DAP message (including real exceptions and breakpoint stops) unchanged.
+- **chore** — `package.json`'s `version` field is bumped to `0.17.6` to match this entry.
+
+---
+
 ## 0.17.5 — 2026-08-25
 
 **M57 — Extension API, Type & Maintainability Polish** *(FR-EXT-27 .. FR-EXT-39 — DoD green)*
