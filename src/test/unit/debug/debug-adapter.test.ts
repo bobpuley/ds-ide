@@ -1,12 +1,35 @@
 import { describe, it, expect, vi } from 'vitest';
+import { PassThrough } from 'stream';
+import { EventEmitter as NodeEventEmitter } from 'events';
 import {
   findLldbDap,
   DaisyDebugAdapterFactory,
   MuteOnBreakpointTracker,
   DaisyDebugAdapterTrackerFactory,
+  FilteringLldbDapAdapter,
+  isSpuriousDetachSigstop,
   type AudioModeCallback,
+  type DapChildProcess,
 } from '../../../debug/debug-adapter';
 import * as vscode from 'vscode';
+
+function frame(message: unknown): Buffer {
+  const json = JSON.stringify(message);
+  return Buffer.from(`Content-Length: ${Buffer.byteLength(json, 'utf8')}\r\n\r\n${json}`, 'utf8');
+}
+
+function makeFakeChild(): {
+  child: DapChildProcess;
+  stdout: PassThrough;
+  stdin: PassThrough;
+  kill: ReturnType<typeof vi.fn>;
+} {
+  const stdout = new PassThrough();
+  const stdin = new PassThrough();
+  const kill = vi.fn();
+  const child = Object.assign(new NodeEventEmitter(), { stdout, stdin, kill }) as unknown as DapChildProcess;
+  return { child, stdout, stdin, kill };
+}
 
 describe('findLldbDap()', () => {
   it('returns the xcrun result when lldb-dap is found via xcrun', async () => {
@@ -80,12 +103,12 @@ describe('findLldbDap()', () => {
 });
 
 describe('DaisyDebugAdapterFactory', () => {
-  it('returns a DebugAdapterExecutable when lldb-dap is found', async () => {
+  it('returns a DebugAdapterInlineImplementation wrapping a FilteringLldbDapAdapter when lldb-dap is found (FR-UX-7)', async () => {
     const factory = new DaisyDebugAdapterFactory(() => Promise.resolve('/usr/bin/lldb-dap'));
     const descriptor = await factory.createDebugAdapterDescriptor({} as vscode.DebugSession);
-    expect(descriptor).toBeInstanceOf(vscode.DebugAdapterExecutable);
-    const exe = descriptor as vscode.DebugAdapterExecutable;
-    expect(exe.command).toBe('/usr/bin/lldb-dap');
+    expect(descriptor).toBeInstanceOf(vscode.DebugAdapterInlineImplementation);
+    const inline = descriptor as unknown as { implementation: unknown };
+    expect(inline.implementation).toBeInstanceOf(FilteringLldbDapAdapter);
   });
 
   it('shows an error and returns undefined when lldb-dap is not found', async () => {
@@ -164,5 +187,148 @@ describe('DaisyDebugAdapterTrackerFactory', () => {
     const tracker = factory.createDebugAdapterTracker({} as vscode.DebugSession) as MuteOnBreakpointTracker;
     tracker.onDidSendMessage!({ type: 'event', event: 'stopped' });
     expect(cb).toHaveBeenCalledWith('simulated');
+  });
+});
+
+describe('isSpuriousDetachSigstop() (FR-UX-7)', () => {
+  it('matches a stopped/exception event whose description mentions SIGSTOP', () => {
+    expect(isSpuriousDetachSigstop({
+      type: 'event', event: 'stopped', seq: 1,
+      body: { reason: 'exception', description: 'signal SIGSTOP' },
+    })).toBe(true);
+  });
+
+  it('matches when SIGSTOP appears only in the text field', () => {
+    expect(isSpuriousDetachSigstop({
+      type: 'event', event: 'stopped', seq: 1,
+      body: { reason: 'exception', text: 'Exception has occurred: signal SIGSTOP' },
+    })).toBe(true);
+  });
+
+  it('does not match a real exception unrelated to SIGSTOP', () => {
+    expect(isSpuriousDetachSigstop({
+      type: 'event', event: 'stopped', seq: 1,
+      body: { reason: 'exception', description: 'EXC_BAD_ACCESS' },
+    })).toBe(false);
+  });
+
+  it('does not match stopped events with other reasons', () => {
+    for (const reason of ['breakpoint', 'step', 'pause', 'entry']) {
+      expect(isSpuriousDetachSigstop({
+        type: 'event', event: 'stopped', seq: 1,
+        body: { reason, description: 'signal SIGSTOP' },
+      })).toBe(false);
+    }
+  });
+
+  it('does not match non-stopped events', () => {
+    expect(isSpuriousDetachSigstop({ type: 'event', event: 'continued', seq: 1 })).toBe(false);
+  });
+
+  it('ignores null, non-object, and bodyless messages', () => {
+    expect(isSpuriousDetachSigstop(null)).toBe(false);
+    expect(isSpuriousDetachSigstop('string')).toBe(false);
+    expect(isSpuriousDetachSigstop({ type: 'event', event: 'stopped', seq: 1 })).toBe(false);
+  });
+});
+
+describe('FilteringLldbDapAdapter (FR-UX-7)', () => {
+  it('relays a normal event to the client unchanged', () => {
+    const { child, stdout } = makeFakeChild();
+    const adapter = new FilteringLldbDapAdapter('/fake/lldb-dap', () => child);
+    const received: unknown[] = [];
+    adapter.onDidSendMessage((m) => received.push(m));
+
+    const msg = { type: 'event', event: 'initialized', seq: 1 };
+    stdout.emit('data', frame(msg));
+
+    expect(received).toEqual([msg]);
+  });
+
+  it('drops the spurious detach-time SIGSTOP stopped/exception event', () => {
+    const { child, stdout } = makeFakeChild();
+    const adapter = new FilteringLldbDapAdapter('/fake/lldb-dap', () => child);
+    const received: unknown[] = [];
+    adapter.onDidSendMessage((m) => received.push(m));
+
+    stdout.emit('data', frame({
+      type: 'event', event: 'stopped', seq: 2,
+      body: { reason: 'exception', description: 'signal SIGSTOP' },
+    }));
+
+    expect(received).toEqual([]);
+  });
+
+  it('still relays a genuine stopped/exception event unrelated to SIGSTOP', () => {
+    const { child, stdout } = makeFakeChild();
+    const adapter = new FilteringLldbDapAdapter('/fake/lldb-dap', () => child);
+    const received: unknown[] = [];
+    adapter.onDidSendMessage((m) => received.push(m));
+
+    const msg = {
+      type: 'event', event: 'stopped', seq: 3,
+      body: { reason: 'exception', description: 'EXC_BAD_ACCESS' },
+    };
+    stdout.emit('data', frame(msg));
+
+    expect(received).toEqual([msg]);
+  });
+
+  it('handles a DAP message split across multiple stdout chunks', () => {
+    const { child, stdout } = makeFakeChild();
+    const adapter = new FilteringLldbDapAdapter('/fake/lldb-dap', () => child);
+    const received: unknown[] = [];
+    adapter.onDidSendMessage((m) => received.push(m));
+
+    const msg = { type: 'event', event: 'terminated', seq: 4 };
+    const full = frame(msg);
+    stdout.emit('data', full.subarray(0, 10));
+    stdout.emit('data', full.subarray(10));
+
+    expect(received).toEqual([msg]);
+  });
+
+  it('handles two DAP messages delivered in a single stdout chunk', () => {
+    const { child, stdout } = makeFakeChild();
+    const adapter = new FilteringLldbDapAdapter('/fake/lldb-dap', () => child);
+    const received: unknown[] = [];
+    adapter.onDidSendMessage((m) => received.push(m));
+
+    const msg1 = { type: 'event', event: 'continued', seq: 5 };
+    const msg2 = { type: 'event', event: 'exited', seq: 6 };
+    stdout.emit('data', Buffer.concat([frame(msg1), frame(msg2)]));
+
+    expect(received).toEqual([msg1, msg2]);
+  });
+
+  it('forwards client messages to the child stdin using DAP framing', () => {
+    const { child, stdin } = makeFakeChild();
+    const adapter = new FilteringLldbDapAdapter('/fake/lldb-dap', () => child);
+    const written: Buffer[] = [];
+    stdin.on('data', (chunk: Buffer) => written.push(chunk));
+
+    const request = { type: 'request', command: 'disconnect', seq: 7 };
+    adapter.handleMessage(request as unknown as vscode.DebugProtocolMessage);
+
+    const sent = Buffer.concat(written).toString('utf8');
+    expect(sent).toBe(
+      `Content-Length: ${Buffer.byteLength(JSON.stringify(request))}\r\n\r\n${JSON.stringify(request)}`,
+    );
+  });
+
+  it('kills the child process on dispose', () => {
+    const { child, kill } = makeFakeChild();
+    const adapter = new FilteringLldbDapAdapter('/fake/lldb-dap', () => child);
+    adapter.dispose();
+    expect(kill).toHaveBeenCalled();
+  });
+
+  it('shows an error message if the child process errors', () => {
+    const { child } = makeFakeChild();
+    new FilteringLldbDapAdapter('/fake/lldb-dap', () => child);
+    (child as unknown as NodeEventEmitter).emit('error', new Error('boom'));
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      expect.stringContaining('boom'),
+    );
   });
 });
