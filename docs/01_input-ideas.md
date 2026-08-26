@@ -54,4 +54,6 @@
 > **v18 complete** — archived to `docs/v18/` on 2026-08-25. Full v18 ideas archived in
 > [`docs/v18/01_input-ideas.md`](v18/01_input-ideas.md).
 
-*v19 planning not yet started. Use `/doc-creator-driver:intake` or `/doc-creator-driver:start` to begin.*
+## Bugs received
+
+- **`daisy-debug` attach session throws "Exception has occurred: signal SIGSTOP" on stop** (human-driven test finding, M53 sprint-close, 2026-08-25; carried over from v18 — untriaged there). Observed: stopping a `daisy-debug` attach session (lldb-dap, `src/debug/debug-adapter.ts`) surfaces `Exception has occurred: signal SIGSTOP` in the Debug Console. Confirmed present on `main` prior to the M53 branch — unrelated to the `resolveActiveFolder()`/`startDebugging()` folder-argument changes (FR-UX-6), so was out of scope there. Root cause (per `/doc-creator-driver:intake` code review of `src/commands/debug-deploy.ts`): the attach request (`request: 'attach', pid`, no `stopOnEntry`/signal config) relies entirely on lldb-dap defaults. Attaching via PID on macOS necessarily delivers `SIGSTOP` to halt the target for the debugger; lldb-dap has no dedicated DAP "signal" stop reason, so it reports the mandatory attach-time stop as a `stopped` event with `reason: "exception"`, which VS Code renders as "Exception has occurred: ...". This is very likely benign/expected lldb-dap behavior, not an actual fault — but it reads as a crash to a developer and needs a product decision on whether to suppress it client-side or document it as expected.
