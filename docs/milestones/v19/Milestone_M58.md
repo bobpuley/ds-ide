@@ -10,7 +10,7 @@ Stopping a `daisy-debug` attach session currently surfaces a spurious `Exception
 
 ## Sprint Tasks
 
-### [ ] fix: filter the spurious detach-time SIGSTOP exception out of the Debug Console (FR-UX-7)
+### [x] fix: filter the spurious detach-time SIGSTOP exception out of the Debug Console (FR-UX-7)
 
 `DaisyDebugAdapterFactory.createDebugAdapterDescriptor()` (`src/debug/debug-adapter.ts`) returns a direct `vscode.DebugAdapterExecutable`, so lldb-dap's stdio is wired straight to VS Code with nothing able to observe-and-drop a single message (`vscode.DebugAdapterTracker` is read-only). Replace it with an inline filtering adapter — following the `DsIdeTerminatingAdapter` pattern already used in `src/debug/run-config-provider.ts` — that spawns lldb-dap itself, relays all DAP traffic unchanged in both directions, and drops only the `stopped` event whose `reason` is `exception` and whose description/text references `SIGSTOP`.
 
