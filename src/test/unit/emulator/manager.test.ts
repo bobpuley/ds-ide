@@ -202,6 +202,57 @@ describe('EmulatorManager', () => {
     });
   });
 
+  describe('build() stale cache self-heal (FR-PKG-2)', () => {
+    let rmMock: ReturnType<typeof vi.fn>;
+
+    function buildManager(readFileImpl: (...args: unknown[]) => Promise<string>) {
+      rmMock = vi.fn().mockResolvedValue(undefined);
+      return new EmulatorManager({
+        spawn: spawnMock as unknown as typeof cp.spawn,
+        ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+        readFile: vi.fn(readFileImpl) as unknown as typeof fs.promises.readFile,
+        rm: rmMock as unknown as typeof fs.promises.rm,
+      });
+    }
+
+    it('wipes and reconfigures a build dir whose cache was configured against a different emulator source', async () => {
+      const mgr = buildManager(() =>
+        Promise.resolve('CMAKE_HOME_DIRECTORY:INTERNAL=/old/extensionPath/emulator\n'),
+      );
+      await mgr.build(
+        { projectRoot: '/proj', effectSrc: '/proj/e.cpp', emulatorSrc: '/new/extensionPath/emulator' },
+        () => undefined,
+      );
+      expect(rmMock).toHaveBeenCalledWith(
+        expect.stringContaining(path.join('.ds-ide', 'build')),
+        { recursive: true, force: true },
+      );
+      // configure still proceeds against the new source after the wipe
+      expect(spawnMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not wipe when the cached source already matches the current emulatorSrc', async () => {
+      const mgr = buildManager(() =>
+        Promise.resolve('CMAKE_HOME_DIRECTORY:INTERNAL=/ext/emulator\n'),
+      );
+      await mgr.build(
+        { projectRoot: '/proj', effectSrc: '/proj/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      expect(rmMock).not.toHaveBeenCalled();
+    });
+
+    it('does not wipe when no CMakeCache.txt exists yet (fresh build dir)', async () => {
+      const mgr = buildManager(() => Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' })));
+      await mgr.build(
+        { projectRoot: '/proj', effectSrc: '/proj/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      expect(rmMock).not.toHaveBeenCalled();
+    });
+  });
+
   describe('build() cancellation (FR-EXT-16)', () => {
     it('kills the cmake process and rejects when the token is cancelled', async () => {
       let killed = false;
