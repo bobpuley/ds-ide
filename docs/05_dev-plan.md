@@ -1,4 +1,4 @@
-# 05 — Development Plan (v19)
+# 05 — Development Plan (v20)
 
 > **v1 complete** — M0–M7 released (0.1.0–0.1.7), all ACs green.
 > Archived: [`docs/v1/`](v1/).
@@ -53,8 +53,11 @@
 >
 > **v18 complete** — M53–M57 released (0.17.1–0.17.5), all ACs green.
 > Archived: [`docs/v18/`](v18/).
+>
+> **v19 complete** — M58–M59 released (0.17.6–0.17.7), all ACs green.
+> Archived: [`docs/v19/`](v19/).
 
-*v19 milestones not yet planned.*
+*v20 milestones not yet planned.*
 
 ---
 
@@ -160,12 +163,11 @@ M53 Multi-Root Debug-Attach Fix · M54 Emulator RT & Concurrency Safety · M55 E
 M56 Extension Reliability & Validation Hardening · M57 Extension API, Type & Maintainability Polish.
 Full registry in [`docs/v18/05_dev-plan.md`](v18/05_dev-plan.md).
 
-### v19 (0.17.6–) — planned
+### v19 (0.17.6–0.17.7) — archived in `docs/v19/`
 
-| ID   | Name          | Status          | Version   | File                                              |
-|------|---------------|-----------------|-----------|----------------------------------------------------|
-| M58 | Debug-Attach Detach Noise Fix | **released**    | 0.17.6 | [Milestone_M58.md](milestones/v19/Milestone_M58.md) |
-| M59 | Stale Build-Cache Self-Heal | **released**    | 0.17.7 | [Milestone_M59.md](milestones/v19/Milestone_M59.md) |
+M58 Debug-Attach Detach Noise Fix · M59 Stale Build-Cache Self-Heal.
+Full registry in [`docs/v19/05_dev-plan.md`](v19/05_dev-plan.md).
 
-Source: M58 — human-driven test finding from M53 sprint-close (2026-08-25), triaged via `/doc-creator-driver:intake` (2026-08-26).
-Source: M59 — bug found while validating the M58 packaged `.vsix` install (2026-08-26), triaged via `/doc-creator-driver:intake`.
+### v20 — planned
+
+*(no milestones yet)*

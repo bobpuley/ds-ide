@@ -1,4 +1,4 @@
-# 01 — Input Ideas (v19)
+# 01 — Input Ideas (v20)
 
 > **v1 complete** — ds-ide 0.1.0–0.1.7 (M0–M7), all ACs green. Full v1 ideas archived in
 > [`docs/v1/01_input-ideas.md`](v1/01_input-ideas.md).
@@ -53,9 +53,8 @@
 >
 > **v18 complete** — archived to `docs/v18/` on 2026-08-25. Full v18 ideas archived in
 > [`docs/v18/01_input-ideas.md`](v18/01_input-ideas.md).
+>
+> **v19 complete** — archived to `docs/v19/` on 2026-08-27. Full v19 ideas archived in
+> [`docs/v19/01_input-ideas.md`](v19/01_input-ideas.md).
 
-## Bugs received
-
-- **Stale CMake build cache breaks builds when the `emulator/` source path changes** (bug report, 2026-08-26, found while validating the M58 packaged `.vsix` install). Observed: after packaging and installing `ds-ide` as a normal VS Code extension (`~/.vscode/extensions/daisy-ide.ds-ide-<version>/`), building a project previously built from the dev-host checkout fails with `CMake Error: The source "<extensionPath>/emulator/CMakeLists.txt" does not match the source "..." used to generate cache. Re-run cmake with a different source directory.` Expected: the build should succeed transparently regardless of which `extensionPath` (dev-host checkout vs. installed extension, or an upgraded extension version) produced a project's existing `.ds-ide/build/` cache. Root cause (confirmed via code read of `src/emulator/manager.ts` and `src/commands/build.ts`): the build dir is per-project (`<project>/.ds-ide/build`), persists indefinitely, and CMake hardcodes the `-S` source path (`<extensionPath>/emulator`) it was configured with into `CMakeCache.txt`'s `CMAKE_HOME_DIRECTORY`. `extensionPath` differs between dev-host and installed-extension contexts, and CMake refuses to reconfigure a cache against a different source path. No cache-invalidation/mismatch-detection logic exists anywhere in `build()` today. Reproduced across 12 test projects after installing the packaged `.vsix`; required manually deleting each `.ds-ide/build/` to unblock.
-
-- **`daisy-debug` attach session throws "Exception has occurred: signal SIGSTOP" on stop** (human-driven test finding, M53 sprint-close, 2026-08-25; carried over from v18 — untriaged there). Observed: stopping a `daisy-debug` attach session (lldb-dap, `src/debug/debug-adapter.ts`) surfaces `Exception has occurred: signal SIGSTOP` in the Debug Console. Confirmed present on `main` prior to the M53 branch — unrelated to the `resolveActiveFolder()`/`startDebugging()` folder-argument changes (FR-UX-6), so was out of scope there. Root cause (per `/doc-creator-driver:intake` code review of `src/commands/debug-deploy.ts`): the attach request (`request: 'attach', pid`, no `stopOnEntry`/signal config) relies entirely on lldb-dap defaults. Attaching via PID on macOS necessarily delivers `SIGSTOP` to halt the target for the debugger; lldb-dap has no dedicated DAP "signal" stop reason, so it reports the mandatory attach-time stop as a `stopped` event with `reason: "exception"`, which VS Code renders as "Exception has occurred: ...". This is very likely benign/expected lldb-dap behavior, not an actual fault — but it reads as a crash to a developer and needs a product decision on whether to suppress it client-side or document it as expected.
+*v20 planning not yet started. Use `/doc-creator-driver:intake` or `/doc-creator-driver:start` to begin.*
