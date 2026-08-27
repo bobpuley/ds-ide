@@ -101,6 +101,8 @@ export interface EmulatorManagerDeps {
   ipcClientFactory?: () => IpcClient;
   mkdir?: typeof fs.promises.mkdir;
   execFile?: typeof cp.execFile;
+  readFile?: typeof fs.promises.readFile;
+  rm?: typeof fs.promises.rm;
 }
 
 export class EmulatorManager extends EventEmitter {
@@ -122,6 +124,8 @@ export class EmulatorManager extends EventEmitter {
   private readonly ipcClientFactory: () => IpcClient;
   private readonly mkdir: typeof fs.promises.mkdir;
   private readonly execFile: typeof cp.execFile;
+  private readonly readFile: typeof fs.promises.readFile;
+  private readonly rm: typeof fs.promises.rm;
 
   constructor(deps: EmulatorManagerDeps = {}) {
     super();
@@ -129,10 +133,13 @@ export class EmulatorManager extends EventEmitter {
     this.ipcClientFactory = deps.ipcClientFactory ?? (() => new IpcClient());
     this.mkdir = deps.mkdir ?? fs.promises.mkdir;
     this.execFile = deps.execFile ?? cp.execFile;
+    this.readFile = deps.readFile ?? fs.promises.readFile;
+    this.rm = deps.rm ?? fs.promises.rm;
   }
 
   async build(opts: BuildOptions, onOutput: (line: string) => void, token?: CancellationToken): Promise<void> {
     this.buildDir = path.join(opts.projectRoot, '.ds-ide', 'build');
+    await this.healStaleCache(this.buildDir, opts.emulatorSrc);
     await this.mkdir(this.buildDir, { recursive: true });
 
     const configureArgs = [
@@ -523,6 +530,28 @@ export class EmulatorManager extends EventEmitter {
       this.socketPath = null;
     }
     if (this.buildDir) void clearPid(this.buildDir);
+  }
+
+  // FR-PKG-2: <project>/.ds-ide/build persists indefinitely while emulatorSrc
+  // (the extension's own emulator/ path passed to `cmake -S`) can change
+  // across a dev-host-checkout-vs-installed-extension switch or an extension
+  // version upgrade — a stale cache then makes CMake's configure step fail
+  // outright with "the source ... does not match the source ... used to
+  // generate cache". Detect that mismatch here and wipe the build dir so the
+  // subsequent mkdir+configure below reconfigures fresh, automatically and
+  // with no user confirmation (2026-08-26 decision).
+  private async healStaleCache(buildDir: string, emulatorSrc: string): Promise<void> {
+    let cacheText: string;
+    try {
+      cacheText = await this.readFile(path.join(buildDir, 'CMakeCache.txt'), 'utf8') as string;
+    } catch {
+      return; // no cache yet — nothing to heal
+    }
+    const match = cacheText.match(/^CMAKE_HOME_DIRECTORY:INTERNAL=(.*)$/m);
+    if (!match) return;
+    const cachedSrc = match[1]!.trim();
+    if (path.resolve(cachedSrc) === path.resolve(emulatorSrc)) return;
+    await this.rm(buildDir, { recursive: true, force: true });
   }
 
   private runProcess(
