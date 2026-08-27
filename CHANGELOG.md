@@ -5,6 +5,15 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.17.7 — 2026-08-27
+
+**M59 — Stale Build-Cache Self-Heal** *(FR-PKG-2 — DoD green)*
+
+- **FR-PKG-2** — Building a project after switching contexts (dev-host checkout to installed extension, or across an extension version upgrade touching `emulator/CMakeLists.txt`) failed outright with a raw CMake "source ... does not match the source ... used to generate cache" error, requiring the user to manually find and delete `<project>/.ds-ide/build/`. `EmulatorManager.build()` (`src/emulator/manager.ts`) now checks the existing `CMakeCache.txt`'s `CMAKE_HOME_DIRECTORY` against the current `emulatorSrc` before configuring, and automatically wipes and reconfigures the stale build directory on mismatch — no confirmation prompt, no manual cleanup. A cache that already matches the current source is left untouched, preserving incremental-build performance.
+- **chore** — `package.json`'s `version` field is bumped to `0.17.7` to match this entry.
+
+---
+
 ## 0.17.6 — 2026-08-26
 
 **M58 — Debug-Attach Detach Noise Fix** *(FR-UX-7 — DoD green)*
