@@ -18,3 +18,19 @@ AC: no other `stopped`/`exception` event — i.e. a real breakpoint hit, a real 
 AC: unit tests cover the filtering adapter directly (feed it a raw DAP message stream including the spurious event, assert it does not reach `onDidSendMessage`/the client, and assert a real `stopped`/`exception` event does reach the client unchanged).
 
 ---
+
+**FR-PKG-2 — Building a project self-heals a CMake cache configured against a stale `emulator/` source path**
+
+`EmulatorManager.build()` (`src/emulator/manager.ts`) always invokes `cmake -S <extensionPath>/emulator -B <project>/.ds-ide/build` without checking whether an existing `CMakeCache.txt` in that build directory was configured from a different `extensionPath/emulator` source. Since `<project>/.ds-ide/build` persists indefinitely per-project while `extensionPath` changes whenever the same project is built from a different context (dev-host checkout vs. installed extension, or across an extension version upgrade that touches `emulator/CMakeLists.txt`), CMake's configure step fails outright with "the source ... does not match the source ... used to generate cache," blocking the build with no recovery path other than manually deleting the build directory.
+
+Before invoking `cmake -S/-B` configure, `build()` must detect a source-path mismatch (read `CMakeCache.txt`'s `CMAKE_HOME_DIRECTORY`, if present, and compare it against the current `emulatorSrc`) and, on mismatch, delete the stale `<project>/.ds-ide/build` directory and reconfigure fresh — automatically, with no user confirmation required.
+
+AC: building a project whose `.ds-ide/build/CMakeCache.txt` was configured against a different `emulator/` source path succeeds without the user seeing any CMake source-mismatch error, and without any manual deletion of `.ds-ide/build/`.
+
+AC: the build dir is wiped and reconfigured automatically on mismatch — no confirmation prompt, per user decision (2026-08-26) to prioritize a transparent "clean rebuild" experience over an extra click.
+
+AC: a build whose cache already matches the current `emulatorSrc` is unaffected — no unnecessary wipe/reconfigure occurs, and existing incremental-build performance is preserved.
+
+AC: unit/integration test covers the mismatch-detection path directly (seed a `.ds-ide/build/CMakeCache.txt` with a different `CMAKE_HOME_DIRECTORY`, call `build()`, assert the stale directory is removed and CMake reconfigures against the current source without error).
+
+---

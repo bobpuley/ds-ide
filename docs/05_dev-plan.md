@@ -160,10 +160,12 @@ M53 Multi-Root Debug-Attach Fix · M54 Emulator RT & Concurrency Safety · M55 E
 M56 Extension Reliability & Validation Hardening · M57 Extension API, Type & Maintainability Polish.
 Full registry in [`docs/v18/05_dev-plan.md`](v18/05_dev-plan.md).
 
-### v19 (0.17.6) — planned
+### v19 (0.17.6–) — planned
 
 | ID   | Name          | Status          | Version   | File                                              |
 |------|---------------|-----------------|-----------|----------------------------------------------------|
-| M58 | Debug-Attach Detach Noise Fix | **released** | 0.17.6 | [Milestone_M58.md](milestones/v19/Milestone_M58.md) |
+| M58 | Debug-Attach Detach Noise Fix | **released**    | 0.17.6 | [Milestone_M58.md](milestones/v19/Milestone_M58.md) |
+| M59 | Stale Build-Cache Self-Heal | **released**    | 0.17.7 | [Milestone_M59.md](milestones/v19/Milestone_M59.md) |
 
-Source: human-driven test finding from M53 sprint-close (2026-08-25), triaged via `/doc-creator-driver:intake` (2026-08-26).
+Source: M58 — human-driven test finding from M53 sprint-close (2026-08-25), triaged via `/doc-creator-driver:intake` (2026-08-26).
+Source: M59 — bug found while validating the M58 packaged `.vsix` install (2026-08-26), triaged via `/doc-creator-driver:intake`.
