@@ -5,6 +5,15 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.18.0 — 2026-08-28
+
+**M60 — Wizard-Time DaisySP Provisioning** *(FR-PKG-3 — DoD green)*
+
+- **FR-PKG-3** — New effect projects failed to build until the user manually created a symlink to a DaisySP checkout elsewhere on disk, despite the Effect Project Wizard's own generated template already requiring `daisysp.h`. ds-ide now vendors a pinned DaisySP copy (tag `V1.0.0`) as a git submodule (`vendor/DaisySP/`), bundled into the packaged `.vsix` (`.vscodeignore`, `scripts/verify-vsix.sh`), and `createEffectProject()` copies — not symlinks — that vendored `Source/` into every new project at `DaisySP/Source`, so `Daisy IDE: Build for Emulator` just works with no manual setup. Only DaisySP's own MIT-licensed `Source/` and `LICENSE` are bundled; its separately-licensed (LGPL) `DaisySP-LGPL` companion submodule is never initialized or vendored. The generated `README.md` now notes that `DaisySP/` should be committed to the project's own version control so collaborators and CI build against the same pinned copy. `LICENSES.md` updated accordingly.
+- **chore** — `package.json`'s `version` field is bumped to `0.18.0` to match this entry.
+
+---
+
 ## 0.17.7 — 2026-08-27
 
 **M59 — Stale Build-Cache Self-Heal** *(FR-PKG-2 — DoD green)*
