@@ -31,11 +31,19 @@ Audience: developers.
 Load the current progress state from [Project Progress Report](./.claude/memory/project-progress.md)
 
 ## Daisy API knowledge — query graphify first
-The `daisy-seed-knowledge/` corpus (libDaisy docs + DaisyExamples) is indexed as a knowledge graph in `graphify-out/`. **Before answering any question about Daisy/libDaisy APIs, hardware behavior, or example patterns — and before reading raw files under `daisy-seed-knowledge/` — run `graphify query "<question>"` (Bash) first.** It returns a budgeted answer and does not load the graph into context.
+The `daisy-seed-knowledge/` corpus (libDaisy docs + DaisyExamples) is indexed as a knowledge graph in `graphify-out/`. **Before answering any question about Daisy/libDaisy APIs, hardware behavior, or example patterns — and before reading raw files under `daisy-seed-knowledge/` — run `graphify query "<question>" --graph graphify-out/graph.json` (Bash) first.** It returns a budgeted answer and does not load the graph into context.
 
 - **Use it when:** you need libDaisy API semantics (audio callback, ADC/`AdcChannelConfig`, GPIO, SAI/SPI, `System`), how an official example does something, or which header/class to use.
-- **Don't use it for:** this project's own source under `src/` (read those files directly — they are NOT in the graph), or general C++/CMake/VS Code questions.
+- **Don't use it for:** general C++/CMake/VS Code questions, or this project's own extension code (see below).
 - Refresh after the corpus changes: `graphify ./daisy-seed-knowledge/ --update`.
+
+## Extension code/docs knowledge — separate graph
+This project's own code (`src/`, `emulator/`) and current docs (`docs/00`–`07`, `docs/milestones/`) are indexed as an **independent** knowledge graph in `graphify-out-extension/graph.json`, kept separate from the Daisy corpus graph above because the extension evolves constantly while the vendored Daisy corpus is stable. **Before answering broad architecture/cross-file questions about this project's own code, run `graphify query "<question>" --graph graphify-out-extension/graph.json` first**, rather than grepping/reading files cold.
+
+- Built from three per-folder graphs merged together: `src/graphify-out/graph.json`, `docs/graphify-out/graph.json`, `emulator/graphify-out/graph.json` → merged via `graphify merge-graphs ... --out graphify-out-extension/graph.json`. All four are gitignored/regenerable.
+- `docs/` scope excludes `docs/v[n]/` and `docs/raw/` (archived doc snapshots, see Archived docs protocol below) via `docs/.graphifyignore`; `docs/milestones/v*/` IS included (it's the current milestone registry, not an archive).
+- To refresh after a code/doc change: re-run the per-folder extraction for the changed folder(s) (`graphify update <folder>` for AST-only code changes, or re-run semantic extraction via subagents for doc changes) and re-run `graphify merge-graphs` to rebuild `graphify-out-extension/graph.json`.
+- Community labels in this merged graph are placeholders (`Community N`) — the merge step re-clusters across all three sources and the per-folder human labels don't carry over. Use `graphify explain "<node>"` or read `GRAPH_REPORT.md`'s community node lists if a label isn't self-explanatory.
 
 ## Working rules
 1. Never make implicit assumptions — ask when something is ambiguous or incomplete

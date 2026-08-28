@@ -1,0 +1,26 @@
+# graphify scope for docs/: only current project knowledge, not doc-snapshot archives.
+# docs/v[n]/ and docs/raw/ are read-only full-doc snapshots per CLAUDE.md's archived
+# docs protocol. Leading slash anchors these to docs/ itself so docs/milestones/v*/
+# (the current milestone registry, not an archive) is left untouched.
+/v1/
+/v2/
+/v3/
+/v4/
+/v5/
+/v6/
+/v7/
+/v8/
+/v9/
+/v10/
+/v11/
+/v12/
+/v13/
+/v14/
+/v15/
+/v16/
+/v17/
+/v18/
+/v19/
+/raw/
+/mockups/
+/graphify-out/

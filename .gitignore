@@ -17,6 +17,14 @@ src/devices/pin-table.gen.ts
 # graphify: fully regenerable — run `graphify ./daisy-seed-knowledge/ --update`
 graphify-out/
 
+# graphify: extension-only graph (src/ + docs/ + emulator/), separate from the
+# daisy-seed-knowledge graph above because the extension evolves while the
+# vendored Daisy corpus is stable. Merged from the three per-folder graphs.
+src/graphify-out/
+docs/graphify-out/
+emulator/graphify-out/
+graphify-out-extension/
+
 # local Claude session state, skills, memory
 .claude/
 
