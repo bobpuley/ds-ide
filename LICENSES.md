@@ -27,7 +27,14 @@ libDaisy itself is compiled unchanged from the user's project submodule — not 
 **Copyright:** Electrosmith  
 **Source:** https://github.com/electro-smith/DaisySP
 
-DaisySP is compiled unchanged from the user's project submodule — not bundled in the extension.
+ds-ide bundles a pinned copy of DaisySP's `Source/` directory (tag `V1.0.0`, vendored as a git submodule at
+`vendor/DaisySP/`), unmodified — the `LICENSE` file is shipped alongside it in the packaged extension.
+`Daisy IDE: New Effect Project` copies this bundled copy into new projects at creation time (`FR-PKG-3`);
+an imported project with its own DaisySP (e.g. a hardware-build git submodule) is unaffected — ds-ide never
+overwrites a project-local copy.
+
+**Not bundled:** `DaisySP-LGPL`, a separately-licensed (LGPL) companion library distributed as DaisySP's own
+nested git submodule. ds-ide never initializes or vendors this submodule.
 
 ---
 

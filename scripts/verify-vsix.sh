@@ -57,6 +57,11 @@ check() {
 check "emulator/CMakeLists.txt"
 check "dist/extension.js"
 
+# FR-PKG-3: the vendored DaisySP core (Source/) and its MIT LICENSE must be
+# present — createEffectProject() copies Source/ into every new project.
+check "vendor/DaisySP/Source/daisysp.h"
+check "vendor/DaisySP/LICENSE"
+
 # FR-DEV-18: the host MIDI bridge's native addon must actually be present and
 # loadable from the packaged layout — the class of bug this whole script
 # exists to catch (invisible when testing only via dev-mode Extension Host,
@@ -93,6 +98,16 @@ if [[ -e "${UNZIP_DIR}/extension/node_modules/midi/test" || -e "${UNZIP_DIR}/ext
   fail=1
 else
   echo "  PASS  node_modules/midi's test/vendor bulk is excluded"
+fi
+
+# Bulk exclusion: DaisySP's tests/docs/build-tooling and its DaisySP-LGPL/
+# nested submodule (separately licensed, never initialized) must NOT be
+# packaged (only Source/ and LICENSE above are needed).
+if [[ -e "${UNZIP_DIR}/extension/vendor/DaisySP/tests" || -e "${UNZIP_DIR}/extension/vendor/DaisySP/DaisySP-LGPL" ]]; then
+  echo "  FAIL  vendor/DaisySP/tests or DaisySP-LGPL was packaged (should be excluded)"
+  fail=1
+else
+  echo "  PASS  vendor/DaisySP's test/doc/LGPL bulk is excluded"
 fi
 
 # Defense-in-depth: build output directories must NOT be packaged.

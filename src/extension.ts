@@ -804,7 +804,7 @@ function registerCommands(deps: CommandDeps): vscode.Disposable[] {
         deployCoordinator.performDeploy({ build: false, debug: true }, token),
       ),
     ),
-    vscode.commands.registerCommand('ds-ide.createNewEffectProject', createEffectProject),
+    vscode.commands.registerCommand('ds-ide.createNewEffectProject', () => createEffectProject(extensionPath)),
     vscode.commands.registerCommand('ds-ide.selectActiveFolder', async () => {
       const chosen = await promptSelectActiveFolder(workspaceState);
       if (chosen) void initViewsFromProject();

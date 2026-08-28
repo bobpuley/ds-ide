@@ -10,7 +10,7 @@ New effect projects created via the Effect Project Wizard currently fail to buil
 
 ## Sprint Tasks
 
-### [ ] chore: vendor DaisySP as a pinned git submodule bundled into the packaged extension (FR-PKG-3)
+### [x] chore: vendor DaisySP as a pinned git submodule bundled into the packaged extension (FR-PKG-3)
 
 ds-ide's own repo currently has no local copy of DaisySP; `LICENSES.md` states it is "not bundled in the extension." Add DaisySP as a git submodule (`vendor/DaisySP/`) pinned to a specific upstream tag/commit, and update the extension's packaging configuration (`.vscodeignore`) so `vendor/DaisySP/Source` ships inside the `.vsix` alongside `emulator/`.
 
@@ -23,7 +23,7 @@ ds-ide's own repo currently has no local copy of DaisySP; `LICENSES.md` states i
 
 ---
 
-### [ ] feat: Effect Project Wizard copies vendored DaisySP into new projects (FR-PKG-3)
+### [x] feat: Effect Project Wizard copies vendored DaisySP into new projects (FR-PKG-3)
 
 `createEffectProject()` (`src/commands/create-effect-project.ts`) writes an effect template that includes `daisysp.h` but provisions no DaisySP dependency, leaving every new project unbuildable until the user manually symlinks one in. After the existing template-file writes, copy the extension's vendored `vendor/DaisySP/Source` (resolved from `extensionPath`) into the new project at `<project>/DaisySP/Source`, using `vscode.workspace.fs.copy(..., { recursive: true })` — a real file copy, not a symlink into `extensionPath`, since `extensionPath` is not stable across ds-ide upgrades/reinstalls (the same class of bug `FR-PKG-2`/M59 fixed for the CMake build cache). Update the generated `README.md` to note that DaisySP was vendored into the project and should be committed to the project's own version control.
 

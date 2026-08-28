@@ -13,6 +13,9 @@ const execCmd        = vscode.commands.executeCommand as ReturnType<typeof vi.fn
 const fsWriteFile    = vscode.workspace.fs.writeFile as ReturnType<typeof vi.fn>;
 const fsCreateDir    = vscode.workspace.fs.createDirectory as ReturnType<typeof vi.fn>;
 const fsStat         = vscode.workspace.fs.stat as ReturnType<typeof vi.fn>;
+const fsCopy         = vscode.workspace.fs.copy as ReturnType<typeof vi.fn>;
+
+const EXTENSION_PATH = '/ext';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -32,6 +35,8 @@ beforeEach(() => {
   fsWriteFile.mockResolvedValue(undefined);
   fsCreateDir.mockReset();
   fsCreateDir.mockResolvedValue(undefined);
+  fsCopy.mockReset();
+  fsCopy.mockResolvedValue(undefined);
   execCmd.mockReset();
   execCmd.mockResolvedValue(undefined);
 });
@@ -46,7 +51,7 @@ function setupHappyPath() {
 describe('createEffectProject', () => {
   it('scaffolds four files and opens folder on happy path', async () => {
     setupHappyPath();
-    await createEffectProject();
+    await createEffectProject(EXTENSION_PATH);
 
     expect(fsCreateDir).toHaveBeenCalledTimes(1);
     expect(fsWriteFile).toHaveBeenCalledTimes(4);
@@ -66,7 +71,7 @@ describe('createEffectProject', () => {
 
   it('cpp file contains controls block and AudioCallback', async () => {
     setupHappyPath();
-    await createEffectProject();
+    await createEffectProject(EXTENSION_PATH);
 
     const calls = fsWriteFile.mock.calls as [{ fsPath: string }, Uint8Array][];
     const cppCall = calls.find(c => c[0].fsPath.endsWith('.cpp'));
@@ -79,7 +84,7 @@ describe('createEffectProject', () => {
 
   it('cmake file contains project name', async () => {
     setupHappyPath();
-    await createEffectProject();
+    await createEffectProject(EXTENSION_PATH);
 
     const calls = fsWriteFile.mock.calls as [{ fsPath: string }, Uint8Array][];
     const cmakeCall = calls.find(c => c[0].fsPath.endsWith('CMakeLists.txt'));
@@ -90,7 +95,7 @@ describe('createEffectProject', () => {
 
   it('controllers.yaml uses the `controllers:` key the parser reads (FR-QA-EXT-4)', async () => {
     setupHappyPath();
-    await createEffectProject();
+    await createEffectProject(EXTENSION_PATH);
 
     const calls = fsWriteFile.mock.calls as [{ fsPath: string }, Uint8Array][];
     const yamlCall = calls.find(c => c[0].fsPath.endsWith('controllers.yaml'));
@@ -105,7 +110,7 @@ describe('createEffectProject', () => {
 
   it('aborts silently when user cancels name input', async () => {
     showInputBox.mockResolvedValue(undefined);
-    await createEffectProject();
+    await createEffectProject(EXTENSION_PATH);
     expect(fsWriteFile).not.toHaveBeenCalled();
     expect(execCmd).not.toHaveBeenCalled();
   });
@@ -113,7 +118,7 @@ describe('createEffectProject', () => {
   it('aborts silently when user cancels folder picker', async () => {
     showInputBox.mockResolvedValue('myEffect');
     showOpenDialog.mockResolvedValue(undefined);
-    await createEffectProject();
+    await createEffectProject(EXTENSION_PATH);
     expect(fsWriteFile).not.toHaveBeenCalled();
   });
 
@@ -122,7 +127,7 @@ describe('createEffectProject', () => {
     showOpenDialog.mockResolvedValue([DEST_URI]);
     fsStat.mockResolvedValue({ type: 2 });
 
-    await createEffectProject();
+    await createEffectProject(EXTENSION_PATH);
 
     expect(showErrorMsg).toHaveBeenCalledWith(expect.stringContaining('already exists'));
     expect(fsWriteFile).not.toHaveBeenCalled();
@@ -133,7 +138,7 @@ describe('createEffectProject', () => {
     showOpenDialog.mockResolvedValue([DEST_URI]);
     fsStat.mockRejectedValue(Object.assign(new Error('permission denied'), { code: 'NoPermissions' }));
 
-    await createEffectProject();
+    await createEffectProject(EXTENSION_PATH);
 
     expect(showErrorMsg).toHaveBeenCalledWith(expect.stringContaining('could not check destination folder'));
     expect(fsCreateDir).not.toHaveBeenCalled();
@@ -145,7 +150,7 @@ describe('createEffectProject', () => {
     showOpenDialog.mockResolvedValue([DEST_URI]);
     fsStat.mockRejectedValue(Object.assign(new Error('no such file'), { code: 'ENOENT' }));
 
-    await createEffectProject();
+    await createEffectProject(EXTENSION_PATH);
 
     expect(fsCreateDir).toHaveBeenCalledTimes(1);
     expect(showErrorMsg).not.toHaveBeenCalled();
@@ -155,9 +160,43 @@ describe('createEffectProject', () => {
     setupHappyPath();
     execCmd.mockRejectedValue(new Error('window busy'));
 
-    await expect(createEffectProject()).resolves.toBeUndefined();
+    await expect(createEffectProject(EXTENSION_PATH)).resolves.toBeUndefined();
 
     expect(showErrorMsg).toHaveBeenCalledWith(expect.stringContaining('failed to open the new project folder'));
+  });
+
+  it('copies the vendored DaisySP into the new project via a real copy, not a symlink (FR-PKG-3)', async () => {
+    setupHappyPath();
+    await createEffectProject(EXTENSION_PATH);
+
+    expect(fsCopy).toHaveBeenCalledTimes(1);
+    const [source, target] = fsCopy.mock.calls[0] as [{ fsPath: string }, { fsPath: string }];
+    // Resolved from extensionPath (not a symlink into it) — vscode.workspace.fs
+    // has no symlink API, so a real fs.copy call is the only way this happens.
+    expect(source.fsPath).toBe('/ext/vendor/DaisySP/Source');
+    expect(target.fsPath).toBe('/dest/myEffect/DaisySP/Source');
+  });
+
+  it('README notes that the vendored DaisySP should be committed to version control (FR-PKG-3)', async () => {
+    setupHappyPath();
+    await createEffectProject(EXTENSION_PATH);
+
+    const calls = fsWriteFile.mock.calls as [{ fsPath: string }, Uint8Array][];
+    const readmeCall = calls.find(c => c[0].fsPath.endsWith('README.md'));
+    expect(readmeCall).toBeDefined();
+    const content = Buffer.from(readmeCall![1]).toString('utf8');
+    expect(content).toMatch(/DaisySP/);
+    expect(content).toMatch(/commit/i);
+  });
+
+  it('shows error and does not open the folder when the DaisySP copy fails', async () => {
+    setupHappyPath();
+    fsCopy.mockRejectedValue(new Error('disk full'));
+
+    await createEffectProject(EXTENSION_PATH);
+
+    expect(showErrorMsg).toHaveBeenCalledWith(expect.stringContaining('failed to scaffold'));
+    expect(execCmd).not.toHaveBeenCalled();
   });
 
   it('shows error when file write fails', async () => {
@@ -165,7 +204,7 @@ describe('createEffectProject', () => {
     showOpenDialog.mockResolvedValue([DEST_URI]);
     fsWriteFile.mockRejectedValue(new Error('disk full'));
 
-    await createEffectProject();
+    await createEffectProject(EXTENSION_PATH);
 
     expect(showErrorMsg).toHaveBeenCalledWith(expect.stringContaining('failed to scaffold'));
     expect(execCmd).not.toHaveBeenCalled();
@@ -174,7 +213,7 @@ describe('createEffectProject', () => {
   describe('validateInput (inspected via showInputBox call options)', () => {
     async function getValidate(): Promise<(v: string) => string | undefined> {
       showInputBox.mockResolvedValue(undefined);
-      await createEffectProject();
+      await createEffectProject(EXTENSION_PATH);
       const opts = showInputBox.mock.calls[0]![0] as { validateInput: (v: string) => string | undefined };
       return opts.validateInput;
     }
