@@ -172,6 +172,6 @@ Full registry in [`docs/v19/05_dev-plan.md`](v19/05_dev-plan.md).
 
 | ID  | Name          | Status          | Version | File                                              |
 |-----|---------------|-----------------|---------|----------------------------------------------------|
-| M60 | Wizard-Time DaisySP Provisioning | **in progress** | 0.18.0  | [Milestone_M60.md](milestones/v20/Milestone_M60.md) |
+| M60 | Wizard-Time DaisySP Provisioning | **released**    | 0.18.0  | [Milestone_M60.md](milestones/v20/Milestone_M60.md) |
 
 Source: M60 — feature idea evaluated via design discussion (2026-08-27), intake via `/doc-creator-driver:intake`.

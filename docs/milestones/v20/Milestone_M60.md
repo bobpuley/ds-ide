@@ -1,7 +1,7 @@
 # M60 — Wizard-Time DaisySP Provisioning
 
 **Version:** 0.18.0
-**Status:** planned
+**Status:** released
 **Source:** feature idea evaluated via design discussion (2026-08-27), intake via `/doc-creator-driver:intake`
 
 ## Goal
