@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 
 function validateName(name: string): string | undefined {
   if (!name || name.trim().length === 0) return 'Name cannot be empty';
@@ -58,6 +59,12 @@ A ds-ide effect project.
 1. Open this folder in VS Code with the Daisy Seed IDE extension installed.
 2. Open the Wiring Editor (\`ds-ide: Open Wiring Editor\`) to add controls.
 3. Build and run: use \`Daisy IDE: Build & Deploy to Emulator\` or press F5 with a \`ds-ide\` launch configuration.
+
+## DaisySP
+
+This project includes a bundled copy of [DaisySP](https://github.com/electro-smith/DaisySP) at \`DaisySP/\`,
+vendored by the Effect Project Wizard so the effect builds with no manual setup. Commit \`DaisySP/\` to this
+project's version control so collaborators (and CI) build against the exact same copy.
 `;
 }
 
@@ -65,7 +72,7 @@ function enc(s: string): Uint8Array {
   return Buffer.from(s, 'utf8');
 }
 
-export async function createEffectProject(): Promise<void> {
+export async function createEffectProject(extensionPath: string): Promise<void> {
   const rawName = await vscode.window.showInputBox({
     prompt: 'Effect project name',
     validateInput: validateName,
@@ -120,6 +127,14 @@ export async function createEffectProject(): Promise<void> {
     await vscode.workspace.fs.writeFile(
       vscode.Uri.joinPath(projectUri, 'README.md'),
       enc(readmeTemplate(name)),
+    );
+    // FR-PKG-3: a real copy, not a symlink into extensionPath — extensionPath
+    // is not stable across ds-ide upgrades/reinstalls (the same class of bug
+    // FR-PKG-2/M59 fixed for the CMake build cache), so a symlink would break
+    // or silently repoint after an extension update.
+    await vscode.workspace.fs.copy(
+      vscode.Uri.file(path.join(extensionPath, 'vendor', 'DaisySP', 'Source')),
+      vscode.Uri.joinPath(projectUri, 'DaisySP', 'Source'),
     );
   } catch (err) {
     void vscode.window.showErrorMessage(`ds-ide: failed to scaffold project: ${String(err)}`);

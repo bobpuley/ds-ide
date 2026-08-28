@@ -113,6 +113,7 @@ const workspace = {
     writeFile: vi.fn(async () => undefined),
     createDirectory: vi.fn(async () => undefined),
     stat: vi.fn(async () => { throw Object.assign(new Error('ENOENT'), { code: 'FileNotFound' }); }),
+    copy: vi.fn(async () => undefined),
   },
 };
 
