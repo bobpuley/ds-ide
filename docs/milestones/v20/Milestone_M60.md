@@ -10,7 +10,7 @@ New effect projects created via the Effect Project Wizard currently fail to buil
 
 ## Sprint Tasks
 
-### [ ] chore: vendor DaisySP as a pinned git submodule bundled into the packaged extension (FR-PKG-3)
+### [x] chore: vendor DaisySP as a pinned git submodule bundled into the packaged extension (FR-PKG-3)
 
 ds-ide's own repo currently has no local copy of DaisySP; `LICENSES.md` states it is "not bundled in the extension." Add DaisySP as a git submodule (`vendor/DaisySP/`) pinned to a specific upstream tag/commit, and update the extension's packaging configuration (`.vscodeignore`) so `vendor/DaisySP/Source` ships inside the `.vsix` alongside `emulator/`.
 

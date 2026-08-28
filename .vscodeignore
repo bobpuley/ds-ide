@@ -29,6 +29,14 @@ graphify-out/**
 # emulator/** sources are packaged — buildForEmulator needs them at runtime
 # (FR-PKG-1); only build output directories are excluded.
 emulator/**/build/**
+# DaisySP (FR-PKG-3): only Source/ (what createEffectProject() copies into new
+# projects) and LICENSE (MIT attribution) are packaged — the submodule's
+# tests/docs/build-tooling/IDE-project files, and its DaisySP-LGPL/ nested
+# submodule (a separately-licensed, never-initialized empty placeholder), are
+# unnecessary bulk.
+vendor/DaisySP/**
+!vendor/DaisySP/Source/**
+!vendor/DaisySP/LICENSE
 tests/**
 # vsce does not read .gitignore in this project's packaging setup — these
 # gitignored, non-shipping directories must be listed explicitly or they end
