@@ -57,7 +57,7 @@
 > **v19 complete** — M58–M59 released (0.17.6–0.17.7), all ACs green.
 > Archived: [`docs/v19/`](v19/).
 
-*v20 milestones not yet planned.*
+*v20 in planning — M60 (Wizard-Time DaisySP Provisioning) queued.*
 
 ---
 
@@ -168,6 +168,10 @@ Full registry in [`docs/v18/05_dev-plan.md`](v18/05_dev-plan.md).
 M58 Debug-Attach Detach Noise Fix · M59 Stale Build-Cache Self-Heal.
 Full registry in [`docs/v19/05_dev-plan.md`](v19/05_dev-plan.md).
 
-### v20 — planned
+### v20 (0.18.0–) — planned
 
-*(no milestones yet)*
+| ID  | Name          | Status          | Version | File                                              |
+|-----|---------------|-----------------|---------|----------------------------------------------------|
+| M60 | Wizard-Time DaisySP Provisioning | **in progress** | 0.18.0  | [Milestone_M60.md](milestones/v20/Milestone_M60.md) |
+
+Source: M60 — feature idea evaluated via design discussion (2026-08-27), intake via `/doc-creator-driver:intake`.
