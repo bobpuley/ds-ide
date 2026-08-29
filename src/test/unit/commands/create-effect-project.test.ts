@@ -15,10 +15,15 @@ const fsCreateDir    = vscode.workspace.fs.createDirectory as ReturnType<typeof 
 const fsStat         = vscode.workspace.fs.stat as ReturnType<typeof vi.fn>;
 const fsCopy         = vscode.workspace.fs.copy as ReturnType<typeof vi.fn>;
 
+const showQuickPick = vscode.window.showQuickPick as ReturnType<typeof vi.fn>;
+
 const EXTENSION_PATH = '/ext';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  showQuickPick.mockImplementation(async (items: { variant: string }[]) =>
+    items.find((i) => i.variant === 'base'),
+  );
   // Restore the default joinPath behaviour (clearAllMocks doesn't touch implementations,
   // but some tests call mockReturnValue which queues a one-shot value — reset those).
   (vscode.Uri.joinPath as ReturnType<typeof vi.fn>).mockReset();
@@ -49,18 +54,19 @@ function setupHappyPath() {
 }
 
 describe('createEffectProject', () => {
-  it('scaffolds four files and opens folder on happy path', async () => {
+  it('scaffolds five files and opens folder on happy path', async () => {
     setupHappyPath();
     await createEffectProject(EXTENSION_PATH);
 
-    expect(fsCreateDir).toHaveBeenCalledTimes(1);
-    expect(fsWriteFile).toHaveBeenCalledTimes(4);
+    expect(fsCreateDir).toHaveBeenCalledTimes(2);
+    expect(fsWriteFile).toHaveBeenCalledTimes(5);
 
     const paths = (fsWriteFile.mock.calls as [{ fsPath: string }, unknown][]).map(c => c[0].fsPath);
     expect(paths.some(p => p.endsWith('.cpp'))).toBe(true);
     expect(paths.some(p => p.endsWith('CMakeLists.txt'))).toBe(true);
     expect(paths.some(p => p.endsWith('controllers.yaml'))).toBe(true);
     expect(paths.some(p => p.endsWith('README.md'))).toBe(true);
+    expect(paths.some(p => p.endsWith('.vscode/settings.json'))).toBe(true);
 
     expect(execCmd).toHaveBeenCalledWith(
       'vscode.openFolder',
@@ -152,7 +158,7 @@ describe('createEffectProject', () => {
 
     await createEffectProject(EXTENSION_PATH);
 
-    expect(fsCreateDir).toHaveBeenCalledTimes(1);
+    expect(fsCreateDir).toHaveBeenCalledTimes(2);
     expect(showErrorMsg).not.toHaveBeenCalled();
   });
 
@@ -187,6 +193,35 @@ describe('createEffectProject', () => {
     const content = Buffer.from(readmeCall![1]).toString('utf8');
     expect(content).toMatch(/DaisySP/);
     expect(content).toMatch(/commit/i);
+  });
+
+  it('prompts for hardware variant and writes it into .vscode/settings.json (FR-HW-5d)', async () => {
+    setupHappyPath();
+    showQuickPick.mockImplementation(async (items: { variant: string }[]) =>
+      items.find((i) => i.variant === '65mb-sdram'),
+    );
+
+    await createEffectProject(EXTENSION_PATH);
+
+    expect(showQuickPick).toHaveBeenCalledOnce();
+    const calls = fsWriteFile.mock.calls as [{ fsPath: string }, Uint8Array][];
+    const settingsCall = calls.find(c => c[0].fsPath.endsWith('.vscode/settings.json'));
+    expect(settingsCall).toBeDefined();
+    const content = JSON.parse(Buffer.from(settingsCall![1]).toString('utf8')) as Record<string, unknown>;
+    expect(content['ds-ide.hardwareVariant']).toBe('65mb-sdram');
+  });
+
+  it('defaults hardwareVariant to base when the prompt is dismissed (FR-HW-5d)', async () => {
+    setupHappyPath();
+    showQuickPick.mockResolvedValue(undefined);
+
+    await createEffectProject(EXTENSION_PATH);
+
+    const calls = fsWriteFile.mock.calls as [{ fsPath: string }, Uint8Array][];
+    const settingsCall = calls.find(c => c[0].fsPath.endsWith('.vscode/settings.json'));
+    expect(settingsCall).toBeDefined();
+    const content = JSON.parse(Buffer.from(settingsCall![1]).toString('utf8')) as Record<string, unknown>;
+    expect(content['ds-ide.hardwareVariant']).toBe('base');
   });
 
   it('shows error and does not open the folder when the DaisySP copy fails', async () => {

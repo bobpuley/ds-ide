@@ -53,7 +53,7 @@ Add a new resource-scoped `ds-ide.hardwareVariant` setting (`'base' | '65mb-sdra
 
 ---
 
-### [ ] feat: prompt for hardware variant at wizard time and first hardware build (FR-HW-5d)
+### [x] feat: prompt for hardware variant at wizard time and first hardware build (FR-HW-5d)
 
 `createEffectProject()` gains a hardware-variant prompt (same question/options as the settings enum) after the existing template-file writes, persisting the answer into the newly-created project's `.vscode/settings.json`. `buildForHardware()` gains an unset-check at entry: if `ds-ide.hardwareVariant` has no value for the project folder, prompt once before proceeding and persist the answer via `vscode.ConfigurationTarget.WorkspaceFolder`; if the user dismisses the prompt, use `'base'` for that build only without persisting, so the prompt reappears on the next build.
 

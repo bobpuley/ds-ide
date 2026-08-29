@@ -277,6 +277,64 @@ describe('buildForHardware()', () => {
     );
   });
 
+  it('prompts for hardware variant when unset, then persists the answer (FR-HW-5d)', async () => {
+    const update = vi.fn(async () => undefined);
+    (vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>).mockReturnValue({
+      get: vi.fn(() => undefined),
+      inspect: vi.fn(() => ({
+        key: 'ds-ide.hardwareVariant', defaultValue: 'base',
+        globalValue: undefined, workspaceValue: undefined, workspaceFolderValue: undefined,
+      })),
+      update,
+    });
+    (vscode.window.showQuickPick as ReturnType<typeof vi.fn>).mockImplementation(
+      async (items: { variant: string }[]) => items.find((i) => i.variant === '65mb-sdram'),
+    );
+
+    const spawn = makeSpawn(0);
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+
+    expect(vscode.window.showQuickPick).toHaveBeenCalledOnce();
+    expect(update).toHaveBeenCalledWith('hardwareVariant', '65mb-sdram', vscode.ConfigurationTarget.WorkspaceFolder);
+  });
+
+  it('does not prompt when hardwareVariant is already set (FR-HW-5d)', async () => {
+    (vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>).mockReturnValue({
+      get: vi.fn((key: string) => key === 'hardwareVariant' ? 'base' : undefined),
+      inspect: vi.fn(() => ({
+        key: 'ds-ide.hardwareVariant', defaultValue: 'base',
+        globalValue: undefined, workspaceValue: undefined, workspaceFolderValue: 'base',
+      })),
+      update: vi.fn(async () => undefined),
+    });
+
+    const spawn = makeSpawn(0);
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+
+    expect(vscode.window.showQuickPick).not.toHaveBeenCalled();
+  });
+
+  it('defaults to base for this build only when the prompt is dismissed, without persisting (FR-HW-5d)', async () => {
+    const update = vi.fn(async () => undefined);
+    (vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>).mockReturnValue({
+      get: vi.fn(() => undefined),
+      inspect: vi.fn(() => ({
+        key: 'ds-ide.hardwareVariant', defaultValue: 'base',
+        globalValue: undefined, workspaceValue: undefined, workspaceFolderValue: undefined,
+      })),
+      update,
+    });
+    (vscode.window.showQuickPick as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+
+    const spawn = makeSpawn(0);
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+
+    expect(update).not.toHaveBeenCalled();
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining('hardware build succeeded'),
+    );
+  });
+
   it('still parses a diagnostic line split across two stderr chunks (FR-EXT-12)', async () => {
     const diagnosticLine =
       "/project/effect.cpp:10:5: error: use of undeclared identifier 'foo'";

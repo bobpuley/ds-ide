@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { promptHardwareVariant } from '../hardware/hardware-variant-prompt';
 
 function validateName(name: string): string | undefined {
   if (!name || name.trim().length === 0) return 'Name cannot be empty';
@@ -135,6 +136,16 @@ export async function createEffectProject(extensionPath: string): Promise<void> 
     await vscode.workspace.fs.copy(
       vscode.Uri.file(path.join(extensionPath, 'vendor', 'DaisySP', 'Source')),
       vscode.Uri.joinPath(projectUri, 'DaisySP', 'Source'),
+    );
+    // FR-HW-5d: asked at project-creation time (when the user is actually
+    // thinking about their hardware) but stored as the same
+    // ds-ide.hardwareVariant setting buildForHardware() reads, so it's
+    // editable later via Settings UI like any other project setting.
+    const hardwareVariant = (await promptHardwareVariant()) ?? 'base';
+    await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(projectUri, '.vscode'));
+    await vscode.workspace.fs.writeFile(
+      vscode.Uri.joinPath(projectUri, '.vscode', 'settings.json'),
+      enc(JSON.stringify({ 'ds-ide.hardwareVariant': hardwareVariant }, null, 2) + '\n'),
     );
   } catch (err) {
     void vscode.window.showErrorMessage(`ds-ide: failed to scaffold project: ${String(err)}`);

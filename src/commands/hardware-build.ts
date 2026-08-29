@@ -9,6 +9,7 @@ import {
   extractOverflowError,
   hasOverflowIndicator,
 } from '../diagnostics/memory-region-diagnostics';
+import { promptHardwareVariant } from '../hardware/hardware-variant-prompt';
 
 export interface HardwareBuildDeps {
   spawn?: typeof cp.spawn;
@@ -41,6 +42,8 @@ export async function buildForHardware(
   const channel = outputChannel;
   channel.show();
 
+  const hardwareVariant = await resolveHardwareVariant(projectRoot);
+
   const parsed: ParsedDiagnostic[] = [];
   const outputLines: string[] = [];
   const env = buildEnv(gccPath);
@@ -53,15 +56,39 @@ export async function buildForHardware(
       if (d) parsed.push(d);
     }, token);
     applyDiagnostics(diagnostics, parsed, projectRoot);
-    const hardwareVariant =
-      vscode.workspace.getConfiguration('ds-ide', vscode.Uri.file(projectRoot)).get<string>('hardwareVariant')
-      ?? 'base';
     reportMemoryUsage(outputLines.join('\n'), channel, hardwareVariant);
     void vscode.window.showInformationMessage('ds-ide: hardware build succeeded');
   } catch (err) {
     applyDiagnostics(diagnostics, parsed, projectRoot);
     void vscode.window.showErrorMessage(`ds-ide: hardware build failed — ${buildFailureDetail(outputLines.join('\n'), err)}`);
   }
+}
+
+// FR-HW-5d: prompts once for the project's hardware variant if it has never
+// been explicitly set (checked via inspect(), not get() — get() would
+// return the schema default 'base' even when unset, since package.json
+// declares one). Persists the answer so future builds don't ask again;
+// declining the prompt uses 'base' for this build only, without persisting,
+// so the prompt reappears next time.
+async function resolveHardwareVariant(projectRoot: string): Promise<string> {
+  const config = vscode.workspace.getConfiguration('ds-ide', vscode.Uri.file(projectRoot));
+  if (!isHardwareVariantUnset(config)) {
+    return config.get<string>('hardwareVariant') ?? 'base';
+  }
+  const picked = await promptHardwareVariant();
+  if (picked === undefined) return 'base';
+  await config.update('hardwareVariant', picked, vscode.ConfigurationTarget.WorkspaceFolder);
+  return picked;
+}
+
+function isHardwareVariantUnset(config: vscode.WorkspaceConfiguration): boolean {
+  const inspected = config.inspect?.<string>('hardwareVariant');
+  return (
+    inspected !== undefined &&
+    inspected.globalValue === undefined &&
+    inspected.workspaceValue === undefined &&
+    inspected.workspaceFolderValue === undefined
+  );
 }
 
 // FR-HW-5b: names the overflowing region when the failure is a linker region

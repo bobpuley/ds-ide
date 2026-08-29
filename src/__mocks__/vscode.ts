@@ -97,6 +97,8 @@ const workspace = {
   workspaceFolders: undefined as undefined | MockWorkspaceFolder[],
   getConfiguration: vi.fn(() => ({
     get: vi.fn(),
+    inspect: vi.fn(() => undefined),
+    update: vi.fn(async () => undefined),
   })),
   openTextDocument: vi.fn(async () => ({
     getText: vi.fn(() => ''),
@@ -128,6 +130,8 @@ const Uri = {
 const ViewColumn = { One: 1, Two: 2, Three: 3, Beside: -2 } as const;
 
 const StatusBarAlignment = { Left: 1, Right: 2 } as const;
+
+const ConfigurationTarget = { Global: 1, Workspace: 2, WorkspaceFolder: 3 } as const;
 
 const languages = {
   createDiagnosticCollection: vi.fn((_name?: string) => ({
@@ -205,7 +209,7 @@ class Diagnostic {
 export {
   commands, window, workspace, Uri, ViewColumn,
   DiagnosticSeverity, Position, Range, WorkspaceEdit, Diagnostic,
-  StatusBarAlignment, ProgressLocation, languages,
+  StatusBarAlignment, ProgressLocation, languages, ConfigurationTarget,
   debug, DebugAdapterExecutable, DebugAdapterInlineImplementation, EventEmitter,
   CancellationTokenSource,
 };
