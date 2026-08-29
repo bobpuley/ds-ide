@@ -57,7 +57,7 @@
 > **v19 complete** — M58–M59 released (0.17.6–0.17.7), all ACs green.
 > Archived: [`docs/v19/`](v19/).
 
-*v20 in planning — M60 (Wizard-Time DaisySP Provisioning) queued.*
+*v20 in planning — M60 (Wizard-Time DaisySP Provisioning) released; M61 (Hardware Memory-Budget Alerting) queued.*
 
 ---
 
@@ -173,5 +173,7 @@ Full registry in [`docs/v19/05_dev-plan.md`](v19/05_dev-plan.md).
 | ID  | Name          | Status          | Version | File                                              |
 |-----|---------------|-----------------|---------|----------------------------------------------------|
 | M60 | Wizard-Time DaisySP Provisioning | **released**    | 0.18.0  | [Milestone_M60.md](milestones/v20/Milestone_M60.md) |
+| M61 | Hardware Memory-Budget Alerting  | **planned**     | 0.19.0  | [Milestone_M61.md](milestones/v20/Milestone_M61.md) |
 
 Source: M60 — feature idea evaluated via design discussion (2026-08-27), intake via `/doc-creator-driver:intake`.
+Source: M61 — feature idea raised 2026-08-28, scoped via `/doc-creator-driver:intake` + `grill-me`, 2026-08-29.
