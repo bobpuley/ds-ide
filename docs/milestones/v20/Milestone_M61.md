@@ -10,7 +10,7 @@
 
 ## Sprint Tasks
 
-### [ ] feat: parse the linker's post-link memory-region table (FR-HW-5a)
+### [x] feat: parse the linker's post-link memory-region table (FR-HW-5a)
 
 Add a parser module alongside `build-diagnostics.ts` that turns GNU ld's `Memory region  Used Size  Region Size  %age Used` summary (already streamed to the output channel by `buildForHardware()` but never parsed) into a structured list of `{ region, usedBytes, regionBytes, pctUsed }`. Also add overflow-error extraction: a precise regex for `region 'X' overflowed by N bytes`, plus a fallback substring check (`output.includes('overflowed')`) for a lower-confidence message when the precise pattern doesn't match.
 
