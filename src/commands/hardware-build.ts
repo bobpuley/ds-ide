@@ -4,10 +4,18 @@ import * as vscode from 'vscode';
 import { detectArmToolchain, ARM_GCC_INSTALL_HINT } from '../hardware/toolchain';
 import { createLineSplitter } from '../hardware/line-buffer';
 import { parseBuildLine, applyDiagnostics, ParsedDiagnostic } from '../diagnostics/build-diagnostics';
+import {
+  parseMemoryRegionTable,
+  extractOverflowError,
+  hasOverflowIndicator,
+} from '../diagnostics/memory-region-diagnostics';
 
 export interface HardwareBuildDeps {
   spawn?: typeof cp.spawn;
 }
+
+// FR-HW-5b: heads-up threshold before a region hard-overflows the next build.
+const NEAR_LIMIT_PCT = 75;
 
 // Invoke the project Makefile for the hardware target (arm-none-eabi).
 // Streams output to a VS Code channel and applies compiler diagnostics.
@@ -34,20 +42,54 @@ export async function buildForHardware(
   channel.show();
 
   const parsed: ParsedDiagnostic[] = [];
+  const outputLines: string[] = [];
   const env = buildEnv(gccPath);
 
   try {
     await runMake(projectRoot, env, spawnFn, (line) => {
       channel.appendLine(line);
+      outputLines.push(line);
       const d = parseBuildLine(line);
       if (d) parsed.push(d);
     }, token);
     applyDiagnostics(diagnostics, parsed, projectRoot);
+    reportMemoryUsage(outputLines.join('\n'), channel);
     void vscode.window.showInformationMessage('ds-ide: hardware build succeeded');
   } catch (err) {
     applyDiagnostics(diagnostics, parsed, projectRoot);
-    const msg = err instanceof Error ? err.message : String(err);
-    void vscode.window.showErrorMessage(`ds-ide: hardware build failed — ${msg}`);
+    void vscode.window.showErrorMessage(`ds-ide: hardware build failed — ${buildFailureDetail(outputLines.join('\n'), err)}`);
+  }
+}
+
+// FR-HW-5b: names the overflowing region when the failure is a linker region
+// overflow, instead of the generic "make exited with code N" — that message
+// alone gives no hint the failure was memory-budget-shaped.
+function buildFailureDetail(rawOutput: string, err: unknown): string {
+  const overflow = extractOverflowError(rawOutput);
+  if (overflow) {
+    return `memory region '${overflow.region}' overflowed by ${overflow.overflowBytes} bytes`;
+  }
+  if (hasOverflowIndicator(rawOutput)) {
+    return "a memory region overflow was detected but couldn't be parsed precisely; see output above";
+  }
+  return err instanceof Error ? err.message : String(err);
+}
+
+// FR-HW-5b: prints the linker's per-region usage table (previously
+// discarded unparsed) and warns when any region is close to its limit.
+function reportMemoryUsage(rawOutput: string, channel: vscode.OutputChannel): void {
+  const regions = parseMemoryRegionTable(rawOutput);
+  if (regions.length === 0) return;
+
+  channel.appendLine('Memory region usage:');
+  for (const r of regions) {
+    channel.appendLine(`  ${r.region}: ${r.usedBytes} / ${r.regionBytes} bytes (${r.pctUsed.toFixed(2)}%)`);
+  }
+
+  const nearLimit = regions.filter((r) => r.pctUsed >= NEAR_LIMIT_PCT);
+  if (nearLimit.length > 0) {
+    const names = nearLimit.map((r) => `${r.region} (${r.pctUsed.toFixed(2)}%)`).join(', ');
+    void vscode.window.showWarningMessage(`ds-ide: memory usage near limit — ${names}`);
   }
 }
 

@@ -24,7 +24,7 @@ Add a parser module alongside `build-diagnostics.ts` that turns GNU ld's `Memory
 
 ---
 
-### [ ] feat: hardware build surfaces overflow errors and near-limit warnings (FR-HW-5b)
+### [x] feat: hardware build surfaces overflow errors and near-limit warnings (FR-HW-5b)
 
 Wire the new parser into `buildForHardware()`. On a failed build, try the precise overflow extraction first, then the fallback substring check, before falling back to today's generic failure message. On a successful build, print the full parsed table to the output channel and show a warning notification if any region's %age used is ≥ 75%.
 

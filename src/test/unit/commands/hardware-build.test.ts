@@ -155,6 +155,69 @@ describe('buildForHardware()', () => {
     );
   });
 
+  it('prints the memory region table on a successful build (FR-HW-5b)', async () => {
+    const regionOutput = [
+      'Memory region         Used Size  Region Size  %age Used',
+      '       FLASH:          0 GB       128 KB      0.00%',
+      '     DTCMRAM:        7440 B       128 KB      5.68%',
+    ].join('\n');
+    const spawn = makeSpawn(0, regionOutput);
+    const channel = makeChannel();
+    await buildForHardware('/project', makeDiagnostics(), channel, { spawn });
+
+    const lines = (channel.appendLine as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    expect(lines.some((l: string) => l.includes('Memory region usage'))).toBe(true);
+    expect(lines.some((l: string) => l.includes('FLASH'))).toBe(true);
+    expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+  });
+
+  it('shows a warning when a region is at or above 75% used (FR-HW-5b)', async () => {
+    const regionOutput = [
+      'Memory region         Used Size  Region Size  %age Used',
+      '       FLASH:        100 KB       128 KB     78.13%',
+    ].join('\n');
+    const spawn = makeSpawn(0, regionOutput);
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      expect.stringContaining('FLASH'),
+    );
+  });
+
+  it('does not warn when all regions are below 75% used (FR-HW-5b)', async () => {
+    const regionOutput = [
+      'Memory region         Used Size  Region Size  %age Used',
+      '       FLASH:         10 KB       128 KB      7.81%',
+    ].join('\n');
+    const spawn = makeSpawn(0, regionOutput);
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+
+    expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+  });
+
+  it('shows a precise overflow error message on a region overflow (FR-HW-5b)', async () => {
+    const overflowOutput = [
+      "arm-none-eabi-ld: effect.elf section `.text' will not fit in region `FLASH'",
+      "arm-none-eabi-ld: region `FLASH' overflowed by 1234 bytes",
+    ].join('\n');
+    const spawn = makeSpawn(1, overflowOutput);
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      expect.stringMatching(/FLASH.*overflowed by 1234 bytes/),
+    );
+  });
+
+  it('shows a fallback overflow message when the precise pattern does not match (FR-HW-5b)', async () => {
+    const overflowOutput = 'arm-none-eabi-ld: some future wording that mentions the region overflowed differently';
+    const spawn = makeSpawn(1, overflowOutput);
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      expect.stringContaining("couldn't be parsed precisely"),
+    );
+  });
+
   it('still parses a diagnostic line split across two stderr chunks (FR-EXT-12)', async () => {
     const diagnosticLine =
       "/project/effect.cpp:10:5: error: use of undeclared identifier 'foo'";
