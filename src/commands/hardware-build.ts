@@ -53,7 +53,10 @@ export async function buildForHardware(
       if (d) parsed.push(d);
     }, token);
     applyDiagnostics(diagnostics, parsed, projectRoot);
-    reportMemoryUsage(outputLines.join('\n'), channel);
+    const hardwareVariant =
+      vscode.workspace.getConfiguration('ds-ide', vscode.Uri.file(projectRoot)).get<string>('hardwareVariant')
+      ?? 'base';
+    reportMemoryUsage(outputLines.join('\n'), channel, hardwareVariant);
     void vscode.window.showInformationMessage('ds-ide: hardware build succeeded');
   } catch (err) {
     applyDiagnostics(diagnostics, parsed, projectRoot);
@@ -75,9 +78,11 @@ function buildFailureDetail(rawOutput: string, err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-// FR-HW-5b: prints the linker's per-region usage table (previously
-// discarded unparsed) and warns when any region is close to its limit.
-function reportMemoryUsage(rawOutput: string, channel: vscode.OutputChannel): void {
+// FR-HW-5b/c: prints the linker's per-region usage table (previously
+// discarded unparsed), hard-errors on SDRAM usage that can't physically fit
+// on the connected board, and warns when any other region is close to its
+// limit.
+function reportMemoryUsage(rawOutput: string, channel: vscode.OutputChannel, hardwareVariant: string): void {
   const regions = parseMemoryRegionTable(rawOutput);
   if (regions.length === 0) return;
 
@@ -86,7 +91,19 @@ function reportMemoryUsage(rawOutput: string, channel: vscode.OutputChannel): vo
     channel.appendLine(`  ${r.region}: ${r.usedBytes} / ${r.regionBytes} bytes (${r.pctUsed.toFixed(2)}%)`);
   }
 
-  const nearLimit = regions.filter((r) => r.pctUsed >= NEAR_LIMIT_PCT);
+  // The linker's SDRAM region size is a fixed 64 MB constant from the .lds
+  // script — it has no idea the base Daisy Seed lacks the physical chip, so
+  // any usage at all is fatal there regardless of the %age the linker reports.
+  const sdram = regions.find((r) => r.region === 'SDRAM');
+  const sdramHardError = sdram !== undefined && sdram.usedBytes > 0 && hardwareVariant === 'base';
+  if (sdramHardError) {
+    void vscode.window.showErrorMessage(
+      `ds-ide: SDRAM used (${sdram.usedBytes} bytes) but ds-ide.hardwareVariant is 'base' — the base Daisy Seed has no physical SDRAM chip. Set ds-ide.hardwareVariant to '65mb-sdram' if your board has it, or remove SDRAM usage.`,
+    );
+  }
+
+  const nearLimitCandidates = sdramHardError ? regions.filter((r) => r.region !== 'SDRAM') : regions;
+  const nearLimit = nearLimitCandidates.filter((r) => r.pctUsed >= NEAR_LIMIT_PCT);
   if (nearLimit.length > 0) {
     const names = nearLimit.map((r) => `${r.region} (${r.pctUsed.toFixed(2)}%)`).join(', ');
     void vscode.window.showWarningMessage(`ds-ide: memory usage near limit — ${names}`);

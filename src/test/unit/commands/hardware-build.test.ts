@@ -218,6 +218,65 @@ describe('buildForHardware()', () => {
     );
   });
 
+  it('hard-errors on any SDRAM usage when hardwareVariant is base, regardless of %age used (FR-HW-5c)', async () => {
+    (vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>).mockReturnValue({
+      get: vi.fn((key: string) => key === 'hardwareVariant' ? 'base' : undefined),
+    });
+    const regionOutput = [
+      'Memory region         Used Size  Region Size  %age Used',
+      '       SDRAM:         10 MB        64 MB     15.63%',
+    ].join('\n');
+    const spawn = makeSpawn(0, regionOutput);
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      expect.stringContaining('SDRAM'),
+    );
+  });
+
+  it('does not hard-error on SDRAM usage when hardwareVariant is 65mb-sdram (FR-HW-5c)', async () => {
+    (vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>).mockReturnValue({
+      get: vi.fn((key: string) => key === 'hardwareVariant' ? '65mb-sdram' : undefined),
+    });
+    const regionOutput = [
+      'Memory region         Used Size  Region Size  %age Used',
+      '       SDRAM:         10 MB        64 MB     15.63%',
+    ].join('\n');
+    const spawn = makeSpawn(0, regionOutput);
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+    expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+  });
+
+  it('never triggers the SDRAM rule when SDRAM usage is zero, regardless of variant (FR-HW-5c)', async () => {
+    (vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>).mockReturnValue({
+      get: vi.fn((key: string) => key === 'hardwareVariant' ? 'base' : undefined),
+    });
+    const regionOutput = [
+      'Memory region         Used Size  Region Size  %age Used',
+      '       SDRAM:          0 GB        64 MB      0.00%',
+    ].join('\n');
+    const spawn = makeSpawn(0, regionOutput);
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+  });
+
+  it('defaults hardwareVariant to base when unset (FR-HW-5c)', async () => {
+    // beforeEach already stubs getConfiguration().get() to return undefined for every key.
+    const regionOutput = [
+      'Memory region         Used Size  Region Size  %age Used',
+      '       SDRAM:         10 MB        64 MB     15.63%',
+    ].join('\n');
+    const spawn = makeSpawn(0, regionOutput);
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      expect.stringContaining('SDRAM'),
+    );
+  });
+
   it('still parses a diagnostic line split across two stderr chunks (FR-EXT-12)', async () => {
     const diagnosticLine =
       "/project/effect.cpp:10:5: error: use of undeclared identifier 'foo'";

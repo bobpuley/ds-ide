@@ -148,6 +148,13 @@
           "default": "",
           "scope": "machine-overridable",
           "markdownDescription": "Path to the ARM embedded toolchain binary or its `bin/` directory. Leave empty for auto-detection.\n\nMachine-specific — excluded from Settings Sync so a toolchain path from one machine can't silently apply on another; a workspace can still override it for that project."
+        },
+        "ds-ide.hardwareVariant": {
+          "type": "string",
+          "enum": ["base", "65mb-sdram"],
+          "default": "base",
+          "scope": "resource",
+          "markdownDescription": "Which physical Daisy Seed variant this project targets. The base board has no external SDRAM; only the \"65 MB\" variant does. Used to catch SDRAM usage that would fail on hardware even though the linker's memory-region report shows it fitting — the linker sizes the SDRAM region generically and can't know which board is actually connected.\n\nSet per project (resource-scoped) — the `Daisy IDE: New Effect Project` wizard prompts for this and pre-fills it for new projects."
         }
       }
     },

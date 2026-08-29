@@ -39,7 +39,7 @@ Wire the new parser into `buildForHardware()`. On a failed build, try the precis
 
 ---
 
-### [ ] feat: add `ds-ide.hardwareVariant` setting and SDRAM hard-error rule (FR-HW-5c)
+### [x] feat: add `ds-ide.hardwareVariant` setting and SDRAM hard-error rule (FR-HW-5c)
 
 Add a new resource-scoped `ds-ide.hardwareVariant` setting (`'base' | '65mb-sdram'`, default `'base'`) to `package.json`. In `buildForHardware()`'s success path, after the ≥75% check, add a hard-error rule: if `hardwareVariant` resolves to `'base'` for the project folder and the parsed `SDRAM:` region shows `usedBytes > 0`, show an error notification regardless of `pctUsed` — the linker's `SDRAM:` region size is a fixed 64 MB constant from the `.lds` script and doesn't reflect whether the connected board actually has that chip.
 
