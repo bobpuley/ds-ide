@@ -1,7 +1,7 @@
 # M61 — Hardware Memory-Budget Alerting
 
 **Version:** 0.19.0
-**Status:** planned
+**Status:** in progress
 **Source:** feature idea raised 2026-08-28, scoped via `/doc-creator-driver:intake` + `grill-me`, 2026-08-29
 
 ## Goal
@@ -10,7 +10,7 @@
 
 ## Sprint Tasks
 
-### [ ] feat: parse the linker's post-link memory-region table (FR-HW-5)
+### [ ] feat: parse the linker's post-link memory-region table (FR-HW-5a)
 
 Add a parser module alongside `build-diagnostics.ts` that turns GNU ld's `Memory region  Used Size  Region Size  %age Used` summary (already streamed to the output channel by `buildForHardware()` but never parsed) into a structured list of `{ region, usedBytes, regionBytes, pctUsed }`. Also add overflow-error extraction: a precise regex for `region 'X' overflowed by N bytes`, plus a fallback substring check (`output.includes('overflowed')`) for a lower-confidence message when the precise pattern doesn't match.
 
@@ -24,7 +24,7 @@ Add a parser module alongside `build-diagnostics.ts` that turns GNU ld's `Memory
 
 ---
 
-### [ ] feat: hardware build surfaces overflow errors and near-limit warnings (FR-HW-5)
+### [ ] feat: hardware build surfaces overflow errors and near-limit warnings (FR-HW-5b)
 
 Wire the new parser into `buildForHardware()`. On a failed build, try the precise overflow extraction first, then the fallback substring check, before falling back to today's generic failure message. On a successful build, print the full parsed table to the output channel and show a warning notification if any region's %age used is ≥ 75%.
 
@@ -39,7 +39,7 @@ Wire the new parser into `buildForHardware()`. On a failed build, try the precis
 
 ---
 
-### [ ] feat: add `ds-ide.hardwareVariant` setting and SDRAM hard-error rule (FR-HW-5)
+### [ ] feat: add `ds-ide.hardwareVariant` setting and SDRAM hard-error rule (FR-HW-5c)
 
 Add a new resource-scoped `ds-ide.hardwareVariant` setting (`'base' | '65mb-sdram'`, default `'base'`) to `package.json`. In `buildForHardware()`'s success path, after the ≥75% check, add a hard-error rule: if `hardwareVariant` resolves to `'base'` for the project folder and the parsed `SDRAM:` region shows `usedBytes > 0`, show an error notification regardless of `pctUsed` — the linker's `SDRAM:` region size is a fixed 64 MB constant from the `.lds` script and doesn't reflect whether the connected board actually has that chip.
 
@@ -53,7 +53,7 @@ Add a new resource-scoped `ds-ide.hardwareVariant` setting (`'base' | '65mb-sdra
 
 ---
 
-### [ ] feat: prompt for hardware variant at wizard time and first hardware build (FR-HW-5)
+### [ ] feat: prompt for hardware variant at wizard time and first hardware build (FR-HW-5d)
 
 `createEffectProject()` gains a hardware-variant prompt (same question/options as the settings enum) after the existing template-file writes, persisting the answer into the newly-created project's `.vscode/settings.json`. `buildForHardware()` gains an unset-check at entry: if `ds-ide.hardwareVariant` has no value for the project folder, prompt once before proceeding and persist the answer via `vscode.ConfigurationTarget.WorkspaceFolder`; if the user dismisses the prompt, use `'base'` for that build only without persisting, so the prompt reappears on the next build.
 
