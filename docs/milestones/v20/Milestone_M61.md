@@ -1,6 +1,6 @@
 # M61 — Hardware Memory-Budget Alerting
 
-**Version:** 0.19.0
+**Version:** 0.18.1
 **Status:** in progress
 **Source:** feature idea raised 2026-08-28, scoped via `/doc-creator-driver:intake` + `grill-me`, 2026-08-29
 

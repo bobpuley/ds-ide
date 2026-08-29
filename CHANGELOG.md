@@ -5,6 +5,15 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.18.1 — 2026-08-29
+
+**M61 — Hardware Memory-Budget Alerting** *(FR-HW-5 — DoD green)*
+
+- **FR-HW-5** — `buildForHardware()` already streamed the real arm-none-eabi linker's post-link memory-region table on every hardware build, but discarded it unparsed, and a genuine linker region-overflow failure was silently reduced to a generic "make exited with code N" since it didn't match the existing compiler-diagnostic regex. A new `src/diagnostics/memory-region-diagnostics.ts` parser turns that table into structured per-region usage, and extracts overflow errors (with a lower-confidence fallback when the precise `ld` wording doesn't match). A hardware build now: names the overflowing region and byte count on failure; prints the full usage table and warns when any region is ≥75% used on success; and hard-errors on any SDRAM usage when a new `ds-ide.hardwareVariant` setting (`'base' | '65mb-sdram'`, default `'base'`, resource-scoped) is `'base'`, since the linker's `SDRAM:` region size is a fixed 64 MB constant that can't reflect whether the connected board actually has that chip. The Effect Project Wizard prompts for hardware variant at project-creation time and writes it into the new project's `.vscode/settings.json`; `buildForHardware()` prompts once for any project where the setting has never been explicitly set, persisting the answer (declining defaults to `'base'` for that build only, without persisting, so it asks again next time). `APP_TYPE` auto-escalation (Makefile write, bootloader detection, DFU address rework) remains explicitly out of scope, deferred as a separate future idea.
+- **chore** — `package.json`'s `version` field is bumped to `0.18.1` to match this entry.
+
+---
+
 ## 0.18.0 — 2026-08-28
 
 **M60 — Wizard-Time DaisySP Provisioning** *(FR-PKG-3 — DoD green)*

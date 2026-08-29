@@ -173,7 +173,7 @@ Full registry in [`docs/v19/05_dev-plan.md`](v19/05_dev-plan.md).
 | ID  | Name          | Status          | Version | File                                              |
 |-----|---------------|-----------------|---------|----------------------------------------------------|
 | M60 | Wizard-Time DaisySP Provisioning | **released**    | 0.18.0  | [Milestone_M60.md](milestones/v20/Milestone_M60.md) |
-| M61 | Hardware Memory-Budget Alerting  | **in progress** | 0.19.0  | [Milestone_M61.md](milestones/v20/Milestone_M61.md) |
+| M61 | Hardware Memory-Budget Alerting  | **in progress** | 0.18.1  | [Milestone_M61.md](milestones/v20/Milestone_M61.md) |
 
 Source: M60 — feature idea evaluated via design discussion (2026-08-27), intake via `/doc-creator-driver:intake`.
 Source: M61 — feature idea raised 2026-08-28, scoped via `/doc-creator-driver:intake` + `grill-me`, 2026-08-29.
