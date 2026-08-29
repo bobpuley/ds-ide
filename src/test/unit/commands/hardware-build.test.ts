@@ -155,6 +155,186 @@ describe('buildForHardware()', () => {
     );
   });
 
+  it('prints the memory region table on a successful build (FR-HW-5b)', async () => {
+    const regionOutput = [
+      'Memory region         Used Size  Region Size  %age Used',
+      '       FLASH:          0 GB       128 KB      0.00%',
+      '     DTCMRAM:        7440 B       128 KB      5.68%',
+    ].join('\n');
+    const spawn = makeSpawn(0, regionOutput);
+    const channel = makeChannel();
+    await buildForHardware('/project', makeDiagnostics(), channel, { spawn });
+
+    const lines = (channel.appendLine as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    expect(lines.some((l: string) => l.includes('Memory region usage'))).toBe(true);
+    expect(lines.some((l: string) => l.includes('FLASH'))).toBe(true);
+    expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+  });
+
+  it('shows a warning when a region is at or above 75% used (FR-HW-5b)', async () => {
+    const regionOutput = [
+      'Memory region         Used Size  Region Size  %age Used',
+      '       FLASH:        100 KB       128 KB     78.13%',
+    ].join('\n');
+    const spawn = makeSpawn(0, regionOutput);
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      expect.stringContaining('FLASH'),
+    );
+  });
+
+  it('does not warn when all regions are below 75% used (FR-HW-5b)', async () => {
+    const regionOutput = [
+      'Memory region         Used Size  Region Size  %age Used',
+      '       FLASH:         10 KB       128 KB      7.81%',
+    ].join('\n');
+    const spawn = makeSpawn(0, regionOutput);
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+
+    expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+  });
+
+  it('shows a precise overflow error message on a region overflow (FR-HW-5b)', async () => {
+    const overflowOutput = [
+      "arm-none-eabi-ld: effect.elf section `.text' will not fit in region `FLASH'",
+      "arm-none-eabi-ld: region `FLASH' overflowed by 1234 bytes",
+    ].join('\n');
+    const spawn = makeSpawn(1, overflowOutput);
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      expect.stringMatching(/FLASH.*overflowed by 1234 bytes/),
+    );
+  });
+
+  it('shows a fallback overflow message when the precise pattern does not match (FR-HW-5b)', async () => {
+    const overflowOutput = 'arm-none-eabi-ld: some future wording that mentions the region overflowed differently';
+    const spawn = makeSpawn(1, overflowOutput);
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      expect.stringContaining("couldn't be parsed precisely"),
+    );
+  });
+
+  it('hard-errors on any SDRAM usage when hardwareVariant is base, regardless of %age used (FR-HW-5c)', async () => {
+    (vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>).mockReturnValue({
+      get: vi.fn((key: string) => key === 'hardwareVariant' ? 'base' : undefined),
+    });
+    const regionOutput = [
+      'Memory region         Used Size  Region Size  %age Used',
+      '       SDRAM:         10 MB        64 MB     15.63%',
+    ].join('\n');
+    const spawn = makeSpawn(0, regionOutput);
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      expect.stringContaining('SDRAM'),
+    );
+  });
+
+  it('does not hard-error on SDRAM usage when hardwareVariant is 65mb-sdram (FR-HW-5c)', async () => {
+    (vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>).mockReturnValue({
+      get: vi.fn((key: string) => key === 'hardwareVariant' ? '65mb-sdram' : undefined),
+    });
+    const regionOutput = [
+      'Memory region         Used Size  Region Size  %age Used',
+      '       SDRAM:         10 MB        64 MB     15.63%',
+    ].join('\n');
+    const spawn = makeSpawn(0, regionOutput);
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+    expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+  });
+
+  it('never triggers the SDRAM rule when SDRAM usage is zero, regardless of variant (FR-HW-5c)', async () => {
+    (vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>).mockReturnValue({
+      get: vi.fn((key: string) => key === 'hardwareVariant' ? 'base' : undefined),
+    });
+    const regionOutput = [
+      'Memory region         Used Size  Region Size  %age Used',
+      '       SDRAM:          0 GB        64 MB      0.00%',
+    ].join('\n');
+    const spawn = makeSpawn(0, regionOutput);
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+  });
+
+  it('defaults hardwareVariant to base when unset (FR-HW-5c)', async () => {
+    // beforeEach already stubs getConfiguration().get() to return undefined for every key.
+    const regionOutput = [
+      'Memory region         Used Size  Region Size  %age Used',
+      '       SDRAM:         10 MB        64 MB     15.63%',
+    ].join('\n');
+    const spawn = makeSpawn(0, regionOutput);
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      expect.stringContaining('SDRAM'),
+    );
+  });
+
+  it('prompts for hardware variant when unset, then persists the answer (FR-HW-5d)', async () => {
+    const update = vi.fn(async () => undefined);
+    (vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>).mockReturnValue({
+      get: vi.fn(() => undefined),
+      inspect: vi.fn(() => ({
+        key: 'ds-ide.hardwareVariant', defaultValue: 'base',
+        globalValue: undefined, workspaceValue: undefined, workspaceFolderValue: undefined,
+      })),
+      update,
+    });
+    (vscode.window.showQuickPick as ReturnType<typeof vi.fn>).mockImplementation(
+      async (items: { variant: string }[]) => items.find((i) => i.variant === '65mb-sdram'),
+    );
+
+    const spawn = makeSpawn(0);
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+
+    expect(vscode.window.showQuickPick).toHaveBeenCalledOnce();
+    expect(update).toHaveBeenCalledWith('hardwareVariant', '65mb-sdram', vscode.ConfigurationTarget.WorkspaceFolder);
+  });
+
+  it('does not prompt when hardwareVariant is already set (FR-HW-5d)', async () => {
+    (vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>).mockReturnValue({
+      get: vi.fn((key: string) => key === 'hardwareVariant' ? 'base' : undefined),
+      inspect: vi.fn(() => ({
+        key: 'ds-ide.hardwareVariant', defaultValue: 'base',
+        globalValue: undefined, workspaceValue: undefined, workspaceFolderValue: 'base',
+      })),
+      update: vi.fn(async () => undefined),
+    });
+
+    const spawn = makeSpawn(0);
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+
+    expect(vscode.window.showQuickPick).not.toHaveBeenCalled();
+  });
+
+  it('defaults to base for this build only when the prompt is dismissed, without persisting (FR-HW-5d)', async () => {
+    const update = vi.fn(async () => undefined);
+    (vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>).mockReturnValue({
+      get: vi.fn(() => undefined),
+      inspect: vi.fn(() => ({
+        key: 'ds-ide.hardwareVariant', defaultValue: 'base',
+        globalValue: undefined, workspaceValue: undefined, workspaceFolderValue: undefined,
+      })),
+      update,
+    });
+    (vscode.window.showQuickPick as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+
+    const spawn = makeSpawn(0);
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+
+    expect(update).not.toHaveBeenCalled();
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining('hardware build succeeded'),
+    );
+  });
+
   it('still parses a diagnostic line split across two stderr chunks (FR-EXT-12)', async () => {
     const diagnosticLine =
       "/project/effect.cpp:10:5: error: use of undeclared identifier 'foo'";

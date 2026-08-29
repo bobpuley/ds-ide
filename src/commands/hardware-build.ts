@@ -4,10 +4,19 @@ import * as vscode from 'vscode';
 import { detectArmToolchain, ARM_GCC_INSTALL_HINT } from '../hardware/toolchain';
 import { createLineSplitter } from '../hardware/line-buffer';
 import { parseBuildLine, applyDiagnostics, ParsedDiagnostic } from '../diagnostics/build-diagnostics';
+import {
+  parseMemoryRegionTable,
+  extractOverflowError,
+  hasOverflowIndicator,
+} from '../diagnostics/memory-region-diagnostics';
+import { promptHardwareVariant } from '../hardware/hardware-variant-prompt';
 
 export interface HardwareBuildDeps {
   spawn?: typeof cp.spawn;
 }
+
+// FR-HW-5b: heads-up threshold before a region hard-overflows the next build.
+const NEAR_LIMIT_PCT = 75;
 
 // Invoke the project Makefile for the hardware target (arm-none-eabi).
 // Streams output to a VS Code channel and applies compiler diagnostics.
@@ -33,21 +42,98 @@ export async function buildForHardware(
   const channel = outputChannel;
   channel.show();
 
+  const hardwareVariant = await resolveHardwareVariant(projectRoot);
+
   const parsed: ParsedDiagnostic[] = [];
+  const outputLines: string[] = [];
   const env = buildEnv(gccPath);
 
   try {
     await runMake(projectRoot, env, spawnFn, (line) => {
       channel.appendLine(line);
+      outputLines.push(line);
       const d = parseBuildLine(line);
       if (d) parsed.push(d);
     }, token);
     applyDiagnostics(diagnostics, parsed, projectRoot);
+    reportMemoryUsage(outputLines.join('\n'), channel, hardwareVariant);
     void vscode.window.showInformationMessage('ds-ide: hardware build succeeded');
   } catch (err) {
     applyDiagnostics(diagnostics, parsed, projectRoot);
-    const msg = err instanceof Error ? err.message : String(err);
-    void vscode.window.showErrorMessage(`ds-ide: hardware build failed — ${msg}`);
+    void vscode.window.showErrorMessage(`ds-ide: hardware build failed — ${buildFailureDetail(outputLines.join('\n'), err)}`);
+  }
+}
+
+// FR-HW-5d: prompts once for the project's hardware variant if it has never
+// been explicitly set (checked via inspect(), not get() — get() would
+// return the schema default 'base' even when unset, since package.json
+// declares one). Persists the answer so future builds don't ask again;
+// declining the prompt uses 'base' for this build only, without persisting,
+// so the prompt reappears next time.
+async function resolveHardwareVariant(projectRoot: string): Promise<string> {
+  const config = vscode.workspace.getConfiguration('ds-ide', vscode.Uri.file(projectRoot));
+  if (!isHardwareVariantUnset(config)) {
+    return config.get<string>('hardwareVariant') ?? 'base';
+  }
+  const picked = await promptHardwareVariant();
+  if (picked === undefined) return 'base';
+  await config.update('hardwareVariant', picked, vscode.ConfigurationTarget.WorkspaceFolder);
+  return picked;
+}
+
+function isHardwareVariantUnset(config: vscode.WorkspaceConfiguration): boolean {
+  const inspected = config.inspect?.<string>('hardwareVariant');
+  return (
+    inspected !== undefined &&
+    inspected.globalValue === undefined &&
+    inspected.workspaceValue === undefined &&
+    inspected.workspaceFolderValue === undefined
+  );
+}
+
+// FR-HW-5b: names the overflowing region when the failure is a linker region
+// overflow, instead of the generic "make exited with code N" — that message
+// alone gives no hint the failure was memory-budget-shaped.
+function buildFailureDetail(rawOutput: string, err: unknown): string {
+  const overflow = extractOverflowError(rawOutput);
+  if (overflow) {
+    return `memory region '${overflow.region}' overflowed by ${overflow.overflowBytes} bytes`;
+  }
+  if (hasOverflowIndicator(rawOutput)) {
+    return "a memory region overflow was detected but couldn't be parsed precisely; see output above";
+  }
+  return err instanceof Error ? err.message : String(err);
+}
+
+// FR-HW-5b/c: prints the linker's per-region usage table (previously
+// discarded unparsed), hard-errors on SDRAM usage that can't physically fit
+// on the connected board, and warns when any other region is close to its
+// limit.
+function reportMemoryUsage(rawOutput: string, channel: vscode.OutputChannel, hardwareVariant: string): void {
+  const regions = parseMemoryRegionTable(rawOutput);
+  if (regions.length === 0) return;
+
+  channel.appendLine('Memory region usage:');
+  for (const r of regions) {
+    channel.appendLine(`  ${r.region}: ${r.usedBytes} / ${r.regionBytes} bytes (${r.pctUsed.toFixed(2)}%)`);
+  }
+
+  // The linker's SDRAM region size is a fixed 64 MB constant from the .lds
+  // script — it has no idea the base Daisy Seed lacks the physical chip, so
+  // any usage at all is fatal there regardless of the %age the linker reports.
+  const sdram = regions.find((r) => r.region === 'SDRAM');
+  const sdramHardError = sdram !== undefined && sdram.usedBytes > 0 && hardwareVariant === 'base';
+  if (sdramHardError) {
+    void vscode.window.showErrorMessage(
+      `ds-ide: SDRAM used (${sdram.usedBytes} bytes) but ds-ide.hardwareVariant is 'base' — the base Daisy Seed has no physical SDRAM chip. Set ds-ide.hardwareVariant to '65mb-sdram' if your board has it, or remove SDRAM usage.`,
+    );
+  }
+
+  const nearLimitCandidates = sdramHardError ? regions.filter((r) => r.region !== 'SDRAM') : regions;
+  const nearLimit = nearLimitCandidates.filter((r) => r.pctUsed >= NEAR_LIMIT_PCT);
+  if (nearLimit.length > 0) {
+    const names = nearLimit.map((r) => `${r.region} (${r.pctUsed.toFixed(2)}%)`).join(', ');
+    void vscode.window.showWarningMessage(`ds-ide: memory usage near limit — ${names}`);
   }
 }
 
