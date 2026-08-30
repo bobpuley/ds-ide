@@ -60,4 +60,24 @@
 > **v20 complete** — archived to `docs/v20/` on 2026-08-30. Full v20 ideas archived in
 > [`docs/v20/01_input-ideas.md`](v20/01_input-ideas.md).
 
-*v21 planning not yet started. Use `/doc-creator-driver:intake` or `/doc-creator-driver:start` to begin.*
+## v21 Input Ideas
+
+- **[FEATURE] Functional/e2e test layer** (requested 2026-08-30): add automated integration
+  tests that exercise the real VS Code extension host (real activation, real command dispatch,
+  real IPC round-trips to the emulator) rather than the mocked-`vscode`-module unit tests
+  vitest currently runs. Foundation layer only for now — cases that require driving DOM inside
+  webview iframes (dragging pots, reading the scope canvas, wiring-editor pin conflicts) are
+  out of scope here and left for a future milestone using a heavier tool.
+
+- **[FEATURE] Manual test tracker page** (requested 2026-08-30): a single standalone HTML
+  document listing all manual tests to run after each implementation — covering use cases
+  that are hard to validate with unit tests. Each test entry has: title, short description,
+  steps to perform, expected result, and a status field (pending | success | fail).
+
+- **[BUG] MIDI monitor drops all `midiRx`/`midiTx` IPC messages** (reported 2026-08-30, via
+  the `tremolo-filter-midi` test effect). Observed: sending MIDI Program Change and Control
+  Change events into the effect logs `ds-ide: dropped IPC message failing schema validation:
+  {"type":"midiRx",...}` in the console for every event, and the MIDI monitor panel shows
+  nothing. Expected: `midiRx`/`midiTx` messages emitted by the emulator
+  (`emulator/runtime/ipc_server.cpp`) pass IPC schema validation and reach the MIDI monitor
+  panel (`src/webview/midi-panel.ts`), which already has working consumer code for them.

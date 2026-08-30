@@ -11,3 +11,4 @@ Track every instance where an agent consulted `docs/v1/` or `docs/raw/v1/`. Open
 ## Log
 
 | 2026-06-21 | Existing FR-CE-* and FR-WE-* IDs for Controls Editor and Wiring Editor bug triage (v7 first intake after version reset) | `docs/v3/03_requirements.md`, `docs/v4/03_requirements.md` | `docs/03_requirements.md` | resolved: backported to docs/03_requirements.md (FR-CE-9, FR-WE-11, FR-WE-12 added) |
+| 2026-08-30 | Original wording of the MIDI I/O surface requirement, for a v21 bug intake against the MIDI monitor panel (dropped `midiRx`/`midiTx` IPC messages) — v21's `03_requirements.md` is empty since v21 planning had not started | `docs/v14/03_requirements.md` (FR-DEV-18) | `docs/03_requirements.md` | resolved: backported to docs/03_requirements.md (FR-DEV-18 re-added, noted as violated) |
