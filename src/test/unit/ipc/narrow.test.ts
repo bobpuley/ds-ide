@@ -85,6 +85,29 @@ describe('parseIpcMessage (FR-IPC-2)', () => {
     expect(parseIpcMessage({ type: 'protocolVersion', version: '1' })).toBeUndefined();
   });
 
+  it('accepts a well-formed midiRx message (FR-DEV-18)', () => {
+    expect(parseIpcMessage({ type: 'midiRx', status: 0xb0, data1: 1, data2: 127, channel: 0, midiType: 11 }))
+      .toEqual({ type: 'midiRx', status: 0xb0, data1: 1, data2: 127, channel: 0, midiType: 11 });
+  });
+
+  it('rejects a midiRx message missing a required field', () => {
+    expect(parseIpcMessage({ type: 'midiRx', status: 0xb0, data1: 1, data2: 127, channel: 0 })).toBeUndefined();
+  });
+
+  it('rejects a midiRx message with a non-numeric field', () => {
+    expect(parseIpcMessage({ type: 'midiRx', status: 0xb0, data1: 1, data2: 127, channel: 0, midiType: 'cc' }))
+      .toBeUndefined();
+  });
+
+  it('accepts a well-formed midiTx message (FR-DEV-18)', () => {
+    expect(parseIpcMessage({ type: 'midiTx', status: 0x90, data1: 60, data2: 100, channel: 3, midiType: 9 }))
+      .toEqual({ type: 'midiTx', status: 0x90, data1: 60, data2: 100, channel: 3, midiType: 9 });
+  });
+
+  it('rejects a midiTx message missing a required field', () => {
+    expect(parseIpcMessage({ type: 'midiTx', status: 0x90, data1: 60, data2: 100, midiType: 9 })).toBeUndefined();
+  });
+
   it('rejects a message with an unknown type', () => {
     expect(parseIpcMessage({ type: 'nonsenseType', foo: 'bar' })).toBeUndefined();
   });
