@@ -11,11 +11,17 @@ established per-message-type narrower pattern (same shape as the existing `led`/
 entries) — it doesn't change the IPC schema-validation boundary's design (FR-IPC-2).
 
 **Feature intake note (2026-08-30, manual test tracker, FR-TEST-1):** no architecture impact —
-it's a standalone static HTML page with no build step and no runtime coupling to the extension
-or emulator (not compiled, not imported, not part of the test runner). Only a project-structure
+it's a standalone HTML page with no build step and no runtime coupling to the extension or
+emulator (not compiled, not imported, not part of the test runner). Only a project-structure
 addition worth noting: `src/test/manual/manual-tests.html` is a new path under `src/test/`
 that, unlike the rest of that directory, is not an automated test — it holds no `*.test.ts`
 and is not picked up by the Node/TS test runner.
+
+**Refinement (2026-08-30, interactive status toggle, FR-TEST-1):** the page includes one
+minimal inline `<script>` element that recolors a test entry (badge + block) when its `<select>`
+status control is changed. This is DOM-only visual state with no persistence, no network, and
+no dependency — it doesn't change the "no build step, no runtime coupling" architecture
+decision above, since the script is inline in the page itself, not a build artifact.
 
 **Feature intake note (2026-08-30, functional/e2e test layer, FR-TEST-2):** this introduces a
 second, distinct test layer alongside vitest, with its own execution model:

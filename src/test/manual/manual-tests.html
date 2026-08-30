@@ -26,18 +26,22 @@
     font-size: 0.8rem; font-weight: 600; text-transform: uppercase;
     padding: 0.2rem 0.6rem; border-radius: 999px; border: 1px solid; white-space: nowrap;
   }
-  /* Edit a test's status by hand: change both the text content ("pending" /
-     "success" / "fail") and the class ("status-pending" / "status-success" /
-     "status-fail") on its <span>, then save and reload in a browser. */
+  /* Click a test's status control to preview it (recolors the badge and block,
+     not persisted across reload). To record a result permanently, hand-edit the
+     `selected` option on that <select> in this file, then save. */
   .status-pending { background: var(--pending-bg); color: var(--pending-fg); border-color: var(--pending-border); }
   .status-success { background: var(--success-bg); color: var(--success-fg); border-color: var(--success-border); }
   .status-fail    { background: var(--fail-bg);    color: var(--fail-fg);    border-color: var(--fail-border); }
+  select.status { appearance: none; -webkit-appearance: none; cursor: pointer; font: inherit; }
+  .test.test-success { border-color: var(--success-border); background: var(--success-bg); }
+  .test.test-fail    { border-color: var(--fail-border);    background: var(--fail-bg); }
   .description { color: #b4b4b4; margin: 0.5rem 0; }
   .section-label { font-size: 0.8rem; font-weight: 600; color: #8a8a8a; text-transform: uppercase; margin: 0.75rem 0 0.25rem; }
   .steps { margin: 0.25rem 0 0.5rem; padding-left: 1.25rem; }
   .steps li { margin-bottom: 0.2rem; }
   .expected { background: #1a2a1a; border-left: 3px solid #3a5a3a; padding: 0.5rem 0.75rem; margin: 0.25rem 0; }
   .count { color: #999; font-weight: normal; font-size: 1rem; }
+  .summary { font-weight: 600; color: #d4d4d4; margin: 0 0 1.5rem; }
 </style>
 </head>
 <body>
@@ -45,9 +49,10 @@
 <h1>ds-ide — Manual Test Tracker</h1>
 <p class="subtitle">
   Manual verification checklist for use cases that are hard to validate with unit tests.
-  Run after each implementation that touches a related area. Status is hand-edited directly
-  in this file (see comment in the &lt;style&gt; block) — no build step, no JS persistence.
+  Run after each implementation that touches a related area. Click a status control to
+  preview a result while testing.
 </p>
+<p class="summary" id="summary"></p>
 
 <!-- ═══════════════════════════════════════════════════════════════════
      Add new tests below as new implementation work reveals more
@@ -57,7 +62,11 @@
 <div class="test">
   <div class="test-header">
     <h2 class="test-title">Emulator build → run inner loop</h2>
-    <span class="status status-pending">pending</span>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
   </div>
   <p class="description">The core edit→build→run loop must stay fast and require no source changes to target the emulator (AC-1, AC-7, non-negotiable: "Speed is the product").</p>
   <p class="section-label">Steps</p>
@@ -74,7 +83,11 @@
 <div class="test">
   <div class="test-header">
     <h2 class="test-title">On-screen potentiometer changes affect output (ADC)</h2>
-    <span class="status status-pending">pending</span>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
   </div>
   <p class="description">Simulated ADC input via on-screen pots must visibly reach the effect's audio callback (AC-2).</p>
   <p class="section-label">Steps</p>
@@ -89,7 +102,11 @@
 <div class="test">
   <div class="test-header">
     <h2 class="test-title">Breakpoint in audio callback freezes simulated time</h2>
-    <span class="status status-pending">pending</span>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
   </div>
   <p class="description">Debugging must pause the audio callback with time frozen, not just halt execution (AC-4).</p>
   <p class="section-label">Steps</p>
@@ -107,7 +124,11 @@
 <div class="test">
   <div class="test-header">
     <h2 class="test-title">NaN/clipping bug is flagged, not just inaudible</h2>
-    <span class="status status-pending">pending</span>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
   </div>
   <p class="description">Some DSP bugs (denormals, NaN propagation, silent clipping) are easy to miss by ear but must be surfaced explicitly (AC-5).</p>
   <p class="section-label">Steps</p>
@@ -122,7 +143,11 @@
 <div class="test">
   <div class="test-header">
     <h2 class="test-title">Real audio I/O: live host input + speaker output</h2>
-    <span class="status status-pending">pending</span>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
   </div>
   <p class="description">Beyond the sine generator, the emulator must support real host audio input and speaker output.</p>
   <p class="section-label">Steps</p>
@@ -138,7 +163,11 @@
 <div class="test">
   <div class="test-header">
     <h2 class="test-title">Hardware build still works untouched</h2>
-    <span class="status status-pending">pending</span>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
   </div>
   <p class="description">ds-ide must never break the standard external hardware build path (AC-6, non-negotiable: "Don't break the hardware path").</p>
   <p class="section-label">Steps</p>
@@ -154,7 +183,11 @@
 <div class="test">
   <div class="test-header">
     <h2 class="test-title">DFU flash to physical Daisy Seed</h2>
-    <span class="status status-pending">pending</span>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
   </div>
   <p class="description">The built hardware artifact must actually flash to and run on real Daisy Seed hardware.</p>
   <p class="section-label">Steps</p>
@@ -170,7 +203,11 @@
 <div class="test">
   <div class="test-header">
     <h2 class="test-title">Hardware variant prompt (first build) and persistence</h2>
-    <span class="status status-pending">pending</span>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
   </div>
   <p class="description">FR-HW-5d: the wizard/hardware-build flow should prompt once for the hardware variant and remember the choice.</p>
   <p class="section-label">Steps</p>
@@ -187,7 +224,11 @@
 <div class="test">
   <div class="test-header">
     <h2 class="test-title">Hardware memory-budget alerting (near-limit + SDRAM mismatch)</h2>
-    <span class="status status-pending">pending</span>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
   </div>
   <p class="description">M61: hardware builds should warn near memory limits and hard-error on SDRAM usage that doesn't match the board's physical hardware.</p>
   <p class="section-label">Steps</p>
@@ -202,7 +243,11 @@
 <div class="test">
   <div class="test-header">
     <h2 class="test-title">Controls Editor: wiring a pot stays in sync with code</h2>
-    <span class="status status-pending">pending</span>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
   </div>
   <p class="description">Visual control wiring must round-trip correctly with the source code's controls convention annotations.</p>
   <p class="section-label">Steps</p>
@@ -218,7 +263,11 @@
 <div class="test">
   <div class="test-header">
     <h2 class="test-title">Wiring Editor: pin conflict detection</h2>
-    <span class="status status-pending">pending</span>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
   </div>
   <p class="description">Two devices claiming the same physical pin must be caught and surfaced in the UI, not silently accepted.</p>
   <p class="section-label">Steps</p>
@@ -233,7 +282,11 @@
 <div class="test">
   <div class="test-header">
     <h2 class="test-title">MIDI: on-screen keyboard and host MIDI bridge reach the effect</h2>
-    <span class="status status-pending">pending</span>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
   </div>
   <p class="description">FR-DEV-18: on-screen keyboard, message monitor, and host MIDI bridge (macOS) must actually deliver events into the running effect.</p>
   <p class="section-label">Steps</p>
@@ -250,7 +303,11 @@
 <div class="test">
   <div class="test-header">
     <h2 class="test-title">OLED panel renders the simulated SSD1306 framebuffer</h2>
-    <span class="status status-pending">pending</span>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
   </div>
   <p class="description">FR-DEV-15: the OLED viewer must accurately mirror what the effect draws to a simulated SSD1306 display.</p>
   <p class="section-label">Steps</p>
@@ -265,7 +322,11 @@
 <div class="test">
   <div class="test-header">
     <h2 class="test-title">Session recording captures and replays audio</h2>
-    <span class="status status-pending">pending</span>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
   </div>
   <p class="description">Recorded sessions should capture real audio I/O and play back deterministically.</p>
   <p class="section-label">Steps</p>
@@ -280,7 +341,11 @@
 <div class="test">
   <div class="test-header">
     <h2 class="test-title">SD card viewer browses a simulated microSD card</h2>
-    <span class="status status-pending">pending</span>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
   </div>
   <p class="description">FR-DEV-45-area: SD card device support should let a developer inspect files on the simulated card.</p>
   <p class="section-label">Steps</p>
@@ -295,7 +360,11 @@
 <div class="test">
   <div class="test-header">
     <h2 class="test-title">Scope and spectrum panels track real-time audio</h2>
-    <span class="status status-pending">pending</span>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
   </div>
   <p class="description">Waveform and FFT visualization must accurately and responsively reflect the live audio signal, not a stale snapshot.</p>
   <p class="section-label">Steps</p>
@@ -306,6 +375,30 @@
   <p class="section-label">Expected result</p>
   <p class="expected">Both panels update smoothly in real time; the spectrum panel's frequency peaks match the actual input/output content with no lag or frozen display.</p>
 </div>
+
+<script>
+  function updateTestStatus(select) {
+    var value = select.value;
+    select.className = 'status status-' + value;
+    var block = select.closest('.test');
+    block.classList.remove('test-success', 'test-fail');
+    if (value === 'success' || value === 'fail') {
+      block.classList.add('test-' + value);
+    }
+    updateSummary();
+  }
+
+  function updateSummary() {
+    var counts = { pending: 0, success: 0, fail: 0 };
+    document.querySelectorAll('select.status').forEach(function (select) {
+      counts[select.value]++;
+    });
+    document.getElementById('summary').textContent =
+      'Pending: ' + counts.pending + ' — Success: ' + counts.success + ' — Failed: ' + counts.fail;
+  }
+
+  updateSummary();
+</script>
 
 </body>
 </html>
