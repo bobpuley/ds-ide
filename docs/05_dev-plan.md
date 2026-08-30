@@ -1,4 +1,4 @@
-# 05 — Development Plan (v21)
+# 05 — Development Plan (v22)
 
 > **v1 complete** — M0–M7 released (0.1.0–0.1.7), all ACs green.
 > Archived: [`docs/v1/`](v1/).
@@ -59,9 +59,11 @@
 >
 > **v20 complete** — M60–M61 released (0.18.0–0.18.1), all ACs green.
 > Archived: [`docs/v20/`](v20/).
+>
+> **v21 complete** — M62–M64 released (0.19.0–0.19.2), all ACs green.
+> Archived: [`docs/v21/`](v21/).
 
-*v21 planned — M62 MIDI Monitor IPC Schema Fix, M63 Manual Test Tracker, M64 Functional/E2E
-Test Layer (Foundation) (see Milestone Registry below).*
+*v22 milestones not yet planned.*
 
 ---
 
@@ -177,14 +179,11 @@ Full registry in [`docs/v19/05_dev-plan.md`](v19/05_dev-plan.md).
 M60 Wizard-Time DaisySP Provisioning · M61 Hardware Memory-Budget Alerting.
 Full registry in [`docs/v20/05_dev-plan.md`](v20/05_dev-plan.md).
 
-### v21 (0.19.0–) — planned
+### v21 (0.19.0–0.19.2) — archived in `docs/v21/`
 
-| ID  | Name                              | Status          | Version | File                                                  |
-|-----|------------------------------------|-----------------|---------|--------------------------------------------------------|
-| M62 | MIDI Monitor IPC Schema Fix        | **released**    | 0.19.0  | [Milestone_M62.md](milestones/v21/Milestone_M62.md)   |
-| M63 | Manual Test Tracker                | **released**    | 0.19.1  | [Milestone_M63.md](milestones/v21/Milestone_M63.md)   |
-| M64 | Functional/E2E Test Layer (Foundation) | **released**    | 0.19.2  | [Milestone_M64.md](milestones/v21/Milestone_M64.md)   |
+M62 MIDI Monitor IPC Schema Fix · M63 Manual Test Tracker · M64 Functional/E2E Test Layer (Foundation).
+Full registry in [`docs/v21/05_dev-plan.md`](v21/05_dev-plan.md).
 
-Source: M62 — bug intake session, 2026-08-30 (reported while testing `tremolo-filter-midi`).
-M63 — feature intake session, 2026-08-30. M64 — feature intake session, 2026-08-30 (follow-up
-to the M63 manual test tracker: which cases can be automated instead).
+### v22 (0.19.3–) — planned
+
+*(no milestones yet)*
