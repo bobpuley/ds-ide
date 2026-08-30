@@ -5,6 +5,15 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.19.0 — 2026-08-30
+
+**M62 — MIDI Monitor IPC Schema Fix** *(FR-DEV-18 — DoD green)*
+
+- **FR-DEV-18** — The MIDI message monitor never showed any MIDI traffic: the emulator correctly emitted `midiRx`/`midiTx` IPC messages and the webview panel (`src/webview/midi-panel.ts`) already had working consumer code, but `src/ipc/narrow.ts`'s schema-validation whitelist (FR-IPC-2) had no narrower for either message type, so `IpcClient` silently dropped every one. Added `midiRx` and `midiTx` entries to `NARROWERS`, each requiring numeric `status`, `data1`, `data2`, `channel`, and `midiType` fields, matching the existing `led`/`rgbLed` narrower style. Sending MIDI events into a test effect (e.g. `tremolo-filter-midi`) no longer logs `dropped IPC message failing schema validation`, and events now appear live in the MIDI monitor panel.
+- **chore** — `package.json`'s `version` field is bumped to `0.19.0` to match this entry.
+
+---
+
 ## 0.18.1 — 2026-08-29
 
 **M61 — Hardware Memory-Budget Alerting** *(FR-HW-5 — DoD green)*
