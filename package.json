@@ -151,7 +151,10 @@
         },
         "ds-ide.hardwareVariant": {
           "type": "string",
-          "enum": ["base", "65mb-sdram"],
+          "enum": [
+            "base",
+            "65mb-sdram"
+          ],
           "default": "base",
           "scope": "resource",
           "markdownDescription": "Which physical Daisy Seed variant this project targets. The base board has no external SDRAM; only the \"65 MB\" variant does. Used to catch SDRAM usage that would fail on hardware even though the linker's memory-region report shows it fitting — the linker sizes the SDRAM region generically and can't know which board is actually connected.\n\nSet per project (resource-scoped) — the `Daisy IDE: New Effect Project` wizard prompts for this and pre-fills it for new projects."
@@ -209,6 +212,7 @@
     "typecheck": "npm run gen:pins && tsc --noEmit && tsc --noEmit -p tsconfig.webview.json",
     "test": "npm run gen:pins && vitest run",
     "test:watch": "npm run gen:pins && vitest",
+    "test:e2e": "npm run compile && tsc -p tsconfig.e2e.json && vscode-test",
     "lint": "npm run gen:pins && tsc --noEmit && tsc --noEmit -p tsconfig.webview.json && bash scripts/check-active-folder-convention.sh",
     "package": "npm run gen:pins && node esbuild.js --production && npm run rebuild:native && vsce package",
     "verify:package": "bash scripts/verify-vsix.sh",
@@ -219,6 +223,8 @@
     "@electron/rebuild": "^4.2.0",
     "@types/node": "^18.0.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^3.0.0",
     "esbuild": "^0.21.0",
     "tsx": "^4.23.1",
