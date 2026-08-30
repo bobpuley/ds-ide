@@ -5,6 +5,16 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.19.2 — 2026-08-30
+
+**M64 — Functional/E2E Test Layer (Foundation)** *(FR-TEST-2 — DoD green)*
+
+- **FR-TEST-2** — Added a real-extension-host integration test layer alongside vitest's mocked-`vscode`-module unit suite, using the standard `@vscode/test-cli` + `@vscode/test-electron` harness (`tsconfig.e2e.json`, `.vscode-test.mjs`, new `npm run test:e2e` script — separate and opt-in, not wired into `test`/`lint`). Three specs: (1) a smoke test asserting the extension activates and every `package.json`-contributed command is registered; (2) `build-commands.test.ts`, invoking "Daisy IDE: Build for Emulator" and "Daisy IDE: Build for Hardware" through the real `vscode.commands` API against a fixture effect project, with `child_process.spawn` stubbed at the process boundary so no real toolchain/cmake ever runs; (3) `ipc-roundtrip.test.ts`, connecting a real `IpcClient` to a real Unix socket and asserting a `midiRx` message survives the real `parseIpcMessage()` narrower — verified to reproduce and catch the exact M62 regression when temporarily reverted.
+- Documented the new test layer in `README.md`.
+- **chore** — `package.json`'s `version` field is bumped to `0.19.2` to match this entry.
+
+---
+
 ## 0.19.1 — 2026-08-30
 
 **M63 — Manual Test Tracker** *(FR-TEST-1 — DoD green)*
