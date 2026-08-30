@@ -19,14 +19,21 @@ bridge on macOS.
 > the M62 bug-fix task in the v21 milestone registry below.
 
 **FR-TEST-1 — Manual test tracker.** A single standalone HTML page, hand-edited (no build
-step, no JS-driven persistence), at `src/test/manual/manual-tests.html`, listing manual test
-cases to run after each implementation — specifically covering use cases that are hard to
-validate with unit tests (e.g. real audio I/O, hardware build/flash, webview rendering,
-wiring/pin conflict UX). Each entry records: title, short description, steps to perform,
-expected result, and a status of `pending` | `success` | `fail`. Ships pre-populated with an
-initial set of real test cases surveying ds-ide's existing hard-to-unit-test areas, not just an
-empty template. Status edits are hand-made directly in the file and are not required to carry
-a change-history — a plain static page is intentionally sufficient.
+step), at `src/test/manual/manual-tests.html`, listing manual test cases to run after each
+implementation — specifically covering use cases that are hard to validate with unit tests
+(e.g. real audio I/O, hardware build/flash, webview rendering, wiring/pin conflict UX). Each
+entry records: title, short description, steps to perform, expected result, and a status of
+`pending` | `success` | `fail`, selectable via a small in-page `<select>` control per entry —
+choosing a value recolors that entry's status badge and its whole test block (green for
+success, red for fail) via one minimal inline `<script>` element dedicated to this toggle. This
+is a visual convenience only, not persisted: reloading the page resets each entry to whatever
+status is written as the `selected` option in the file's markup, which remains the actual
+persisted record — a tester who wants a result to survive a reload still hand-edits that
+`selected` attribute in the file, same as before. A page-top summary line ("Pending: n —
+Success: n — Failed: n") tallies all entries' current status and updates live as selections
+change. Ships pre-populated with an initial set of
+real test cases surveying ds-ide's existing hard-to-unit-test areas, not just an empty
+template.
 
 **FR-TEST-2 — Functional/e2e test layer (foundation).** Add `@vscode/test-electron`-based
 integration tests that run against a real VS Code extension host — real activation, real
