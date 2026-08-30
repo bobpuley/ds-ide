@@ -91,6 +91,28 @@ const NARROWERS: Record<string, Narrower> = {
     if (data === undefined) return undefined;
     return { type: 'oledFrame', data };
   },
+  // FR-DEV-18: one message per MIDI event, either direction. `status` is the
+  // raw MIDI status byte; `midiType` is the shim's decoded message-kind enum.
+  midiRx: (obj) => {
+    const status = getNumber(obj, 'status');
+    const data1 = getNumber(obj, 'data1');
+    const data2 = getNumber(obj, 'data2');
+    const channel = getNumber(obj, 'channel');
+    const midiType = getNumber(obj, 'midiType');
+    if (status === undefined || data1 === undefined || data2 === undefined
+      || channel === undefined || midiType === undefined) return undefined;
+    return { type: 'midiRx', status, data1, data2, channel, midiType };
+  },
+  midiTx: (obj) => {
+    const status = getNumber(obj, 'status');
+    const data1 = getNumber(obj, 'data1');
+    const data2 = getNumber(obj, 'data2');
+    const channel = getNumber(obj, 'channel');
+    const midiType = getNumber(obj, 'midiType');
+    if (status === undefined || data1 === undefined || data2 === undefined
+      || channel === undefined || midiType === undefined) return undefined;
+    return { type: 'midiTx', status, data1, data2, channel, midiType };
+  },
   replayDone: () => ({ type: 'replayDone' }),
   protocolVersion: (obj) => {
     const version = getNumber(obj, 'version');
