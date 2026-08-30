@@ -183,7 +183,7 @@ Full registry in [`docs/v20/05_dev-plan.md`](v20/05_dev-plan.md).
 |-----|------------------------------------|-----------------|---------|--------------------------------------------------------|
 | M62 | MIDI Monitor IPC Schema Fix        | **released**    | 0.19.0  | [Milestone_M62.md](milestones/v21/Milestone_M62.md)   |
 | M63 | Manual Test Tracker                | **released**    | 0.19.1  | [Milestone_M63.md](milestones/v21/Milestone_M63.md)   |
-| M64 | Functional/E2E Test Layer (Foundation) | **planned**     | 0.19.2  | [Milestone_M64.md](milestones/v21/Milestone_M64.md)   |
+| M64 | Functional/E2E Test Layer (Foundation) | **in progress** | 0.19.2  | [Milestone_M64.md](milestones/v21/Milestone_M64.md)   |
 
 Source: M62 — bug intake session, 2026-08-30 (reported while testing `tremolo-filter-midi`).
 M63 — feature intake session, 2026-08-30. M64 — feature intake session, 2026-08-30 (follow-up
