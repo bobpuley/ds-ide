@@ -1,4 +1,4 @@
-# 05 — Development Plan (v20)
+# 05 — Development Plan (v21)
 
 > **v1 complete** — M0–M7 released (0.1.0–0.1.7), all ACs green.
 > Archived: [`docs/v1/`](v1/).
@@ -56,8 +56,11 @@
 >
 > **v19 complete** — M58–M59 released (0.17.6–0.17.7), all ACs green.
 > Archived: [`docs/v19/`](v19/).
+>
+> **v20 complete** — M60–M61 released (0.18.0–0.18.1), all ACs green.
+> Archived: [`docs/v20/`](v20/).
 
-*v20 in planning — M60 (Wizard-Time DaisySP Provisioning) released; M61 (Hardware Memory-Budget Alerting) released.*
+*v21 milestones not yet planned.*
 
 ---
 
@@ -168,12 +171,11 @@ Full registry in [`docs/v18/05_dev-plan.md`](v18/05_dev-plan.md).
 M58 Debug-Attach Detach Noise Fix · M59 Stale Build-Cache Self-Heal.
 Full registry in [`docs/v19/05_dev-plan.md`](v19/05_dev-plan.md).
 
-### v20 (0.18.0–) — planned
+### v20 (0.18.0–0.18.1) — archived in `docs/v20/`
 
-| ID  | Name          | Status          | Version | File                                              |
-|-----|---------------|-----------------|---------|----------------------------------------------------|
-| M60 | Wizard-Time DaisySP Provisioning | **released**    | 0.18.0  | [Milestone_M60.md](milestones/v20/Milestone_M60.md) |
-| M61 | Hardware Memory-Budget Alerting  | **released**    | 0.18.1  | [Milestone_M61.md](milestones/v20/Milestone_M61.md) |
+M60 Wizard-Time DaisySP Provisioning · M61 Hardware Memory-Budget Alerting.
+Full registry in [`docs/v20/05_dev-plan.md`](v20/05_dev-plan.md).
 
-Source: M60 — feature idea evaluated via design discussion (2026-08-27), intake via `/doc-creator-driver:intake`.
-Source: M61 — feature idea raised 2026-08-28, scoped via `/doc-creator-driver:intake` + `grill-me`, 2026-08-29.
+### v21 (0.19.0–) — planned
+
+*(no milestones yet)*
