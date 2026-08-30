@@ -1,7 +1,7 @@
 # M64 — Functional/E2E Test Layer (Foundation)
 
 **Version:** 0.19.2
-**Status:** in progress
+**Status:** released
 **Source:** feature intake session, 2026-08-30
 
 ## Goal
