@@ -5,6 +5,16 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.19.1 — 2026-08-30
+
+**M63 — Manual Test Tracker** *(FR-TEST-1 — DoD green)*
+
+- **FR-TEST-1** — Added `src/test/manual/manual-tests.html`, a standalone hand-edited page (no build step) listing 16 manual test cases covering ds-ide's hard-to-unit-test areas: emulator run loop timing, on-screen pot → ADC → scope, breakpoint time-freeze, NaN/clipping flagging, live audio I/O, hardware build parity, DFU flash, hardware variant prompt/persistence, memory-budget alerting, Controls/Wiring editor round-trips, MIDI, OLED, session recording, SD card viewer, and scope/spectrum tracking. Each entry has a title, description, steps, expected result, and a `pending`/`success`/`fail` status `<select>` that recolors the entry (badge + block, green/red) via one minimal inline script — visual-only, not persisted beyond whatever `selected` option is saved in the file. A page-top summary line tallies pending/success/fail counts live.
+- Backported the original MIDI I/O surface requirement (FR-DEV-18) into `docs/03_requirements.md`, which v21 planning had left empty.
+- **chore** — `package.json`'s `version` field is bumped to `0.19.1` to match this entry.
+
+---
+
 ## 0.19.0 — 2026-08-30
 
 **M62 — MIDI Monitor IPC Schema Fix** *(FR-DEV-18 — DoD green)*
