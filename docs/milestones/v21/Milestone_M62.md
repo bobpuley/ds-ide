@@ -1,7 +1,7 @@
 # M62 — MIDI Monitor IPC Schema Fix
 
 **Version:** 0.19.0
-**Status:** planned
+**Status:** released
 **Source:** bug intake session, 2026-08-30 (reported while testing `tremolo-filter-midi`)
 
 ## Goal

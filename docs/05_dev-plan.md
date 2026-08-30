@@ -60,7 +60,8 @@
 > **v20 complete** — M60–M61 released (0.18.0–0.18.1), all ACs green.
 > Archived: [`docs/v20/`](v20/).
 
-*v21 milestones not yet planned.*
+*v21 planned — M62 MIDI Monitor IPC Schema Fix, M63 Manual Test Tracker, M64 Functional/E2E
+Test Layer (Foundation) (see Milestone Registry below).*
 
 ---
 
@@ -178,4 +179,12 @@ Full registry in [`docs/v20/05_dev-plan.md`](v20/05_dev-plan.md).
 
 ### v21 (0.19.0–) — planned
 
-*(no milestones yet)*
+| ID  | Name                              | Status          | Version | File                                                  |
+|-----|------------------------------------|-----------------|---------|--------------------------------------------------------|
+| M62 | MIDI Monitor IPC Schema Fix        | **released**    | 0.19.0  | [Milestone_M62.md](milestones/v21/Milestone_M62.md)   |
+| M63 | Manual Test Tracker                | **planned**     | 0.19.1  | [Milestone_M63.md](milestones/v21/Milestone_M63.md)   |
+| M64 | Functional/E2E Test Layer (Foundation) | **planned**     | 0.19.2  | [Milestone_M64.md](milestones/v21/Milestone_M64.md)   |
+
+Source: M62 — bug intake session, 2026-08-30 (reported while testing `tremolo-filter-midi`).
+M63 — feature intake session, 2026-08-30. M64 — feature intake session, 2026-08-30 (follow-up
+to the M63 manual test tracker: which cases can be automated instead).
