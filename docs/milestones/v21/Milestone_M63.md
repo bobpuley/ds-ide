@@ -1,7 +1,7 @@
 # M63 — Manual Test Tracker
 
 **Version:** 0.19.1
-**Status:** in progress
+**Status:** released
 **Source:** feature intake session, 2026-08-30
 
 ## Goal
