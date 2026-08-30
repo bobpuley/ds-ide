@@ -12,6 +12,10 @@ out/
 # @vscode/test-electron downloads a real VS Code build here on first e2e run
 .vscode-test/
 
+# e2e build-commands.test.ts's suiteSetup writes workspace settings (absolute,
+# machine-specific armToolchainPath) into this fixture folder on every run
+src/test/e2e/fixtures/basic-effect-project/.vscode/
+
 # generated from resources/Daisy_Seed_Rev4_Pinout.csv — run `npm run gen:pins`
 src/devices/pin-table.gen.ts
 

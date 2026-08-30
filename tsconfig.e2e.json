@@ -3,8 +3,8 @@
     "module": "commonjs",
     "target": "ES2022",
     "lib": ["ES2022"],
-    "outDir": "./out/test/e2e",
-    "rootDir": "./src/test/e2e",
+    "outDir": "./out",
+    "rootDir": "./src",
     "sourceMap": true,
     "strict": true,
     "skipLibCheck": true

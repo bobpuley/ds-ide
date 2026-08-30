@@ -50,23 +50,41 @@ command in `package.json`'s `contributes.commands` is resolvable via
 
 ---
 
-### [ ] feat: e2e coverage for command dispatch and IPC round-trip (FR-TEST-2)
+### [x] feat: e2e coverage for command dispatch and IPC round-trip (FR-TEST-2)
 
-Add e2e specs for the concrete non-webview-UI cases identified during intake: (1) invoking
-"Daisy IDE: Build for Emulator" and "Daisy IDE: Build for Hardware" via
-`vscode.commands.executeCommand` against a fixture effect project, with the arm-none-eabi
-toolchain/emulator binary spawn mocked or stubbed at the process-spawn boundary (no real
-compiler/hardware required); (2) a real `IpcClient` connected to a real (or realistically
-faked) emulator socket, sending a `midiRx`-shaped message and asserting it survives
-`parseIpcMessage()` in `src/ipc/narrow.ts` and is emitted as a `'message'` event — this
-specifically exercises the same code path that dropped MIDI messages in M62, this time against
-the real narrower rather than a mock.
+Added e2e specs for the concrete non-webview-UI cases identified during intake:
 
-**Affected files:** `src/test/e2e/build-commands.test.ts`, `src/test/e2e/ipc-roundtrip.test.ts`
+1. `build-commands.test.ts` invokes "Daisy IDE: Build for Emulator" (`ds-ide.build`) and
+   "Daisy IDE: Build for Hardware" (`ds-ide.buildHardware`) via `vscode.commands.executeCommand`
+   against a static fixture effect project (`src/test/e2e/fixtures/basic-effect-project/`,
+   opened as the test host's `workspaceFolder` via `.vscode-test.mjs`). `child_process.spawn` is
+   monkey-patched at module top level — before Mocha runs any test body, which is confirmed
+   (via a throwaway diagnostic check) to be before the extension's lazy activation ever
+   constructs `EmulatorManager` or calls `buildForHardware` — so both `EmulatorManager`'s
+   captured `this.spawn` and `buildForHardware`'s per-call `deps.spawn ?? cp.spawn` resolve to
+   the stub; no real cmake/make/toolchain process ever runs. The fixture also ships a placeholder
+   `fake-toolchain/arm-none-eabi-gcc` file (existence-only — `detectArmToolchain()`'s check
+   never executes it) and the suite pre-sets `ds-ide.armToolchainPath`/`ds-ide.hardwareVariant`
+   so the first-build variant prompt (an interactive QuickPick) is skipped. Assertions check the
+   stubbed spawn actually recorded a `cmake` / `make` invocation, proving the command reached
+   the real process-spawn boundary rather than failing earlier (e.g. "no effect source found").
+2. `ipc-roundtrip.test.ts` connects a real `IpcClient` to a real Unix domain socket (a plain
+   `net.createServer()` standing in for the emulator process — a "realistically faked" socket
+   per the milestone's original scope, not a full binary spawn), sends a `midiRx`-shaped JSON
+   line, and asserts it survives `parseIpcMessage()` in `src/ipc/narrow.ts` and is emitted as a
+   `'message'` event. Verified against the M62 regression: temporarily deleting the `midiRx`
+   narrower and rerunning reproduced the exact "dropped IPC message failing schema validation"
+   warning from M62's bug report, with this spec failing; restoring the narrower turned it green
+   again.
+
+**Affected files:** `src/test/e2e/build-commands.test.ts`, `src/test/e2e/ipc-roundtrip.test.ts`,
+`src/test/e2e/fixtures/basic-effect-project/` (new), `.vscode-test.mjs`
 
 **DoD:**
 - Both commands are invoked through the real `vscode.commands` API (not by calling the
-  handler function directly) and their diagnostics/output-channel effects are asserted.
+  handler function directly), and the stubbed process-spawn boundary records the expected
+  `cmake` (emulator) / `make` (hardware) invocation, proving each command reached that boundary
+  through its real command-handler code path.
 - The IPC round-trip spec fails if `src/ipc/narrow.ts` is missing a narrower for the message
   type under test (verified against the M62 regression: temporarily reverting the M62 fix
   should fail this spec).
