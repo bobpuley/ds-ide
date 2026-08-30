@@ -19,7 +19,7 @@ wiring-editor pin-conflict highlighting) remain out of scope, left for a future 
 
 ## Sprint Tasks
 
-### [x] feat: scaffold @vscode/test-electron infrastructure (FR-TEST-2)
+### [x] feat: scaffold @vscode/test-electron infrastructure (FR-TEST-2a)
 
 Added the standard Microsoft-supported e2e harness: `@vscode/test-electron` and `@vscode/test-cli`
 as devDependencies. Created `src/test/e2e/` parallel to the existing `src/test/unit/` and
@@ -50,7 +50,7 @@ command in `package.json`'s `contributes.commands` is resolvable via
 
 ---
 
-### [x] feat: e2e coverage for command dispatch and IPC round-trip (FR-TEST-2)
+### [x] feat: e2e coverage for command dispatch and IPC round-trip (FR-TEST-2b)
 
 Added e2e specs for the concrete non-webview-UI cases identified during intake:
 
