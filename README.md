@@ -127,6 +127,14 @@ The following state is persisted per workspace (not user-editable directly; mana
 
 ---
 
+## Testing
+
+- **`npm test`** — vitest unit suite (mocked `vscode` module). Fast, runs on every `npm run lint`-adjacent check; this is the suite to run while iterating.
+- **`npm run test:e2e`** — functional/e2e suite (`@vscode/test-cli` + `@vscode/test-electron`). Builds the extension, then launches a real VS Code Extension Development Host and exercises real activation, real `vscode.commands` dispatch, and real IPC round-trips — things the mocked unit suite can't prove. Slower (downloads a real VS Code build on first run) and **not** part of `npm test` or `npm run lint` — run it explicitly before a release, or when changing activation/command-registration/IPC-boundary code. Specs live in `src/test/e2e/`.
+- **`src/test/manual/manual-tests.html`** — hand-run checklist for cases neither automated suite can cover (real audio I/O, hardware build/flash, webview rendering).
+
+---
+
 ## Known limitations
 
 - **macOS only** — the emulator binary is compiled for macOS/Apple Silicon. Linux and Windows are not currently supported.

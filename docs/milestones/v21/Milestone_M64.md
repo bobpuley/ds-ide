@@ -19,21 +19,26 @@ wiring-editor pin-conflict highlighting) remain out of scope, left for a future 
 
 ## Sprint Tasks
 
-### [ ] feat: scaffold @vscode/test-electron infrastructure (FR-TEST-2)
+### [x] feat: scaffold @vscode/test-electron infrastructure (FR-TEST-2)
 
-Add the standard Microsoft-supported e2e harness: `@vscode/test-electron` (downloads/launches
-a real VS Code build, runs a test entry point inside its extension host) and `@vscode/test-cli`
-(runner/config glue). Create `src/test/e2e/` parallel to the existing `src/test/unit/` and
-`src/test/manual/`, with a `runTests.ts` entry point and a `.vscode-test.mjs` (or equivalent)
-config. Add a `test:e2e` script to `package.json`, kept separate from `test` (vitest) — not
-wired into `lint` or the default `test` script, since it's slower and downloads/launches real
-VS Code (opt-in, per the "speed is the product" non-negotiable for the fast inner loop). Write
-one minimal smoke spec: the extension activates without error and its contributed commands
-(from `package.json`'s `contributes.commands`) are all registered and resolvable via
+Added the standard Microsoft-supported e2e harness: `@vscode/test-electron` and `@vscode/test-cli`
+as devDependencies. Created `src/test/e2e/` parallel to the existing `src/test/unit/` and
+`src/test/manual/`, with `tsconfig.e2e.json` compiling it to `out/test/e2e/` and a
+`.vscode-test.mjs` config pointing the `vscode-test` CLI (from `@vscode/test-cli`) at the
+compiled specs. No separate `runTests.ts` entry point: `@vscode/test-cli`'s own runner already
+wraps `@vscode/test-electron` internally and wires `extensionDevelopmentPath`/
+`extensionTestsPath` from the config file, so a hand-written entry point would just duplicate
+that — the CLI is the "standard Microsoft-supported" path, not a manual `runTests()` call.
+`test:e2e` in `package.json` first runs `npm run compile` (the real extension must be built for
+the host to activate it), then compiles the e2e specs, then runs `vscode-test` — kept separate
+from `test` (vitest) and not wired into `lint`, since it's slower and downloads/launches real
+VS Code on first run (opt-in, per the "speed is the product" non-negotiable for the fast inner
+loop). Wrote one smoke spec (`src/test/e2e/smoke.test.ts`): the extension activates and every
+command in `package.json`'s `contributes.commands` is resolvable via
 `vscode.commands.getCommands()`.
 
-**Affected files:** `package.json`, `src/test/e2e/runTests.ts`, `src/test/e2e/smoke.test.ts`,
-`.vscode-test.mjs` (new)
+**Affected files:** `package.json`, `package-lock.json`, `tsconfig.e2e.json` (new),
+`src/test/e2e/smoke.test.ts` (new), `.vscode-test.mjs` (new), `.gitignore`, `README.md`
 
 **DoD:**
 - `npm run test:e2e` launches a real VS Code Extension Development Host and passes locally.

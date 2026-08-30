@@ -5,8 +5,12 @@ daisy-seed-knowledge/
 # Node / extension build outputs
 node_modules/
 dist/
+out/
 *.tsbuildinfo
 *.vsix
+
+# @vscode/test-electron downloads a real VS Code build here on first e2e run
+.vscode-test/
 
 # generated from resources/Daisy_Seed_Rev4_Pinout.csv — run `npm run gen:pins`
 src/devices/pin-table.gen.ts
