@@ -8,6 +8,8 @@ import { computeBusBrackets } from '../wiring/bus-bracket';
 import { computePinOverlayStates } from '../wiring/pin-overlay-state';
 import { isPinEligible } from '../wiring/pin-eligibility';
 import { describePlacedDevice, peripheralOwningPin, type PopoverTarget } from '../wiring/device-popover';
+import { computeDropTargets, type DropTarget } from '../wiring/drop-targets';
+import { targetKey, pinDragStates, previewSlots, dragLabel } from '../wiring/drag-view';
 import { hasKnownCommand } from './message-guard';
 import { el } from './dom-lookup';
 import { readDataIsland, showDataIslandError } from './data-island';
@@ -164,6 +166,22 @@ PIN_DEFS.forEach(def => {
     al.classList.add('a-label');
     al.textContent = def.aLabel;
     g.appendChild(al);
+  }
+
+  // Drag-time overlays (FR-UDM-6): an occupied target's ⚠ and a previewed
+  // multi-pin footprint's slot name (R/G/B, A/B/SW). Hidden unless styled on.
+  if (isAssignable) {
+    const warn = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    warn.setAttribute('x', String(cx + (def.side === 'L' ? 7 : -12)));
+    warn.setAttribute('y', String(cy - 6));
+    warn.classList.add('warn-mark');
+    warn.textContent = '⚠';
+    const slot = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    slot.setAttribute('x', String(cx));
+    slot.setAttribute('y', String(cy + 3));
+    slot.setAttribute('text-anchor', 'middle');
+    slot.classList.add('slot-no');
+    g.append(warn, slot);
   }
 
   svg.appendChild(g);
@@ -478,6 +496,202 @@ document.addEventListener('click', e => {
 });
 
 renderPeripherals();
+
+// ── Drag & drop (FR-UDM-6) ────────────────────────────────────────────────
+// Pointer events (not HTML5 DnD) so SVG pins, lanes and the USB port are
+// all hit-tested the same way via elementFromPoint + [data-target]. Targets
+// come from the pure computeDropTargets(); this only paints them.
+
+interface DragSession {
+  deviceId: string;
+  chip: HTMLElement | null;
+  /** A moving control's id — its own pins count as free (FR-UDM-9). */
+  exclude?: string;
+  targets: Map<string, DropTarget>;
+  hover: DropTarget | null;
+  started: boolean;
+  x0: number;
+  y0: number;
+}
+
+const DRAG_THRESHOLD_PX = 4;
+const ghost = el<HTMLElement>('ghost');
+const lanesLayer = el<HTMLElement & SVGGElement>('lanes');
+const hintEl = el<HTMLElement>('hint');
+const idleHint = hintEl.textContent ?? '';
+let drag: DragSession | null = null;
+
+function startDrag(e: PointerEvent, deviceId: string, chip: HTMLElement | null, exclude?: string): void {
+  if (e.button !== 0 || drag) return;
+  e.preventDefault();
+  const list = computeDropTargets(deviceId, PIN_DEFS, { wiredPins, peripherals }, exclude);
+  drag = {
+    deviceId, chip, exclude,
+    targets: new Map(list.map(t => [targetKey(t), t])),
+    hover: null, started: false, x0: e.clientX, y0: e.clientY,
+  };
+  document.addEventListener('pointermove', onDragMove);
+  document.addEventListener('pointerup', onDragUp);
+  document.addEventListener('pointercancel', cancelDrag);
+  window.addEventListener('blur', cancelDrag);
+}
+
+function onDragMove(e: PointerEvent): void {
+  if (!drag) return;
+  if (!drag.started) {
+    if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < DRAG_THRESHOLD_PX) return;
+    drag.started = true;
+    closePopup();
+    hideDevicePopover();
+    hideTooltip();
+    drag.chip?.classList.add('dragging');
+    document.body.classList.add('drag-active');
+    const d = REGISTRY[drag.deviceId];
+    ghost.style.setProperty('--accent', d?.accentColor ?? '#4ec9b0');
+    ghost.querySelector('.lbl')!.textContent = d?.label ?? drag.deviceId;
+    ghost.style.display = 'block';
+    const n = drag.targets.size;
+    hintEl.textContent = `Dragging ${d?.label ?? drag.deviceId} — ${n} valid target${n === 1 ? '' : 's'}. Release off-target or press Esc to cancel.`;
+    paintDrag();
+  }
+  ghost.style.left = (e.clientX + 14) + 'px';
+  ghost.style.top = (e.clientY + 10) + 'px';
+
+  const under = document.elementFromPoint(e.clientX, e.clientY);
+  const key = under?.closest<HTMLElement | SVGElement>('[data-target]')?.dataset['target'] ?? null;
+  const hover = key ? drag.targets.get(key) ?? null : null;
+  if (hover !== drag.hover) {
+    drag.hover = hover;
+    paintDrag();
+  }
+  const label = dragLabel(hover, !!under?.closest('#pinout'));
+  ghost.classList.remove('ok', 'warn', 'no');
+  if (label.tone !== 'none') ghost.classList.add(label.tone);
+  ghost.querySelector('.tgt')!.textContent = label.text;
+}
+
+function endDrag(): DragSession | null {
+  const d = drag;
+  drag = null;
+  document.removeEventListener('pointermove', onDragMove);
+  document.removeEventListener('pointerup', onDragUp);
+  document.removeEventListener('pointercancel', cancelDrag);
+  window.removeEventListener('blur', cancelDrag);
+  ghost.style.display = 'none';
+  document.body.classList.remove('drag-active');
+  d?.chip?.classList.remove('dragging');
+  hintEl.textContent = idleHint;
+  paintDrag();
+  return d;
+}
+
+// Release off-target / Esc / pointercancel: nothing changes.
+function cancelDrag(): void {
+  if (drag) endDrag();
+}
+
+function onDragUp(e: PointerEvent): void {
+  const d = endDrag();
+  if (!d || !d.started || !d.hover) return;
+  onDrop(d, d.hover, e);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && drag) cancelDrag();
+});
+
+paletteCol.querySelectorAll<HTMLElement>('.device-chip').forEach(chip => {
+  chip.addEventListener('pointerdown', e => {
+    const id = chip.dataset['device'];
+    if (id && REGISTRY[id]) startDrag(e, id, chip);
+  });
+});
+
+// Repaints every pin, lane and the USB port for the current drag (or clears
+// all drag-time state when none is in progress).
+function paintDrag(): void {
+  const d = drag?.started ? drag : null;
+  svg.classList.toggle('dragging', !!d);
+  if (d) svg.style.setProperty('--accent', REGISTRY[d.deviceId]?.accentColor ?? '#4ec9b0');
+  const states = pinDragStates(d ? [...d.targets.values()] : []);
+  const preview = d?.hover ? previewSlots(d.deviceId, d.hover) : new Map<number, string>();
+
+  for (const def of PIN_DEFS) {
+    const g = document.getElementById('pin-' + (def.pin !== null ? def.pin : def.side + def.row));
+    if (!g) continue;
+    g.classList.remove('ctx-free', 'ctx-occ', 'ctx-ineligible', 'ctx-preview');
+    delete g.dataset['target'];
+    const slot = g.querySelector('.slot-no');
+    if (slot) slot.textContent = '';
+    if (!d) continue;
+    if (def.pin === null) { g.classList.add('ctx-ineligible'); continue; }
+    const st = states.get(def.pin);
+    if (st) {
+      g.dataset['target'] = st.key;
+      if (st.state === 'free') g.classList.add('ctx-free');
+      else if (st.state === 'occ') g.classList.add('ctx-occ');
+    }
+    const slotName = preview.get(def.pin);
+    if (slotName !== undefined) {
+      g.classList.add('ctx-preview');
+      if (slot) slot.textContent = slotName;
+    } else if (!st) {
+      g.classList.add('ctx-ineligible');
+    }
+  }
+
+  lanesLayer.innerHTML = '';
+  if (d) {
+    for (const [key, t] of d.targets) {
+      if (t.kind !== 'lane') continue;
+      const defs = t.pins.map(p => PIN_DEFS.find(pd => pd.pin === p)).filter((x): x is PinDef => !!x);
+      const first = defs[0];
+      if (!first) continue;
+      const rows = defs.map(pd => pd.row);
+      const y0 = pinY(Math.min(...rows)) - 13;
+      const y1 = pinY(Math.max(...rows)) + 13;
+      const left = first.side === 'L';
+      const occ = t.conflicts.length > 0;
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('x', left ? '14' : '380');
+      rect.setAttribute('y', String(y0));
+      rect.setAttribute('width', '166');
+      rect.setAttribute('height', String(y1 - y0));
+      rect.setAttribute('rx', '6');
+      rect.classList.add('drop-lane');
+      if (occ) rect.classList.add('occ');
+      if (d.hover === t) rect.classList.add('hot');
+      rect.dataset['target'] = key;
+      const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      lbl.setAttribute('x', left ? '150' : '410');
+      lbl.setAttribute('y', String((y0 + y1) / 2 + 3));
+      lbl.setAttribute('text-anchor', 'middle');
+      lbl.classList.add('drop-lane-lbl');
+      if (occ) lbl.classList.add('occ');
+      lbl.textContent = (occ ? '⚠ ' : '') + (t.bus ?? '');
+      lbl.dataset['target'] = key;
+      lanesLayer.append(rect, lbl);
+    }
+  }
+
+  if (usbPortGroup) {
+    usbPortGroup.classList.remove('ctx-free', 'ctx-occ', 'ctx-ineligible', 'ctx-preview');
+    delete usbPortGroup.dataset['target'];
+    const usb = d?.targets.get('usb');
+    if (d && usb) {
+      usbPortGroup.dataset['target'] = 'usb';
+      usbPortGroup.classList.add(usb.conflicts.length ? 'ctx-occ' : 'ctx-free');
+      if (d.hover === usb) usbPortGroup.classList.add('ctx-preview');
+    } else if (d) {
+      usbPortGroup.classList.add('ctx-ineligible');
+    }
+  }
+}
+
+// A drop on a target. FR-UDM-7 opens the placement popover from here.
+function onDrop(_session: DragSession, _target: DropTarget, _e: PointerEvent): void {
+  // Placement popover lands with FR-UDM-7.
+}
 
 // ── Pin click handler ─────────────────────────────────────────────────────
 function onPinClick(e: Event): void {

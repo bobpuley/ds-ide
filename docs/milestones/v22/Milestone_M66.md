@@ -43,7 +43,7 @@ All ten devices in one palette, generated from the registry.
 
 ---
 
-### [ ] feat: drag-time board highlighting and footprint preview (FR-UDM-6b)
+### [x] feat: drag-time board highlighting and footprint preview (FR-UDM-6b)
 
 **Affected files:** `src/webview/wiring-webview.ts`, `src/wiring/wiring-panel.ts`
 
