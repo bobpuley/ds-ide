@@ -38,6 +38,15 @@ describe('REGISTRY (FR-DEV-2)', () => {
     }
   });
 
+  it('names each multi-pin device\'s pin slots in Init() argument order (FR-UDM-3)', () => {
+    expect(REGISTRY['rgbled']!.pinSlots).toEqual(['R', 'G', 'B']);
+    expect(REGISTRY['encoder']!.pinSlots).toEqual(['A', 'B', 'SW']);
+    for (const id of Object.keys(REGISTRY)) {
+      const d = REGISTRY[id]!;
+      if (d.pinSlots) expect(d.pinSlots).toHaveLength(d.pinCount!);
+    }
+  });
+
   it('declares toggle with the multi-position primitive (FR-DEV-7)', () => {
     expect(REGISTRY['toggle']!.primitive).toBe('multi-position');
     expect(REGISTRY['toggle']!.declaredClassName).toBe('Switch3');

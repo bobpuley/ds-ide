@@ -128,6 +128,13 @@ export interface DeviceDescriptor {
    * footprint through `bus` / `busChoices` instead. Today only pot sets it.
    */
   pinRequires?: PinRequirement;
+  /**
+   * FR-UDM-3: display names for a 'pins' device's pins, in Init() argument
+   * order (the same order an instance's `pins` array is stored in) — e.g.
+   * rgbled R/G/B, encoder A/B/SW. Length equals `pinCount`. Used to label a
+   * placed device's pins (`R=D15 G=D16 B=D17`) rather than special-casing ids.
+   */
+  pinSlots?: string[];
 }
 
 export type PinRequirement = 'adc' | 'i2c' | 'uart' | 'spi' | 'sdmmc';
@@ -204,6 +211,7 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     attachmentKind: 'pins',
     initArgs: null,
     pinCount: 3,
+    pinSlots: ['R', 'G', 'B'],
   },
   // FR-DEV-9: A/B quadrature pins plus a click pin (reusing the button
   // pin-state array for click — see emulator/shim/src/encoder.cpp), all
@@ -223,6 +231,7 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     attachmentKind: 'pins',
     initArgs: null,
     pinCount: 3,
+    pinSlots: ['A', 'B', 'SW'],
   },
   // FR-DEV-10: the first bus-attached, non-instanced peripheral — enabled or
   // disabled from the Wiring Editor's Peripherals section (FR-DEV-11), never

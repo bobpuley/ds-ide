@@ -103,7 +103,7 @@ ${pinDeviceCssRules()}
     .pin-power  circle { fill: #2a2a2a; stroke: #444; stroke-width: 1; }
     /* A bus peripheral's occupied pins (FR-DEV-11/12). */
     .pin-bus circle { fill: #4a3a1a; stroke: #f4c430; stroke-width: 2; }
-    /* Bus bracket, tooltip and popover (FR-DEV-12) */
+    /* Bus bracket and tooltip (FR-DEV-12) */
     .bus-grp { cursor: pointer; }
     .bus-bracket { stroke: #f4c430; stroke-width: 1.5; fill: none; }
     .bus-grp:hover .bus-bracket { stroke-width: 2.5; }
@@ -112,18 +112,22 @@ ${pinDeviceCssRules()}
     #tooltip { position: fixed; display: none; background: #1e1e1e; border: 1px solid #666;
                border-radius: 3px; padding: 4px 8px; font-size: 11px; color: #d4d4d4;
                pointer-events: none; z-index: 400; white-space: nowrap; font-family: monospace; }
-    #bus-popover { position: fixed; display: none; background: #252526; border: 1px solid #555;
-                   border-radius: 4px; width: 220px; z-index: 300; box-shadow: 0 4px 16px rgba(0,0,0,.6);
-                   font-family: monospace; }
-    #bus-popover h3 { font-size: 12px; color: #9cdcfe; padding: 8px 10px; border-bottom: 1px solid #3c3c3c;
-                      font-weight: normal; margin: 0; }
-    #bus-popover table { width: 100%; border-collapse: collapse; }
-    #bus-popover td { padding: 2px 10px; font-size: 11px; color: #d4d4d4; }
-    .bus-popover-actions { display: flex; gap: 6px; padding: 8px 10px; }
-    .bus-popover-actions button { flex: 1; background: #3c3c3c; border: 1px solid #555; color: #d4d4d4;
-                                   padding: 5px; border-radius: 2px; cursor: pointer;
-                                   font-family: monospace; font-size: 11px; }
-    .bus-popover-disable { background: #5a1a1a !important; color: #f48771 !important; border-color: #c94040 !important; }
+    /* One popover for every placed device (FR-UDM-3) */
+    #device-popover { position: fixed; display: none; width: 260px; background: #252526; border: 1px solid #555;
+                      border-radius: 4px; z-index: 300; box-shadow: 0 4px 16px rgba(0,0,0,.6); font-family: monospace; }
+    #device-popover .dp-hdr { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid #3c3c3c; }
+    #device-popover .dp-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    #device-popover .dp-title { font-size: 12px; color: #9cdcfe; }
+    #device-popover .dp-sub { font-size: 9px; color: #6a6a6a; margin-left: auto; }
+    #device-popover .dp-body { padding: 8px 12px; font-size: 10px; line-height: 2; }
+    #device-popover .dp-row { display: flex; justify-content: space-between; gap: 8px; }
+    #device-popover .dp-key { color: #6a6a6a; }
+    #device-popover .dp-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px 10px; border-top: 1px solid #3c3c3c; }
+    #device-popover button { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; padding: 5px 9px; border-radius: 2px;
+                             cursor: pointer; font-family: monospace; font-size: 11px; }
+    #device-popover button:hover { background: #4a4a4a; }
+    #device-popover button.dp-primary { background: #0e639c; border-color: #1177bb; color: #fff; flex-basis: 100%; }
+    #device-popover button.dp-danger { background: #5a1a1a; border-color: #c94040; color: #f48771; }
     /* Labels */
     .pin-label { font-size: 10px; fill: #d4d4d4; font-family: monospace; }
     .a-label   { font-size: 8px;  fill: #4ec9b0; font-family: monospace; }
@@ -139,6 +143,8 @@ ${pinDeviceCssRules()}
        INTERNAL mode) is enabled — the zero-pin equivalent of a bus
        peripheral's pin highlight, since there's no pin to mark instead. */
     #usb-port-group.active .usb-port { stroke: #569cd6; stroke-width: 2; }
+    /* FR-UDM-3: clicking it opens that peripheral's device popover. */
+    #usb-port-group.active { cursor: pointer; }
     /* Popup */
     #popup { position: fixed; display: none; background: #252526; border: 1px solid #555;
              border-radius: 4px; padding: 12px; min-width: 200px; z-index: 100;
@@ -163,12 +169,6 @@ ${pinDeviceCssRules()}
     .popup-cancel { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 5px 12px;
                     border-radius: 2px; cursor: pointer; font-family: monospace; font-size: 12px; }
     .popup-cancel:hover { background: #4a4a4a; }
-    /* Assigned-pin popup */
-    .assigned-info { font-size: 11px; color: #b5cea8; margin-bottom: 10px; }
-    .popup-remove { background: #5a1a1a; color: #f48771; border: 1px solid #c94040;
-                    padding: 5px 12px; border-radius: 2px; cursor: pointer;
-                    font-family: monospace; font-size: 12px; }
-    .popup-remove:hover { background: #7a1a1a; }
     /* Peripherals section (FR-DEV-11) */
     #peripherals { flex-shrink: 0; max-height: 160px; overflow: auto; border-top: 1px solid #3c3c3c; }
     .section-hdr { padding: 6px 14px; font-size: 11px; color: #9cdcfe; background: #252526;
@@ -184,7 +184,7 @@ ${pinDeviceCssRules()}
 </head>
 <body>
   <h1>Daisy Seed Wiring Editor</h1>
-  <div id="hint">Click a pin to assign a device · Click an assigned pin to remove it</div>
+  <div id="hint">Click a free pin to assign a device · Click a placed device to inspect it</div>
   <div id="svg-wrap">
     <svg id="pinout" viewBox="0 0 560 600" xmlns="http://www.w3.org/2000/svg">
       <!-- Board body -->
@@ -226,19 +226,12 @@ ${popupDeviceButtonsHtml()}
         <button class="popup-cancel"  id="popup-cancel-assign">Cancel</button>
       </div>
     </div>
-    <!-- Assigned view -->
-    <div id="popup-assigned" style="display:none">
-      <div class="assigned-info" id="assigned-info"></div>
-      <div class="popup-actions">
-        <button class="popup-remove" id="popup-remove">Remove</button>
-        <button class="popup-cancel" id="popup-cancel-assigned">Cancel</button>
-      </div>
-    </div>
   </div>
 
-  <!-- Bus bracket tooltip and popover (FR-DEV-12) -->
+  <!-- Bus bracket tooltip (FR-DEV-12) -->
   <div id="tooltip"></div>
-  <div id="bus-popover"></div>
+  <!-- One popover for every placed device (FR-UDM-3) — filled by JS -->
+  <div id="device-popover"></div>
 
   <script id="pin-defs" type="application/json" nonce="${nonce}">${safeJson(PIN_DEFS)}</script>
   <script id="init-data" type="application/json" nonce="${nonce}">${safeJson(wiredPins)}</script>

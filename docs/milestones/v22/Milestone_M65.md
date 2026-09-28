@@ -48,7 +48,7 @@ moves wholly to the Wiring Editor.
 
 ---
 
-### [ ] feat: one popover for every placed device (FR-UDM-3)
+### [x] feat: one popover for every placed device (FR-UDM-3)
 
 Today a placed control opens `popup-assigned` (Remove/Cancel only) and a peripheral opens the
 separate bus popover (pin map + Disable); the live-view "View" button lives only in the footer.

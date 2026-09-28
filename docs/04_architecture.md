@@ -23,7 +23,8 @@ the result. If the host rejects anyway (e.g. source changed underneath), it keep
 
 | Component | Change | Milestone |
 |---|---|---|
-| `src/devices/registry.ts` | `DeviceDescriptor.pinRequires?: 'adc' \| 'i2c' \| 'uart' \| 'spi' \| 'sdmmc'`; pot = `'adc'` | M65 |
+| `src/devices/registry.ts` | `DeviceDescriptor.pinRequires?: 'adc' \| 'i2c' \| 'uart' \| 'spi' \| 'sdmmc'`; pot = `'adc'`. `pinSlots?: string[]` (Init() argument order): rgbled `R/G/B`, encoder `A/B/SW` — labels multi-pin pins in the popover (M65) and drag previews (M66) | M65 |
+| `src/wiring/device-popover.ts` *(new, pure)* | `describePlacedDevice(target, wiredPins, peripherals)` → popover model (label, accent, id, pins/bus row, `showPanel`, remove message); `peripheralOwningPin()` | M65 |
 | `src/wiring/pin-eligibility.ts` *(new, pure)* | `isPinEligible(pinDef, deviceId)` from `pinRequires` + `PIN_DEFS` | M65 |
 | `src/wiring/wiring-panel.ts` | remove `pot-warn` special case; one `#device-popover` replaces `popup-assigned` + `#bus-popover` (M65); add palette markup, remove `#popup-assign` + `#peripherals` footer (M66) | M65 / M66 |
 | `src/webview/wiring-webview.ts` | unified popover (M65); pointer-event drag, target repaint, lane/USB drop zones, cursor label, move-by-drag (M66) | M65 / M66 |
