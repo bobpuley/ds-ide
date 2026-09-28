@@ -784,7 +784,7 @@ function openPlacementPopover(
   });
 
   const actions = document.createElement('div');
-  actions.className = 'dp-actions';
+  actions.className = 'dp-actions dp-pair';
   actions.append(addBtn, cancelBtn);
 
   devicePopover.append(popoverHeader(m.label, m.accentColor, moveId ?? null), body, actions);

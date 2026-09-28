@@ -204,6 +204,8 @@ ${pinDeviceCssRules()}
     #device-popover button:hover { background: #4a4a4a; }
     #device-popover button.dp-primary { background: #0e639c; border-color: #1177bb; color: #fff; flex-basis: 100%; }
     #device-popover button:disabled { opacity: .4; cursor: default; }
+    /* Placement popover: Add / Replace / Move beside Cancel, equal width (FR-UDM-7). */
+    #device-popover .dp-pair button { flex: 1 1 0; }
     #device-popover input[type=text] { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; font-family: monospace;
                                        font-size: 11px; padding: 3px 6px; border-radius: 2px; width: 150px; }
     #device-popover .dp-conflict { background: #3a2a10; border: 1px solid #f4c430; color: #f4c430; padding: 6px 8px;

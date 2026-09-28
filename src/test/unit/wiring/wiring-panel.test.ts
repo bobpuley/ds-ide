@@ -327,6 +327,10 @@ describe('device palette (FR-UDM-5)', () => {
     expect(html).not.toMatch(/data-device="pot"[^>]*>(?:(?!<!-- \/chip -->)[\s\S])*class="badge"/);
   });
 
+  it('lays the placement popover\'s confirm and Cancel side by side, not full-width (FR-UDM-7)', () => {
+    expect(html).toMatch(/#device-popover \.dp-pair button\s*\{[^}]*flex: 1 1 0/);
+  });
+
   it('has a collapse toggle', () => {
     expect(html).toContain('id="palette-toggle"');
     expect(html).toContain('id="palette-col"');
