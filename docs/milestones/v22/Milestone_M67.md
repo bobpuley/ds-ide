@@ -89,7 +89,7 @@ session: no toolbar, no Stop.
 
 ---
 
-### [ ] feat: status bar reduced to a clickable state item + Flash (FR-TRN-5)
+### [x] feat: status bar reduced to a clickable state item + Flash (FR-TRN-5)
 
 **Affected files:** `src/transport/transport-controller.ts`, `src/extension.ts`, `src/test/unit/extension.test.ts`
 

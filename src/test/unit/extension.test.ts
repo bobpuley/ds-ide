@@ -386,27 +386,37 @@ describe('extension', () => {
     expect(emulator.show).toHaveBeenCalled();
   });
 
-  it('updates status bar text when a daisy-debug session starts', () => {
-    const ctx = makeContext();
-    activate(ctx);
-    // Retrieve the onDidStartDebugSession callback registered during activate
-    const startCb = (vscode.debug.onDidStartDebugSession as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
-      ((s: { type: string }) => void) | undefined;
-    const statusBar = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.results[0]?.value as
-      { text: string };
-    startCb?.({ type: 'daisy-debug' });
-    expect(statusBar?.text).toContain('debug');
+  function stateItem(): { text: string; command?: unknown; show: ReturnType<typeof vi.fn> } {
+    const calls = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.calls;
+    const i = calls.findIndex((c) => c[0] === 'ds-ide.transportState');
+    return (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.results[i]!.value;
+  }
+
+  it('shows debugging on the state item when a standalone daisy-debug session starts (FR-TRN-5)', () => {
+    activate(makeContext());
+    const startCbs = (vscode.debug.onDidStartDebugSession as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0] as (s: unknown) => void);
+    for (const cb of startCbs) cb({ type: 'daisy-debug', configuration: {} });
+    expect(stateItem().text).toContain('debugging');
   });
 
-  it('updates status bar text when a daisy-debug session terminates', () => {
-    const ctx = makeContext();
-    activate(ctx);
-    const terminateCb = (vscode.debug.onDidTerminateDebugSession as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
-      ((s: { type: string }) => void) | undefined;
-    const statusBar = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.results[0]?.value as
-      { text: string };
-    terminateCb?.({ type: 'daisy-debug' });
-    expect(statusBar?.text).toContain('stopped');
+  it('shows stopped on the state item when that session terminates (FR-TRN-5)', () => {
+    activate(makeContext());
+    const s = { type: 'daisy-debug', configuration: {} };
+    for (const c of (vscode.debug.onDidStartDebugSession as ReturnType<typeof vi.fn>).mock.calls) (c[0] as (s: unknown) => void)(s);
+    for (const c of (vscode.debug.onDidTerminateDebugSession as ReturnType<typeof vi.fn>).mock.calls) (c[0] as (s: unknown) => void)(s);
+    expect(stateItem().text).toContain('stopped');
+  });
+
+  it('writes the status bar only through the transport state items — no other status item exists (FR-TRN-5)', () => {
+    activate(makeContext());
+    const ids = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    expect(ids).toEqual(['ds-ide.transportState', 'ds-ide.flash']);
+  });
+
+  it('registers ds-ide.revealDaisyView, which focuses the Daisy view (FR-TRN-5)', async () => {
+    activate(makeContext());
+    await commandHandler('ds-ide.revealDaisyView')();
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('ds-ide.daisyView.focus');
   });
 });
 
@@ -573,6 +583,19 @@ describe('extension view initialization (FR-CE-9, FR-WE-11)', () => {
     } finally {
       (vscode.window as unknown as Record<string, unknown>)['activeTextEditor'] = undefined;
     }
+  });
+
+  it('keeps the state items hidden when no effect source is found (FR-TRN-5)', async () => {
+    const promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['readdir']!.mockResolvedValue([]);
+    promisesMock['access']!.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    const results = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.results.map((r) => r.value);
+    await vi.waitFor(() => {
+      for (const item of results) expect(item.hide).toHaveBeenCalled();
+    });
+    for (const item of results) expect(item.show).not.toHaveBeenCalled();
   });
 
   it('sets the ds-ide.isDaisyProject context key to false when no effect source is found (FR-QA-EXT-6)', async () => {
@@ -2159,17 +2182,30 @@ describe('deploy sequencing via DeployCoordinator (FR-IPC-7)', () => {
     }
   });
 
-  it('ds-ide.deploy sets the status bar to deploying, then back to stopped when deploy fails', async () => {
+  it('ds-ide.deploy sets the state item to deploying, then back to stopped when deploy fails', async () => {
     const { activate: act } = await import('../../extension');
     const ctx = makeContext();
     act(ctx);
     await flush();
     const mgr = managerInstances[0]! as unknown as ManagerSpies;
-    mgr.deploy.mockRejectedValueOnce(new Error('boom'));
+    let duringDeploy = '';
     const statusBar = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.results[0]?.value as { text: string };
+    mgr.deploy.mockImplementationOnce(() => { duringDeploy = statusBar.text; return Promise.reject(new Error('boom')); });
     const deployCmd = getCommand('ds-ide.deploy')!;
     await deployCmd();
+    expect(duringDeploy).toContain('deploying');
     expect(statusBar.text).toContain('stopped');
+  });
+
+  it('shows the state items once the workspace is known to be a Daisy project (FR-TRN-5)', async () => {
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    const results = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.results.map((r) => r.value);
+    for (const item of results) expect(item.show).not.toHaveBeenCalled();
+    // this suite's workspace has an effect.cpp → a Daisy project
+    await vi.waitFor(() => {
+      for (const item of results) expect(item.show).toHaveBeenCalled();
+    });
   });
 
   it('a failed build publishes the buildFailed transport phase (FR-TRN-4)', async () => {

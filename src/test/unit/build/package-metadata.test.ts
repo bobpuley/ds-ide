@@ -119,6 +119,10 @@ describe('Daisy view in Run and Debug (FR-TRN-4)', () => {
     expect(pkg.contributes.views.debug).toContainEqual({ id: 'ds-ide.daisyView', name: 'Daisy', when: 'ds-ide.isDaisyProject' });
   });
 
+  it('declares ds-ide.revealDaisyView (the state item\'s click action, FR-TRN-5)', () => {
+    expect(commands.find((c) => c.command === 'ds-ide.revealDaisyView')).toBeDefined();
+  });
+
   it.each(['ds-ide.stopEffect', 'ds-ide.cancelTransport', 'ds-ide.restartEffect', 'ds-ide.refreshBoard', 'ds-ide.showEmulatorOutput'])(
     'declares %s with an icon', (id) => {
       expect(commands.find((c) => c.command === id)?.icon).toMatch(/^\$\(.+\)$/);

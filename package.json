@@ -132,6 +132,12 @@
         "title": "Show Emulator Output",
         "category": "Daisy IDE",
         "icon": "$(output)"
+      },
+      {
+        "command": "ds-ide.revealDaisyView",
+        "title": "Show Daisy View",
+        "category": "Daisy IDE",
+        "icon": "$(circuit-board)"
       }
     ],
     "keybindings": [
