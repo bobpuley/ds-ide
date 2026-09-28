@@ -1234,6 +1234,84 @@ describe('EmulatorManager', () => {
     });
   });
 
+  describe("'exit' event and stop() (FR-TRN-1)", () => {
+    const opts = { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' };
+    let lastChild: ReturnType<typeof makeChildProcess> | undefined;
+
+    beforeEach(() => {
+      vi.spyOn(process, 'kill').mockImplementation(() => {
+        throw Object.assign(new Error('ESRCH'), { code: 'ESRCH' });
+      });
+      spawnMock.mockImplementation((cmd: string) => {
+        if (cmd === 'cmake') return makeCmakeProcess(0);
+        lastChild = makeChildProcess(0, '/tmp/daisy_emu_test.sock');
+        return lastChild;
+      });
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('emits exit with crashed=true when a running emulator dies on its own', async () => {
+      await manager.build(opts, () => undefined);
+      await manager.deploy(() => undefined);
+      const onExit = vi.fn();
+      manager.on('exit', onExit);
+
+      lastChild!.emit('close', 139);
+
+      expect(onExit).toHaveBeenCalledWith({ pid: 12345, crashed: true });
+    });
+
+    it('stop() kills the running emulator and its exit is reported as not crashed', async () => {
+      await manager.build(opts, () => undefined);
+      await manager.deploy(() => undefined);
+      const onExit = vi.fn();
+      manager.on('exit', onExit);
+
+      manager.stop();
+      expect(manager.childPid).toBeUndefined();
+      expect(process.kill).toHaveBeenCalledWith(12345, 'SIGTERM');
+      lastChild!.emit('close', null);
+
+      expect(onExit).toHaveBeenCalledWith({ pid: 12345, crashed: false });
+    });
+
+    it('stop() does not dispose the manager — a later deploy still works', async () => {
+      await manager.build(opts, () => undefined);
+      await manager.deploy(() => undefined);
+      manager.stop();
+      await manager.deploy(() => undefined);
+      expect(manager.childPid).toBe(12345);
+    });
+
+    it('a redeploy reports the replaced emulator as exited, not crashed', async () => {
+      await manager.build(opts, () => undefined);
+      await manager.deploy(() => undefined);
+      const first = lastChild!;
+      const onExit = vi.fn();
+      manager.on('exit', onExit);
+
+      await manager.deploy(() => undefined);
+      first.emit('close', null);
+
+      expect(onExit).toHaveBeenCalledWith({ pid: 12345, crashed: false });
+    });
+
+    it('does not emit exit for an emulator that never became ready', async () => {
+      spawnMock.mockImplementation((cmd: string) =>
+        cmd === 'cmake' ? makeCmakeProcess(0) : makeChildProcess(1));
+      await manager.build(opts, () => undefined);
+      const onExit = vi.fn();
+      manager.on('exit', onExit);
+
+      await expect(manager.deploy(() => undefined)).rejects.toThrow('before socket ready');
+
+      expect(onExit).not.toHaveBeenCalled();
+    });
+  });
+
   describe('isConnected (FR-UX-2)', () => {
     it('is false before any deploy', () => {
       expect(manager.isConnected).toBe(false);

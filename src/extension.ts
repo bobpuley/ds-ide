@@ -1292,7 +1292,18 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.debug.registerDebugAdapterDescriptorFactory(DAISY_DEBUG_TYPE, debugAdapterFactory),
     vscode.debug.registerDebugAdapterTrackerFactory(DAISY_DEBUG_TYPE, debugTrackerFactory),
-    vscode.debug.registerDebugAdapterDescriptorFactory(DS_IDE_DEBUG_TYPE, new DsIdeDebugAdapterDescriptorFactory()),
+    vscode.debug.registerDebugAdapterDescriptorFactory(DS_IDE_DEBUG_TYPE, new DsIdeDebugAdapterDescriptorFactory({
+      currentEmulatorPid: () => manager.childPid,
+      stopEmulator: () => {
+        manager.stop();
+        scopePanel.notifyStopped();
+        controlsProvider.postStatus({ type: 'status', running: false });
+      },
+      onEmulatorExit: (listener) => {
+        manager.on('exit', listener);
+        return { dispose: () => { manager.off('exit', listener); } };
+      },
+    })),
     vscode.debug.registerDebugConfigurationProvider(DS_IDE_DEBUG_TYPE, runConfigProvider),
     saveListener,
     ...commandDisposables,

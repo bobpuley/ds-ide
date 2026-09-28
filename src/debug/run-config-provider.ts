@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { DAISY_DEBUG_TYPE } from '../commands/debug-deploy';
 import { resolveActiveFolder } from '../workspace/active-folder';
+import { RunSessionAdapter, type RunSessionHost } from './run-session-adapter';
 
 export const DS_IDE_DEBUG_TYPE = 'ds-ide';
 
@@ -33,7 +34,10 @@ export class DaisyRunConfigurationProvider implements vscode.DebugConfigurationP
     );
     if (!ok) return undefined;
 
-    if (config['noDebug']) return undefined;
+    // FR-TRN-1: Ctrl+F5 — returning the config starts a live `ds-ide`
+    // session (RunSessionAdapter) that lasts as long as the emulator does,
+    // so VS Code shows Restart / Stop for the run.
+    if (config['noDebug']) return config;
 
     const pid = this.getEmulatorPid();
     if (pid === undefined) {
@@ -117,12 +121,17 @@ class DsIdeTerminatingAdapter implements vscode.DebugAdapter {
   }
 }
 
-// Registers a valid descriptor for the 'ds-ide' debug type so VS Code's
-// pre-check passes. resolveDebugConfiguration returns undefined (aborting the
-// ds-ide session) before VS Code reaches this factory in the normal flow; the
+// A noDebug (Ctrl+F5) session gets the live RunSessionAdapter (FR-TRN-1).
+// For F5, resolveDebugConfiguration returns undefined (aborting the ds-ide
+// wrapper) before VS Code reaches this factory in the normal flow; the
 // terminating adapter is a safety net for any timing edge cases.
 export class DsIdeDebugAdapterDescriptorFactory implements vscode.DebugAdapterDescriptorFactory {
-  createDebugAdapterDescriptor(): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
-    return new vscode.DebugAdapterInlineImplementation(new DsIdeTerminatingAdapter());
+  constructor(private readonly runHost: RunSessionHost) {}
+
+  createDebugAdapterDescriptor(session: vscode.DebugSession): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
+    const adapter = session.configuration['noDebug']
+      ? new RunSessionAdapter(this.runHost)
+      : new DsIdeTerminatingAdapter();
+    return new vscode.DebugAdapterInlineImplementation(adapter);
   }
 }

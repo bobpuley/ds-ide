@@ -29,7 +29,7 @@ knows the transport state.
 
 ---
 
-### [ ] feat: Ctrl+F5 starts a real run session (FR-TRN-1)
+### [x] feat: Ctrl+F5 starts a real run session (FR-TRN-1)
 
 Today `resolveDebugConfiguration` returns `undefined` for `noDebug`, so a run creates no
 session: no toolbar, no Stop.

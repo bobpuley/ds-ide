@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as vscode from 'vscode';
 import { DaisyRunConfigurationProvider, DsIdeDebugAdapterDescriptorFactory } from '../../../debug/run-config-provider';
+import { RunSessionAdapter, type RunSessionHost } from '../../../debug/run-session-adapter';
 
 const BASE_CONFIG: vscode.DebugConfiguration = {
   type: 'ds-ide',
@@ -72,7 +73,7 @@ describe('DaisyRunConfigurationProvider', () => {
       expect(call[0]).toBe(b);
     });
 
-    it('Ctrl+F5 (noDebug=true): calls buildAndDeploy, skips startDebugging, returns undefined', async () => {
+    it('Ctrl+F5 (noDebug=true): calls buildAndDeploy, skips startDebugging, returns the config so a live session starts (FR-TRN-1)', async () => {
       const buildAndDeploy = vi.fn(() => Promise.resolve(true));
       const getEmulatorPid = vi.fn(() => 1234);
       const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid, makeWorkspaceState());
@@ -84,6 +85,12 @@ describe('DaisyRunConfigurationProvider', () => {
 
       expect(buildAndDeploy).toHaveBeenCalledOnce();
       expect(vscode.debug.startDebugging).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ ...BASE_CONFIG, noDebug: true });
+    });
+
+    it('Ctrl+F5: returns undefined (no session) when build+deploy fails', async () => {
+      const provider = new DaisyRunConfigurationProvider(vi.fn(() => Promise.resolve(false)), vi.fn(), makeWorkspaceState());
+      const result = await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG, noDebug: true });
       expect(result).toBeUndefined();
     });
 
@@ -168,9 +175,25 @@ describe('DaisyRunConfigurationProvider', () => {
 });
 
 describe('DsIdeDebugAdapterDescriptorFactory', () => {
-  it('createDebugAdapterDescriptor returns a DebugAdapterInlineImplementation', () => {
-    const factory = new DsIdeDebugAdapterDescriptorFactory();
-    const result = factory.createDebugAdapterDescriptor();
+  const host: RunSessionHost = {
+    currentEmulatorPid: () => 1,
+    stopEmulator: vi.fn(),
+    onEmulatorExit: () => ({ dispose: vi.fn() }),
+  };
+  const session = (configuration: Record<string, unknown>) =>
+    ({ configuration: { ...BASE_CONFIG, ...configuration } }) as unknown as vscode.DebugSession;
+
+  it('gives a noDebug session the live RunSessionAdapter (FR-TRN-1)', () => {
+    const factory = new DsIdeDebugAdapterDescriptorFactory(host);
+    const result = factory.createDebugAdapterDescriptor(session({ noDebug: true }));
     expect(result).toBeInstanceOf(vscode.DebugAdapterInlineImplementation);
+    expect((result as unknown as { implementation: unknown }).implementation).toBeInstanceOf(RunSessionAdapter);
+  });
+
+  it('keeps the terminating safety-net adapter for the debug wrapper', () => {
+    const factory = new DsIdeDebugAdapterDescriptorFactory(host);
+    const result = factory.createDebugAdapterDescriptor(session({}));
+    expect(result).toBeInstanceOf(vscode.DebugAdapterInlineImplementation);
+    expect((result as unknown as { implementation: unknown }).implementation).not.toBeInstanceOf(RunSessionAdapter);
   });
 });
