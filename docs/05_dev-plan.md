@@ -189,7 +189,7 @@ Full registry in [`docs/v21/05_dev-plan.md`](v21/05_dev-plan.md).
 | ID   | Name                                   | Status          | Version | File                                                   |
 |------|----------------------------------------|-----------------|---------|--------------------------------------------------------|
 | M65  | Unified Device Model (Foundation)      | **released**    | 0.20.0  | [Milestone_M65.md](milestones/v22/Milestone_M65.md)    |
-| M66  | Unified Device Model (Drag & Drop)     | **in progress** | 0.20.1  | [Milestone_M66.md](milestones/v22/Milestone_M66.md)    |
+| M66  | Unified Device Model (Drag & Drop)     | **released**    | 0.20.1  | [Milestone_M66.md](milestones/v22/Milestone_M66.md)    |
 | M67  | Stateful Transport on Native Surfaces  | **planned**     | 0.20.2  | [Milestone_M67.md](milestones/v22/Milestone_M67.md)    |
 
 Source: feature intake 2026-09-28 — `design_plan.md` §5 (device model only; §5.5 transport parked),

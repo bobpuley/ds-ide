@@ -1,7 +1,7 @@
 # M66 — Unified Device Model (Drag & Drop)
 
 **Version:** 0.20.1
-**Status:** in progress
+**Status:** released
 **Source:** feature intake session, 2026-09-28 (design_plan.md §5.2, §5.6; mockup docs/mockups/v22-unified-device-model.html)
 
 ## Goal
