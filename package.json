@@ -77,6 +77,27 @@
         "command": "ds-ide.selectActiveFolder",
         "title": "Select Active Workspace Folder",
         "category": "Daisy IDE"
+      },
+      {
+        "command": "ds-ide.runEffect",
+        "title": "Run Daisy Effect",
+        "category": "Daisy IDE",
+        "icon": "$(play)",
+        "enablement": "ds-ide.isDaisyProject"
+      },
+      {
+        "command": "ds-ide.debugEffect",
+        "title": "Debug Daisy Effect",
+        "category": "Daisy IDE",
+        "icon": "$(debug-alt)",
+        "enablement": "ds-ide.isDaisyProject"
+      },
+      {
+        "command": "ds-ide.buildAndFlash",
+        "title": "Build & Flash to Daisy Seed",
+        "category": "Daisy IDE",
+        "icon": "$(zap)",
+        "enablement": "ds-ide.isDaisyProject"
       }
     ],
     "keybindings": [
@@ -105,6 +126,25 @@
         "when": "ds-ide.isDaisyProject"
       }
     ],
+    "menus": {
+      "editor/title/run": [
+        {
+          "command": "ds-ide.runEffect",
+          "when": "ds-ide.isDaisyProject && ds-ide.isEffectSource",
+          "group": "navigation@1"
+        },
+        {
+          "command": "ds-ide.debugEffect",
+          "when": "ds-ide.isDaisyProject && ds-ide.isEffectSource",
+          "group": "navigation@2"
+        },
+        {
+          "command": "ds-ide.buildAndFlash",
+          "when": "ds-ide.isDaisyProject && ds-ide.isEffectSource",
+          "group": "navigation@3"
+        }
+      ]
+    },
     "viewsContainers": {
       "activitybar": [
         {

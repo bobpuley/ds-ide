@@ -44,6 +44,8 @@ const window = {
   showInputBox: vi.fn(),
   showQuickPick: vi.fn(),
   setStatusBarMessage: vi.fn(() => ({ dispose: vi.fn() })),
+  activeTextEditor: undefined as undefined | { document: { uri: { fsPath: string } } },
+  onDidChangeActiveTextEditor: vi.fn((_cb: (e: unknown) => void) => ({ dispose: vi.fn() })),
   withProgress: vi.fn((
     _options: unknown,
     task: (progress: { report: (v: unknown) => void }, token: CancellationToken) => unknown,

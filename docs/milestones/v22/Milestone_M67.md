@@ -65,7 +65,7 @@ session: no toolbar, no Stop.
 
 ---
 
-### [ ] feat: editor-title ▶ with Run / Debug / Flash (FR-TRN-3)
+### [x] feat: editor-title ▶ with Run / Debug / Flash (FR-TRN-3)
 
 **Affected files:** `package.json`, `src/extension.ts`, `src/test/unit/extension.test.ts`
 

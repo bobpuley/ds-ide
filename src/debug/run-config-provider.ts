@@ -14,6 +14,14 @@ export const DS_IDE_DEBUG_TYPE = 'ds-ide';
 // and the adapter rebuilds + redeploys itself.
 export const LAUNCH_ID_KEY = '__dsIdeLaunchId';
 
+// The one ds-ide launch configuration — F5 debugs it, Ctrl+F5 runs it, and
+// the editor-title ▶ / Daisy view start it programmatically (FR-TRN-3).
+export const DS_IDE_LAUNCH_CONFIG: Readonly<vscode.DebugConfiguration> = {
+  type: DS_IDE_DEBUG_TYPE,
+  request: 'launch',
+  name: 'DS-IDE: Build, Deploy & Debug',
+};
+
 export class DaisyRunConfigurationProvider implements vscode.DebugConfigurationProvider {
   private readonly freshLaunchIds = new Set<string>();
 
@@ -23,11 +31,7 @@ export class DaisyRunConfigurationProvider implements vscode.DebugConfigurationP
   ) {}
 
   provideDebugConfigurations(): vscode.DebugConfiguration[] {
-    return [{
-      type: DS_IDE_DEBUG_TYPE,
-      request: 'launch',
-      name: 'DS-IDE: Build, Deploy & Debug',
-    }];
+    return [{ ...DS_IDE_LAUNCH_CONFIG }];
   }
 
   async resolveDebugConfiguration(

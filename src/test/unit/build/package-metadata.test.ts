@@ -75,3 +75,36 @@ describe('debug contribution discoverability (FR-QA-EXT-9)', () => {
     expect(daisyDebug!.label).toMatch(/internal/i);
   });
 });
+
+describe('editor-title run button (FR-TRN-3)', () => {
+  const commands: Array<{ command: string; title: string; icon?: string }> = pkg.contributes?.commands ?? [];
+  const runMenu: Array<{ command: string; when?: string; group?: string }> = pkg.contributes?.menus?.['editor/title/run'] ?? [];
+
+  it.each(['ds-ide.runEffect', 'ds-ide.debugEffect', 'ds-ide.buildAndFlash'])('declares %s with an icon', (id) => {
+    const cmd = commands.find((c) => c.command === id);
+    expect(cmd).toBeDefined();
+    expect(cmd!.icon).toMatch(/^\$\(.+\)$/);
+  });
+
+  it('titles the run/debug actions as the requirement names them', () => {
+    expect(commands.find((c) => c.command === 'ds-ide.runEffect')!.title).toBe('Run Daisy Effect');
+    expect(commands.find((c) => c.command === 'ds-ide.debugEffect')!.title).toBe('Debug Daisy Effect');
+    expect(commands.find((c) => c.command === 'ds-ide.buildAndFlash')!.title).toBe('Build & Flash to Daisy Seed');
+  });
+
+  it('contributes Run, Debug and Build & Flash to editor/title/run, in that order', () => {
+    expect(runMenu.map((m) => m.command)).toEqual(['ds-ide.runEffect', 'ds-ide.debugEffect', 'ds-ide.buildAndFlash']);
+  });
+
+  it('shows them only on the effect source of a Daisy project', () => {
+    for (const item of runMenu) {
+      expect(item.when).toBe('ds-ide.isDaisyProject && ds-ide.isEffectSource');
+    }
+  });
+
+  it('keeps the Run / Debug shortcuts shown in the dropdown (Ctrl+F5 / F5) — no new keybindings', () => {
+    const kbs: Array<{ command: string }> = pkg.contributes?.keybindings ?? [];
+    expect(kbs.map((k) => k.command)).not.toContain('ds-ide.runEffect');
+    expect(kbs.map((k) => k.command)).not.toContain('ds-ide.debugEffect');
+  });
+});

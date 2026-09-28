@@ -20,13 +20,15 @@ const NEAR_LIMIT_PCT = 75;
 
 // Invoke the project Makefile for the hardware target (arm-none-eabi).
 // Streams output to a VS Code channel and applies compiler diagnostics.
+// Resolves true on a successful build, so Build & Flash can stop before
+// flashing a stale binary (FR-TRN-3).
 export async function buildForHardware(
   projectRoot: string,
   diagnostics: vscode.DiagnosticCollection,
   outputChannel: vscode.OutputChannel,
   deps: HardwareBuildDeps = {},
   token?: vscode.CancellationToken,
-): Promise<void> {
+): Promise<boolean> {
   const spawnFn = deps.spawn ?? cp.spawn;
 
   const configuredPath = vscode.workspace.getConfiguration('ds-ide').get<string>('armToolchainPath');
@@ -36,7 +38,7 @@ export async function buildForHardware(
     void vscode.window.showErrorMessage(
       `ds-ide: arm-none-eabi-gcc not found. ${ARM_GCC_INSTALL_HINT}`,
     );
-    return;
+    return false;
   }
 
   const channel = outputChannel;
@@ -58,9 +60,11 @@ export async function buildForHardware(
     applyDiagnostics(diagnostics, parsed, projectRoot);
     reportMemoryUsage(outputLines.join('\n'), channel, hardwareVariant);
     void vscode.window.showInformationMessage('ds-ide: hardware build succeeded');
+    return true;
   } catch (err) {
     applyDiagnostics(diagnostics, parsed, projectRoot);
     void vscode.window.showErrorMessage(`ds-ide: hardware build failed — ${buildFailureDetail(outputLines.join('\n'), err)}`);
+    return false;
   }
 }
 

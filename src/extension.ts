@@ -11,7 +11,9 @@ import { buildForEmulator } from './commands/build';
 import { deployToEmulator } from './commands/deploy';
 import { startAudio, stopAudio } from './commands/transport';
 import { debugDeploy, DAISY_DEBUG_TYPE } from './commands/debug-deploy';
-import { DaisyRunConfigurationProvider, DsIdeDebugAdapterDescriptorFactory, DS_IDE_DEBUG_TYPE } from './debug/run-config-provider';
+import {
+  DaisyRunConfigurationProvider, DsIdeDebugAdapterDescriptorFactory, DS_IDE_DEBUG_TYPE, DS_IDE_LAUNCH_CONFIG,
+} from './debug/run-config-provider';
 import { parseControllerConfig, serializeControllerConfig, ControllerConfig } from './controllers/controller-config';
 import { parseControlsConvention } from './controllers/controls-convention-parser';
 import { ControlsConfig, ControlsPlacement } from './webview/scope-panel';
@@ -892,6 +894,29 @@ function registerCommands(deps: CommandDeps): vscode.Disposable[] {
         deployCoordinator.performDeploy({ build: false, debug: true }, token),
       ),
     ),
+    // FR-TRN-3: the editor-title ▶ and its dropdown. Run / Debug go through
+    // the one ds-ide launch configuration, so they get the same live session
+    // (toolbar, Restart, Stop) as Ctrl+F5 / F5.
+    vscode.commands.registerCommand('ds-ide.runEffect', () =>
+      vscode.debug.startDebugging(resolveActiveFolder(workspaceState), { ...DS_IDE_LAUNCH_CONFIG }, { noDebug: true }),
+    ),
+    vscode.commands.registerCommand('ds-ide.debugEffect', () =>
+      vscode.debug.startDebugging(resolveActiveFolder(workspaceState), { ...DS_IDE_LAUNCH_CONFIG }),
+    ),
+    vscode.commands.registerCommand('ds-ide.buildAndFlash', async () => {
+      const folder = resolveActiveFolder(workspaceState);
+      if (!folder) {
+        void vscode.window.showErrorMessage('ds-ide: no workspace folder open');
+        return;
+      }
+      const built = await withCancellableProgress('ds-ide: building for hardware…', (token) =>
+        buildForHardware(folder.uri.fsPath, diagnostics, hardwareChannel, {}, token),
+      );
+      if (!built) return;
+      await withCancellableProgress('ds-ide: flashing…', (token) =>
+        flashToHardware(folder.uri.fsPath, flashChannel, {}, token),
+      );
+    }),
     vscode.commands.registerCommand('ds-ide.createNewEffectProject', () => createEffectProject(extensionPath)),
     vscode.commands.registerCommand('ds-ide.selectActiveFolder', async () => {
       const chosen = await promptSelectActiveFolder(workspaceState);
@@ -1233,10 +1258,22 @@ export function activate(context: vscode.ExtensionContext): void {
     context.workspaceState,
   );
 
+  // FR-TRN-3: the editor-title ▶ is shown only on the project's effect
+  // source, tracked here as the ds-ide.isEffectSource context key.
+  let effectSourcePath: string | undefined;
+  function updateEffectSourceContext(editor: vscode.TextEditor | undefined): void {
+    const active = editor?.document.uri.fsPath;
+    const isEffectSource = effectSourcePath !== undefined && active !== undefined
+      && path.resolve(active) === path.resolve(effectSourcePath);
+    void vscode.commands.executeCommand('setContext', 'ds-ide.isEffectSource', isEffectSource);
+  }
+
   async function initViewsFromProject(): Promise<void> {
     const activeFolder = resolveActiveFolder(context.workspaceState);
     if (!activeFolder) {
+      effectSourcePath = undefined;
       void vscode.commands.executeCommand('setContext', 'ds-ide.isDaisyProject', false);
+      updateEffectSourceContext(vscode.window.activeTextEditor);
       return;
     }
     const folder = activeFolder.uri.fsPath;
@@ -1246,6 +1283,8 @@ export function activate(context: vscode.ExtensionContext): void {
     // Scopes the ds-ide.* keybindings (package.json) so they don't fire in
     // unrelated workspaces (FR-QA-EXT-6).
     void vscode.commands.executeCommand('setContext', 'ds-ide.isDaisyProject', effectPath !== undefined);
+    effectSourcePath = effectPath;
+    updateEffectSourceContext(vscode.window.activeTextEditor);
     let wiredPins: WiredPin[] = [];
     let peripherals: PeripheralDisplayState[] = computePeripheralDisplayStates('');
     if (effectPath) {
@@ -1277,6 +1316,7 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor(updateEffectSourceContext),
     diagnostics,
     buildChannel,
     emulatorChannel,

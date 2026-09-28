@@ -310,6 +310,33 @@ describe('extension', () => {
     expect(vscode.workspace.onDidSaveTextDocument).toHaveBeenCalled();
   });
 
+  it('registers the editor-title transport commands (FR-TRN-3)', () => {
+    activate(makeContext());
+    const ids = (vscode.commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[0]);
+    expect(ids).toEqual(expect.arrayContaining(['ds-ide.runEffect', 'ds-ide.debugEffect', 'ds-ide.buildAndFlash']));
+  });
+
+  function commandHandler(id: string): (...args: unknown[]) => unknown {
+    const call = (vscode.commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.find((c: unknown[]) => c[0] === id);
+    return call![1] as (...args: unknown[]) => unknown;
+  }
+
+  it('ds-ide.runEffect starts the ds-ide launch config without debugging (FR-TRN-3)', async () => {
+    activate(makeContext());
+    await commandHandler('ds-ide.runEffect')();
+    const call = (vscode.debug.startDebugging as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(call[1]).toMatchObject({ type: 'ds-ide', request: 'launch' });
+    expect(call[2]).toMatchObject({ noDebug: true });
+  });
+
+  it('ds-ide.debugEffect starts the ds-ide launch config with debugging (FR-TRN-3)', async () => {
+    activate(makeContext());
+    await commandHandler('ds-ide.debugEffect')();
+    const call = (vscode.debug.startDebugging as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(call[1]).toMatchObject({ type: 'ds-ide', request: 'launch' });
+    expect(call[2]?.noDebug).toBeFalsy();
+  });
+
   it('updates status bar text when a daisy-debug session starts', () => {
     const ctx = makeContext();
     activate(ctx);
@@ -459,6 +486,43 @@ describe('extension view initialization (FR-CE-9, FR-WE-11)', () => {
     await vi.waitFor(() => {
       expect(vscode.commands.executeCommand).toHaveBeenCalledWith('setContext', 'ds-ide.isDaisyProject', true);
     });
+  });
+
+  it('sets ds-ide.isEffectSource from the active editor, true only for the effect source (FR-TRN-3)', async () => {
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    await vi.waitFor(() => {
+      expect(vscode.commands.executeCommand).toHaveBeenCalledWith('setContext', 'ds-ide.isDaisyProject', true);
+    });
+    const onChange = (vscode.window.onDidChangeActiveTextEditor as ReturnType<typeof vi.fn>).mock.calls[0]![0] as
+      (e: { document: { uri: { fsPath: string } } } | undefined) => void;
+
+    (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mockClear();
+    onChange({ document: { uri: { fsPath: path.join('/proj', 'effect.cpp') } } });
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('setContext', 'ds-ide.isEffectSource', true);
+
+    (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mockClear();
+    onChange({ document: { uri: { fsPath: path.join('/proj', 'other.h') } } });
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('setContext', 'ds-ide.isEffectSource', false);
+
+    (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mockClear();
+    onChange(undefined);
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('setContext', 'ds-ide.isEffectSource', false);
+  });
+
+  it('sets ds-ide.isEffectSource for an effect source that is already open at activation (FR-TRN-3)', async () => {
+    (vscode.window as unknown as Record<string, unknown>)['activeTextEditor'] = {
+      document: { uri: { fsPath: path.join('/proj', 'effect.cpp') } },
+    };
+    try {
+      const { activate: act } = await import('../../extension');
+      act(makeContext());
+      await vi.waitFor(() => {
+        expect(vscode.commands.executeCommand).toHaveBeenCalledWith('setContext', 'ds-ide.isEffectSource', true);
+      });
+    } finally {
+      (vscode.window as unknown as Record<string, unknown>)['activeTextEditor'] = undefined;
+    }
   });
 
   it('sets the ds-ide.isDaisyProject context key to false when no effect source is found (FR-QA-EXT-6)', async () => {
