@@ -25,8 +25,14 @@ function kindFromButtonId(btnId: string): DeviceType {
   return btnId.slice('btn-'.length) as DeviceType;
 }
 
+interface WiringViewState {
+  paletteCollapsed?: boolean;
+}
+
 interface VsCodeApiForWiring {
   postMessage(msg: WiringWebviewMessage): void;
+  getState(): WiringViewState | undefined;
+  setState(state: WiringViewState): void;
 }
 
 const vscode      = acquireVsCodeApi() as unknown as VsCodeApiForWiring;
@@ -239,7 +245,33 @@ function applyPeripheralPins(): void {
   }
 }
 
+// ── Device palette (FR-UDM-5) ─────────────────────────────────────────────
+const paletteCol = el<HTMLElement>('palette-col');
+const paletteToggle = el<HTMLButtonElement>('palette-toggle');
+
+function setPaletteCollapsed(collapsed: boolean): void {
+  paletteCol.classList.toggle('collapsed', collapsed);
+  paletteToggle.textContent = collapsed ? '▶' : '◀';
+  paletteToggle.title = collapsed ? 'Expand palette' : 'Collapse palette';
+}
+
+setPaletteCollapsed(vscode.getState()?.paletteCollapsed === true);
+paletteToggle.addEventListener('click', () => {
+  const collapsed = !paletteCol.classList.contains('collapsed');
+  setPaletteCollapsed(collapsed);
+  vscode.setState({ ...vscode.getState(), paletteCollapsed: collapsed });
+});
+
+// A placed peripheral's chip is marked; dragging it again moves it (FR-UDM-9).
+function markPlacedChips(): void {
+  paletteCol.querySelectorAll<HTMLElement>('.device-chip').forEach(chip => {
+    const id = chip.dataset['device'];
+    chip.classList.toggle('placed', peripherals.some(p => p.id === id && p.enabled));
+  });
+}
+
 function renderPeripherals(): void {
+  markPlacedChips();
   const host = el<HTMLElement>('periph-list');
   host.innerHTML = '';
   for (const p of peripherals) {

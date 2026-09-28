@@ -2,6 +2,10 @@ import { randomBytes } from 'node:crypto';
 import { PIN_DEFS } from '../devices/pin-table.gen';
 import type { PinDef } from '../devices/pin-table.gen';
 import { REGISTRY, wiredControlIds } from '../devices/registry';
+import { resolveBusFootprint } from '../devices/attachment';
+import { peripheralIds } from './peripheral-state';
+import { candidateBusesFor } from './conflict-remedy';
+import { escapeHtml } from '../webview/html-safe';
 import type { DeviceType } from '../devices/registry';
 import type { PeripheralDisplayState } from './peripheral-state';
 import { safeJson } from '../webview/html-safe';
@@ -61,6 +65,51 @@ function popupDeviceButtonsHtml(): string {
     .join('\n');
 }
 
+// FR-UDM-5: the attachment requirement shown under a palette chip, derived
+// from the registry alone — e.g. "ADC pin", "3 pins (R·G·B)", "SPI1 / I2C1".
+// A zero-pin bus (midiUsb's INTERNAL) is the micro-USB connector.
+export function paletteRequirement(id: string): string {
+  const d = REGISTRY[id];
+  if (!d) return '';
+  if (d.attachmentKind === 'pin') return d.pinRequires ? `${d.pinRequires.toUpperCase()} pin` : 'any GPIO pin';
+  if (d.attachmentKind === 'pins') {
+    const slots = d.pinSlots ? ` (${d.pinSlots.join('·')})` : '';
+    return `${d.pinCount ?? 1} pins${slots}`;
+  }
+  return candidateBusesFor(id)
+    .map(bus => (resolveBusFootprint(bus).length === 0 ? 'USB port' : bus))
+    .join(' / ');
+}
+
+function paletteChipHtml(id: string): string {
+  const d = REGISTRY[id]!;
+  const label = escapeHtml(d.label);
+  const req = escapeHtml(paletteRequirement(id));
+  // Only a peripheral is ever "placed" as a whole (one instance per type);
+  // wiring-webview.ts toggles `.placed` from the live peripheral state.
+  const badge = d.attachmentKind === 'bus' || d.attachmentKind === 'connector'
+    ? '<div class="badge">✓ placed — drag to move</div>'
+    : '';
+  return `      <div class="device-chip" data-device="${escapeHtml(id)}" style="--accent: ${escapeHtml(d.accentColor)}" title="${label} — ${req}">`
+    + `<span class="dot"></span><span class="chip-text"><span>${label}</span><div class="meta">${req}</div>${badge}</span>`
+    + '<span class="grip">⠿</span></div>';
+}
+
+// FR-UDM-5: one palette for all devices, generated from REGISTRY and grouped
+// Controls / Peripherals, so a new registry entry appears with no edit here.
+function devicePaletteHtml(): string {
+  return `  <div id="palette-col">
+    <div id="palette-head"><span class="pal-title">Devices</span><button id="palette-toggle" type="button" title="Collapse palette">◀</button></div>
+    <div id="palette">
+      <div class="pal-grp">Controls</div>
+${wiredControlIds().map(paletteChipHtml).join('\n')}
+      <div class="pal-sep"></div>
+      <div class="pal-grp">Peripherals</div>
+${peripheralIds().map(paletteChipHtml).join('\n')}
+    </div>
+  </div><!-- /palette -->`;
+}
+
 export function buildHtml(
   wiredPins: WiredPin[],
   peripherals: PeripheralDisplayState[],
@@ -82,7 +131,36 @@ export function buildHtml(
          border-bottom: 1px solid #3c3c3c; flex-shrink: 0; }
     #hint { padding: 4px 14px 6px; font-size: 11px; color: #6a6a6a; background: #252526;
             border-bottom: 1px solid #3c3c3c; flex-shrink: 0; }
+    #main { flex: 1; display: flex; min-height: 0; }
     #svg-wrap { flex: 1; overflow: auto; padding: 16px; display: flex; justify-content: center; }
+    /* Device palette (FR-UDM-5) — collapsible to a rail of draggable colour dots */
+    #palette-col { width: 150px; flex-shrink: 0; overflow: auto; padding: 8px; border-right: 1px solid #3c3c3c; background: #1b1b1b; }
+    #palette-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+    .pal-title { font-size: 11px; color: #9cdcfe; }
+    #palette-toggle { margin-left: auto; background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; width: 20px; height: 20px;
+                      border-radius: 2px; cursor: pointer; font-family: monospace; font-size: 10px; line-height: 1; }
+    #palette-toggle:hover { background: #4a4a4a; }
+    .pal-grp { font-size: 9px; color: #6a6a6a; margin: 10px 0 5px; letter-spacing: .04em; text-transform: uppercase; }
+    .pal-sep { display: none; border-top: 1px solid #3c3c3c; margin: 8px 2px; }
+    .device-chip { display: flex; align-items: center; gap: 7px; background: #252526; border: 1px solid #555;
+                   border-left: 4px solid var(--accent); border-radius: 3px; padding: 6px 8px; margin-bottom: 6px;
+                   cursor: grab; font-size: 11px; user-select: none; touch-action: none; }
+    .device-chip:hover { background: #2f2f2f; }
+    .device-chip.dragging { opacity: .35; }
+    .device-chip .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+    .device-chip .meta { font-size: 8px; color: #6a6a6a; }
+    .device-chip .badge { display: none; font-size: 8px; color: #4ec9b0; }
+    .device-chip.placed { opacity: .6; }
+    .device-chip.placed .badge { display: block; }
+    .device-chip .grip { color: #555; font-size: 10px; margin-left: auto; }
+    #palette-col.collapsed { width: 34px; padding: 8px 4px; }
+    #palette-col.collapsed .pal-title,
+    #palette-col.collapsed .pal-grp,
+    #palette-col.collapsed .device-chip > :not(.dot) { display: none; }
+    #palette-col.collapsed #palette-toggle { margin: 0 auto; }
+    #palette-col.collapsed .pal-sep { display: block; }
+    #palette-col.collapsed .device-chip { justify-content: center; padding: 8px 0; border-left-width: 1px; border-color: var(--accent); }
+    #palette-col.collapsed .device-chip .dot { width: 12px; height: 12px; }
     svg { max-width: 560px; width: 100%; }
     /* Pin dots */
     .pin-dot { cursor: pointer; }
@@ -176,6 +254,8 @@ ${pinDeviceCssRules()}
 <body>
   <h1>Daisy Seed Wiring Editor</h1>
   <div id="hint">Click a free pin to assign a device · Click a placed device to inspect it</div>
+  <div id="main">
+${devicePaletteHtml()}
   <div id="svg-wrap">
     <svg id="pinout" viewBox="0 0 560 600" xmlns="http://www.w3.org/2000/svg">
       <!-- Board body -->
@@ -193,6 +273,7 @@ ${pinDeviceCssRules()}
       </g>
       <!-- Pins generated by JS -->
     </svg>
+  </div>
   </div>
 
   <!-- Peripherals section (FR-DEV-11) — populated by JS from peripherals-data -->

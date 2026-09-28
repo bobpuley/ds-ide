@@ -29,7 +29,7 @@ one pure module both sides can call.
 
 ---
 
-### [ ] feat: device palette in the Wiring Editor (FR-UDM-5)
+### [x] feat: device palette in the Wiring Editor (FR-UDM-5)
 
 All ten devices in one palette, generated from the registry.
 

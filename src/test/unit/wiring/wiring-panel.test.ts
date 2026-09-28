@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { buildHtml, PIN_DEFS, WiredPin, expandToWiredPins } from '../../../wiring/wiring-panel';
+import { buildHtml, PIN_DEFS, WiredPin, expandToWiredPins, paletteRequirement } from '../../../wiring/wiring-panel';
+import { REGISTRY } from '../../../devices/registry';
 import type { ConventionControl } from '../../../controllers/controls-convention-parser';
 
 // ── PIN_DEFS integrity ───────────────────────────────────────────────────────
@@ -253,3 +254,71 @@ describe('buildHtml bus bracket tooltip/popover', () => {
 
 });
 
+
+// ── Device palette (FR-UDM-5) ────────────────────────────────────────────────
+
+describe('device palette (FR-UDM-5)', () => {
+  const TEST_NONCE = 'test-nonce-abc123';
+  const SCRIPT = 'vscode-resource://test/webview/wiring-webview.js';
+  const html = buildHtml([], [], TEST_NONCE, SCRIPT);
+  const section = (name: string): string => {
+    const m = html.match(new RegExp(`<div class="pal-grp"[^>]*>${name}</div>([\\s\\S]*?)(?=<div class="pal-(?:grp|sep)"|</div>\\s*</div>\\s*<!-- /palette -->)`));
+    return m?.[1] ?? '';
+  };
+
+  it('renders one draggable chip per registry device', () => {
+    for (const id of Object.keys(REGISTRY)) {
+      expect(html).toContain(`data-device="${id}"`);
+    }
+    expect(html.match(/class="device-chip"/g)).toHaveLength(Object.keys(REGISTRY).length);
+  });
+
+  it('groups controls and peripherals', () => {
+    const controls = section('Controls');
+    const peripherals = section('Peripherals');
+    for (const id of ['pot', 'button', 'led', 'toggle', 'rgbled', 'encoder']) {
+      expect(controls).toContain(`data-device="${id}"`);
+      expect(peripherals).not.toContain(`data-device="${id}"`);
+    }
+    for (const id of ['sdcard', 'oled', 'midiTrs', 'midiUsb']) {
+      expect(peripherals).toContain(`data-device="${id}"`);
+      expect(controls).not.toContain(`data-device="${id}"`);
+    }
+  });
+
+  it('colours each chip with its device accent', () => {
+    expect(html).toContain(`data-device="pot" style="--accent: ${REGISTRY['pot']!.accentColor}"`);
+    expect(html).toContain(`data-device="oled" style="--accent: ${REGISTRY['oled']!.accentColor}"`);
+  });
+
+  it('names each chip on hover so the collapsed rail stays identifiable', () => {
+    expect(html).toContain('title="RGB LED — 3 pins (R·G·B)"');
+  });
+
+  it('describes each device\'s attachment requirement', () => {
+    expect(paletteRequirement('pot')).toBe('ADC pin');
+    expect(paletteRequirement('button')).toBe('any GPIO pin');
+    expect(paletteRequirement('rgbled')).toBe('3 pins (R·G·B)');
+    expect(paletteRequirement('encoder')).toBe('3 pins (A·B·SW)');
+    expect(paletteRequirement('sdcard')).toBe('SDMMC1');
+    expect(paletteRequirement('oled')).toBe('SPI1 / I2C1');
+    expect(paletteRequirement('midiTrs')).toBe('USART1');
+    expect(paletteRequirement('midiUsb')).toBe('USB port / USB_HS_D');
+    expect(html).toContain('<div class="meta">SPI1 / I2C1</div>');
+  });
+
+  it('has a collapse toggle', () => {
+    expect(html).toContain('id="palette-toggle"');
+    expect(html).toContain('id="palette-col"');
+  });
+
+  it('a device added to the registry appears with no Wiring Editor edit', () => {
+    REGISTRY['servo'] = { ...REGISTRY['button']!, id: 'servo', label: 'Servo', accentColor: '#123456' };
+    try {
+      const withServo = buildHtml([], [], TEST_NONCE, SCRIPT);
+      expect(withServo).toContain('data-device="servo" style="--accent: #123456"');
+    } finally {
+      delete REGISTRY['servo'];
+    }
+  });
+});

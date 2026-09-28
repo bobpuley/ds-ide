@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { safeJson } from '../../../webview/html-safe';
+import { safeJson, escapeHtml } from '../../../webview/html-safe';
 
 describe('safeJson (FR-EXT-26)', () => {
   it('serializes a plain object to JSON', () => {
@@ -16,5 +16,12 @@ describe('safeJson (FR-EXT-26)', () => {
 
   it('escapes ampersands', () => {
     expect(safeJson({ a: 'x & y' })).toContain('\\u0026');
+  });
+});
+
+describe('escapeHtml', () => {
+  it('escapes markup and quote characters', () => {
+    expect(escapeHtml(`<a href="x" title='y'>&</a>`))
+      .toBe('&lt;a href=&quot;x&quot; title=&#39;y&#39;&gt;&amp;&lt;/a&gt;');
   });
 });

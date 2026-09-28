@@ -8,3 +8,14 @@ export function safeJson(obj: unknown): string {
     .replace(/</g, '\\u003c')
     .replace(/>/g, '\\u003e');
 }
+
+// Escapes text for an HTML text node or a double-quoted attribute value in
+// host-generated webview markup (FR-UDM-5's palette chips).
+export function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
