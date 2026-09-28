@@ -63,7 +63,7 @@
 > **v21 complete** — M62–M64 released (0.19.0–0.19.2), all ACs green.
 > Archived: [`docs/v21/`](v21/).
 
-*v22 milestones not yet planned.*
+*v22 in planning — M65–M66 (unified device model) and M67 (stateful transport) planned; see registry below.*
 
 ---
 
@@ -184,6 +184,15 @@ Full registry in [`docs/v20/05_dev-plan.md`](v20/05_dev-plan.md).
 M62 MIDI Monitor IPC Schema Fix · M63 Manual Test Tracker · M64 Functional/E2E Test Layer (Foundation).
 Full registry in [`docs/v21/05_dev-plan.md`](v21/05_dev-plan.md).
 
-### v22 (0.19.3–) — planned
+### v22 (0.20.0–0.20.2) — planned
 
-*(no milestones yet)*
+| ID   | Name                                   | Status        | Version | File                                                   |
+|------|----------------------------------------|---------------|---------|--------------------------------------------------------|
+| M65  | Unified Device Model (Foundation)      | **planned**   | 0.20.0  | [Milestone_M65.md](milestones/v22/Milestone_M65.md)    |
+| M66  | Unified Device Model (Drag & Drop)     | **planned**   | 0.20.1  | [Milestone_M66.md](milestones/v22/Milestone_M66.md)    |
+| M67  | Stateful Transport on Native Surfaces  | **planned**   | 0.20.2  | [Milestone_M67.md](milestones/v22/Milestone_M67.md)    |
+
+Source: feature intake 2026-09-28 — `design_plan.md` §5 (device model only; §5.5 transport parked),
+layout per `docs/mockups/v22-unified-device-model.html`. M66 depends on M65 (`pinRequires`,
+unified popover). M67 comes from a second 2026-09-28 intake (`design_plan.md` §5.5, layout per
+`docs/mockups/v22-transport-actions.html`) and is independent of M65/M66.

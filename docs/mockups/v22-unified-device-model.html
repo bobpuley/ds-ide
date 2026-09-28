@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<!--
+  MOCKUP — not production code.
+  Alternative 1 to v22-unified-device-model.html (design_plan.md §5 "A unified
+  interaction model").
+
+  Differences from the base mockup:
+    - Board = the IDE's real Wiring Editor schematic (560×600 SVG, same
+      geometry/classes as src/webview/wiring-webview.ts, pins from
+      src/devices/pin-table.gen.ts PIN_DEFS, bus brackets like FR-DEV-12,
+      micro-USB port like FR-DEV-17) instead of a simplified pin grid.
+    - Gesture = real drag & drop only (no click-to-pick-up, no click-pin-first
+      mode). Picking up a device repaints the board: every valid drop target
+      glows in the device's accent colour; everything else dims.
+    - Hovering a valid target while dragging previews the exact footprint the
+      drop would claim (multi-pin allocation per src/wiring/multi-pin-alloc.ts,
+      bus lane per canonicalBusSignal).
+
+  Device set / colours lifted from src/devices/registry.ts REGISTRY.
+  STATUS: proposal, not yet decided — evaluate against the base mockup.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>ds-ide — unified device model, alt 1 (wiring schematic + drag &amp; drop)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #1e1e1e; color: #d4d4d4; font-family: monospace; font-size: 12px; }
+
+  #chrome { background: #111; border-bottom: 1px solid #3c3c3c; padding: 10px 16px; }
+  #chrome h1 { font-size: 13px; color: #f4c430; font-weight: normal; }
+  #chrome p { font-size: 11px; color: #6a6a6a; margin-top: 3px; max-width: 980px; line-height: 1.5; }
+
+  #toolbar { display: flex; gap: 10px; align-items: center; padding: 8px 16px; background: #161616;
+             border-bottom: 1px solid #3c3c3c; }
+  #toolbar button { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; padding: 4px 10px;
+                    border-radius: 2px; cursor: pointer; font-family: monospace; font-size: 10px; }
+
+  #stage { display: flex; gap: 16px; padding: 16px; align-items: flex-start; }
+
+  /* ---- palette ---- */
+  #palette-col { width: 160px; flex-shrink: 0; transition: width .15s; }
+  #palette-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  #palette-head h2 { margin-bottom: 0; }
+  #palette-toggle { margin-left: auto; background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; width: 20px; height: 20px;
+                    border-radius: 2px; cursor: pointer; font-family: monospace; font-size: 10px; line-height: 1; }
+  #palette-toggle:hover { background: #4a4a4a; }
+  /* collapsed: a slim rail of colour dots — still draggable, name on hover */
+  #palette-col.collapsed { width: 34px; }
+  #palette-col.collapsed #palette-head h2,
+  #palette-col.collapsed .pal-grp,
+  #palette-col.collapsed #palette-hint,
+  #palette-col.collapsed .device-chip > :not(.dot) { display: none; }
+  #palette-col.collapsed #palette-head { justify-content: center; }
+  #palette-col.collapsed #palette-toggle { margin-left: 0; }
+  #palette-col.collapsed .device-chip { justify-content: center; padding: 8px 0; border-left-width: 1px; border-color: var(--accent); }
+  #palette-col.collapsed .device-chip .dot { width: 12px; height: 12px; }
+  #palette-col.collapsed .pal-sep { display: block; }
+  .pal-sep { display: none; border-top: 1px solid #3c3c3c; margin: 8px 2px; }
+  #palette-col h2, #notes h3 { font-size: 12px; color: #9cdcfe; margin-bottom: 8px; font-weight: normal; }
+  .pal-grp { font-size: 9px; color: #6a6a6a; margin: 10px 0 5px; letter-spacing: .04em; }
+  .device-chip { display: flex; align-items: center; gap: 7px; background: #252526; border: 1px solid #555;
+                 border-left: 4px solid var(--accent); border-radius: 3px; padding: 6px 8px; margin-bottom: 6px;
+                 cursor: grab; font-size: 11px; user-select: none; touch-action: none; }
+  .device-chip:hover { background: #2f2f2f; }
+  .device-chip.dragging { opacity: .35; }
+  .device-chip.placed-all { opacity: .45; }
+  .device-chip .grip { color: #555; font-size: 10px; margin-left: auto; }
+  .device-chip .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+  .device-chip .meta { font-size: 8px; color: #6a6a6a; }
+  .device-chip .badge { font-size: 8px; color: #4ec9b0; }
+  #palette-hint { font-size: 10px; color: #6a6a6a; margin-top: 8px; line-height: 1.5; min-height: 60px; }
+
+  /* ---- drag ghost ---- */
+  #ghost { position: fixed; pointer-events: none; z-index: 50; display: none; background: #252526;
+           border: 1px solid var(--accent); border-left: 4px solid var(--accent); border-radius: 3px;
+           padding: 5px 8px; font-size: 11px; box-shadow: 0 6px 18px rgba(0,0,0,.6); white-space: nowrap; }
+  #ghost .tgt { font-size: 9px; color: #9a9a9a; margin-top: 2px; }
+  #ghost.ok .tgt { color: #4ec9b0; } #ghost.warn .tgt { color: #f4c430; } #ghost.no .tgt { color: #f48771; }
+
+  /* ---- wiring editor panel (styled like the IDE webview) ---- */
+  .panel { width: 600px; flex-shrink: 0; background: #1e1e1e; border: 1px solid #3c3c3c; border-radius: 4px;
+           display: flex; flex-direction: column; overflow: hidden; }
+  .panel h1 { padding: 8px 14px; font-size: 13px; color: #9cdcfe; background: #252526;
+              border-bottom: 1px solid #3c3c3c; font-weight: bold; }
+  #hint { padding: 4px 14px 6px; font-size: 11px; color: #6a6a6a; background: #252526;
+          border-bottom: 1px solid #3c3c3c; min-height: 23px; }
+  #hint b { color: #d4d4d4; font-weight: normal; }
+  #svg-wrap { padding: 16px; display: flex; justify-content: center; }
+  svg { max-width: 560px; width: 100%; user-select: none; }
+
+  /* Pin dots — idle vocabulary copied from wiring-panel.ts */
+  .pin-dot { cursor: pointer; }
+  .pin-dot:hover circle { stroke: #4ec9b0; stroke-width: 2; }
+  .pin-unassigned circle { fill: #3c3c3c; stroke: #555; stroke-width: 1; cursor: default; }
+  .pin-adc circle { fill: #2a3a2a; stroke: #4a7a4a; stroke-width: 1; }
+  .pin-power  circle { fill: #2a2a2a; stroke: #444; stroke-width: 1; }
+  .pin-bus circle { fill: #4a3a1a; stroke: #f4c430; stroke-width: 2; }
+  .pin-label { font-size: 10px; fill: #d4d4d4; font-family: monospace; }
+  .a-label   { font-size: 8px;  fill: #4ec9b0; font-family: monospace; }
+  .pin-power-label { fill: #555; }
+  .assigned-id { font-size: 9px; fill: #9cdcfe; font-family: monospace; }
+  .board-body { fill: #252526; stroke: #555; stroke-width: 1; }
+  .board-label { font-size: 11px; fill: #6a6a6a; font-family: monospace; text-anchor: middle; }
+  .usb-port  { fill: #3a3a3a; stroke: #777; stroke-width: 1; }
+  .usb-inner { fill: #252526; stroke: #555; stroke-width: 1; }
+  #usb-port-group.active .usb-port { stroke: #569cd6; stroke-width: 2; }
+  .bus-bracket { stroke: #f4c430; stroke-width: 1.5; fill: none; }
+  .bus-bracket-label { font-size: 9px; fill: #f4c430; font-family: monospace; }
+
+  svg * { transition: opacity .12s; }
+
+  /* ---- contextual states while dragging ---- */
+  svg.dragging .ctx-ineligible { opacity: .18; }
+  svg.dragging .ctx-ineligible circle { cursor: not-allowed; }
+  .ctx-free circle { stroke: var(--accent) !important; stroke-width: 2.5 !important; animation: pulse 1.3s ease-in-out infinite; }
+  .ctx-occ circle { fill: url(#hatch) !important; stroke: #f4c430 !important; stroke-width: 2 !important; }
+  .ctx-occ .warn-mark { display: block; }
+  .warn-mark { display: none; font-size: 9px; fill: #f4c430; }
+  .ctx-preview circle { stroke-width: 3.5 !important; filter: drop-shadow(0 0 5px var(--accent)); animation: none; }
+  .ctx-preview .slot-no { display: block; }
+  .slot-no { display: none; font-size: 8px; fill: #fff; font-weight: bold; pointer-events: none; }
+
+  .drop-lane { fill: var(--accent); fill-opacity: .06; stroke: var(--accent); stroke-width: 1.2;
+               stroke-dasharray: 4 3; rx: 6; }
+  .drop-lane.occ { stroke: #f4c430; fill: #f4c430; }
+  .drop-lane.hot { fill-opacity: .18; stroke-width: 2; stroke-dasharray: none; }
+  .drop-lane-lbl { font-size: 9px; fill: var(--accent); font-family: monospace; }
+  .drop-lane-lbl.occ { fill: #f4c430; }
+  #usb-port-group.ctx-free .usb-port { stroke: var(--accent); stroke-width: 2.5; animation: pulseStroke 1.3s infinite; }
+  #usb-port-group.ctx-preview .usb-port { stroke-width: 3.5; filter: drop-shadow(0 0 5px var(--accent)); }
+
+  @keyframes pulse { 0%,100% { stroke-opacity: 1; } 50% { stroke-opacity: .35; } }
+  @keyframes pulseStroke { 0%,100% { stroke-opacity: 1; } 50% { stroke-opacity: .35; } }
+
+  /* ---- legend ---- */
+  #legend { display: flex; gap: 14px; flex-wrap: wrap; padding: 8px 14px; border-top: 1px solid #3c3c3c; background: #252526; }
+  #legend .item { display: flex; align-items: center; gap: 6px; font-size: 9px; color: #9a9a9a; }
+  #legend svg { width: 16px; height: 16px; }
+
+  /* ---- mockup-only toast (stands in for opening a panel / revealing code) ---- */
+  #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); display: none; z-index: 500;
+           background: #0e639c; color: #fff; padding: 6px 14px; border-radius: 3px; font-size: 11px;
+           box-shadow: 0 4px 14px rgba(0,0,0,.5); }
+
+  /* ---- tooltip ---- */
+  #tooltip { position: fixed; display: none; background: #1e1e1e; border: 1px solid #666; border-radius: 3px;
+             padding: 4px 8px; font-size: 11px; color: #d4d4d4; pointer-events: none; z-index: 400; white-space: nowrap; }
+
+  /* ---- unified popover ---- */
+  #popover { position: fixed; display: none; width: 260px; background: #252526; border: 1px solid #555;
+             border-radius: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.55); z-index: 100; }
+  #popover .hdr { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid #3c3c3c; }
+  #popover .hdr .dot { width: 10px; height: 10px; border-radius: 50%; }
+  #popover .hdr .title { font-size: 12px; color: #9cdcfe; }
+  #popover .hdr .sub { font-size: 9px; color: #6a6a6a; margin-left: auto; }
+  #popover .body { padding: 8px 12px; font-size: 10px; line-height: 2; }
+  #popover .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  #popover .row .k { color: #6a6a6a; }
+  #popover input[type=text] { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; font-family: monospace;
+        font-size: 11px; padding: 3px 6px; border-radius: 2px; width: 150px; }
+  #popover .conflict-note { background: #3a2a10; border: 1px solid #f4c430; color: #f4c430; padding: 6px 8px;
+        border-radius: 3px; margin: 6px 0; font-size: 9.5px; line-height: 1.5; }
+  #popover .actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px 10px; border-top: 1px solid #3c3c3c; }
+  #popover button { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; padding: 5px 9px; border-radius: 2px;
+        cursor: pointer; font-family: monospace; font-size: 10px; flex: 1; }
+  #popover button.primary { background: #0e639c; border-color: #1177bb; color: #fff; }
+  #popover button.danger { background: #5a1a1a; border-color: #c94040; color: #f48771; }
+  #popover button:disabled { opacity: .4; cursor: default; }
+
+  /* ---- notes ---- */
+  #notes { flex: 1; min-width: 260px; max-width: 380px; }
+  #notes .blk { background: #252526; border: 1px solid #3c3c3c; border-radius: 4px; padding: 12px 14px; margin-bottom: 12px; }
+  #notes .blk h4 { font-size: 11px; margin-bottom: 6px; font-weight: normal; }
+  #notes .opn h4 { color: #f4c430; } #notes .pro h4 { color: #4ec9b0; }
+  #notes ul { list-style: none; }
+  #notes li { padding: 3px 0 3px 14px; position: relative; line-height: 1.5; color: #b8b8b8; }
+  #notes li::before { content: "·"; position: absolute; left: 4px; color: #6a6a6a; }
+  code { color: #ce9178; }
+</style>
+</head>
+<body>
+
+<div id="chrome">
+  <h1>⚠ MOCKUP — proposal, not decided — design_plan.md §5, alternative 1: wiring schematic + drag &amp; drop</h1>
+  <p>Same unified model as <code>v22-unified-device-model.html</code>, but on the IDE's real Wiring Editor schematic and
+     with a true drag &amp; drop gesture. Grab a device from the palette: the schematic answers immediately —
+     valid pins (or bus lanes / the USB port) pulse in the device's colour, occupied-but-valid targets show an amber
+     hatch, everything else fades. Hover a target to preview the exact footprint the drop would claim; release to
+     open the unified popover. Release anywhere else to cancel. Click a placed device's pin to open its popover
+     (Show panel for devices with a live view · Reveal in code · Remove). No separate Peripherals list.</p>
+</div>
+
+<div id="toolbar">
+  <button onclick="reset()">Reset board</button>
+  <button onclick="clearAll()">Clear all</button>
+  <span style="font-size:10px;color:#6a6a6a;">Esc cancels a drag in progress.</span>
+</div>
+
+<div id="stage">
+
+  <div id="palette-col">
+    <div id="palette-head">
+      <h2>Devices</h2>
+      <button id="palette-toggle" title="Collapse palette" onclick="togglePalette()">◀</button>
+    </div>
+    <div id="palette"></div>
+    <div id="palette-hint">Drag a device onto the schematic.</div>
+  </div>
+
+  <div class="panel">
+    <h1>Daisy Seed Wiring Editor</h1>
+    <div id="hint">Drag a device from the palette onto a pin · Click an assigned pin to edit it</div>
+    <div id="svg-wrap">
+      <svg id="pinout" viewBox="0 0 560 600" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <rect width="4" height="4" fill="#4a3a1a"/><rect width="2" height="4" fill="#6a4a10"/>
+          </pattern>
+        </defs>
+        <rect class="board-body" x="190" y="20" width="180" height="560" rx="6"/>
+        <text class="board-label" x="280" y="300">DAISY</text>
+        <text class="board-label" x="280" y="316">SEED</text>
+        <g id="usb-port-group" data-target="usb">
+          <polygon class="usb-port" points="262,6 298,6 302,20 258,20"/>
+          <polygon class="usb-inner" points="265,8 295,8 299,18 261,18"/>
+        </g>
+        <g id="lanes"></g>
+        <g id="pins"></g>
+        <g id="brackets"></g>
+      </svg>
+    </div>
+    <div id="legend">
+      <div class="item"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="#3c3c3c" stroke="#4ec9b0" stroke-width="2.5"/></svg>valid · free (pulsing)</div>
+      <div class="item"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="url(#hatch)" stroke="#f4c430" stroke-width="2"/></svg>valid · occupied (conflict)</div>
+      <div class="item"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="#3c3c3c" stroke="#555" opacity=".2"/></svg>not valid</div>
+      <div class="item"><svg viewBox="0 0 16 16"><rect x="1" y="2" width="14" height="12" rx="3" fill="none" stroke="#4fc1ff" stroke-dasharray="3 2"/></svg>bus lane drop zone</div>
+      <div class="item"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="#3c3c3c" stroke="#ce9178" stroke-width="3.5"/><text x="8" y="10.5" font-size="7" fill="#fff" text-anchor="middle">1</text></svg>footprint preview (hover)</div>
+    </div>
+  </div>
+
+  <div id="notes">
+    <h3>Evaluation notes</h3>
+    <div class="blk pro">
+      <h4>Try these</h4>
+      <ul>
+        <li><b>Pot</b> — only the ADC pins (A0–A11, right header) light up.</li>
+        <li><b>Button / LED / Toggle</b> — every free GPIO lights up; pins inside an <i>enabled</i> bus
+            lane are not offered.</li>
+        <li><b>RGB LED / Encoder</b> — hover a pin: the 3 pins it would claim are labelled R·G·B / A·B·SW
+            (dropped pin + next free pins in ascending order, as <code>multi-pin-alloc.ts</code> does
+            today). Pins with no room for 2 more free pins after them don't light up.</li>
+        <li><b>OLED</b> (pre-placed on I2C1) — drag it from the palette: two dashed lanes (SPI1 D7–D10,
+            I2C1 D11–D12); the lane you drop on <i>is</i> the bus choice, so the popover needs no bus dropdown.</li>
+        <li><b>Click an OLED pin (D11/D12)</b> or its bracket → popover with <b>Show panel</b>. Every device
+            with a live view (OLED, MIDI TRS, MIDI USB) gets it; SD Card and controls don't.</li>
+        <li><b>MIDI USB</b> — the micro-USB port on top (INTERNAL) and the D29–D30 lane (USB_HS_D).
+            Placed on INTERNAL, click the USB port to reach its popover.</li>
+        <li><b>MIDI TRS</b> onto its lane while <code>tapLed</code> sits on D14 → amber conflict.</li>
+        <li>There's no Peripherals footer: the palette wires things, and the pin popover handles the rest.</li>
+      </ul>
+    </div>
+    <div class="blk opn">
+      <h4>Open: bus-lane pins as plain GPIO</h4>
+      <ul>
+        <li>Here a lane pin is valid for a single-pin device only while no bus peripheral owns that lane
+            (matches today's editor, where D7–D14 are assignable GPIO). Should they instead be flagged
+            "reserved for SPI1/I2C1" (lit, with a soft warning)?</li>
+      </ul>
+    </div>
+    <div class="blk opn">
+      <h4>Open: conflict resolution</h4>
+      <ul>
+        <li>Same proposal as the base mockup: <b>Relocate existing</b> primary, Replace / Cancel
+            secondary. Relocate is disabled when no free valid target remains for the bumped device.</li>
+      </ul>
+    </div>
+    <div class="blk opn">
+      <h4>Open: accessibility / fallback</h4>
+      <ul>
+        <li>Drag-only has no keyboard path. Candidates: keep click-a-pin popup as a fallback, or
+            "Enter on a palette chip → arrow keys cycle valid targets → Enter drops".</li>
+      </ul>
+    </div>
+    <div class="blk pro">
+      <h4>vs the base mockup</h4>
+      <ul>
+        <li>Real pin geography: users see <i>where</i> on the Seed the device lands, not a regrouped list.</li>
+        <li>Bus devices get a lane-shaped target instead of per-pin glow — one drop = the whole bus.</li>
+        <li>No mode toggle: one gesture only.</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+
+<div id="ghost"><div class="lbl"></div><div class="tgt"></div></div>
+<div id="tooltip"></div>
+<div id="toast"></div>
+<div id="popover"></div>
+
+<script>
+// ---- REGISTRY subset (src/devices/registry.ts) ----
+const REGISTRY = {
+  pot:     { label: 'Pot',      accent: '#4ec9b0', fill: '#1a4a4a', kind: 'pin',  pinRequires: 'adc' },
+  button:  { label: 'Button',   accent: '#569cd6', fill: '#1a2a4a', kind: 'pin' },
+  led:     { label: 'LED',      accent: '#f04a4a', fill: '#4a1a1a', kind: 'pin' },
+  toggle:  { label: 'Toggle',   accent: '#c586c0', fill: '#3a1a4a', kind: 'pin' },
+  rgbled:  { label: 'RGB LED',  accent: '#ce9178', fill: '#4a2a1a', kind: 'pins', pinCount: 3, slots: ['R','G','B'] },
+  encoder: { label: 'Encoder',  accent: '#dcdcaa', fill: '#4a4a1a', kind: 'pins', pinCount: 3, slots: ['A','B','SW'] },
+  sdcard:  { label: 'SD Card',  accent: '#f4c430', fill: '#4a3a1a', kind: 'bus', buses: ['SDMMC1'] },
+  oled:    { label: 'OLED',     accent: '#4fc1ff', fill: '#1a3a4a', kind: 'bus', buses: ['SPI1','I2C1'], live: true },
+  midiTrs: { label: 'MIDI TRS', accent: '#c586c0', fill: '#3a1a3a', kind: 'bus', buses: ['USART1'], live: true },
+  midiUsb: { label: 'MIDI USB', accent: '#569cd6', fill: '#1a2a4a', kind: 'bus', buses: ['INTERNAL','USB_HS_D'], live: true },
+};
+const CONTROLS = ['pot','button','led','toggle','rgbled','encoder'];
+const PERIPHS  = ['sdcard','oled','midiTrs','midiUsb'];
+
+// ---- PIN_DEFS (src/devices/pin-table.gen.ts, trimmed to what the schematic needs) ----
+const PIN_DEFS = [
+  ['L',0,0,'D0',null],['L',1,1,'D1',null],['L',2,2,'D2',null],['L',3,3,'D3',null],['L',4,4,'D4',null],
+  ['L',5,5,'D5',null],['L',6,6,'D6',null],['L',7,7,'D7',null],['L',8,8,'D8',null],['L',9,9,'D9',null],
+  ['L',10,10,'D10',null],['L',11,11,'D11',null],['L',12,12,'D12',null],['L',13,13,'D13',null],['L',14,14,'D14',null],
+  ['L',15,null,'AIN L',null],['L',16,null,'AIN R',null],['L',17,null,'AOUT L',null],['L',18,null,'AOUT R',null],['L',19,null,'AGND',null],
+  ['R',0,null,'GND',null],['R',1,null,'VIN',null],['R',2,null,'3V3D',null],
+  ['R',3,30,'D30',null],['R',4,29,'D29',null],['R',5,28,'D28','A11'],['R',6,27,'D27',null],['R',7,26,'D26',null],
+  ['R',8,25,'D25','A10'],['R',9,24,'D24','A9'],['R',10,23,'D23','A8'],['R',11,22,'D22','A7'],['R',12,21,'D21','A6'],
+  ['R',13,20,'D20','A5'],['R',14,19,'D19','A4'],['R',15,18,'D18','A3'],['R',16,17,'D17','A2'],['R',17,16,'D16','A1'],
+  ['R',18,15,'D15','A0'],['R',19,null,'+3V3A',null],
+].map(([side,row,pin,label,aLabel]) => ({ side, row, pin, label, aLabel, adc: !!aLabel }));
+
+// Bus footprints resolved from canonicalBusSignal
+const BUSES = {
+  SDMMC1:   { side: 'L', pins: [[1,'SDMMC1_D3'],[2,'SDMMC1_D2'],[3,'SDMMC1_D1'],[4,'SDMMC1_D0'],[5,'SDMMC1_CMD'],[6,'SDMMC1_CK']] },
+  SPI1:     { side: 'L', pins: [[7,'SPI1_NSS'],[8,'SPI1_SCK'],[9,'SPI1_MISO'],[10,'SPI1_MOSI']] },
+  I2C1:     { side: 'L', pins: [[11,'I2C1_SCL'],[12,'I2C1_SDA']] },
+  USART1:   { side: 'L', pins: [[13,'USART1_TX'],[14,'USART1_RX']] },
+  USB_HS_D: { side: 'R', pins: [[30,'USB_HS_D_+'],[29,'USB_HS_D_-']] },
+  INTERNAL: { side: null, pins: [] }, // micro-USB connector, zero-pin
+};
+const busPins = b => BUSES[b].pins.map(p => p[0]);
+
+const ROW_H = 28, TOP = 40, L_CX = 55, R_CX = 505, BOARD_L = 190, BOARD_R = 370;
+const pinY = row => TOP + row * ROW_H;
+const defOf = n => PIN_DEFS.find(d => d.pin === n);
+const NS = 'http://www.w3.org/2000/svg';
+const mk = (tag, attrs = {}, parent) => {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+};
+
+// ---- state ----
+// controls: { id, dev, pins: [n...] }   peripherals: { dev, bus }
+function initialState() {
+  return {
+    controls: [
+      { id: 'ratePot',   dev: 'pot',    pins: [15] },
+      { id: 'bypassBtn', dev: 'button', pins: [0] },
+      { id: 'tapLed',    dev: 'led',    pins: [14] },
+    ],
+    periphs: [ { dev: 'sdcard', bus: 'SDMMC1' }, { dev: 'oled', bus: 'I2C1' } ],
+  };
+}
+let state = initialState();
+let drag = null;   // { dev, targets: Map, hover: target|null }
+let idCounters = {};
+
+function togglePalette() {
+  const col = document.getElementById('palette-col');
+  const collapsed = col.classList.toggle('collapsed');
+  const btn = document.getElementById('palette-toggle');
+  btn.textContent = collapsed ? '▶' : '◀';
+  btn.title = collapsed ? 'Expand palette' : 'Collapse palette';
+}
+function reset()    { state = initialState(); closePopover(); render(); }
+function clearAll() { state = { controls: [], periphs: [] }; closePopover(); render(); }
+
+// ---- occupancy ----
+function ownerOfPin(n) {
+  const c = state.controls.find(c => c.pins.includes(n));
+  if (c) return { type: 'control', ref: c, name: c.id };
+  const p = state.periphs.find(p => busPins(p.bus).includes(n));
+  if (p) return { type: 'periph', ref: p, name: REGISTRY[p.dev].label };
+  return null;
+}
+function periphOwningBus(bus) { return state.periphs.find(p => p.bus === bus) || null; }
+function periphInLane(n) { return state.periphs.find(p => busPins(p.bus).includes(n)) || null; }
+
+// ---- valid-target computation (the "board answers" step) ----
+// Returns Map<targetKey, { key, kind:'pin'|'lane'|'usb', pins:[n], bus?, conflicts:[owner...] }>
+function computeTargets(devId, exclude = null) {
+  const dev = REGISTRY[devId];
+  const targets = new Map();
+  const assignable = PIN_DEFS.filter(d => d.pin !== null).map(d => d.pin).sort((a, b) => a - b);
+  const isFreeFor = n => { const o = ownerOfPin(n); return !o || (exclude && o.ref === exclude); };
+
+  if (dev.kind === 'pin') {
+    for (const n of assignable) {
+      if (dev.pinRequires === 'adc' && !defOf(n).adc) continue;
+      if (periphInLane(n) && periphInLane(n) !== exclude) continue; // enabled bus lane — not offered
+      const o = ownerOfPin(n);
+      const conflicts = (o && (!exclude || o.ref !== exclude)) ? [o] : [];
+      targets.set('pin:' + n, { key: 'pin:' + n, kind: 'pin', pins: [n], conflicts });
+    }
+  } else if (dev.kind === 'pins') {
+    // dropped pin = slot 1, then the next free assignable pins ascending (multi-pin-alloc.ts)
+    for (const n of assignable) {
+      if (!isFreeFor(n)) continue;
+      const pins = [n];
+      for (let i = assignable.indexOf(n) + 1; i < assignable.length && pins.length < dev.pinCount; i++) {
+        if (isFreeFor(assignable[i])) pins.push(assignable[i]);
+      }
+      if (pins.length === dev.pinCount) targets.set('pin:' + n, { key: 'pin:' + n, kind: 'pin', pins, conflicts: [] });
+    }
+  } else {
+    for (const bus of dev.buses) {
+      const conflicts = [];
+      const owner = periphOwningBus(bus);
+      if (owner && owner !== exclude) conflicts.push({ type: 'periph', ref: owner, name: REGISTRY[owner.dev].label });
+      for (const n of busPins(bus)) {
+        const c = state.controls.find(c => c.pins.includes(n));
+        if (c && !conflicts.some(x => x.ref === c)) conflicts.push({ type: 'control', ref: c, name: c.id });
+      }
+      // one peripheral instance per device type: its own current bus isn't a conflict
+      const key = bus === 'INTERNAL' ? 'usb' : 'lane:' + bus;
+      targets.set(key, { key, kind: bus === 'INTERNAL' ? 'usb' : 'lane', pins: busPins(bus), bus, conflicts });
+    }
+  }
+  return targets;
+}
+
+// ---- rendering ----
+function render() { renderPalette(); renderBoard(); }
+
+function renderPalette() {
+  const host = document.getElementById('palette');
+  host.innerHTML = '';
+  const section = (title, ids) => {
+    if (host.children.length) { const s = document.createElement('div'); s.className = 'pal-sep'; host.appendChild(s); }
+    const h = document.createElement('div'); h.className = 'pal-grp'; h.textContent = title; host.appendChild(h);
+    for (const id of ids) {
+      const d = REGISTRY[id];
+      const chip = document.createElement('div');
+      chip.className = 'device-chip';
+      chip.style.setProperty('--accent', d.accent);
+      const placed = d.kind === 'bus' && state.periphs.some(p => p.dev === id);
+      if (placed) chip.classList.add('placed-all');
+      const meta = d.kind === 'pin' ? (d.pinRequires === 'adc' ? 'ADC pin' : 'any GPIO')
+                 : d.kind === 'pins' ? `${d.pinCount} pins (${d.slots.join('·')})`
+                 : d.buses.map(b => b === 'INTERNAL' ? 'USB port' : b).join(' / ');
+      chip.innerHTML = `<div class="dot"></div><div><div>${d.label}</div><div class="meta">${meta}</div>
+                        ${placed ? '<div class="badge">✓ placed — drag to move</div>' : ''}</div><span class="grip">⠿</span>`;
+      chip.title = `${d.label} — ${meta}${placed ? ' (placed)' : ''}`;
+      chip.addEventListener('pointerdown', e => startDrag(e, id, chip));
+      host.appendChild(chip);
+    }
+  };
+  section('CONTROLS', CONTROLS);
+  section('PERIPHERALS (one each)', PERIPHS);
+}
+
+function renderBoard() {
+  const svg = document.getElementById('pinout');
+  const pinsG = document.getElementById('pins');
+  const lanesG = document.getElementById('lanes');
+  const bracketsG = document.getElementById('brackets');
+  pinsG.innerHTML = ''; lanesG.innerHTML = ''; bracketsG.innerHTML = '';
+  svg.classList.toggle('dragging', !!drag);
+  const accent = drag ? REGISTRY[drag.dev].accent : null;
+  if (accent) svg.style.setProperty('--accent', accent);
+
+  // which pins are "live" targets / previewed
+  const pinCtx = new Map(); // n -> 'free'|'occ'
+  const preview = new Map(); // n -> slot index (1-based)
+  if (drag) {
+    for (const t of drag.targets.values()) {
+      if (t.kind !== 'pin') continue;
+      pinCtx.set(t.pins[0], t.conflicts.length ? 'occ' : 'free');
+    }
+    if (drag.hover) drag.hover.pins.forEach((n, i) => preview.set(n, i + 1));
+  }
+
+  for (const def of PIN_DEFS) {
+    const cy = pinY(def.row), cx = def.side === 'L' ? L_CX : R_CX;
+    const assignable = def.pin !== null;
+    mk('line', { x1: def.side === 'L' ? L_CX + 8 : BOARD_R, y1: cy, x2: def.side === 'L' ? BOARD_L : R_CX - 8, y2: cy,
+                 stroke: assignable ? '#555' : '#333', 'stroke-width': 1 }, pinsG);
+    const g = mk('g', {}, pinsG);
+    const owner = assignable ? ownerOfPin(def.pin) : null;
+    // only occupied pins are interactive (click to edit, drag to move); free pins are inert grey
+    if (!assignable) g.classList.add('pin-power');
+    else if (owner) g.classList.add('pin-dot');
+    const circle = mk('circle', { cx, cy, r: 8 }, g);
+    if (!assignable) {}
+    else if (owner?.type === 'control') {
+      const d = REGISTRY[owner.ref.dev];
+      circle.setAttribute('style', `fill:${d.fill};stroke:${d.accent};stroke-width:2`);
+    } else if (owner?.type === 'periph') g.classList.add('pin-bus');
+    else g.classList.add('pin-unassigned');
+
+    const lx = def.side === 'L' ? L_CX - 12 : R_CX + 12, anchor = def.side === 'L' ? 'end' : 'start';
+    const lbl = mk('text', { x: lx, y: cy + 4, 'text-anchor': anchor }, g);
+    lbl.classList.add('pin-label'); if (!assignable) lbl.classList.add('pin-power-label');
+    lbl.textContent = def.label;
+    if (def.aLabel) { const al = mk('text', { x: lx, y: cy - 7, 'text-anchor': anchor }, g); al.classList.add('a-label'); al.textContent = def.aLabel; }
+
+    if (owner?.type === 'control') {
+      const idEl = mk('text', { x: def.side === 'L' ? 126 : 434, y: cy - 7, 'text-anchor': 'middle' }, g);
+      idEl.classList.add('assigned-id');
+      const c = owner.ref, slots = REGISTRY[c.dev].slots;
+      idEl.textContent = slots ? `${c.id}.${slots[c.pins.indexOf(def.pin)]}` : c.id;
+    }
+
+    const warn = mk('text', { x: cx + (def.side === 'L' ? 7 : -12), y: cy - 6 }, g); warn.classList.add('warn-mark'); warn.textContent = '⚠';
+    const slot = mk('text', { x: cx, y: cy + 3, 'text-anchor': 'middle' }, g); slot.classList.add('slot-no');
+
+    if (assignable) {
+      g.dataset.pin = def.pin;
+      if (drag) {
+        const c = pinCtx.get(def.pin);
+        const inLaneTarget = [...drag.targets.values()].some(t => t.kind === 'lane' && t.pins.includes(def.pin));
+        if (c === 'free') { g.classList.add('ctx-free'); g.dataset.target = 'pin:' + def.pin; }
+        else if (c === 'occ') { g.classList.add('ctx-occ'); g.dataset.target = 'pin:' + def.pin; }
+        else if (inLaneTarget) { g.dataset.target = [...drag.targets.values()].find(t => t.kind === 'lane' && t.pins.includes(def.pin)).key; }
+        else if (!preview.has(def.pin)) g.classList.add('ctx-ineligible');
+        if (preview.has(def.pin)) {
+          g.classList.add('ctx-preview');
+          const slots = REGISTRY[drag.dev].slots;
+          slot.textContent = slots ? slots[preview.get(def.pin) - 1] : '';
+          if (drag.dev && REGISTRY[drag.dev].kind === 'pins') g.classList.remove('ctx-ineligible');
+        }
+      } else {
+        if (owner) g.addEventListener('click', e => openEditPopover(owner, e));
+        g.addEventListener('mousemove', e => {
+          if (owner?.type === 'periph') {
+            const sig = BUSES[owner.ref.bus].pins.find(p => p[0] === def.pin)[1];
+            showTip(`D${def.pin} · ${sig} · ${owner.name}`, e);
+          } else if (owner) showTip(`D${def.pin} · ${REGISTRY[owner.ref.dev].label} · ${owner.name}`, e);
+        });
+        g.addEventListener('mouseleave', hideTip);
+      }
+    } else if (drag) g.classList.add('ctx-ineligible');
+  }
+
+  // idle bus brackets for placed peripherals (FR-DEV-12)
+  if (!drag) {
+    for (const p of state.periphs) {
+      if (p.bus === 'INTERNAL') continue;
+      drawBracket(bracketsG, p.bus, `${REGISTRY[p.dev].label} · ${p.bus}`, '#f4c430', e => openEditPopover({ type: 'periph', ref: p, name: REGISTRY[p.dev].label }, e));
+    }
+  }
+
+  // drag-time lane drop zones
+  if (drag) {
+    for (const t of drag.targets.values()) {
+      if (t.kind !== 'lane') continue;
+      const b = BUSES[t.bus], rows = t.pins.map(n => defOf(n).row);
+      const y0 = pinY(Math.min(...rows)) - 13, y1 = pinY(Math.max(...rows)) + 13;
+      const x0 = b.side === 'L' ? 14 : 380, w = 166;
+      const r = mk('rect', { x: x0, y: y0, width: w, height: y1 - y0 }, lanesG);
+      r.classList.add('drop-lane'); if (t.conflicts.length) r.classList.add('occ');
+      if (drag.hover && drag.hover.key === t.key) r.classList.add('hot');
+      r.dataset.target = t.key;
+      const lbl = mk('text', { x: b.side === 'L' ? 150 : 410, y: (y0 + y1) / 2 + 3, 'text-anchor': 'middle' }, lanesG);
+      lbl.classList.add('drop-lane-lbl'); if (t.conflicts.length) lbl.classList.add('occ');
+      lbl.textContent = (t.conflicts.length ? '⚠ ' : '') + t.bus;
+      lbl.dataset.target = t.key;
+    }
+  }
+
+  // USB port
+  const usb = document.getElementById('usb-port-group');
+  usb.classList.remove('active', 'ctx-free', 'ctx-preview', 'ctx-ineligible');
+  usb.onmousemove = null; usb.onclick = null;
+  const usbOwner = periphOwningBus('INTERNAL');
+  if (drag) {
+    const t = drag.targets.get('usb');
+    if (t) { usb.classList.add('ctx-free'); if (drag.hover?.key === 'usb') usb.classList.add('ctx-preview'); }
+    else usb.classList.add('ctx-ineligible');
+  } else if (usbOwner) {
+    usb.classList.add('active');
+    usb.style.cursor = 'pointer';
+    usb.onmousemove = e => showTip(`${REGISTRY[usbOwner.dev].label} · micro USB connector (INTERNAL)`, e);
+    usb.onmouseleave = hideTip;
+    usb.onclick = e => openEditPopover({ type: 'periph', ref: usbOwner, name: REGISTRY[usbOwner.dev].label }, e);
+  }
+}
+
+function drawBracket(parent, bus, label, color, onClick) {
+  const b = BUSES[bus], rows = busPins(bus).map(n => defOf(n).row);
+  const y0 = pinY(Math.min(...rows)) - 10, y1 = pinY(Math.max(...rows)) + 10;
+  const g = mk('g', {}, parent); g.style.cursor = 'pointer';
+  const path = mk('path', { d: b.side === 'L' ? `M172 ${y0} L160 ${y0} L160 ${y1} L172 ${y1}` : `M388 ${y0} L400 ${y0} L400 ${y1} L388 ${y1}` }, g);
+  path.classList.add('bus-bracket');
+  const t = mk('text', { x: b.side === 'L' ? 156 : 404, y: (y0 + y1) / 2 + 3, 'text-anchor': b.side === 'L' ? 'end' : 'start' }, g);
+  t.classList.add('bus-bracket-label'); t.textContent = bus;
+  mk('rect', { x: b.side === 'L' ? 120 : 380, y: y0 - 4, width: 55, height: y1 - y0 + 8, fill: 'transparent' }, g);
+  g.addEventListener('click', e => { e.stopPropagation(); onClick(e); });
+  g.addEventListener('mousemove', e => showTip(label, e)); g.addEventListener('mouseleave', hideTip);
+}
+
+// mockup-only feedback for actions that would leave the wiring editor
+let toastTimer = null;
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.style.display = 'none'; }, 1800);
+}
+
+// ---- drag & drop (pointer-based so SVG targets + hover preview work uniformly) ----
+const ghost = document.getElementById('ghost');
+
+// lifted = a placed control dragged off its pins (already removed from state; restored on cancel)
+function startDrag(e, devId, chip, moving = null, lifted = null) {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  closePopover(); hideTip();
+  // bus peripherals are one-per-type: dragging an already-placed one moves it
+  const existing = moving || (REGISTRY[devId].kind === 'bus' ? state.periphs.find(p => p.dev === devId) : null);
+  drag = { dev: devId, chip, moving: existing, lifted, targets: computeTargets(devId, existing), hover: null, started: false, x0: e.clientX, y0: e.clientY };
+  document.addEventListener('pointermove', onDragMove);
+  document.addEventListener('pointerup', onDragEnd);
+}
+
+function onDragMove(e) {
+  if (!drag) return;
+  if (!drag.started) {
+    if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 4) return;
+    drag.started = true;
+    drag.chip?.classList.add('dragging');
+    const d = REGISTRY[drag.dev];
+    ghost.style.setProperty('--accent', d.accent);
+    ghost.querySelector('.lbl').textContent = d.label;
+    ghost.style.display = 'block';
+    document.body.style.cursor = 'grabbing';
+    setHint();
+    renderBoard();
+  }
+  ghost.style.left = (e.clientX + 14) + 'px';
+  ghost.style.top = (e.clientY + 10) + 'px';
+
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  const key = el?.closest('[data-target]')?.dataset.target || null;
+  const t = key ? drag.targets.get(key) : null;
+  if ((t?.key || null) !== (drag.hover?.key || null)) { drag.hover = t || null; renderBoard(); }
+
+  const tgt = ghost.querySelector('.tgt');
+  ghost.classList.remove('ok', 'warn', 'no');
+  if (t) {
+    const where = t.kind === 'usb' ? 'micro USB (INTERNAL)' : t.kind === 'lane' ? `${t.bus} · ${t.pins.map(n => 'D' + n).join(' ')}` : t.pins.map(n => 'D' + n).join(' · ');
+    tgt.textContent = (t.conflicts.length ? `⚠ replaces ${t.conflicts.map(c => c.name).join(', ')} · ` : '→ ') + where;
+    ghost.classList.add(t.conflicts.length ? 'warn' : 'ok');
+  } else {
+    const onBoard = el?.closest('svg');
+    tgt.textContent = onBoard ? '✕ not a valid target here' : `${drag.targets.size} valid target${drag.targets.size === 1 ? '' : 's'} lit`;
+    if (onBoard) ghost.classList.add('no');
+  }
+}
+
+function onDragEnd(e) {
+  document.removeEventListener('pointermove', onDragMove);
+  document.removeEventListener('pointerup', onDragEnd);
+  if (!drag) return;
+  const d = drag; drag = null;
+  ghost.style.display = 'none'; document.body.style.cursor = '';
+  d.chip?.classList.remove('dragging');
+  setHint();
+  const dropped = d.started && d.hover;
+  if (d.lifted && !dropped) state.controls.push(d.lifted);
+  render();
+  if (dropped) openDropPopover(d.dev, d.hover, d.moving || d.lifted, e);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (drag) { drag.hover = null; onDragEnd(e); }
+  closePopover();
+});
+
+function setHint() {
+  const hint = document.getElementById('hint'), ph = document.getElementById('palette-hint');
+  if (!drag) {
+    hint.innerHTML = 'Drag a device from the palette onto a pin · Click an assigned pin to edit it';
+    ph.textContent = 'Drag a device onto the schematic.';
+    return;
+  }
+  const d = REGISTRY[drag.dev];
+  const what = d.kind === 'pin' ? (d.pinRequires === 'adc' ? 'an ADC pin' : 'any free GPIO pin')
+             : d.kind === 'pins' ? `a start pin — ${d.pinCount} pins will be claimed (${d.slots.join('·')})`
+             : `a highlighted ${d.buses.length > 1 ? 'bus lane — the lane you pick is the bus' : 'bus lane'}`;
+  hint.innerHTML = `Dragging <b>${d.label}</b> — drop on ${what}. ${drag.targets.size} valid target(s). Esc cancels.`;
+  ph.textContent = drag.targets.size ? `Drop on a glowing target. Release elsewhere to cancel.` : `No valid target left for ${d.label}.`;
+}
+
+// ---- popovers ----
+const pop = document.getElementById('popover');
+function placePopover(e) {
+  pop.style.display = 'block';
+  pop.style.left = Math.min((e?.clientX ?? 400) + 10, window.innerWidth - 280) + 'px';
+  pop.style.top = Math.max(10, Math.min((e?.clientY ?? 200) + 10, window.innerHeight - pop.offsetHeight - 10)) + 'px';
+}
+let pendingRestore = null;
+function closePopover() {
+  pop.style.display = 'none';
+  if (pendingRestore) { state.controls.push(pendingRestore); pendingRestore = null; render(); }
+}
+document.addEventListener('pointerdown', e => { if (pop.style.display === 'block' && !pop.contains(e.target)) closePopover(); });
+
+function suggestId(devId) {
+  let n = (idCounters[devId] || 0) + 1;
+  while (state.controls.some(c => c.id === devId + n)) n++;
+  idCounters[devId] = n;
+  return devId + n;
+}
+
+function openDropPopover(devId, target, moving, e) {
+  const d = REGISTRY[devId];
+  const conflict = target.conflicts.length > 0;
+  let rows = '';
+  if (d.kind === 'bus') {
+    rows += `<div class="row"><span class="k">bus</span><span>${target.bus}</span></div>`;
+    rows += `<div class="row"><span class="k">pins</span><span>${target.bus === 'INTERNAL' ? '— (micro USB)' : target.pins.map(n => 'D' + n).join(', ')}</span></div>`;
+  } else {
+    rows += `<div class="row"><span class="k">${d.kind === 'pins' ? 'pins' : 'pin'}</span><span>${
+      target.pins.map((n, i) => d.slots ? `${d.slots[i]}=D${n}` : 'D' + n).join(' ')}</span></div>`;
+    rows += `<div class="row"><span class="k">id</span><input type="text" id="pop-id" value="${moving?.id || suggestId(devId)}"></div>`;
+  }
+  // a control lifted off the board is restored if this popover closes without committing
+  pendingRestore = (moving && moving.pins) ? moving : null;
+  const relocatable = conflict && target.conflicts.every(c => canRelocate(c, target));
+  const note = conflict ? `<div class="conflict-note">⚠ ${target.conflicts.map(c => `<b>${c.name}</b>`).join(', ')} already
+      ${target.conflicts.length > 1 ? 'occupy' : 'occupies'} ${d.kind === 'bus' ? 'this lane' : 'this pin'}.
+      ${relocatable ? 'Relocate moves it to the nearest free valid pin.' : 'No free valid target to relocate it to.'}</div>` : '';
+  const actions = conflict
+    ? `<button class="primary" style="flex-basis:100%" ${relocatable ? '' : 'disabled'} id="pa-reloc">Relocate existing &amp; add</button>
+       <button id="pa-replace">Replace</button><button id="pa-cancel">Cancel</button>`
+    : `<button class="primary" id="pa-add">${moving ? 'Move' : 'Add'}</button><button id="pa-cancel">Cancel</button>`;
+  pop.innerHTML = `<div class="hdr"><div class="dot" style="background:${d.accent}"></div><div class="title">${d.label}</div>
+    <div class="sub">${conflict ? 'conflict' : moving ? 'move' : 'new placement'}</div></div>
+    <div class="body">${rows}${note}</div><div class="actions">${actions}</div>`;
+  placePopover(e);
+  const idIn = document.getElementById('pop-id'); idIn?.focus(); idIn?.select();
+
+  const commit = mode => {
+    const id = idIn?.value.trim();
+    if (mode === 'relocate') target.conflicts.forEach(c => relocate(c, target));
+    if (mode === 'replace') target.conflicts.forEach(removeOwner);
+    if (d.kind === 'bus') {
+      state.periphs = state.periphs.filter(p => p.dev !== devId);
+      state.periphs.push({ dev: devId, bus: target.bus });
+    } else {
+      state.controls.push({ id: id || suggestId(devId), dev: devId, pins: target.pins.slice() });
+    }
+    pendingRestore = null;
+    closePopover(); render();
+  };
+  document.getElementById('pa-add')?.addEventListener('click', () => commit('add'));
+  document.getElementById('pa-reloc')?.addEventListener('click', () => commit('relocate'));
+  document.getElementById('pa-replace')?.addEventListener('click', () => commit('replace'));
+  document.getElementById('pa-cancel').addEventListener('click', closePopover);
+  idIn?.addEventListener('keydown', ev => { if (ev.key === 'Enter') commit(conflict ? 'replace' : 'add'); });
+}
+
+function removeOwner(o) {
+  if (o.type === 'control') state.controls = state.controls.filter(c => c !== o.ref);
+  else state.periphs = state.periphs.filter(p => p !== o.ref);
+}
+
+// relocation target for a bumped device: must avoid the pins the incoming drop claims
+function relocationFor(o, incoming) {
+  const blocked = new Set(incoming.pins);
+  if (o.type === 'periph') {
+    const alt = REGISTRY[o.ref.dev].buses.find(b => b !== o.ref.bus && !periphOwningBus(b) &&
+      busPins(b).every(n => !blocked.has(n) && !state.controls.some(c => c.pins.includes(n))));
+    return alt ? { bus: alt } : null;
+  }
+  const saved = state.controls; state.controls = saved.filter(c => c !== o.ref);
+  const t = [...computeTargets(o.ref.dev).values()].find(t => !t.conflicts.length && t.pins.every(n => !blocked.has(n)));
+  state.controls = saved;
+  return t ? { pins: t.pins } : null;
+}
+function canRelocate(o, incoming) { return !!relocationFor(o, incoming); }
+function relocate(o, incoming) {
+  const r = relocationFor(o, incoming);
+  if (!r) return removeOwner(o);
+  if (r.bus) o.ref.bus = r.bus; else o.ref.pins = r.pins;
+}
+
+function openEditPopover(owner, e) {
+  e?.stopPropagation?.();
+  hideTip();
+  const isPeriph = owner.type === 'periph';
+  const d = REGISTRY[owner.ref.dev];
+  const where = isPeriph
+    ? (owner.ref.bus === 'INTERNAL' ? 'micro USB (INTERNAL)' : `${owner.ref.bus} · ${busPins(owner.ref.bus).map(n => 'D' + n).join(', ')}`)
+    : owner.ref.pins.map((n, i) => d.slots ? `${d.slots[i]}=D${n}` : 'D' + n).join(' ');
+  pop.innerHTML = `<div class="hdr"><div class="dot" style="background:${d.accent}"></div><div class="title">${d.label}</div>
+    <div class="sub">${isPeriph ? '' : owner.ref.id}</div></div>
+    <div class="body"><div class="row"><span class="k">${isPeriph ? 'bus' : 'pins'}</span><span>${where}</span></div>
+    <div style="color:#6a6a6a;font-size:9px;line-height:1.4;margin-top:4px;">Tip: to move it, drag it${isPeriph ? ' from the palette' : ' off one of its pins'} onto a new target.</div></div>
+    <div class="actions">${d.live ? '<button class="primary" style="flex-basis:100%" id="pe-show">▣ Show panel</button>' : ''}
+      <button id="pe-reveal">Reveal in code</button><button class="danger" id="pe-remove">Remove</button></div>`;
+  placePopover(e);
+  document.getElementById('pe-remove').onclick = () => { removeOwner(owner); closePopover(); render(); };
+  document.getElementById('pe-reveal').onclick = () => { closePopover(); toast(`would reveal ${isPeriph ? d.label : owner.ref.id} in code`); };
+  const show = document.getElementById('pe-show');
+  if (show) show.onclick = () => { closePopover(); toast(`would open the ${d.label} panel`); };
+}
+
+// Drag a placed control off its pin to move it (same highlight model)
+document.getElementById('pinout').addEventListener('pointerdown', e => {
+  if (drag) return;
+  const g = e.target.closest('.pin-dot'); if (!g) return;
+  const o = ownerOfPin(+g.dataset.pin); if (!o || o.type !== 'control') return;
+  const c = o.ref;
+  const x0 = e.clientX, y0 = e.clientY;
+  const mv = ev => {
+    if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return;
+    document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up);
+    // lift it off the board and run the normal drag; onDragEnd / Cancel put it back
+    state.controls = state.controls.filter(x => x !== c);
+    startDrag({ button: 0, clientX: x0, clientY: y0, preventDefault() {} }, c.dev, null, null, c);
+    onDragMove(ev);
+  };
+  const up = () => { document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up); };
+  document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up);
+});
+
+// ---- tooltip ----
+const tip = document.getElementById('tooltip');
+function showTip(text, e) { if (drag) return; tip.textContent = text; tip.style.display = 'block'; tip.style.left = (e.clientX + 14) + 'px'; tip.style.top = (e.clientY + 14) + 'px'; }
+function hideTip() { tip.style.display = 'none'; }
+
+render();
+</script>
+
+</body>
+</html>

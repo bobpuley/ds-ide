@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<!--
+  MOCKUP — not production code. (design_plan.md §5.5).
+
+  Same goal (one visible, stateful way to run the effect), but built on VS Code's
+  NATIVE surfaces instead of custom status-bar buttons:
+    1. Run and Debug view + F5 / Ctrl+F5 — the primary path. Ctrl+F5 becomes a real
+       no-debug session (today run-config-provider.ts returns undefined for noDebug,
+       so no session, no toolbar, no Stop), so VS Code's floating debug toolbar
+       provides Stop / Restart for free.
+    2. Editor-title ▶ run button with the native Run / Debug dropdown (menu
+       `editor/title/run`), visible on the effect's C++ source.
+    3. A contributed "Daisy" view inside the Run and Debug container: emulator state,
+       last result, and the hardware group (Flash has no native home).
+    4. Status bar slimmed to one clickable state item + ⚡ Flash.
+
+  Build/deploy progress uses native withProgress (notification with Cancel, plus a
+  progress bar on the Daisy view). Failures land in Problems + a notification.
+
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>ds-ide — transport on native surfaces (design_plan.md §5.5, alt 1)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #111; color: #ccc; font-family: -apple-system, "Segoe UI", sans-serif; font-size: 12px; }
+  .mono { font-family: Menlo, Consolas, monospace; }
+
+  #chrome { background: #111; border-bottom: 1px solid #3c3c3c; padding: 10px 16px; font-family: monospace; }
+  #chrome h1 { font-size: 13px; color: #f4c430; font-weight: normal; }
+  #chrome p { font-size: 11px; color: #6a6a6a; margin-top: 3px; max-width: 1040px; line-height: 1.5; }
+
+  #toolbar { display: flex; gap: 8px; align-items: center; padding: 8px 16px; background: #161616;
+             border-bottom: 1px solid #3c3c3c; flex-wrap: wrap; font-family: monospace; }
+  #toolbar .lbl { font-size: 10px; color: #9a9a9a; }
+  #toolbar button { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; padding: 4px 10px;
+                    border-radius: 2px; cursor: pointer; font-family: monospace; font-size: 10px; }
+  #toolbar button.on { background: #0e639c; border-color: #1177bb; color: #fff; }
+  #toolbar .sep { width: 1px; height: 18px; background: #3c3c3c; margin: 0 6px; }
+
+  #stage { display: flex; gap: 16px; padding: 16px; align-items: flex-start; }
+
+  /* ---- window ---- */
+  #win { width: 1000px; height: 640px; flex-shrink: 0; display: flex; flex-direction: column; border: 1px solid #3c3c3c;
+         border-radius: 6px; overflow: hidden; background: #1e1e1e; position: relative; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+  #titlebar { height: 30px; background: #323233; display: flex; align-items: center; justify-content: center; position: relative; font-size: 12px; }
+  #titlebar .dots { position: absolute; left: 10px; display: flex; gap: 7px; }
+  #titlebar .dots i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+  #titlebar .cmd-center { background: #252526; border: 1px solid #3c3c3c; border-radius: 5px; padding: 2px 80px; color: #888; font-size: 11px; cursor: pointer; }
+  #body { flex: 1; display: flex; min-height: 0; }
+
+  #activity { width: 46px; background: #333; display: flex; flex-direction: column; align-items: center; padding-top: 6px; gap: 4px; }
+  #activity .ab { width: 46px; height: 42px; display: flex; align-items: center; justify-content: center; color: #858585; font-size: 19px;
+                  cursor: pointer; position: relative; border-left: 2px solid transparent; }
+  #activity .ab:hover { color: #ccc; }
+  #activity .ab.on { color: #fff; border-left-color: #fff; }
+  #activity .ab .badge { position: absolute; right: 7px; bottom: 7px; width: 8px; height: 8px; border-radius: 50%; background: #89d185; display: none; }
+  #activity .ab .badge.show { display: block; }
+
+  #sidebar { width: 270px; background: #252526; border-right: 1px solid #1e1e1e; display: flex; flex-direction: column; min-height: 0; font-size: 12px; }
+  .sb-title { height: 35px; display: flex; align-items: center; padding: 0 12px; font-size: 11px; color: #bbb; letter-spacing: .04em; }
+  .launchbar { display: flex; align-items: center; gap: 4px; padding: 0 10px 8px; }
+  .launchbar .go { color: #89d185; font-size: 14px; cursor: pointer; padding: 2px 5px; border-radius: 3px; }
+  .launchbar .go:hover { background: #37373d; }
+  .launchbar .go.dis { color: #555; cursor: default; background: none; }
+  .launchbar select { flex: 1; background: #3c3c3c; color: #ccc; border: 1px solid #3c3c3c; font-size: 11.5px; padding: 3px 4px; border-radius: 2px; }
+  .launchbar .gear { color: #999; cursor: pointer; padding: 2px 4px; }
+  .sect { border-top: 1px solid #333; }
+  .sect-h { display: flex; align-items: center; gap: 4px; height: 22px; padding: 0 6px; font-size: 11px; font-weight: 600; color: #ccc; cursor: pointer; user-select: none; letter-spacing: .02em; }
+  .sect-h .chev { width: 12px; color: #aaa; font-size: 10px; }
+  .sect-h .acts { margin-left: auto; display: none; gap: 2px; }
+  .sect:hover .sect-h .acts { display: flex; }
+  .sect-h .acts span { padding: 0 4px; color: #bbb; font-weight: normal; border-radius: 3px; }
+  .sect-h .acts span:hover { background: #37373d; }
+  .sect-b { padding: 2px 0 6px; }
+  .sect.closed .sect-b { display: none; }
+  .row { display: flex; align-items: center; gap: 6px; padding: 2px 22px; font-size: 12px; color: #ccc; line-height: 18px; }
+  .row .k { color: #9cdcfe; } .row .v { color: #b5cea8; } .row .dim { color: #888; }
+  .row.click { cursor: pointer; } .row.click:hover { background: #2a2d2e; }
+  .empty { padding: 2px 22px; color: #888; font-size: 11.5px; }
+  .progress { height: 2px; background: transparent; overflow: hidden; position: relative; }
+  .progress.on::after { content: ""; position: absolute; left: -40%; width: 40%; height: 2px; background: #0e70c0; animation: prog 1.1s linear infinite; }
+  @keyframes prog { to { left: 100%; } }
+
+  /* Daisy view (contributed) */
+  .daisy-state { display: flex; align-items: center; gap: 8px; padding: 4px 22px 6px; }
+  .daisy-state .dot { width: 9px; height: 9px; border-radius: 50%; background: #6a6a6a; flex-shrink: 0; }
+  .daisy-state .dot.run { background: #89d185; box-shadow: 0 0 6px #89d185; }
+  .daisy-state .dot.dbg { background: #cc6633; box-shadow: 0 0 6px #cc6633; }
+  .daisy-state .dot.busy { background: #0e70c0; animation: blink 1s infinite; }
+  .daisy-state .dot.err { background: #f14c4c; }
+  .daisy-state .dot.warn { background: #cca700; }
+  @keyframes blink { 50% { opacity: .3; } }
+  .daisy-state .t { font-size: 12px; color: #e7e7e7; }
+  .daisy-state .s { font-size: 11px; color: #888; }
+  .vbtn { display: block; width: calc(100% - 44px); margin: 4px 22px; background: #0e639c; color: #fff; border: none; padding: 5px; font-size: 12px;
+          border-radius: 2px; cursor: pointer; text-align: center; }
+  .vbtn:hover { background: #1177bb; }
+  .vbtn.sec { background: #3a3d41; color: #ccc; }
+  .vbtn.sec:hover { background: #45494e; }
+  .vbtn:disabled { opacity: .45; cursor: default; }
+  .sub-h { padding: 6px 22px 2px; font-size: 10px; color: #888; letter-spacing: .05em; }
+  .welcome { padding: 6px 22px; color: #aaa; font-size: 11.5px; line-height: 1.5; }
+  .welcome a { color: #3794ff; cursor: pointer; }
+
+  /* explorer */
+  .f { padding: 3px 20px; color: #ccc; } .f.sel { background: #37373d; }
+
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
+  #tabs { height: 35px; background: #252526; display: flex; align-items: stretch; }
+  #tabs .tab { padding: 9px 14px; background: #1e1e1e; color: #fff; font-size: 12px; border-top: 1px solid #0e639c; }
+  #tabs .spacer { flex: 1; }
+  #title-acts { display: flex; align-items: center; gap: 2px; padding-right: 8px; }
+  .ta { color: #ccc; padding: 3px 5px; border-radius: 4px; cursor: pointer; font-size: 13px; display: flex; align-items: center; }
+  .ta:hover { background: #37373d; }
+  .ta.run { color: #89d185; }
+  .ta.run .chev { color: #ccc; font-size: 9px; margin-left: 2px; padding: 0 2px; border-left: 1px solid #555; }
+  .ta.dis { color: #555; cursor: default; background: none; }
+  #editor { flex: 1; padding: 10px 0; font-size: 12px; line-height: 18px; overflow: hidden; }
+  #editor .ln { display: flex; position: relative; }
+  #editor .ln.bp .n::before { content: "●"; color: #e51400; position: absolute; left: 6px; }
+  #editor .ln.cur { background: rgba(255, 213, 0, .15); }
+  #editor .ln.cur .n::after { content: "➜"; color: #ffcc00; position: absolute; left: 18px; }
+  #editor .n { width: 44px; text-align: right; padding-right: 14px; color: #6e7681; cursor: pointer; }
+  .k { color: #569cd6; } .t { color: #4ec9b0; } .f2 { color: #dcdcaa; } .c { color: #6a9955; } .num { color: #b5cea8; }
+  .squig { text-decoration: underline wavy #f14c4c; }
+
+  /* floating debug toolbar */
+  #dbgbar { position: absolute; top: 40px; left: 50%; transform: translateX(-50%); display: none; background: #333; border: 1px solid #454545;
+            border-radius: 5px; box-shadow: 0 2px 8px rgba(0,0,0,.6); padding: 2px 4px; gap: 1px; z-index: 25; align-items: center; }
+  #dbgbar .grip { color: #666; padding: 0 4px; cursor: move; }
+  #dbgbar .db { padding: 3px 6px; font-size: 14px; cursor: pointer; border-radius: 3px; color: #75beff; }
+  #dbgbar .db:hover { background: #454545; }
+  #dbgbar .db.restart { color: #89d185; } #dbgbar .db.stop { color: #f48771; }
+  #dbgbar .db.dis { color: #555; cursor: default; background: none; }
+
+  #panel { height: 150px; border-top: 1px solid #3c3c3c; background: #1e1e1e; display: flex; flex-direction: column; }
+  #panel .ptabs { display: flex; gap: 18px; padding: 6px 12px; font-size: 11px; color: #969696; letter-spacing: .03em; }
+  #panel .ptabs span { cursor: pointer; }
+  #panel .ptabs .on { color: #e7e7e7; border-bottom: 1px solid #e7e7e7; }
+  #panel .ptabs .badge { background: #4d4d4d; color: #fff; border-radius: 8px; padding: 0 5px; font-size: 10px; }
+  #pbody { flex: 1; overflow: auto; padding: 2px 12px; font-size: 11px; line-height: 16px; color: #ccc; white-space: pre-wrap; }
+  #pbody .err { color: #f48771; } #pbody .ok { color: #89d185; } #pbody .dim { color: #858585; }
+  #pbody .prob { cursor: pointer; } #pbody .prob:hover { background: #2a2d2e; }
+
+  #statusbar { height: 22px; background: #007acc; color: #fff; display: flex; align-items: stretch; font-size: 12px; }
+  #statusbar.debugging { background: #cc6633; }
+  #statusbar.noproj { background: #68217a; }
+  .si { display: flex; align-items: center; gap: 4px; padding: 0 7px; cursor: pointer; white-space: nowrap; }
+  .si:hover { background: rgba(255,255,255,.12); }
+  .si.plain { cursor: default; } .si.plain:hover { background: none; }
+  .si.err { background: #c72e0f; } .si.warn { background: #b58900; }
+  .si .pill { background: rgba(0,0,0,.25); border-radius: 8px; padding: 0 5px; font-size: 10px; }
+  .spacer { flex: 1; }
+  .spin { display: inline-block; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* menus, notifications, modal, hover */
+  #menu { position: absolute; display: none; background: #252526; border: 1px solid #454545; border-radius: 5px; box-shadow: 0 4px 14px rgba(0,0,0,.6);
+          padding: 4px 0; z-index: 40; min-width: 250px; font-size: 12px; }
+  #menu .mi { display: flex; padding: 4px 14px; cursor: pointer; gap: 10px; }
+  #menu .mi:hover { background: #04395e; }
+  #menu .mi .kb { margin-left: auto; color: #999; }
+  #menu .msep { border-top: 1px solid #454545; margin: 4px 0; }
+  #notifs { position: absolute; right: 10px; bottom: 30px; width: 360px; display: flex; flex-direction: column; gap: 6px; z-index: 35; }
+  .notif { background: #252526; border: 1px solid #454545; box-shadow: 0 4px 14px rgba(0,0,0,.5); font-size: 12px; }
+  .notif .nb { padding: 10px 12px; display: flex; gap: 8px; line-height: 1.45; }
+  .notif .ico { flex-shrink: 0; } .notif .ico.i { color: #3794ff; } .notif .ico.e { color: #f14c4c; } .notif .ico.w { color: #cca700; }
+  .notif .src { color: #888; font-size: 11px; padding: 0 12px 4px 32px; }
+  .notif .nacts { display: flex; justify-content: flex-end; gap: 6px; padding: 0 10px 8px; }
+  .notif button { background: #0e639c; color: #fff; border: none; padding: 3px 10px; font-size: 11px; border-radius: 2px; cursor: pointer; }
+  .notif button.sec { background: #3a3d41; color: #ccc; }
+  #modal { position: absolute; inset: 0; background: rgba(0,0,0,.4); display: none; align-items: flex-start; justify-content: center; z-index: 50; }
+  #modal .box { margin-top: 60px; width: 390px; background: #252526; border: 1px solid #454545; border-radius: 6px; padding: 16px; box-shadow: 0 8px 24px rgba(0,0,0,.6); }
+  #modal h3 { font-size: 13px; color: #e7e7e7; margin-bottom: 6px; }
+  #modal p { font-size: 12px; color: #aaa; line-height: 1.5; }
+  #modal .btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+  #modal button { background: #3c3c3c; color: #ccc; border: 1px solid #555; padding: 4px 12px; border-radius: 2px; cursor: pointer; font-size: 12px; }
+  #modal button.primary { background: #0e639c; border-color: #1177bb; color: #fff; }
+  #hover { position: absolute; display: none; background: #252526; border: 1px solid #454545; color: #ccc; padding: 6px 9px;
+           font-size: 11px; line-height: 1.5; z-index: 60; max-width: 300px; box-shadow: 0 2px 8px rgba(0,0,0,.5); pointer-events: none; }
+  #hover kbd { background: #3c3c3c; border: 1px solid #555; border-radius: 3px; padding: 0 4px; font-size: 10px; }
+
+  /* notes */
+  #notes { flex: 1; min-width: 280px; max-width: 420px; font-family: monospace; }
+  #notes h3 { font-size: 12px; color: #9cdcfe; margin-bottom: 8px; font-weight: normal; }
+  #notes .blk { background: #252526; border: 1px solid #3c3c3c; border-radius: 4px; padding: 12px 14px; margin-bottom: 12px; }
+  #notes .blk h4 { font-size: 11px; margin-bottom: 6px; font-weight: normal; }
+  #notes .opn h4 { color: #f4c430; } #notes .pro h4 { color: #4ec9b0; }
+  #notes ul { list-style: none; }
+  #notes li { padding: 3px 0 3px 14px; position: relative; line-height: 1.5; color: #b8b8b8; font-size: 11px; }
+  #notes li::before { content: "·"; position: absolute; left: 4px; color: #6a6a6a; }
+  #notes table { border-collapse: collapse; width: 100%; font-size: 10px; }
+  #notes td { padding: 3px 4px; border-bottom: 1px solid #333; color: #b8b8b8; vertical-align: top; }
+  #notes td:first-child { color: #d4d4d4; white-space: nowrap; }
+  code { color: #ce9178; }
+</style>
+</head>
+<body>
+
+<div id="chrome">
+  <h1>⚠ MOCKUP — proposal, not decided — design_plan.md §5.5: native VS Code surfaces</h1>
+  <p>Bbuilt on VS Code's native surfaces: the <b>Run and Debug</b> view
+     (F5 / Ctrl+F5), the <b>editor-title ▶</b> with its Run / Debug dropdown, the <b>floating debug toolbar</b> (Stop / Restart
+     for free once Ctrl+F5 is a real session), and a contributed <b>Daisy</b> view in the Run and Debug sidebar for state and
+     the hardware group. The status bar keeps only a clickable state item and ⚡ Flash. Everything below is clickable.</p>
+</div>
+
+<div id="toolbar">
+  <span class="lbl">next launch:</span>
+  <button id="sc-ok" class="on" onclick="setScenario('ok')">succeeds</button>
+  <button id="sc-builderr" onclick="setScenario('builderr')">build error</button>
+  <button id="sc-crash" onclick="setScenario('crash')">crashes after 3 s</button>
+  <span class="sep"></span>
+  <button onclick="editSource()">✎ edit source while running</button>
+  <button onclick="hitBreakpoint()" id="btn-bp">● hit breakpoint (line 12)</button>
+  <button onclick="toggleBoard()" id="btn-board">🔌 plug in Daisy (DFU)</button>
+  <span class="sep"></span>
+  <button onclick="resetAll()">reset</button>
+</div>
+
+<div id="stage">
+  <div id="win">
+    <div id="titlebar">
+      <div class="dots"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>
+      <div class="cmd-center">🔍 my-delay</div>
+    </div>
+    <div id="body">
+      <div id="activity">
+        <div class="ab" data-view="explorer" title="Explorer">⎘</div>
+        <div class="ab" data-view="search" title="Search">⌕</div>
+        <div class="ab on" data-view="debug" title="Run and Debug (⇧⌘D)">▷<span class="badge" id="dbg-badge"></span></div>
+        <div class="ab" data-view="controls" title="Controls Editor">🎛</div>
+        <div class="ab" data-view="wiring" title="Wiring Editor">⌁</div>
+      </div>
+      <div id="sidebar"></div>
+      <div id="main">
+        <div id="tabs">
+          <div class="tab">my-delay.cpp</div>
+          <div class="spacer"></div>
+          <div id="title-acts"></div>
+        </div>
+        <div id="editor" class="mono"></div>
+        <div id="dbgbar"></div>
+        <div id="panel">
+          <div class="ptabs">
+            <span data-p="problems">PROBLEMS <span class="badge" id="pcount" style="display:none"></span></span>
+            <span data-p="output" class="on">OUTPUT</span>
+            <span data-p="console">DEBUG CONSOLE</span>
+            <span>TERMINAL</span>
+          </div>
+          <div id="pbody" class="mono"></div>
+        </div>
+      </div>
+    </div>
+    <div id="statusbar"></div>
+    <div id="menu"></div>
+    <div id="notifs"></div>
+    <div id="modal"><div class="box"></div></div>
+    <div id="hover"></div>
+  </div>
+
+  <div id="notes">
+    <h3>Evaluation notes</h3>
+    <div class="blk pro">
+      <h4>Where each action lives</h4>
+      <table>
+        <tr><td>Run</td><td>editor-title ▶ · Ctrl+F5 · Daisy view · Run menu</td></tr>
+        <tr><td>Debug</td><td>editor-title dropdown · F5 · green ▶ in Run and Debug</td></tr>
+        <tr><td>Stop / Restart</td><td>floating debug toolbar (native) · ⇧F5 / ⇧⌘F5</td></tr>
+        <tr><td>Cancel build</td><td>native progress notification · Daisy view progress</td></tr>
+        <tr><td>State</td><td>Daisy view · status-bar item · activity-bar badge</td></tr>
+        <tr><td>Flash</td><td>Daisy view (Hardware) · status-bar ⚡ · palette</td></tr>
+        <tr><td>Build failure</td><td>Problems (squiggles) · notification · red state item</td></tr>
+      </table>
+    </div>
+    <div class="blk pro">
+      <h4>Try these</h4>
+      <ul>
+        <li>Click the green <b>▶</b> in the editor title (Run) — watch the notification progress, then the floating
+            toolbar with only <b>Restart / Stop</b> (no-debug session).</li>
+        <li>Open its <b>⌄</b> dropdown → <i>Debug Daisy Effect</i>: full toolbar, orange status bar; then
+            "● hit breakpoint" to fill Variables / Call Stack.</li>
+        <li>While running, "✎ edit source" → the Daisy view and state item say <i>restart to apply</i>; toolbar
+            <b>Restart</b> = rebuild + redeploy.</li>
+        <li>"build error" then Run → Problems, squiggles, notification with <i>Show Problems</i>.</li>
+        <li><b>⚡ Flash</b> in the Daisy view with and without a board.</li>
+        <li>Collapse the Daisy section; the status-bar item still tells you the state.</li>
+      </ul>
+    </div>
+    <div class="blk opn">
+      <h4>Open questions</h4>
+      <ul>
+        <li><b>Status-bar colour for Run (no debug).</b> VS Code switches to the orange debugging colour for debug
+            sessions; this mockup keeps it blue for no-debug runs. Needs verification against real VS Code.</li>
+        <li><b>Launch configurations:</b> one (<i>Build, Deploy &amp; Debug</i>, as today) with Ctrl+F5 for run, or two
+            (<i>Run</i> / <i>Debug</i>) in the dropdown? This mockup keeps one.</li>
+        <li><b>Daisy view placement:</b> inside Run and Debug (shown) vs its own container — Run and Debug keeps
+            it next to Variables / Call Stack, but it's hidden when another view container is open.</li>
+        <li><b>Is the editor-title ▶ enough</b> to be discoverable, or is a status-bar Run still needed (the
+            first mockup's approach)?</li>
+        <li><b>Restart semantics:</b> rebuild + redeploy (shown) vs. restart the emulator process only.</li>
+      </ul>
+    </div>
+    <div class="blk pro">
+      <h4>vs the first transport mockup</h4>
+      <ul>
+        <li>Almost no custom UI: session state, Stop / Restart and cancellation come from VS Code.</li>
+        <li>Matches what C++ users already know (F5, Ctrl+F5, the ▶ in the editor title).</li>
+        <li>Fixes a real gap: today Ctrl+F5 builds + deploys but creates no session, so there's no Stop.</li>
+        <li>Costs: the state is split over three places, and the Daisy view is only visible in Run and Debug.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const S = {
+  scenario: 'ok', phase: 'idle',    // idle | building | deploying | running | paused
+  mode: 'run',                      // run | debug (for the active / last session)
+  titleDefault: 'run',              // VS Code remembers the last-used run-button action
+  lastResult: null, stale: false, board: false, hw: null,
+  view: 'debug', panel: 'output', daisyOpen: true, timers: [], bpHit: false,
+};
+
+const CODE = [
+  ['c', '// my-delay.cpp'],
+  ['', '<span class="k">#include</span> <span style="color:#ce9178">"daisy_seed.h"</span>'],
+  ['', '<span class="k">#include</span> <span style="color:#ce9178">"daisysp.h"</span>'],
+  ['', ''],
+  ['', '<span class="t">DaisySeed</span> hw;'],
+  ['', '<span class="t">DelayLine</span>&lt;<span class="k">float</span>, <span class="num">48000</span>&gt; del;'],
+  ['', ''],
+  ['', '<span class="k">void</span> <span class="f2">AudioCallback</span>(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, <span class="k">size_t</span> size)'],
+  ['', '{'],
+  ['', '    <span class="k">for</span> (<span class="k">size_t</span> i = <span class="num">0</span>; i &lt; size; i++) {'],
+  ['', '        <span class="k">float</span> wet = del.<span class="f2">Read</span>();'],
+  ['', '        del.<span class="f2">Write</span>(in[<span class="num">0</span>][i] + wet * <span class="num">0.5f</span>);'],
+  ['', '        out[<span class="num">0</span>][i] = in[<span class="num">0</span>][i] + wet;'],
+  ['', '    }'],
+  ['', '}'],
+];
+const BP_LINE = 12;
+
+// ------------------------------------------------------------ helpers
+function later(ms, fn) { const t = setTimeout(fn, ms); S.timers.push(t); return t; }
+function clearTimers() { S.timers.forEach(clearTimeout); S.timers = []; }
+let LOG = [];
+function out(text, cls = '') { LOG.push([text, cls]); if (S.panel === 'output') renderPanel(); }
+const busy = () => S.phase === 'building' || S.phase === 'deploying';
+const inSession = () => S.phase === 'running' || S.phase === 'paused';
+
+// ------------------------------------------------------------ actions
+function launch(mode) {
+  if (busy()) return;
+  if (inSession()) { clearTimers(); }
+  S.mode = mode; S.titleDefault = mode; S.lastResult = null; S.stale = false; S.bpHit = false;
+  S.phase = 'building'; closeNotif('fail'); closeNotif('crash');
+  notify('progress', 'i', `<b>ds-ide: building and deploying…</b>`, 'DS-IDE', [['Cancel', cancel, true]], true);
+  out('> cmake --build .ds-ide/build', 'dim');
+  render();
+  later(1500, () => {
+    if (S.phase !== 'building') return;
+    if (S.scenario === 'builderr') {
+      out("my-delay.cpp:11:21: error: use of undeclared identifier 'wet2'", 'err');
+      out("my-delay.cpp:12:9: error: expected ';' after expression", 'err');
+      out("my-delay.cpp:5:1: warning: unused variable 'fb'", 'err');
+      closeNotif('progress');
+      S.phase = 'idle'; S.lastResult = { kind: 'builderr', n: 3 };
+      notify('fail', 'e', 'Build failed with <b>3 problems</b>. Nothing was deployed.', 'DS-IDE',
+        [['Show Problems', () => { closeNotif('fail'); showPanel('problems'); }, true]]);
+      render(); return;
+    }
+    out('[100%] Built target daisy_effect', 'ok');
+    S.phase = 'deploying'; render();
+    later(700, () => {
+      if (S.phase !== 'deploying') return;
+      closeNotif('progress');
+      out('Emulator connected · 48000 Hz · block 48', 'ok');
+      out(mode === 'debug' ? 'Debugger attached (lldb-dap).' : 'Audio started.', 'ok');
+      S.phase = 'running'; render();
+      if (S.scenario === 'crash') later(3000, () => {
+        if (!inSession()) return;
+        out('Emulator exited unexpectedly (signal SIGSEGV).', 'err');
+        S.phase = 'idle'; S.lastResult = { kind: 'crash' };
+        notify('crash', 'e', 'The emulator exited unexpectedly (SIGSEGV).', 'DS-IDE',
+          [['Show Output', () => { closeNotif('crash'); showPanel('output'); }, false], ['Debug', () => { closeNotif('crash'); launch('debug'); }, true]]);
+        render();
+      });
+    });
+  });
+}
+function cancel() { clearTimers(); closeNotif('progress'); out('Cancelled.', 'dim'); S.phase = 'idle'; render(); }
+function stop() { clearTimers(); out(S.mode === 'debug' ? 'Debug session ended.' : 'Audio stopped.', 'dim'); S.phase = 'idle'; S.stale = false; S.bpHit = false; render(); }
+function restart() { clearTimers(); out('Restart: rebuilding and redeploying…', 'dim'); S.phase = 'idle'; launch(S.mode); }
+function cont() { if (S.phase !== 'paused') return; S.phase = 'running'; S.bpHit = false; render(); }
+function pause() { if (S.phase !== 'running' || S.mode !== 'debug') return; hitBreakpoint(true); }
+
+function hitBreakpoint(fromPause) {
+  if (S.phase !== 'running' || S.mode !== 'debug') {
+    notify('bpinfo', 'i', 'Start a <b>Debug</b> session first (editor-title ⌄ → Debug Daisy Effect, or F5).', 'mockup', [], false, 3500);
+    return;
+  }
+  S.phase = 'paused'; S.bpHit = !fromPause;
+  out(fromPause ? 'Paused.' : `Breakpoint hit: my-delay.cpp:${BP_LINE}`, 'dim');
+  render();
+}
+
+function flash() {
+  if (S.hw) return;
+  if (!S.board) {
+    notify('noboard', 'w', '<b>No Daisy Seed in DFU mode found.</b> Hold BOOT, press RESET, then try again.', 'DS-IDE', [['Retry', () => { closeNotif('noboard'); flash(); }, true]], false, 6000);
+    return;
+  }
+  modal('Flash to Daisy Seed?', 'Builds <b>my-delay</b> for hardware (arm-none-eabi) and overwrites the program on the connected board (DFU 0483:df11).',
+    [['Cancel', closeModal], ['Build & Flash', () => { closeModal(); doFlash(); }, true]]);
+}
+function doFlash() {
+  S.hw = 'building'; render();
+  out('> make  (hardware build)', 'dim');
+  notify('hwprog', 'i', '<b>Building for hardware…</b>', 'DS-IDE', [['Cancel', () => { clearTimers(); closeNotif('hwprog'); S.hw = null; render(); }, true]], true);
+  later(1400, () => {
+    out('FLASH  92 KB / 128 KB  71.9%', 'dim'); out('SRAM   41 KB / 512 KB   8.0%', 'dim');
+    S.hw = 'flashing'; render();
+    closeNotif('hwprog'); notify('hwprog', 'i', '<b>Flashing Daisy Seed…</b>', 'DS-IDE', [], true);
+    later(1500, () => { closeNotif('hwprog'); S.hw = null; S.lastFlash = 'just now'; out('Flashed to Daisy Seed.', 'ok');
+      notify('flashed', 'i', '✓ Flashed <b>my-delay</b> to Daisy Seed.', 'DS-IDE', [], false, 3000); render(); });
+  });
+}
+
+function setScenario(s) { S.scenario = s; ['ok','builderr','crash'].forEach(x => $('sc-' + x).classList.toggle('on', x === s)); }
+function editSource() {
+  CODE[11][1] = '        del.<span class="f2">Write</span>(in[<span class="num">0</span>][i] + wet * <span class="num">0.7f</span>);';
+  if (inSession()) { S.stale = true; out('my-delay.cpp saved — the emulator is running the previous build.', 'dim'); }
+  render();
+}
+function toggleBoard() { S.board = !S.board; $('btn-board').classList.toggle('on', S.board); $('btn-board').textContent = S.board ? '🔌 Daisy plugged in (DFU)' : '🔌 plug in Daisy (DFU)'; render(); }
+function resetAll() { clearTimers(); Object.assign(S, { phase: 'idle', lastResult: null, stale: false, hw: null, bpHit: false, lastFlash: null }); LOG = []; $('notifs').innerHTML = ''; closeModal(); closeMenu(); render(); }
+
+// ------------------------------------------------------------ rendering
+function render() { renderSidebar(); renderEditor(); renderTitleActions(); renderDbgBar(); renderPanel(); renderStatus(); renderActivity(); }
+
+function renderActivity() {
+  document.querySelectorAll('#activity .ab').forEach(a => {
+    a.classList.toggle('on', a.dataset.view === S.view);
+    a.onclick = () => { S.view = a.dataset.view; render(); };
+  });
+  $('dbg-badge').classList.toggle('show', inSession());
+}
+
+function stateInfo() {
+  if (S.phase === 'building') return ['busy', 'Building…', 'cmake · emulator target'];
+  if (S.phase === 'deploying') return ['busy', 'Deploying…', 'starting effect_emu'];
+  if (S.phase === 'paused') return ['dbg', 'Paused', S.bpHit ? `breakpoint · my-delay.cpp:${BP_LINE}` : 'paused by user'];
+  if (S.phase === 'running') return [S.mode === 'debug' ? 'dbg' : 'run', S.mode === 'debug' ? 'Debugging' : 'Running', '48 kHz · block 48 · pid 41822'];
+  if (S.lastResult?.kind === 'builderr') return ['err', 'Build failed', `${S.lastResult.n} problems — nothing deployed`];
+  if (S.lastResult?.kind === 'crash') return ['warn', 'Crashed', 'SIGSEGV · see Output'];
+  return ['', 'Stopped', 'emulator not running'];
+}
+
+function renderSidebar() {
+  const sb = $('sidebar');
+  if (S.view === 'explorer') {
+    sb.innerHTML = `<div class="sb-title">EXPLORER</div><div class="f">▾ src</div><div class="f sel" style="padding-left:32px">my-delay.cpp</div>
+      <div class="f">controllers.yaml</div><div class="f">Makefile</div><div class="f">CMakeLists.txt</div>
+      <div class="welcome" style="margin-top:14px;color:#6a6a6a">(mockup: switch to <b>Run and Debug</b> ▷ in the activity bar)</div>`;
+    return;
+  }
+  if (S.view !== 'debug') { sb.innerHTML = `<div class="sb-title">${S.view === 'controls' ? 'CONTROLS EDITOR' : S.view === 'wiring' ? 'WIRING EDITOR' : 'SEARCH'}</div><div class="welcome" style="color:#6a6a6a">(not part of this mockup)</div>`; return; }
+
+  const [dotCls, stateT, stateS] = stateInfo();
+  const paused = S.phase === 'paused';
+  const vars = paused ? `
+      <div class="row"><span class="dim">▾ Locals</span></div>
+      <div class="row" style="padding-left:34px"><span class="k">i</span>: <span class="v">17</span></div>
+      <div class="row" style="padding-left:34px"><span class="k">size</span>: <span class="v">48</span></div>
+      <div class="row" style="padding-left:34px"><span class="k">wet</span>: <span class="v">0.2381</span></div>
+      <div class="row" style="padding-left:34px"><span class="k">in[0][i]</span>: <span class="v">-0.0912</span></div>` : '';
+  const stack = paused ? `
+      <div class="row"><span class="dim">⏸ Thread #1 "audio"</span></div>
+      <div class="row" style="padding-left:34px">AudioCallback <span class="dim">my-delay.cpp:${BP_LINE}</span></div>
+      <div class="row" style="padding-left:34px;color:#888">daisy::AudioHandle::Impl::Render</div>` :
+      inSession() && S.mode === 'debug' ? `<div class="row"><span class="dim">▶ Thread #1 "audio" — running</span></div>` : '';
+
+  const hwBusy = !!S.hw;
+  sb.innerHTML = `
+    <div class="sb-title">RUN AND DEBUG</div>
+    <div class="launchbar">
+      <span class="go ${busy() ? 'dis' : ''}" id="lb-go" title="Start Debugging (F5)">▶</span>
+      <select><option>DS-IDE: Build, Deploy &amp; Debug</option><option>Add Configuration…</option></select>
+      <span class="gear" title="Open launch.json">⚙</span>
+    </div>
+    ${section('variables', 'VARIABLES', vars || '')}
+    ${section('watch', 'WATCH', '')}
+    ${section('stack', 'CALL STACK', stack)}
+    ${section('bps', 'BREAKPOINTS', `<div class="row"><input type="checkbox" checked> my-delay.cpp <span class="dim">${BP_LINE}</span></div>`)}
+    <div class="sect ${S.daisyOpen ? '' : 'closed'}" id="daisy-sect">
+      <div class="progress ${busy() || hwBusy ? 'on' : ''}"></div>
+      <div class="sect-h" id="daisy-h"><span class="chev">${S.daisyOpen ? '▾' : '▸'}</span>DAISY
+        <span class="acts"><span title="Show Emulator Output" id="da-out">☰</span><span title="Refresh">↻</span></span></div>
+      <div class="sect-b">
+        <div class="daisy-state"><span class="dot ${dotCls}"></span><div><div class="t">Emulator · ${stateT}</div><div class="s">${stateS}</div></div></div>
+        ${S.stale ? '<div class="welcome" style="color:#cca700;padding-top:0">● Source changed since this build — <a id="da-restart">restart to apply</a></div>' : ''}
+        ${S.lastResult?.kind === 'builderr' ? '<div class="welcome" style="padding-top:0"><a id="da-probs">Show Problems</a></div>' : ''}
+        ${inSession() || busy()
+          ? `<button class="vbtn sec" id="da-stop">${busy() ? '✕ Cancel' : '■ Stop'}</button>`
+          : `<button class="vbtn" id="da-run">▶ Run on Emulator</button><button class="vbtn sec" id="da-debug">🐞 Debug on Emulator</button>`}
+        <div class="sub-h">HARDWARE</div>
+        <div class="row"><span class="dim">Board:</span> ${S.board ? 'Daisy Seed · DFU 0483:df11' : '<span class="dim">none detected</span>'}</div>
+        ${S.lastFlash ? `<div class="row"><span class="dim">Last flash:</span> ${S.lastFlash}</div>` : ''}
+        <button class="vbtn sec" id="da-flash" ${hwBusy ? 'disabled' : ''}>${hwBusy ? (S.hw === 'building' ? '↻ Building for hardware…' : '↻ Flashing…') : '⚡ Build &amp; Flash'}</button>
+        <div class="welcome" style="padding-top:2px"><a>Build for Hardware only</a></div>
+      </div>
+    </div>`;
+
+  document.querySelectorAll('.sect-h[data-s]').forEach(h => h.onclick = () => h.parentElement.classList.toggle('closed'));
+  $('daisy-h').onclick = e => { if (e.target.closest('.acts')) return; S.daisyOpen = !S.daisyOpen; render(); };
+  $('lb-go').onclick = () => launch('debug');
+  bind('lb-go', '<b>Start Debugging</b> <kbd>F5</kbd><br>Builds, deploys and attaches lldb.');
+  $('da-out').onclick = () => showPanel('output');
+  if ($('da-run')) $('da-run').onclick = () => launch('run');
+  if ($('da-debug')) $('da-debug').onclick = () => launch('debug');
+  if ($('da-stop')) $('da-stop').onclick = () => busy() ? cancel() : stop();
+  if ($('da-restart')) $('da-restart').onclick = restart;
+  if ($('da-probs')) $('da-probs').onclick = () => showPanel('problems');
+  $('da-flash').onclick = flash;
+}
+function section(id, title, body) {
+  return `<div class="sect ${id === 'watch' || (id === 'variables' && !body) ? 'closed' : ''}"><div class="sect-h" data-s="${id}"><span class="chev">▾</span>${title}</div>
+    <div class="sect-b">${body || '<div class="empty">' + (id === 'variables' || id === 'stack' ? (inSession() && S.mode === 'debug' ? '' : 'Not debugging') : '') + '</div>'}</div></div>`;
+}
+
+function renderEditor() {
+  const errLines = S.lastResult?.kind === 'builderr' ? [11, 12] : [];
+  $('editor').innerHTML = CODE.map((l, i) => {
+    const n = i + 1;
+    const cls = ['ln', n === BP_LINE ? 'bp' : '', S.phase === 'paused' && n === BP_LINE ? 'cur' : ''].join(' ');
+    return `<div class="${cls}"><span class="n">${n}</span><span class="${l[0]} ${errLines.includes(n) ? 'squig' : ''}">${l[1]}</span></div>`;
+  }).join('');
+}
+
+function renderTitleActions() {
+  const ta = $('title-acts');
+  const def = S.titleDefault;
+  ta.innerHTML = `<span class="ta run ${busy() ? 'dis' : ''}" id="ta-run">${def === 'run' ? '▶' : '🐞'}<span class="chev" id="ta-chev">⌄</span></span>
+                  <span class="ta" title="Split Editor">◫</span><span class="ta" title="More Actions">⋯</span>`;
+  $('ta-run').onclick = e => { if (e.target.id === 'ta-chev') return openRunMenu(e); if (!busy()) launch(def); };
+  $('ta-chev').onclick = e => { e.stopPropagation(); openRunMenu(e); };
+  bind('ta-run', def === 'run' ? '<b>Run Daisy Effect</b> <kbd>⌃F5</kbd><br>Build, deploy and start audio on the emulator.' : '<b>Debug Daisy Effect</b> <kbd>F5</kbd>');
+}
+function openRunMenu(e) {
+  const m = $('menu');
+  m.innerHTML = `<div class="mi" id="m-run">▶ Run Daisy Effect<span class="kb">⌃F5</span></div>
+    <div class="mi" id="m-dbg">🐞 Debug Daisy Effect<span class="kb">F5</span></div>
+    <div class="msep"></div><div class="mi" id="m-flash">⚡ Build &amp; Flash to Daisy Seed</div>`;
+  const win = $('win').getBoundingClientRect(), r = e.currentTarget.getBoundingClientRect();
+  m.style.display = 'block'; m.style.left = (r.right - win.left - 250) + 'px'; m.style.top = (r.bottom - win.top + 2) + 'px';
+  $('m-run').onclick = () => { closeMenu(); launch('run'); };
+  $('m-dbg').onclick = () => { closeMenu(); launch('debug'); };
+  $('m-flash').onclick = () => { closeMenu(); flash(); };
+}
+function closeMenu() { $('menu').style.display = 'none'; }
+document.addEventListener('mousedown', e => { if (!$('menu').contains(e.target) && !e.target.closest('#ta-run')) closeMenu(); });
+
+function renderDbgBar() {
+  const bar = $('dbgbar');
+  if (!inSession()) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  const paused = S.phase === 'paused';
+  const B = (cls, ico, title, fn, dis) => `<span class="db ${cls} ${dis ? 'dis' : ''}" data-t="${title}" data-fn="${fn}">${ico}</span>`;
+  bar.innerHTML = '<span class="grip">⋮⋮</span>' + (S.mode === 'debug'
+    ? B('', paused ? '▶' : '⏸', paused ? 'Continue (F5)' : 'Pause (F6)', paused ? 'cont' : 'pause') +
+      B('', '⤼', 'Step Over (F10)', 'step', !paused) + B('', '⤓', 'Step Into (F11)', 'step', !paused) + B('', '⤒', 'Step Out (⇧F11)', 'step', !paused) +
+      B('restart', '↻', 'Restart (⇧⌘F5) — rebuild + redeploy', 'restart') + B('stop', '■', 'Stop (⇧F5)', 'stop')
+    : B('restart', '↻', 'Restart (⇧⌘F5) — rebuild + redeploy', 'restart') + B('stop', '■', 'Stop (⇧F5)', 'stop'));
+  bar.querySelectorAll('.db').forEach(b => {
+    b.onclick = () => { if (b.classList.contains('dis')) return; ({ cont, pause, restart, stop, step: () => out('step (mockup)', 'dim') })[b.dataset.fn](); };
+    b.onmousemove = () => showHover(b.dataset.t + (S.stale && b.dataset.fn === 'restart' ? '<br><span style="color:#cca700">Source changed — restart to apply.</span>' : ''), b);
+    b.onmouseleave = hideHover;
+  });
+}
+
+function renderPanel() {
+  document.querySelectorAll('#panel .ptabs span[data-p]').forEach(t => { t.classList.toggle('on', t.dataset.p === S.panel); t.onclick = () => showPanel(t.dataset.p); });
+  const pc = $('pcount');
+  if (S.lastResult?.kind === 'builderr') { pc.style.display = ''; pc.textContent = S.lastResult.n; } else pc.style.display = 'none';
+  const pb = $('pbody');
+  if (S.panel === 'problems') {
+    pb.innerHTML = S.lastResult?.kind === 'builderr'
+      ? `<div class="dim">▾ my-delay.cpp  src  3</div>
+         <div class="prob err">  ⊗ use of undeclared identifier 'wet2'  clang [Ln 11, Col 21]</div>
+         <div class="prob err">  ⊗ expected ';' after expression  clang [Ln 12, Col 9]</div>
+         <div class="prob" style="color:#cca700">  ⚠ unused variable 'fb'  clang [Ln 5, Col 1]</div>`
+      : '<div class="dim">No problems have been detected in the workspace.</div>';
+  } else if (S.panel === 'console') {
+    pb.innerHTML = S.mode === 'debug' && (inSession() || LOG.length) ? '<div class="dim">lldb-dap attached to pid 41822</div>' : '<div class="dim">(Debug Console)</div>';
+  } else {
+    pb.innerHTML = '<div class="dim" style="position:sticky;top:0;background:#1e1e1e;text-align:right">Daisy Emulator ▾</div>' +
+      LOG.map(([t, c]) => `<div class="${c}">${t.replace(/</g, '&lt;')}</div>`).join('');
+    pb.scrollTop = pb.scrollHeight;
+  }
+}
+function showPanel(p) { S.panel = p; renderPanel(); }
+
+function renderStatus() {
+  const sb = $('statusbar');
+  sb.className = S.mode === 'debug' && inSession() ? 'debugging' : '';
+  const [dotCls, stateT] = stateInfo();
+  let cls = '', icon = '○', click = () => { S.view = 'debug'; S.daisyOpen = true; render(); };
+  if (S.phase === 'building' || S.phase === 'deploying') icon = '<span class="spin">↻</span>';
+  else if (S.phase === 'running') icon = S.mode === 'debug' ? '🐞' : '▷';
+  else if (S.phase === 'paused') icon = '⏸';
+  else if (dotCls === 'err') { cls = 'err'; icon = '✕'; click = () => showPanel('problems'); }
+  else if (dotCls === 'warn') { cls = 'warn'; icon = '⚠'; click = () => showPanel('output'); }
+  sb.innerHTML = `<div class="si">⑂ main</div><div class="si plain">⊗ ${S.lastResult?.kind === 'builderr' ? 2 : 0} ⚠ ${S.lastResult?.kind === 'builderr' ? 1 : 0}</div>
+    <div class="spacer"></div>
+    <div class="si ${cls}" id="si-state">${icon} Daisy: ${stateT.toLowerCase()}${S.stale ? ' <span class="pill">restart to apply</span>' : ''}</div>
+    <div class="si" id="si-flash">${S.hw ? '<span class="spin">↻</span> ' + (S.hw === 'building' ? 'HW build…' : 'Flashing…') : '⚡ Flash' + (S.board ? '' : ' <span class="pill">no board</span>')}</div>
+    <div class="si plain">Ln 12, Col 9</div><div class="si plain">C++</div>`;
+  $('si-state').onclick = click;
+  $('si-flash').onclick = flash;
+  bind('si-state', 'Native simulation — not cycle-accurate STM32 emulation.<br><br>Click: ' + (cls === 'err' ? 'open Problems' : cls === 'warn' ? 'open Emulator output' : 'show the Daisy view'));
+  bind('si-flash', '<b>Build &amp; Flash to Daisy Seed</b><br>' + (S.board ? 'Board detected: DFU 0483:df11' : 'No board in DFU mode detected.'));
+}
+
+// ------------------------------------------------------------ hover, notifications, modal
+function bind(id, html) { const el = $(id); if (!el) return; el.onmousemove = () => showHover(html, el); el.onmouseleave = hideHover; }
+function showHover(html, anchor) {
+  const h = $('hover'); h.innerHTML = html; h.style.display = 'block';
+  const win = $('win').getBoundingClientRect(), a = anchor.getBoundingClientRect();
+  const left = Math.max(4, Math.min(a.left - win.left, win.width - h.offsetWidth - 6));
+  const above = a.top - win.top - h.offsetHeight - 4;
+  h.style.left = left + 'px'; h.style.top = (above > 4 ? above : a.bottom - win.top + 4) + 'px';
+}
+function hideHover() { $('hover').style.display = 'none'; }
+
+function notify(key, kind, html, src, actions = [], progress = false, autoMs = 0) {
+  closeNotif(key);
+  const n = document.createElement('div'); n.className = 'notif'; n.dataset.key = key;
+  n.innerHTML = `${progress ? '<div class="progress on"></div>' : ''}<div class="nb"><span class="ico ${kind}">${kind === 'e' ? '⊗' : kind === 'w' ? '⚠' : 'ⓘ'}</span><div>${html}</div></div>
+    <div class="src">Source: ${src}</div><div class="nacts"></div>`;
+  for (const [label, fn, primary] of actions) { const b = document.createElement('button'); b.textContent = label; if (!primary) b.className = 'sec'; b.onclick = fn; n.querySelector('.nacts').appendChild(b); }
+  $('notifs').appendChild(n);
+  if (autoMs) setTimeout(() => n.remove(), autoMs);
+}
+function closeNotif(key) { document.querySelectorAll(`#notifs .notif[data-key="${key}"]`).forEach(n => n.remove()); }
+
+function modal(title, body, buttons) {
+  const box = $('modal').querySelector('.box');
+  box.innerHTML = `<h3>${title}</h3><p>${body}</p><div class="btns"></div>`;
+  for (const [label, fn, primary] of buttons) { const b = document.createElement('button'); b.textContent = label; if (primary) b.className = 'primary'; b.onclick = fn; box.querySelector('.btns').appendChild(b); }
+  $('modal').style.display = 'flex';
+}
+function closeModal() { $('modal').style.display = 'none'; }
+
+// ------------------------------------------------------------ keyboard (F5 family)
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeMenu(); closeModal(); }
+  if (e.key !== 'F5') return;
+  e.preventDefault();
+  if (e.shiftKey && (e.metaKey || e.ctrlKey)) return inSession() && restart();
+  if (e.shiftKey) return inSession() && stop();
+  if (e.ctrlKey) return launch('run');
+  if (S.phase === 'paused') return cont();
+  launch('debug');
+});
+
+out('Daisy Emulator output channel — ready.', 'dim');
+render();
+</script>
+</body>
+</html>
