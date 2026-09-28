@@ -1,7 +1,7 @@
 # M65 — Unified Device Model (Foundation)
 
 **Version:** 0.20.0
-**Status:** planned
+**Status:** released
 **Source:** feature intake session, 2026-09-28 (design_plan.md §5.1–5.4; mockup docs/mockups/v22-unified-device-model.html)
 
 ## Goal
