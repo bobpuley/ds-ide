@@ -5,6 +5,20 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.20.1 — 2026-09-28
+
+**M66 — Unified Device Model (Drag & Drop)** *(FR-UDM-5–FR-UDM-10 — DoD green)*
+
+- **FR-UDM-5** — The Wiring Editor has one device palette, generated from `REGISTRY` and grouped *Controls* / *Peripherals · one each*. Each device is an icon tile (illustrated icons from `docs/mockups/v22-palette_alt2.html`, new `src/wiring/device-icons.ts`, with an accent-dot fallback for devices without one) showing its name, its attachment requirement (e.g. "ADC pin", "3 pins (R·G·B)", "SPI1 / I2C1") and its registry accent colour. The palette collapses to a rail of small icons that can still be dragged and are named by the editor tooltip. The collapsed state is remembered. A placed peripheral is faded with a ✓.
+- **FR-UDM-6** — New pure `computeDropTargets(deviceId, PIN_DEFS, occupancy, exclude?)` in `src/wiring/drop-targets.ts`: eligible pins for single-pin devices (excluding enabled peripheral lanes), allocatable start pins for multi-pin devices, one lane per candidate bus, and the micro-USB port for INTERNAL, each naming the occupants a drop would displace. Picking up a device repaints the board: free targets pulse in the device colour, occupied targets are amber-hatched with ⚠, and everything else dims. Bus devices get dashed drop lanes. Hovering a target previews its exact footprint with slot labels (R/G/B, A/B/SW). A label follows the cursor, and Esc or an off-target release cancels. The host now allocates multi-pin footprints through the same function, so the pins written always match the preview.
+- **FR-UDM-7** — Dropping on a free target opens a placement popover: the pins (with slot names) or the dropped-on bus, an id field for controls (pre-filled by `defaultId`, validated by `validateId`), and **Add** / **Cancel**. `setPeripheralEnabled` gains an optional `bus`, so the lane dropped on is the bus choice (no dropdown). Generated code is identical to the old click-a-pin / checkbox paths (new pure `peripheralEditText`).
+- **FR-UDM-8** — Dropping on an occupied target opens the popover in conflict mode, naming every device that would be removed, with **Replace** / **Cancel**. `wirePin` and `setPeripheralEnabled` gain an optional `replace: string[]`. The host removes those occupants (new pure `removeOccupantsFromSource`) and adds the new device in one `WorkspaceEdit` (a single undo step). It still runs `checkConflict` afterwards and falls back to `formatRejection()` if the source changed underneath.
+- **FR-UDM-9** — Dragging a placed control off one of its pins moves it (its own pins count as free), via the new `moveControl { id, pinNumber, replace? }` message: the id and kind are kept and the change is one edit. Dragging a placed peripheral's tile moves it to another candidate bus. Cancelling a move leaves the device where it was. Architecture updated: `moveControl` gained the optional `replace` (decision 2026-09-28).
+- **FR-UDM-10** — Free pins are grey and inert (no pointer cursor, hover highlight or click action; ADC pins keep their A-labels). The click-a-free-pin assign popup (`#popup-assign`) and the Peripherals footer (checkbox list + View button) are removed. Bus brackets, pin tooltips and the micro-USB indicator are unchanged.
+- **chore** — `package.json`'s `version` field is bumped to `0.20.1` to match this entry. Milestone task IDs FR-UDM-6 were split into FR-UDM-6a / FR-UDM-6b. Added `docs/mockups/v22-unified-device-model_alt1.html` (the palette restyle's evaluation mockup).
+
+---
+
 ## 0.20.0 — 2026-09-28
 
 **M65 — Unified Device Model (Foundation)** *(FR-UDM-1–FR-UDM-4 — DoD green)*
