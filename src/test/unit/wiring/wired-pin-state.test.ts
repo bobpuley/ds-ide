@@ -22,10 +22,10 @@ describe('computePinDisplayStates (FR-IPC-6)', () => {
     expect(d0.assignedId).toBeNull();
   });
 
-  it('marks an ADC-capable unwired pin as pin-adc', () => {
+  it('a free ADC-capable pin is grey like every other free pin (FR-UDM-10)', () => {
     const states = computePinDisplayStates(PIN_DEFS, []);
     const d15 = states.find((s) => s.pin === 15)!;
-    expect(d15.className).toBe('pin-adc');
+    expect(d15.className).toBe('pin-unassigned');
     expect(d15.assignedId).toBeNull();
   });
 

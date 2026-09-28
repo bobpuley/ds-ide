@@ -6,7 +6,7 @@ import type { ConventionControl } from '../controllers/controls-convention-parse
 
 // Derived from DeviceType (FR-DEV-2) rather than hand-listed, so a new
 // registry entry doesn't need a matching edit here.
-export type PinDisplayClass = `pin-${DeviceType}` | 'pin-unassigned' | 'pin-adc';
+export type PinDisplayClass = `pin-${DeviceType}` | 'pin-unassigned';
 
 export interface PinDisplayState {
   pin: number;
@@ -25,7 +25,9 @@ export function computePinDisplayStates(pinDefs: PinDef[], wiredPins: WiredPin[]
     if (wired) {
       states.push({ pin: def.pin, className: `pin-${wired.deviceType}`, assignedId: wired.id });
     } else {
-      states.push({ pin: def.pin, className: def.adc ? 'pin-adc' : 'pin-unassigned', assignedId: null });
+      // FR-UDM-10: every free pin is grey — ADC capability shows through
+      // the A-label and the drag-time targets, not a distinct idle colour.
+      states.push({ pin: def.pin, className: 'pin-unassigned', assignedId: null });
     }
   }
   return states;

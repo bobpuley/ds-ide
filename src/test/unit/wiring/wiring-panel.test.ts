@@ -137,19 +137,24 @@ describe('buildHtml', () => {
     expect(html).toContain('SEED');
   });
 
-  it('contains popup element', () => {
-    expect(html).toContain('id="popup"');
+  // FR-UDM-10: the click-a-free-pin assign popup is gone — the palette,
+  // drag and the device popover are the only placement surfaces.
+  it('has no click-a-free-pin assign popup (FR-UDM-10)', () => {
+    expect(html).not.toContain('id="popup"');
+    expect(html).not.toContain('id="popup-assign"');
+    expect(html).not.toContain('id="btn-pot"');
+    expect(html).not.toContain('id="id-input"');
   });
 
-  it('contains Pot / Button / LED buttons', () => {
-    expect(html).toContain('id="btn-pot"');
-    expect(html).toContain('id="btn-button"');
-    expect(html).toContain('id="btn-led"');
+  it('free pins are inert: no pointer cursor or hover highlight (FR-UDM-10)', () => {
+    expect(html).not.toMatch(/\.pin-dot\s*\{\s*cursor:\s*pointer/);
+    expect(html).not.toMatch(/\.pin-dot:hover circle/);
+    expect(html).toMatch(/\.pin-dot:not\(\.pin-unassigned\)\s*\{\s*cursor:\s*pointer/);
   });
 
-  it('contains id input and error', () => {
-    expect(html).toContain('id="id-input"');
-    expect(html).toContain('id="id-error"');
+  it('points the user at the palette in the hint (FR-UDM-10)', () => {
+    expect(html).not.toContain('Click a free pin');
+    expect(html).toContain('Drag a device from the palette');
   });
 
   // FR-UDM-3: one #device-popover replaces popup-assigned and #bus-popover.
@@ -160,17 +165,12 @@ describe('buildHtml', () => {
     expect(html).not.toContain('bus-popover');
   });
 
-  it('keeps the click-a-free-pin assign popup until M66 (FR-UDM-3)', () => {
-    expect(html).toContain('id="popup-assign"');
-  });
-
-  // FR-UDM-1: the pot-only `pot-warn` badge is replaced by one generic badge
-  // per pin-constrained device, derived from its registry `pinRequires`.
-  it('renders a pin-requirement warning badge from pinRequires, not a pot special case (FR-UDM-1)', () => {
+  // FR-UDM-1: no device id is special-cased for pin suitability; with the
+  // assign popup gone (FR-UDM-10) the palette chip shows the requirement.
+  it('has no pot special case for pin suitability (FR-UDM-1)', () => {
     expect(html).not.toContain('pot-warn');
-    expect(html).toContain('id="warn-pot"');
-    expect(html).toContain('non-ADC pin');
-    expect(html).not.toContain('id="warn-button"');
+    expect(html).not.toContain('warn-badge');
+    expect(html).toContain('<div class="meta">ADC pin</div>');
   });
 
   it('serialises PIN_DEFS as JSON in script', () => {
@@ -222,9 +222,11 @@ describe('buildHtml', () => {
 describe('buildHtml Peripherals section', () => {
   const TEST_NONCE = 'test-nonce-abc123';
 
-  it('contains a peripherals list container', () => {
+  it('has no Peripherals footer — checkbox list and View button are gone (FR-UDM-10)', () => {
     const html = buildHtml([], [], TEST_NONCE, 'vscode-resource://test/webview/wiring-webview.js');
-    expect(html).toContain('id="periph-list"');
+    expect(html).not.toContain('id="peripherals"');
+    expect(html).not.toContain('id="periph-list"');
+    expect(html).not.toContain('periph-view-btn');
   });
 
   it('embeds initial peripheral state from a data island', () => {

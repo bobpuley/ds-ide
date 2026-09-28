@@ -43,28 +43,13 @@ export type { PinDef };
 // ── HTML builder ─────────────────────────────────────────────────────────────
 
 
-// FR-DEV-2: one CSS rule and one popup button per registry entry, so adding
-// a device changes what's generated here without editing this file again.
+// FR-DEV-2: one CSS rule per pin-attached registry entry, so adding a device
+// changes what's generated here without editing this file again.
 function pinDeviceCssRules(): string {
   return wiredControlIds()
     .map(id => {
       const d = REGISTRY[id]!;
       return `    .pin-${id}    circle { fill: ${d.pinFill}; stroke: ${d.accentColor}; stroke-width: 2; }`;
-    })
-    .join('\n');
-}
-
-// FR-UDM-1: a device declaring `pinRequires` gets a hidden warning badge;
-// wiring-webview.ts shows it when isPinEligible() says the clicked pin
-// doesn't satisfy that requirement. No device id is special-cased here.
-function popupDeviceButtonsHtml(): string {
-  return wiredControlIds()
-    .map(id => {
-      const d = REGISTRY[id]!;
-      const warnBadge = d.pinRequires
-        ? `<span class="warn-badge" id="warn-${id}" style="display:none">⚠ non-${d.pinRequires.toUpperCase()} pin</span>`
-        : '';
-      return `      <button class="popup-btn" id="btn-${id}">${d.label}${warnBadge}</button>`;
     })
     .join('\n');
 }
@@ -166,12 +151,11 @@ export function buildHtml(
     #palette-col.collapsed .device-chip { justify-content: center; padding: 8px 0; border-left-width: 1px; border-color: var(--accent); }
     #palette-col.collapsed .device-chip .dot { width: 12px; height: 12px; }
     svg { max-width: 560px; width: 100%; }
-    /* Pin dots */
-    .pin-dot { cursor: pointer; }
-    .pin-dot:hover circle { stroke: #4ec9b0; stroke-width: 2; }
+    /* Pin dots — free pins are grey and inert (FR-UDM-10); only a placed
+       device's pins react to the pointer (click: popover, drag: move). */
+    .pin-dot:not(.pin-unassigned) { cursor: pointer; }
+    .pin-dot:not(.pin-unassigned):hover circle { stroke: #4ec9b0; stroke-width: 2; }
     .pin-unassigned circle { fill: #3c3c3c; stroke: #555; stroke-width: 1; }
-    .pin-adc circle { fill: #2a3a2a; stroke: #4a7a4a; stroke-width: 1; }
-    .pin-adc:hover circle { stroke: #4ec9b0; }
 ${pinDeviceCssRules()}
     .pin-power  circle { fill: #2a2a2a; stroke: #444; stroke-width: 1; }
     /* A bus peripheral's occupied pins (FR-DEV-11/12). */
@@ -252,46 +236,11 @@ ${pinDeviceCssRules()}
              padding: 5px 8px; font-size: 11px; box-shadow: 0 6px 18px rgba(0,0,0,.6); white-space: nowrap; }
     #ghost .tgt { font-size: 9px; color: #9a9a9a; margin-top: 2px; }
     #ghost.ok .tgt { color: #4ec9b0; } #ghost.warn .tgt { color: #f4c430; } #ghost.no .tgt { color: #f48771; }
-    /* Popup */
-    #popup { position: fixed; display: none; background: #252526; border: 1px solid #555;
-             border-radius: 4px; padding: 12px; min-width: 200px; z-index: 100;
-             box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
-    #popup h2 { font-size: 12px; color: #9cdcfe; margin-bottom: 10px; }
-    .popup-btn { display: block; width: 100%; text-align: left; background: #3c3c3c;
-                 color: #d4d4d4; border: 1px solid #555; border-radius: 3px; padding: 6px 10px;
-                 margin-bottom: 6px; cursor: pointer; font-family: monospace; font-size: 12px; }
-    .popup-btn:hover { background: #4a4a4a; }
-    .popup-btn.selected { background: #0e639c; border-color: #1177bb; color: #fff; }
-    .warn-badge { font-size: 10px; color: #f4c430; margin-left: 6px; }
-    #id-row { margin-top: 8px; }
-    #id-label { font-size: 10px; color: #9a9a9a; margin-bottom: 3px; }
-    #id-input { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 4px 6px;
-                font-family: monospace; font-size: 12px; width: 100%; border-radius: 2px; }
-    #id-error { font-size: 10px; color: #f48771; margin-top: 3px; min-height: 14px; }
-    .popup-actions { display: flex; gap: 8px; margin-top: 10px; }
-    .popup-confirm { background: #0e639c; color: #fff; border: none; padding: 5px 12px;
-                     border-radius: 2px; cursor: pointer; font-family: monospace; font-size: 12px; }
-    .popup-confirm:hover { background: #1177bb; }
-    .popup-confirm:disabled { opacity: 0.4; cursor: default; }
-    .popup-cancel { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 5px 12px;
-                    border-radius: 2px; cursor: pointer; font-family: monospace; font-size: 12px; }
-    .popup-cancel:hover { background: #4a4a4a; }
-    /* Peripherals section (FR-DEV-11) */
-    #peripherals { flex-shrink: 0; max-height: 160px; overflow: auto; border-top: 1px solid #3c3c3c; }
-    .section-hdr { padding: 6px 14px; font-size: 11px; color: #9cdcfe; background: #252526;
-                   border-bottom: 1px solid #3c3c3c; }
-    .periph { display: flex; align-items: center; gap: 8px; padding: 6px 14px;
-              border-bottom: 1px solid #2a2a2a; font-size: 11px; }
-    .periph.off .periph-name { color: #6a6a6a; }
-    .periph-pins { color: #f4c430; margin-left: auto; }
-    .periph-view-btn { background: #0e639c; color: #fff; border: none; padding: 2px 8px;
-                        font-family: monospace; font-size: 11px; cursor: pointer; border-radius: 2px; }
-    .periph-view-btn:hover { background: #1177bb; }
   </style>
 </head>
 <body>
   <h1>Daisy Seed Wiring Editor</h1>
-  <div id="hint">Click a free pin to assign a device · Click a placed device to inspect it</div>
+  <div id="hint">Drag a device from the palette onto the board · Click a placed device to inspect it · Drag it to move it</div>
   <div id="main">
 ${devicePaletteHtml()}
   <div id="svg-wrap">
@@ -319,30 +268,6 @@ ${devicePaletteHtml()}
       <!-- Pins generated by JS -->
     </svg>
   </div>
-  </div>
-
-  <!-- Peripherals section (FR-DEV-11) — populated by JS from peripherals-data -->
-  <div id="peripherals">
-    <div class="section-hdr">Peripherals</div>
-    <div id="periph-list"></div>
-  </div>
-
-  <!-- Device-assignment popup -->
-  <div id="popup">
-    <h2 id="popup-title">Pin D?</h2>
-    <!-- Unassigned view -->
-    <div id="popup-assign">
-${popupDeviceButtonsHtml()}
-      <div id="id-row">
-        <div id="id-label">id / varname</div>
-        <input type="text" id="id-input" placeholder="e.g. pot1"/>
-        <div id="id-error"></div>
-      </div>
-      <div class="popup-actions">
-        <button class="popup-confirm" id="popup-confirm" disabled>Add</button>
-        <button class="popup-cancel"  id="popup-cancel-assign">Cancel</button>
-      </div>
-    </div>
   </div>
 
   <!-- Label that follows the cursor while dragging (FR-UDM-6) -->

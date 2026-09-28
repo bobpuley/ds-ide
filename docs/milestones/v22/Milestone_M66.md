@@ -93,7 +93,7 @@ All ten devices in one palette, generated from the registry.
 
 ---
 
-### [ ] refactor: retire the old placement surfaces (FR-UDM-10)
+### [x] refactor: retire the old placement surfaces (FR-UDM-10)
 
 **Affected files:** `src/wiring/wiring-panel.ts`, `src/webview/wiring-webview.ts`, `src/test/unit/wiring/wiring-panel.test.ts`, `src/test/unit/wiring/pin-overlay-state.test.ts`
 

@@ -1,12 +1,11 @@
 /// <reference lib="dom" />
 import type { WiringHostMessage, WiringWebviewMessage } from './messages';
-import type { PinDef, WiredPin, DeviceType, PeripheralDisplayState } from '../wiring/wiring-panel';
+import type { PinDef, WiredPin, PeripheralDisplayState } from '../wiring/wiring-panel';
 import { computePinDisplayStates } from '../wiring/wired-pin-state';
-import { defaultId, validateId } from '../wiring/id-validation';
+import { validateId } from '../wiring/id-validation';
 import { REGISTRY, wiredControlIds } from '../devices/registry';
 import { computeBusBrackets } from '../wiring/bus-bracket';
 import { computePinOverlayStates } from '../wiring/pin-overlay-state';
-import { isPinEligible } from '../wiring/pin-eligibility';
 import {
   describePlacedDevice, peripheralOwningPin, describePlacement, placementMessage, type PopoverTarget,
 } from '../wiring/device-popover';
@@ -15,19 +14,6 @@ import { targetKey, pinDragStates, previewSlots, dragLabel } from '../wiring/dra
 import { hasKnownCommand } from './message-guard';
 import { el } from './dom-lookup';
 import { readDataIsland, showDataIslandError } from './data-island';
-
-// FR-DEV-2: one popup button id per pin-attached registry entry —
-// generalizes what used to be a hardcoded ['btn-pot', 'btn-button', 'btn-led']
-// literal so a new device needs no edit here (matches wiring-panel.ts's
-// popupDeviceButtonsHtml). Bus-attached peripherals (FR-DEV-10) are excluded
-// — they have no per-pin popup button to wire a click listener to.
-function deviceButtonIds(): string[] {
-  return wiredControlIds().map(id => `btn-${id}`);
-}
-
-function kindFromButtonId(btnId: string): DeviceType {
-  return btnId.slice('btn-'.length) as DeviceType;
-}
 
 interface WiringViewState {
   paletteCollapsed?: boolean;
@@ -41,7 +27,6 @@ interface VsCodeApiForWiring {
 
 const vscode      = acquireVsCodeApi() as unknown as VsCodeApiForWiring;
 const svg         = el<HTMLElement & SVGSVGElement>('pinout');
-const popup       = el<HTMLElement>('popup');
 const tooltip     = el<HTMLElement>('tooltip');
 const devicePopover = el<HTMLElement>('device-popover');
 
@@ -89,9 +74,6 @@ const peripheralsResult = readDataIsland<PeripheralDisplayState[]>(
 );
 if (peripheralsResult.error) showDataIslandError('peripherals-data', peripheralsResult.error);
 let peripherals: PeripheralDisplayState[] = peripheralsResult.value;
-// The free pin the assign popup is open for.
-let popupPin: { pinNumber: number } | null = null;
-let selectedKind: DeviceType | null = null;
 
 // ── Build SVG pins ────────────────────────────────────────────────────────
 const ROW_H = 28, TOP = 40;
@@ -123,7 +105,7 @@ PIN_DEFS.forEach(def => {
     g.classList.add('pin-dot');
     g.dataset['pin']  = String(def.pin);
     g.dataset['adc']  = def.adc ? 'true' : 'false';
-    g.classList.add(def.adc ? 'pin-adc' : 'pin-unassigned');
+    g.classList.add('pin-unassigned');
     g.addEventListener('click', onPinClick);
     g.addEventListener('pointerdown', onPinPointerDown);
     // A bus peripheral's pin carries a live "pin · signal · owner" tooltip
@@ -196,7 +178,7 @@ function applyWiredPins(pins: WiredPin[]): void {
   for (const state of computePinDisplayStates(PIN_DEFS, pins)) {
     const g = document.getElementById('pin-' + state.pin);
     if (!g) continue;
-    g.classList.remove(...wiredControlIds().map(id => `pin-${id}`), 'pin-unassigned', 'pin-adc');
+    g.classList.remove(...wiredControlIds().map(id => `pin-${id}`), 'pin-unassigned');
     g.querySelectorAll('.assigned-id').forEach(node => node.remove());
     g.classList.add(state.className);
     if (state.assignedId === null) continue;
@@ -253,13 +235,13 @@ function updateUsbPortIndicator(): void {
 // conflict is possible today). Recomputes and re-applies every assignable
 // pin's *full* desired class on every call via the pure
 // computePinOverlayStates — a pin whose peripheral was just disabled
-// correctly reverts to pin-unassigned/pin-adc rather than staying pin-bus
+// correctly reverts to pin-unassigned rather than staying pin-bus
 // forever (regression: the previous add-only version never restored it).
 function applyPeripheralPins(): void {
   for (const state of computePinOverlayStates(PIN_DEFS, wiredPins, peripherals)) {
     const g = document.getElementById('pin-' + state.pin);
     if (!g) continue;
-    g.classList.remove(...wiredControlIds().map(id => `pin-${id}`), 'pin-unassigned', 'pin-adc', 'pin-bus');
+    g.classList.remove(...wiredControlIds().map(id => `pin-${id}`), 'pin-unassigned', 'pin-bus');
     g.classList.add(state.className);
     if (state.tip) g.dataset['tip'] = state.tip;
     else delete g.dataset['tip'];
@@ -291,55 +273,10 @@ function markPlacedChips(): void {
   });
 }
 
+// FR-UDM-10: peripherals are shown on the board only — pins, bracket, USB
+// port and the palette's placed marker. The footer list is gone.
 function renderPeripherals(): void {
   markPlacedChips();
-  const host = el<HTMLElement>('periph-list');
-  host.innerHTML = '';
-  for (const p of peripherals) {
-    const row = document.createElement('div');
-    row.className = 'periph ' + (p.enabled ? 'on' : 'off');
-
-    const box = document.createElement('input');
-    box.type = 'checkbox';
-    box.checked = p.enabled;
-    box.addEventListener('change', () => {
-      vscode.postMessage({ command: 'setPeripheralEnabled', peripheralId: p.id, enabled: box.checked });
-    });
-
-    const name = document.createElement('span');
-    name.className = 'periph-name';
-    name.textContent = p.label;
-
-    const pins = document.createElement('span');
-    pins.className = 'periph-pins';
-    // FR-DEV-17: a zero-pin bus (midiUsb's INTERNAL mode — the micro USB
-    // connector, modeled without a resolved pin footprint) would otherwise
-    // render as a blank cell with nothing indicating it's connected at all.
-    // Fall back to the bus/mode label itself, same as oled's row already
-    // implicitly relies on pins to communicate its bus.
-    pins.textContent = p.pins.length
-      ? p.pins.map(rp => 'D' + rp.pin).join(', ')
-      : (p.bus ?? '');
-
-    row.append(box, name, pins);
-
-    // FR-DEV-15/18: any peripheral with a live view (oled, midiTrs, midiUsb)
-    // gets a "View" button, gated on REGISTRY's hasLiveView flag rather than
-    // a hardcoded id now that more than one consumer exists. Shown only once
-    // enabled — nothing to view otherwise.
-    if (REGISTRY[p.id]?.hasLiveView && p.enabled) {
-      const viewBtn = document.createElement('button');
-      viewBtn.type = 'button';
-      viewBtn.className = 'periph-view-btn';
-      viewBtn.textContent = 'View';
-      viewBtn.addEventListener('click', () => {
-        vscode.postMessage({ command: 'viewPeripheral', peripheralId: p.id });
-      });
-      row.append(viewBtn);
-    }
-
-    host.appendChild(row);
-  }
   applyPeripheralPins();
   renderBusBrackets();
   updateUsbPortIndicator();
@@ -371,7 +308,6 @@ function hideDevicePopover(): void {
 }
 
 function openDevicePopover(target: PopoverTarget, e: MouseEvent): void {
-  closePopup();
   hideTooltip();
   const m = describePlacedDevice(target, wiredPins, peripherals);
   if (!m) { hideDevicePopover(); return; }
@@ -548,8 +484,7 @@ function onDragMove(e: PointerEvent): void {
   if (!drag.started) {
     if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < DRAG_THRESHOLD_PX) return;
     drag.started = true;
-    closePopup();
-    hideDevicePopover();
+      hideDevicePopover();
     hideTooltip();
     drag.chip?.classList.add('dragging');
     document.body.classList.add('drag-active');
@@ -772,7 +707,6 @@ function showPopoverAt(e: MouseEvent): void {
 function openPlacementPopover(
   deviceId: string, target: DropTarget, e: MouseEvent, moving = false, moveId?: string,
 ): void {
-  closePopup();
   hideTooltip();
   const m = describePlacement(deviceId, target, wiredPins, moving);
   devicePopover.innerHTML = '';
@@ -847,101 +781,19 @@ function openPlacementPopover(
 
 // ── Pin click handler ─────────────────────────────────────────────────────
 function onPinClick(e: Event): void {
-  e.stopPropagation();
   const g         = e.currentTarget as HTMLElement;
   const pinNumber = parseInt(g.dataset['pin'] || '', 10);
   const existing  = wiredPins.find(wp => wp.pinNumber === pinNumber);
   const periphId  = existing ? null : peripheralOwningPin(pinNumber, peripherals);
-
-  if (existing) {
-    openDevicePopover({ kind: 'control', id: existing.id }, e as MouseEvent);
-  } else if (periphId !== null) {
-    openDevicePopover({ kind: 'peripheral', id: periphId }, e as MouseEvent);
-  } else {
-    showAssignPopup(pinNumber, e as MouseEvent);
-  }
+  const target: PopoverTarget | null = existing
+    ? { kind: 'control', id: existing.id }
+    : periphId !== null ? { kind: 'peripheral', id: periphId } : null;
+  // A free pin is inert (FR-UDM-10): devices are added by dragging from the
+  // palette, and its click falls through like any click on empty board.
+  if (!target) return;
+  e.stopPropagation();
+  openDevicePopover(target, e as MouseEvent);
 }
-
-// ── Popup helpers ─────────────────────────────────────────────────────────
-function positionPopup(e: MouseEvent): void {
-  const x = Math.min(e.clientX + 8, window.innerWidth  - 220);
-  const y = Math.min(e.clientY + 8, window.innerHeight - 280);
-  popup.style.left = x + 'px';
-  popup.style.top  = y + 'px';
-  popup.style.display = 'block';
-}
-
-function closePopup(): void {
-  popup.style.display = 'none';
-  popupPin   = null;
-  selectedKind = null;
-  el<HTMLInputElement>('id-input').value = '';
-  el<HTMLElement>('id-error').textContent = '';
-  el<HTMLButtonElement>('popup-confirm').disabled = true;
-  deviceButtonIds().forEach(id => {
-    el<HTMLElement>(id).classList.remove('selected');
-  });
-}
-
-function showAssignPopup(pinNumber: number, e: MouseEvent): void {
-  hideDevicePopover();
-  popupPin = { pinNumber };
-  el<HTMLElement>('popup-title').textContent = 'Assign pin D' + pinNumber;
-  const pinDef = PIN_DEFS.find(d => d.pin === pinNumber);
-  for (const id of wiredControlIds()) {
-    const badge = document.getElementById('warn-' + id);
-    if (badge) badge.style.display = pinDef && !isPinEligible(pinDef, id) ? 'inline' : 'none';
-  }
-  selectedKind = null;
-  el<HTMLInputElement>('id-input').value = '';
-  el<HTMLElement>('id-error').textContent = '';
-  el<HTMLButtonElement>('popup-confirm').disabled = true;
-  positionPopup(e);
-}
-
-// Device type buttons
-deviceButtonIds().forEach(btnId => {
-  el<HTMLElement>(btnId).addEventListener('click', () => {
-    deviceButtonIds().forEach(id => el<HTMLElement>(id).classList.remove('selected'));
-    el<HTMLElement>(btnId).classList.add('selected');
-    selectedKind = kindFromButtonId(btnId);
-    const proposed = defaultId(selectedKind, wiredPins);
-    const idInput  = el<HTMLInputElement>('id-input');
-    if (!idInput.value || idInput.dataset['wasDefault'] === 'true') {
-      idInput.value = proposed;
-      idInput.dataset['wasDefault'] = 'true';
-    }
-    validateAndUpdate();
-  });
-});
-
-el<HTMLInputElement>('id-input').addEventListener('input', e => {
-  (e.target as HTMLInputElement).dataset['wasDefault'] = 'false';
-  validateAndUpdate();
-});
-
-function validateAndUpdate(): void {
-  const val = el<HTMLInputElement>('id-input').value.trim();
-  const err = validateId(val, wiredPins);
-  el<HTMLElement>('id-error').textContent = err || '';
-  el<HTMLButtonElement>('popup-confirm').disabled = !selectedKind || !!err;
-}
-
-el<HTMLButtonElement>('popup-confirm').addEventListener('click', () => {
-  if (!popupPin || !selectedKind) return;
-  const id = el<HTMLInputElement>('id-input').value.trim();
-  const err = validateId(id, wiredPins);
-  if (err) { el<HTMLElement>('id-error').textContent = err; return; }
-  vscode.postMessage({ command: 'wirePin', pinNumber: popupPin.pinNumber, deviceType: selectedKind, id });
-  closePopup();
-});
-
-el<HTMLElement>('popup-cancel-assign').addEventListener('click', closePopup);
-
-// Close popup on outside click
-document.addEventListener('click', e => {
-  if (popup.style.display === 'block' && !popup.contains(e.target as Node)) closePopup();
-});
 
 // Extension → webview messages
 const WIRING_HOST_COMMANDS = new Set<WiringHostMessage['command']>(['wiredPins', 'peripherals']);
