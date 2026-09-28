@@ -112,7 +112,7 @@ session: no toolbar, no Stop.
 
 ---
 
-### [ ] feat: Build & Flash with on-demand board detection (FR-TRN-7)
+### [x] feat: Build & Flash with on-demand board detection (FR-TRN-7)
 
 No part of ds-ide detects a board today; `dfu-flash.ts` just runs `dfu-util` and reports.
 

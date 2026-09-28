@@ -9,6 +9,9 @@ export interface DfuFlashDeps {
   spawn?: typeof cp.spawn;
   readdir?: typeof fs.promises.readdir;
   stat?: typeof fs.promises.stat;
+  // FR-TRN-7: Build & Flash has already detected the board in DFU mode and
+  // had the user confirm, so it turns off this command's own BOOT/RESET prompt.
+  confirmBootloader?: boolean;
 }
 
 // Daisy Seed DFU flash address (internal flash start).
@@ -47,12 +50,14 @@ export async function flashToHardware(
     return;
   }
 
-  const ok = await vscode.window.showInformationMessage(
-    'ds-ide: Put Daisy Seed in bootloader mode (hold BOOT, press RESET), then click Flash.',
-    'Flash',
-    'Cancel',
-  );
-  if (ok !== 'Flash') return;
+  if (deps.confirmBootloader !== false) {
+    const ok = await vscode.window.showInformationMessage(
+      'ds-ide: Put Daisy Seed in bootloader mode (hold BOOT, press RESET), then click Flash.',
+      'Flash',
+      'Cancel',
+    );
+    if (ok !== 'Flash') return;
+  }
 
   const channel = outputChannel;
   channel.show();

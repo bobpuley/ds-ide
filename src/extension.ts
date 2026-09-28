@@ -49,7 +49,8 @@ import { resolveConfiguredEffectSource as findEffectSource } from './commands/fi
 import {
   TransportController, wireTransportEvents, wireTransportNotifications, isBuildSource, countErrors,
 } from './transport/transport-controller';
-import { isTransportBusy, type TransportMode } from './transport/transport-state';
+import { isTransportBusy, type BoardInfo, type TransportMode } from './transport/transport-state';
+import { detectBoard } from './hardware/board-detect';
 import { TransportStatusItems } from './transport/status-items';
 import { DaisyViewProvider, DAISY_VIEW_ID, formatAudioDetail, withViewProgress } from './views/daisy-view';
 import { resolveActiveFolder, promptSelectActiveFolder } from './workspace/active-folder';
@@ -853,6 +854,7 @@ interface CommandDeps {
   transport: TransportController;
   daisyView: DaisyViewProvider;
   stopEmulator: () => void;
+  refreshBoard: () => Promise<BoardInfo | null>;
 }
 
 // FR-EXT-16: shared wrapper so a hung build/deploy/flash child process can
@@ -876,7 +878,7 @@ function registerCommands(deps: CommandDeps): vscode.Disposable[] {
   const {
     manager, diagnostics, buildChannel, hardwareChannel, flashChannel,
     workspaceState, extensionPath, deployCoordinator, scopePanel, controlsProvider, initViewsFromProject,
-    emulatorChannel, transport, daisyView, stopEmulator,
+    emulatorChannel, transport, stopEmulator, refreshBoard,
   } = deps;
 
   return [
@@ -935,18 +937,36 @@ function registerCommands(deps: CommandDeps): vscode.Disposable[] {
     vscode.commands.registerCommand('ds-ide.debugEffect', () =>
       vscode.debug.startDebugging(resolveActiveFolder(workspaceState), { ...DS_IDE_LAUNCH_CONFIG }),
     ),
-    vscode.commands.registerCommand('ds-ide.buildAndFlash', async () => {
+    // FR-TRN-7: detect the board first — with none in DFU mode, no hardware
+    // build is started — then confirm, then reuse the buildHardware / flash
+    // paths (flash's own BOOT/RESET prompt is already covered by detection).
+    vscode.commands.registerCommand('ds-ide.buildAndFlash', async (): Promise<void> => {
       const folder = resolveActiveFolder(workspaceState);
       if (!folder) {
         void vscode.window.showErrorMessage('ds-ide: no workspace folder open');
         return;
       }
+      let board = await refreshBoard();
+      while (!board) {
+        const retry = await vscode.window.showWarningMessage(
+          'ds-ide: no Daisy Seed found in DFU mode. Hold BOOT, press and release RESET, then release BOOT — and retry.',
+          'Retry',
+        );
+        if (retry !== 'Retry') return;
+        board = await refreshBoard();
+      }
+      const confirm = await vscode.window.showInformationMessage(
+        `Build "${folder.name}" for hardware and flash it to the ${board.name} (DFU ${board.usbId})?`,
+        { modal: true },
+        'Build & Flash',
+      );
+      if (confirm !== 'Build & Flash') return;
       const built = await withCancellableProgress('ds-ide: building for hardware…', (token) =>
         buildForHardware(folder.uri.fsPath, diagnostics, hardwareChannel, {}, token),
       );
       if (!built) return;
       await withCancellableProgress('ds-ide: flashing…', (token) =>
-        flashToHardware(folder.uri.fsPath, flashChannel, {}, token),
+        flashToHardware(folder.uri.fsPath, flashChannel, { confirmBootloader: false }, token),
       );
     }),
     // FR-TRN-4: Daisy view title / row actions.
@@ -964,7 +984,7 @@ function registerCommands(deps: CommandDeps): vscode.Disposable[] {
         ? vscode.commands.executeCommand('workbench.action.debug.restart')
         : vscode.commands.executeCommand('ds-ide.buildAndDeploy'),
     ),
-    vscode.commands.registerCommand('ds-ide.refreshBoard', () => daisyView.refresh()),
+    vscode.commands.registerCommand('ds-ide.refreshBoard', () => refreshBoard()),
     vscode.commands.registerCommand('ds-ide.showEmulatorOutput', () => emulatorChannel.show()),
     // FR-TRN-5: the state item's default click action.
     vscode.commands.registerCommand('ds-ide.revealDaisyView', () =>
@@ -1277,6 +1297,16 @@ export function activate(context: vscode.ExtensionContext): void {
   const daisyView = new DaisyViewProvider(transport, () =>
     formatAudioDetail(session.audioSourceState.sampleRate, session.audioSourceState.bufferSize));
   const daisyTreeView = vscode.window.createTreeView(DAISY_VIEW_ID, { treeDataProvider: daisyView });
+  // FR-TRN-7: board detection is on demand only — here, on Refresh, and
+  // before Build & Flash. No background polling.
+  async function refreshBoard(): Promise<BoardInfo | null> {
+    const board = await detectBoard();
+    transport.dispatch(board ? { type: 'boardDetected', board } : { type: 'boardNotDetected' });
+    return board;
+  }
+  const boardOnVisible = daisyTreeView.onDidChangeVisibility((e) => {
+    if (e.visible) void refreshBoard();
+  });
   const statusItems = new TransportStatusItems(transport, FIDELITY_CAVEAT);
   const transportNotifications = wireTransportNotifications(transport);
 
@@ -1362,7 +1392,7 @@ export function activate(context: vscode.ExtensionContext): void {
     manager, diagnostics, buildChannel, hardwareChannel, flashChannel,
     workspaceState: context.workspaceState, extensionPath: context.extensionPath,
     deployCoordinator, scopePanel, controlsProvider, initViewsFromProject,
-    emulatorChannel, transport, daisyView, stopEmulator,
+    emulatorChannel, transport, daisyView, stopEmulator, refreshBoard,
   });
 
   const saveListener = createSaveListener({
@@ -1384,6 +1414,7 @@ export function activate(context: vscode.ExtensionContext): void {
     transport,
     daisyView,
     daisyTreeView,
+    boardOnVisible,
     ...transportEventDisposables,
     vscode.window.onDidChangeActiveTextEditor(updateEffectSourceContext),
     diagnostics,

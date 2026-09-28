@@ -59,10 +59,23 @@ vi.mock('../../emulator/manager', () => {
   };
 });
 
+vi.mock('../../hardware/board-detect', () => ({
+  detectBoard: vi.fn(async () => null),
+}));
+vi.mock('../../commands/hardware-build', () => ({
+  buildForHardware: vi.fn(async () => true),
+}));
+vi.mock('../../commands/dfu-flash', () => ({
+  flashToHardware: vi.fn(async () => undefined),
+}));
+
 // Imported for type inference only — each test describe re-imports dynamically.
 import type { activate as ActivateFn, deactivate as DeactivateFn } from '../../extension';
 import { makeBlockEdit, findDeviceDeclarationLine, revealDeviceInCode } from '../../extension';
 import { oledCodegen } from '../../devices/codegen/oled';
+import { detectBoard } from '../../hardware/board-detect';
+import { buildForHardware } from '../../commands/hardware-build';
+import { flashToHardware } from '../../commands/dfu-flash';
 
 function makeContext(): vscode.ExtensionContext {
   return {
@@ -2402,3 +2415,118 @@ describe('revealDeviceInCode (FR-UDM-4)', () => {
     expect(vscode.window.showTextDocument).not.toHaveBeenCalled();
   });
 });
+
+// ── FR-TRN-7: Build & Flash with on-demand board detection ──
+
+describe('Build & Flash with on-demand board detection (FR-TRN-7)', () => {
+  const BOARD = { name: 'Daisy Seed', usbId: '0483:df11' };
+  const handler = (id: string) => {
+    const call = (vscode.commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.find((c: unknown[]) => c[0] === id);
+    return call![1] as () => Promise<unknown>;
+  };
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    // Once-queued results must not leak between these tests.
+    vi.mocked(detectBoard).mockReset().mockResolvedValue(null);
+    vi.mocked(buildForHardware).mockReset().mockResolvedValue(true);
+    vi.mocked(flashToHardware).mockReset().mockResolvedValue(undefined);
+    (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mockReset();
+    (vscode.window.showInformationMessage as ReturnType<typeof vi.fn>).mockReset();
+    managerInstances.length = 0;
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [{ uri: { fsPath: '/proj' }, name: 'my-fx' }];
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+  });
+
+  afterEach(() => {
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = undefined;
+  });
+
+  it('no board: warns with BOOT + RESET instructions and Retry, and starts no hardware build', async () => {
+    vi.mocked(detectBoard).mockResolvedValueOnce(null);
+    await handler('ds-ide.buildAndFlash')();
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      expect.stringMatching(/BOOT.*RESET/), 'Retry');
+    expect(buildForHardware).not.toHaveBeenCalled();
+    expect(flashToHardware).not.toHaveBeenCalled();
+  });
+
+  it('Retry detects again, and proceeds once the board shows up', async () => {
+    vi.mocked(detectBoard).mockResolvedValueOnce(null).mockResolvedValueOnce(BOARD);
+    (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce('Retry');
+    (vscode.window.showInformationMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce('Build & Flash');
+    await handler('ds-ide.buildAndFlash')();
+    expect(detectBoard).toHaveBeenCalledTimes(2);
+    expect(buildForHardware).toHaveBeenCalledOnce();
+  });
+
+  it('board found: modal confirmation naming the project and the board, then build + flash', async () => {
+    vi.mocked(detectBoard).mockResolvedValueOnce(BOARD);
+    (vscode.window.showInformationMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce('Build & Flash');
+    await handler('ds-ide.buildAndFlash')();
+    const [message, options] = (vscode.window.showInformationMessage as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(message).toContain('my-fx');
+    expect(message).toContain('Daisy Seed');
+    expect(message).toContain('0483:df11');
+    expect(options).toMatchObject({ modal: true });
+    expect(buildForHardware).toHaveBeenCalledWith('/proj', expect.anything(), expect.anything(), {}, expect.anything());
+    expect(flashToHardware).toHaveBeenCalledWith('/proj', expect.anything(), { confirmBootloader: false }, expect.anything());
+  });
+
+  it('declining the confirmation builds nothing', async () => {
+    vi.mocked(detectBoard).mockResolvedValueOnce(BOARD);
+    (vscode.window.showInformationMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
+    await handler('ds-ide.buildAndFlash')();
+    expect(buildForHardware).not.toHaveBeenCalled();
+  });
+
+  it('a failed hardware build does not flash', async () => {
+    vi.mocked(detectBoard).mockResolvedValueOnce(BOARD);
+    (vscode.window.showInformationMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce('Build & Flash');
+    vi.mocked(buildForHardware).mockResolvedValueOnce(false);
+    await handler('ds-ide.buildAndFlash')();
+    expect(flashToHardware).not.toHaveBeenCalled();
+  });
+
+  it('build and flash run with cancellable progress', async () => {
+    vi.mocked(detectBoard).mockResolvedValueOnce(BOARD);
+    (vscode.window.showInformationMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce('Build & Flash');
+    await handler('ds-ide.buildAndFlash')();
+    const notifications = (vscode.window.withProgress as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => c[0]).filter((o) => o.location === vscode.ProgressLocation.Notification);
+    expect(notifications.map((o) => o.title)).toEqual(['ds-ide: building for hardware…', 'ds-ide: flashing…']);
+    for (const o of notifications) expect(o.cancellable).toBe(true);
+  });
+
+  it('Refresh runs detection and shows the result on the Board row', async () => {
+    vi.mocked(detectBoard).mockResolvedValueOnce(BOARD);
+    await handler('ds-ide.refreshBoard')();
+    expect(detectBoard).toHaveBeenCalledOnce();
+    const flashItem = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.results[1]!.value;
+    expect(flashItem.tooltip).toContain('Daisy Seed');
+  });
+
+  it('no board: the ⚡ Flash item says no board', async () => {
+    vi.mocked(detectBoard).mockResolvedValueOnce(null);
+    await handler('ds-ide.refreshBoard')();
+    const flashItem = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.results[1]!.value;
+    expect(flashItem.text).toBe('$(zap) Flash: no board');
+  });
+
+  it('detects when the Daisy view becomes visible, and not while it is hidden — no polling', async () => {
+    const view = (vscode.window.createTreeView as ReturnType<typeof vi.fn>).mock.results[0]!.value;
+    const onVisibility = view.onDidChangeVisibility.mock.calls[0]![0] as (e: { visible: boolean }) => void;
+    onVisibility({ visible: false });
+    expect(detectBoard).not.toHaveBeenCalled();
+    onVisibility({ visible: true });
+    expect(detectBoard).toHaveBeenCalledOnce();
+  });
+
+  it('the old granular buildHardware / flash commands keep their own paths', async () => {
+    await handler('ds-ide.flash')();
+    expect(detectBoard).not.toHaveBeenCalled();
+    expect(flashToHardware).toHaveBeenCalledWith('/proj', expect.anything(), {}, expect.anything());
+  });
+});
+
