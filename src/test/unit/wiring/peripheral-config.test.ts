@@ -4,8 +4,9 @@ import {
   removePeripheralFromSource,
   insertPeripheralInitIntoSource,
   removePeripheralInitFromSource,
+  peripheralEditText,
 } from '../../../wiring/peripheral-config';
-import { isPeripheralEnabled } from '../../../wiring/peripheral-state';
+import { isPeripheralEnabled, currentBusOf } from '../../../wiring/peripheral-state';
 
 describe('insertPeripheralIntoSource (FR-DEV-11)', () => {
   it('appends a new peripherals block when none exists', () => {
@@ -71,5 +72,31 @@ describe('insertPeripheralInitIntoSource / removePeripheralInitFromSource (FR-DE
     const removed = removePeripheralInitFromSource(withInit, 'sdcard');
     expect(removed).not.toContain('ds_ide_sd.Init(');
     expect(removed).not.toContain('ds_ide_fatfs.Init(');
+  });
+});
+
+describe('peripheralEditText (FR-UDM-7)', () => {
+  const src = 'int main() {}\n';
+
+  it('without a bus, writes exactly what the checkbox path wrote (current/default bus)', () => {
+    for (const id of ['sdcard', 'oled', 'midiTrs', 'midiUsb']) {
+      const bus = currentBusOf(src, id) ?? undefined;
+      const expected = insertPeripheralInitIntoSource(insertPeripheralIntoSource(src, id, bus), id, bus);
+      expect(peripheralEditText(src, id, true)).toBe(expected);
+    }
+  });
+
+  it('with a dropped lane, writes that bus\'s variant', () => {
+    const expected = insertPeripheralInitIntoSource(insertPeripheralIntoSource(src, 'oled', 'I2C1'), 'oled', 'I2C1');
+    expect(peripheralEditText(src, 'oled', true, 'I2C1')).toBe(expected);
+    expect(peripheralEditText(src, 'oled', true, 'I2C1')).toContain('SSD130xI2c128x64Driver');
+    expect(peripheralEditText(src, 'midiUsb', true, 'USB_HS_D'))
+      .toBe(insertPeripheralInitIntoSource(insertPeripheralIntoSource(src, 'midiUsb', 'USB_HS_D'), 'midiUsb', 'USB_HS_D'));
+  });
+
+  it('disabling removes declaration and init regardless of bus', () => {
+    const on = peripheralEditText(src, 'oled', true, 'I2C1');
+    expect(peripheralEditText(on, 'oled', false))
+      .toBe(removePeripheralInitFromSource(removePeripheralFromSource(on, 'oled'), 'oled'));
   });
 });

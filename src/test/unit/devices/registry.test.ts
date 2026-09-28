@@ -157,13 +157,13 @@ describe('adding a registry entry surfaces it everywhere (FR-DEV-2)', () => {
     expect(result.controls).toEqual([{ id: 'sw1', kind: 'fakekind', pin: 5 }]);
   });
 
-  it('surfaces in the Wiring Editor CSS and popup button', () => {
+  it('surfaces in the Wiring Editor CSS and palette chip', () => {
     addFakeDevice();
     const html = buildWiringHtml([], [], 'test-nonce', 'vscode-resource://x.js');
     expect(html).toContain('.pin-fakekind');
     expect(html).toContain('#abc123');
     expect(html).toContain('#111222');
-    expect(html).toContain('id="btn-fakekind"');
+    expect(html).toContain('data-device="fakekind"');
     expect(html).toContain('Fakekind');
   });
 
@@ -190,9 +190,9 @@ describe('adding a registry entry surfaces it everywhere (FR-DEV-2)', () => {
 // pin — so it must not leak into either editor's pin/palette pickers, which
 // enumerate wiredControlIds() (pin/pins-attached only), not every registry id.
 describe('bus-attached peripherals are excluded from pin/palette pickers (FR-DEV-10)', () => {
-  it('sdcard has no per-pin popup button in the Wiring Editor', () => {
+  it('sdcard gets no per-pin device CSS class in the Wiring Editor', () => {
     const html = buildWiringHtml([], [], 'test-nonce', 'vscode-resource://x.js');
-    expect(html).not.toContain('id="btn-sdcard"');
+    expect(html).not.toContain('.pin-sdcard');
   });
 
   it('sdcard has no control-card style in the Controls Editor', () => {

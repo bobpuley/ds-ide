@@ -6,7 +6,7 @@
 // controls-convention-parser.ts (which only scans between its own markers)
 // never sees these lines.
 import { REGISTRY } from '../devices/registry';
-import { isPeripheralEnabled } from './peripheral-state';
+import { isPeripheralEnabled, currentBusOf } from './peripheral-state';
 
 const BEGIN = '// ds-ide:peripherals:begin';
 const END = '// ds-ide:peripherals:end';
@@ -81,4 +81,14 @@ export function removePeripheralInitFromSource(source: string, id: string): stri
   const codegen = REGISTRY[id]?.peripheralCodegen;
   if (!codegen) return source;
   return source.split('\n').filter(l => !codegen.isInitLine(stripCr(l))).join('\n');
+}
+
+// FR-UDM-7: the full source-text change for enabling or disabling a
+// peripheral — declaration plus init. `bus` is the lane a drop landed on;
+// omitted, the peripheral's current (or default) bus is used, which is
+// exactly what the Peripherals checkbox path always wrote.
+export function peripheralEditText(source: string, id: string, enabled: boolean, bus?: string): string {
+  if (!enabled) return removePeripheralInitFromSource(removePeripheralFromSource(source, id), id);
+  const target = bus ?? currentBusOf(source, id) ?? undefined;
+  return insertPeripheralInitIntoSource(insertPeripheralIntoSource(source, id, target), id, target);
 }

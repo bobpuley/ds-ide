@@ -2,10 +2,11 @@ import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
 import {
   WiredPin, WirePinHandler, UnwirePinHandler, SetPeripheralEnabledHandler, ViewPeripheralHandler,
-  RevealInCodeHandler, PeripheralDisplayState, buildHtml,
+  RevealInCodeHandler, MoveControlHandler, PeripheralDisplayState, buildHtml,
 } from '../wiring/wiring-panel';
 import { isDeviceType } from '../devices/registry';
 import { peripheralIds } from '../wiring/peripheral-state';
+import { candidateBusesFor } from '../wiring/conflict-remedy';
 import { WiringWebviewMessage } from '../webview/messages';
 import { hasKnownCommand, assertNever } from '../webview/message-guard';
 
@@ -13,8 +14,18 @@ import { hasKnownCommand, assertNever } from '../webview/message-guard';
 // switch's `default: assertNever(...)` is the actual drift-detector; this
 // Set only drives the runtime hasKnownCommand narrow.
 const WIRING_WEBVIEW_COMMANDS = new Set<WiringWebviewMessage['command']>([
-  'wirePin', 'unwirePin', 'setPeripheralEnabled', 'viewPeripheral', 'revealInCode',
+  'wirePin', 'unwirePin', 'moveControl', 'setPeripheralEnabled', 'viewPeripheral', 'revealInCode',
 ]);
+
+const ID_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+// Generous bound: a lane holds at most six pins, so at most six occupants.
+const MAX_REPLACE = 16;
+
+// FR-UDM-8: an optional list of occupant ids (control ids or peripheral ids).
+function isReplaceList(v: unknown): v is string[] | undefined {
+  return v === undefined ||
+    (Array.isArray(v) && v.length <= MAX_REPLACE && v.every(x => typeof x === 'string' && ID_RE.test(x)));
+}
 
 export class WiringViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
@@ -28,6 +39,7 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
     private readonly onSetPeripheralEnabled: SetPeripheralEnabledHandler,
     private readonly onViewPeripheral: ViewPeripheralHandler,
     private readonly onRevealInCode: RevealInCodeHandler,
+    private readonly onMoveControl: MoveControlHandler,
   ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -56,7 +68,8 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
             !Number.isFinite(pinNumber) || !Number.isInteger(pinNumber) ||
             pinNumber < 0 || pinNumber > 31 ||
             typeof deviceType !== 'string' || !isDeviceType(deviceType) ||
-            typeof id !== 'string' || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id)
+            typeof id !== 'string' || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id) ||
+            !isReplaceList(msg.replace)
           ) return;
           // FR-EXT-8: onWirePin performs file I/O (workspace edit + save) that
           // can throw (e.g. a permission error) — left unguarded, that would
@@ -67,7 +80,7 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
               pinNumber:  pinNumber,
               deviceType: deviceType as WiredPin['deviceType'],
               id:         id,
-            });
+            }, msg.replace);
           } catch (err) {
             void vscode.window.showErrorMessage(`ds-ide: could not wire pin: ${String(err)}`);
           }
@@ -88,15 +101,33 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
           }
           break;
         }
+        case 'moveControl': {
+          const { id, pinNumber } = msg;
+          if (
+            !Number.isFinite(pinNumber) || !Number.isInteger(pinNumber) ||
+            pinNumber < 0 || pinNumber > 31 ||
+            typeof id !== 'string' || !ID_RE.test(id) ||
+            !isReplaceList(msg.replace)
+          ) return;
+          try {
+            await this.onMoveControl(id, pinNumber, msg.replace);
+          } catch (err) {
+            void vscode.window.showErrorMessage(`ds-ide: could not move ${id}: ${String(err)}`);
+          }
+          break;
+        }
         case 'setPeripheralEnabled': {
           const peripheralId = msg.peripheralId;
           const enabled      = msg.enabled;
+          const bus          = msg.bus;
           if (
             typeof peripheralId !== 'string' || !peripheralIds().includes(peripheralId) ||
-            typeof enabled !== 'boolean'
+            typeof enabled !== 'boolean' ||
+            (bus !== undefined && (typeof bus !== 'string' || !candidateBusesFor(peripheralId).includes(bus))) ||
+            !isReplaceList(msg.replace)
           ) return;
           try {
-            await this.onSetPeripheralEnabled(peripheralId, enabled);
+            await this.onSetPeripheralEnabled(peripheralId, enabled, bus, msg.replace);
           } catch (err) {
             void vscode.window.showErrorMessage(`ds-ide: could not update peripheral: ${String(err)}`);
           }

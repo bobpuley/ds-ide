@@ -39,10 +39,10 @@ describe('computePinOverlayStates (FR-DEV-11/12 regression)', () => {
     expect(d5.tip).toBeNull();
   });
 
-  it('an ADC-capable pin with no occupant restores to pin-adc, not pin-unassigned', () => {
+  it('an ADC-capable pin with no occupant restores to the grey free state (FR-UDM-10)', () => {
     const states = computePinOverlayStates(PIN_DEFS, [], []);
     const d15 = states.find(s => s.pin === 15)!; // D15/A0 is ADC-capable
-    expect(d15.className).toBe('pin-adc');
+    expect(d15.className).toBe('pin-unassigned');
   });
 
   it('a hand-wired control on a pin always wins over a bus overlay', () => {

@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { buildHtml, PIN_DEFS, WiredPin, expandToWiredPins } from '../../../wiring/wiring-panel';
+import { buildHtml, PIN_DEFS, WiredPin, expandToWiredPins, paletteRequirement } from '../../../wiring/wiring-panel';
+import { REGISTRY } from '../../../devices/registry';
+import { deviceIconSvg, DEVICE_ICONS } from '../../../wiring/device-icons';
 import type { ConventionControl } from '../../../controllers/controls-convention-parser';
 
 // ── PIN_DEFS integrity ───────────────────────────────────────────────────────
@@ -136,19 +138,24 @@ describe('buildHtml', () => {
     expect(html).toContain('SEED');
   });
 
-  it('contains popup element', () => {
-    expect(html).toContain('id="popup"');
+  // FR-UDM-10: the click-a-free-pin assign popup is gone — the palette,
+  // drag and the device popover are the only placement surfaces.
+  it('has no click-a-free-pin assign popup (FR-UDM-10)', () => {
+    expect(html).not.toContain('id="popup"');
+    expect(html).not.toContain('id="popup-assign"');
+    expect(html).not.toContain('id="btn-pot"');
+    expect(html).not.toContain('id="id-input"');
   });
 
-  it('contains Pot / Button / LED buttons', () => {
-    expect(html).toContain('id="btn-pot"');
-    expect(html).toContain('id="btn-button"');
-    expect(html).toContain('id="btn-led"');
+  it('free pins are inert: no pointer cursor or hover highlight (FR-UDM-10)', () => {
+    expect(html).not.toMatch(/\.pin-dot\s*\{\s*cursor:\s*pointer/);
+    expect(html).not.toMatch(/\.pin-dot:hover circle/);
+    expect(html).toMatch(/\.pin-dot:not\(\.pin-unassigned\)\s*\{\s*cursor:\s*pointer/);
   });
 
-  it('contains id input and error', () => {
-    expect(html).toContain('id="id-input"');
-    expect(html).toContain('id="id-error"');
+  it('points the user at the palette in the hint (FR-UDM-10)', () => {
+    expect(html).not.toContain('Click a free pin');
+    expect(html).toContain('Drag a device from the palette');
   });
 
   // FR-UDM-3: one #device-popover replaces popup-assigned and #bus-popover.
@@ -159,17 +166,12 @@ describe('buildHtml', () => {
     expect(html).not.toContain('bus-popover');
   });
 
-  it('keeps the click-a-free-pin assign popup until M66 (FR-UDM-3)', () => {
-    expect(html).toContain('id="popup-assign"');
-  });
-
-  // FR-UDM-1: the pot-only `pot-warn` badge is replaced by one generic badge
-  // per pin-constrained device, derived from its registry `pinRequires`.
-  it('renders a pin-requirement warning badge from pinRequires, not a pot special case (FR-UDM-1)', () => {
+  // FR-UDM-1: no device id is special-cased for pin suitability; with the
+  // assign popup gone (FR-UDM-10) the palette chip shows the requirement.
+  it('has no pot special case for pin suitability (FR-UDM-1)', () => {
     expect(html).not.toContain('pot-warn');
-    expect(html).toContain('id="warn-pot"');
-    expect(html).toContain('non-ADC pin');
-    expect(html).not.toContain('id="warn-button"');
+    expect(html).not.toContain('warn-badge');
+    expect(html).toContain('<div class="meta">ADC pin</div>');
   });
 
   it('serialises PIN_DEFS as JSON in script', () => {
@@ -221,9 +223,11 @@ describe('buildHtml', () => {
 describe('buildHtml Peripherals section', () => {
   const TEST_NONCE = 'test-nonce-abc123';
 
-  it('contains a peripherals list container', () => {
+  it('has no Peripherals footer — checkbox list and View button are gone (FR-UDM-10)', () => {
     const html = buildHtml([], [], TEST_NONCE, 'vscode-resource://test/webview/wiring-webview.js');
-    expect(html).toContain('id="periph-list"');
+    expect(html).not.toContain('id="peripherals"');
+    expect(html).not.toContain('id="periph-list"');
+    expect(html).not.toContain('periph-view-btn');
   });
 
   it('embeds initial peripheral state from a data island', () => {
@@ -253,3 +257,108 @@ describe('buildHtml bus bracket tooltip/popover', () => {
 
 });
 
+
+// ── Device palette (FR-UDM-5) ────────────────────────────────────────────────
+
+describe('device palette (FR-UDM-5)', () => {
+  const TEST_NONCE = 'test-nonce-abc123';
+  const SCRIPT = 'vscode-resource://test/webview/wiring-webview.js';
+  const html = buildHtml([], [], TEST_NONCE, SCRIPT);
+  const section = (name: string): string => {
+    const m = html.match(new RegExp(`<div class="pal-grp"[^>]*>${name}</div>([\\s\\S]*?)(?=<div class="pal-(?:grp|sep)"|</div>\\s*</div>\\s*<!-- /palette -->)`));
+    return m?.[1] ?? '';
+  };
+
+  it('renders one draggable chip per registry device', () => {
+    for (const id of Object.keys(REGISTRY)) {
+      expect(html).toContain(`data-device="${id}"`);
+    }
+    expect(html.match(/class="device-chip"/g)).toHaveLength(Object.keys(REGISTRY).length);
+  });
+
+  it('groups controls and peripherals', () => {
+    const controls = section('Controls');
+    const peripherals = section('Peripherals · one each');
+    for (const id of ['pot', 'button', 'led', 'toggle', 'rgbled', 'encoder']) {
+      expect(controls).toContain(`data-device="${id}"`);
+      expect(peripherals).not.toContain(`data-device="${id}"`);
+    }
+    for (const id of ['sdcard', 'oled', 'midiTrs', 'midiUsb']) {
+      expect(peripherals).toContain(`data-device="${id}"`);
+      expect(controls).not.toContain(`data-device="${id}"`);
+    }
+  });
+
+  it('colours each chip with its device accent', () => {
+    expect(html).toContain(`data-device="pot" style="--accent: ${REGISTRY['pot']!.accentColor}"`);
+    expect(html).toContain(`data-device="oled" style="--accent: ${REGISTRY['oled']!.accentColor}"`);
+  });
+
+  it('carries a hover tip naming the device, for the collapsed rail', () => {
+    expect(html).toContain('data-tip="RGB LED — 3 pins (R·G·B)"');
+    // The rail uses the editor's own #tooltip; a native title would double it.
+    expect(html).not.toMatch(/class="device-chip"[^>]*\stitle=/);
+  });
+
+  it('describes each device\'s attachment requirement', () => {
+    expect(paletteRequirement('pot')).toBe('ADC pin');
+    expect(paletteRequirement('button')).toBe('any GPIO pin');
+    expect(paletteRequirement('rgbled')).toBe('3 pins (R·G·B)');
+    expect(paletteRequirement('encoder')).toBe('3 pins (A·B·SW)');
+    expect(paletteRequirement('sdcard')).toBe('SDMMC1');
+    expect(paletteRequirement('oled')).toBe('SPI1 / I2C1');
+    expect(paletteRequirement('midiTrs')).toBe('USART1');
+    expect(paletteRequirement('midiUsb')).toBe('USB port / USB_HS_D');
+    expect(html).toContain('<div class="meta">SPI1 / I2C1</div>');
+  });
+
+  it('renders every chip as an icon tile in a two-column grid (alt1 palette)', () => {
+    expect(html.match(/<div class="pal-grid">/g)).toHaveLength(2);
+    for (const id of Object.keys(REGISTRY)) {
+      const chip = html.match(new RegExp(`<div class="device-chip" data-device="${id}"[^>]*>([\\s\\S]*?)<\\/div><!-- /chip -->`));
+      expect(chip, id).not.toBeNull();
+      expect(chip![1]).toContain('<svg class="icon" viewBox="0 0 48 48"');
+      expect(chip![1]).toContain(`<div class="name">${REGISTRY[id]!.label}</div>`);
+    }
+  });
+
+  it('marks a placed-capable (peripheral) chip with a hidden ✓ badge only', () => {
+    expect(html).toMatch(/data-device="oled"[^>]*>[\s\S]*?<span class="badge">✓<\/span>/);
+    expect(html).not.toMatch(/data-device="pot"[^>]*>(?:(?!<!-- \/chip -->)[\s\S])*class="badge"/);
+  });
+
+  it('lays the placement popover\'s confirm and Cancel side by side, not full-width (FR-UDM-7)', () => {
+    expect(html).toMatch(/#device-popover \.dp-pair button\s*\{[^}]*flex: 1 1 0/);
+  });
+
+  it('has a collapse toggle', () => {
+    expect(html).toContain('id="palette-toggle"');
+    expect(html).toContain('id="palette-col"');
+  });
+
+  it('a device added to the registry appears with no Wiring Editor edit', () => {
+    REGISTRY['servo'] = { ...REGISTRY['button']!, id: 'servo', label: 'Servo', accentColor: '#123456' };
+    try {
+      const withServo = buildHtml([], [], TEST_NONCE, SCRIPT);
+      expect(withServo).toContain('data-device="servo" style="--accent: #123456"');
+    } finally {
+      delete REGISTRY['servo'];
+    }
+  });
+});
+
+describe('device icons (alt1 palette)', () => {
+  it('has an illustrated icon for every shipped registry device', () => {
+    for (const id of Object.keys(REGISTRY)) expect(DEVICE_ICONS[id], id).toBeTruthy();
+  });
+
+  it('falls back to an accent-coloured dot for a device with no icon', () => {
+    const svg = deviceIconSvg('servo', '#123456');
+    expect(svg).toContain('<svg class="icon" viewBox="0 0 48 48"');
+    expect(svg).toContain('fill="#123456"');
+  });
+
+  it('escapes the fallback colour', () => {
+    expect(deviceIconSvg('servo', '"><script>')).not.toContain('<script>');
+  });
+});

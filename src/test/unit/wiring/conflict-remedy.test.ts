@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { checkConflict, buildOccupants, formatRejection, candidateBusesFor } from '../../../wiring/conflict-remedy';
+import { checkConflict, buildOccupants, formatRejection, candidateBusesFor, removeOccupantsFromSource } from '../../../wiring/conflict-remedy';
+import { insertIntoSource, insertInitIntoSource, removeFromSource, removeInitFromSource } from '../../../wiring/controls-writer';
+import { peripheralEditText } from '../../../wiring/peripheral-config';
+import { parseControlsConvention } from '../../../controllers/controls-convention-parser';
+import { isPeripheralEnabled } from '../../../wiring/peripheral-state';
 import type { Occupant } from '../../../wiring/conflict-remedy';
 import { PIN_DEFS } from '../../../devices/pin-table.gen';
 
@@ -183,5 +187,45 @@ describe('candidateBusesFor (FR-DEV-13/14)', () => {
   it('returns an empty list for an id with no bus at all', () => {
     expect(candidateBusesFor('pot')).toEqual([]);
     expect(candidateBusesFor('not-a-real-id')).toEqual([]);
+  });
+});
+
+describe('removeOccupantsFromSource (FR-UDM-8)', () => {
+  // Builds source text the same way the wire handler does.
+  function wire(src: string, id: string, kind: 'pot' | 'button' | 'led', pin: number): string {
+    const afterDecl = insertIntoSource(src, id, kind, pin);
+    const pots = parseControlsConvention(afterDecl).controls.filter(c => c.kind === 'pot');
+    return insertInitIntoSource(afterDecl, id, kind, pin, pots);
+  }
+  const base = 'int main() {}\n';
+
+  it('a replaced control is removed exactly as Remove would remove it', () => {
+    const src = wire(wire(base, 'vol', 'pot', 15), 'gain', 'pot', 16);
+    const afterDecl = removeFromSource(src, 'vol');
+    const pots = parseControlsConvention(afterDecl).controls.filter(c => c.kind === 'pot');
+    expect(removeOccupantsFromSource(src, ['vol'])).toBe(removeInitFromSource(afterDecl, 'vol', pots));
+  });
+
+  it('clears every control on a peripheral lane so the peripheral no longer conflicts', () => {
+    const src = wire(wire(base, 'b1', 'button', 11), 'l1', 'led', 12);
+    expect(checkConflict({ kind: 'bus', bus: 'I2C1' }, buildOccupants(src), PIN_DEFS, candidateBusesFor)).not.toBeNull();
+    const cleared = removeOccupantsFromSource(src, ['b1', 'l1']);
+    expect(parseControlsConvention(cleared).controls).toEqual([]);
+    expect(checkConflict({ kind: 'bus', bus: 'I2C1' }, buildOccupants(cleared), PIN_DEFS, candidateBusesFor)).toBeNull();
+  });
+
+  it('a replaced peripheral is disabled', () => {
+    const src = peripheralEditText(base, 'oled', true, 'I2C1');
+    const cleared = removeOccupantsFromSource(src, ['oled']);
+    expect(isPeripheralEnabled(cleared, 'oled')).toBe(false);
+    expect(cleared).toBe(peripheralEditText(src, 'oled', false));
+  });
+
+  it('an id that is no longer on the board changes nothing (stale replace)', () => {
+    const src = wire(base, 'gain', 'pot', 15);
+    expect(removeOccupantsFromSource(src, ['vol'])).toBe(src);
+    // …so the host's post-removal checkConflict still sees gain on D15.
+    const r = checkConflict({ kind: 'pin', pin: 15 }, buildOccupants(removeOccupantsFromSource(src, ['vol'])), PIN_DEFS, candidateBusesFor);
+    expect(r?.blockers[0]?.occupant.id).toBe('gain');
   });
 });

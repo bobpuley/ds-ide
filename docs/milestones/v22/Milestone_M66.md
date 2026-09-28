@@ -1,7 +1,7 @@
 # M66 — Unified Device Model (Drag & Drop)
 
 **Version:** 0.20.1
-**Status:** planned
+**Status:** in progress
 **Source:** feature intake session, 2026-09-28 (design_plan.md §5.2, §5.6; mockup docs/mockups/v22-unified-device-model.html)
 
 ## Goal
@@ -14,7 +14,7 @@ Peripherals footer are gone, and free pins are inert.
 
 ## Sprint Tasks
 
-### [ ] feat: compute drop targets as a pure function (FR-UDM-6)
+### [x] feat: compute drop targets as a pure function (FR-UDM-6a)
 
 The highlighting and the host's allocation must agree exactly, so target computation lives in
 one pure module both sides can call.
@@ -29,7 +29,7 @@ one pure module both sides can call.
 
 ---
 
-### [ ] feat: device palette in the Wiring Editor (FR-UDM-5)
+### [x] feat: device palette in the Wiring Editor (FR-UDM-5)
 
 All ten devices in one palette, generated from the registry.
 
@@ -43,7 +43,7 @@ All ten devices in one palette, generated from the registry.
 
 ---
 
-### [ ] feat: drag-time board highlighting and footprint preview (FR-UDM-6)
+### [x] feat: drag-time board highlighting and footprint preview (FR-UDM-6b)
 
 **Affected files:** `src/webview/wiring-webview.ts`, `src/wiring/wiring-panel.ts`
 
@@ -57,7 +57,7 @@ All ten devices in one palette, generated from the registry.
 
 ---
 
-### [ ] feat: drop opens the placement popover (FR-UDM-7)
+### [x] feat: drop opens the placement popover (FR-UDM-7)
 
 **Affected files:** `src/webview/wiring-webview.ts`, `src/webview/messages.ts`, `src/sidebar/wiring-editor-panel.ts`, `src/extension.ts`, `src/test/unit/extension.test.ts`
 
@@ -69,7 +69,7 @@ All ten devices in one palette, generated from the registry.
 
 ---
 
-### [ ] feat: replace an occupant on conflict drop (FR-UDM-8)
+### [x] feat: replace an occupant on conflict drop (FR-UDM-8)
 
 **Affected files:** `src/webview/wiring-webview.ts`, `src/webview/messages.ts`, `src/extension.ts`, `src/test/unit/extension.test.ts`, `src/test/unit/wiring/conflict-remedy.test.ts`
 
@@ -81,7 +81,7 @@ All ten devices in one palette, generated from the registry.
 
 ---
 
-### [ ] feat: move placed devices by dragging (FR-UDM-9)
+### [x] feat: move placed devices by dragging (FR-UDM-9)
 
 **Affected files:** `src/webview/wiring-webview.ts`, `src/webview/messages.ts`, `src/extension.ts`, `src/test/unit/extension.test.ts`
 
@@ -93,7 +93,7 @@ All ten devices in one palette, generated from the registry.
 
 ---
 
-### [ ] refactor: retire the old placement surfaces (FR-UDM-10)
+### [x] refactor: retire the old placement surfaces (FR-UDM-10)
 
 **Affected files:** `src/wiring/wiring-panel.ts`, `src/webview/wiring-webview.ts`, `src/test/unit/wiring/wiring-panel.test.ts`, `src/test/unit/wiring/pin-overlay-state.test.ts`
 
