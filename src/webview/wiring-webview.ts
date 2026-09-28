@@ -565,6 +565,12 @@ function onPinPointerDown(e: PointerEvent): void {
 }
 
 paletteCol.querySelectorAll<HTMLElement>('.device-chip').forEach(chip => {
+  // Collapsed to a rail, a chip is just a dot — name it on hover (FR-UDM-5).
+  chip.addEventListener('mousemove', e => {
+    const tip = chip.dataset['tip'];
+    if (tip && !drag && paletteCol.classList.contains('collapsed')) showTooltip(tip, e);
+  });
+  chip.addEventListener('mouseleave', hideTooltip);
   chip.addEventListener('pointerdown', e => {
     const id = chip.dataset['device'];
     if (id && REGISTRY[id]) startDrag(e, id, chip);

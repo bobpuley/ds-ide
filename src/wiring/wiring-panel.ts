@@ -79,7 +79,7 @@ function paletteChipHtml(id: string): string {
   const badge = d.attachmentKind === 'bus' || d.attachmentKind === 'connector'
     ? '<div class="badge">✓ placed — drag to move</div>'
     : '';
-  return `      <div class="device-chip" data-device="${escapeHtml(id)}" style="--accent: ${escapeHtml(d.accentColor)}" title="${label} — ${req}">`
+  return `      <div class="device-chip" data-device="${escapeHtml(id)}" style="--accent: ${escapeHtml(d.accentColor)}" data-tip="${label} — ${req}">`
     + `<span class="dot"></span><span class="chip-text"><span>${label}</span><div class="meta">${req}</div>${badge}</span>`
     + '<span class="grip">⠿</span></div>';
 }

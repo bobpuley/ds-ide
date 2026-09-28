@@ -293,8 +293,10 @@ describe('device palette (FR-UDM-5)', () => {
     expect(html).toContain(`data-device="oled" style="--accent: ${REGISTRY['oled']!.accentColor}"`);
   });
 
-  it('names each chip on hover so the collapsed rail stays identifiable', () => {
-    expect(html).toContain('title="RGB LED — 3 pins (R·G·B)"');
+  it('carries a hover tip naming the device, for the collapsed rail', () => {
+    expect(html).toContain('data-tip="RGB LED — 3 pins (R·G·B)"');
+    // The rail uses the editor's own #tooltip; a native title would double it.
+    expect(html).not.toMatch(/class="device-chip"[^>]*\stitle=/);
   });
 
   it('describes each device\'s attachment requirement', () => {
