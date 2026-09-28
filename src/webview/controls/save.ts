@@ -83,7 +83,7 @@ export function wireSaveButton(deps: SaveDeps): void {
       const buttons = editorControls.filter(c => c.kind === 'button').map(c => ({ id: c.id, label: c.label, gpioPin: c.gpioPin ?? 0, mode: c.mode || 'momentary' as ButtonMode, activeLevel: c.activeLevel || 'low' as ActiveLevel, pos: c.pos }));
       const leds    = editorControls.filter(c => c.kind === 'led').map(c => ({ id: c.id, label: c.label, gpioPin: c.gpioPin ?? 0, pos: c.pos }));
       // The legacy YAML-editor canvas (missingBlock mode) has no encoder/
-      // toggle/rgbled palette items (FR-DEV-9/7/8 are convention-only devices)
+      // toggle/rgbled cards (FR-DEV-9/7/8 are convention-only devices)
       // — carry the last-loaded values through unchanged rather than dropping
       // them, so a stray save while missingBlock can't silently wipe positions
       // saved earlier in convention mode.

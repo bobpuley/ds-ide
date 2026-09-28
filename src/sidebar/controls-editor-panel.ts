@@ -244,24 +244,13 @@ function statusPayload(msg: IpcMessage): Record<string, unknown> {
   };
 }
 
-// FR-DEV-2: one CSS rule per registry entry for both the palette item and
-// the on-canvas control card, so adding a device changes what's generated
-// here without editing this file again.
-function paletteCssRules(): string {
-  return wiredControlIds()
-    .map(id => `    .palette-item[data-kind="${id}"] { border-left: 3px solid ${REGISTRY[id]!.accentColor}; }`)
-    .join('\n');
-}
-
+// FR-DEV-2: one CSS rule per registry entry for the on-canvas control card,
+// so adding a device changes what's generated here without editing this file
+// again. (FR-UDM-2: the Controls Editor no longer has a palette — devices are
+// added in the Wiring Editor.)
 function ctrlCardCssRules(): string {
   return wiredControlIds()
     .map(id => `    .ctrl-card[data-kind="${id}"] { border-top: 3px solid ${REGISTRY[id]!.accentColor}; }`)
-    .join('\n');
-}
-
-function paletteItemsHtml(): string {
-  return wiredControlIds()
-    .map(id => `      <div class="palette-item" data-kind="${id}" draggable="true">${REGISTRY[id]!.label}</div>`)
     .join('\n');
 }
 
@@ -296,11 +285,6 @@ export function buildHtml(nonce: string, scriptUri: string): string {
     #oled-strip-canvas { image-rendering: pixelated; background: #000; width: 192px; height: 96px; }
     #oled-strip-foot { font-size: 9px; color: #6a6a6a; }
     #design-area { display: flex; flex: 1; min-height: 0; overflow: hidden; }
-    #palette { width: 140px; background: #252526; border-right: 1px solid #3c3c3c; padding: 10px 8px; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; overflow-y: auto; }
-    .palette-title { font-size: 10px; color: #6a6a6a; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
-    .palette-item { padding: 7px 10px; border-radius: 4px; border: 1px solid #555; background: #3c3c3c; color: #d4d4d4; cursor: grab; user-select: none; font-size: 11px; text-align: center; }
-    .palette-item:hover { background: #4a4a4a; }
-${paletteCssRules()}
     #canvas-area { flex: 1; position: relative; overflow: auto; background: #1e1e1e; }
     #canvas-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #3c3c3c; font-size: 13px; pointer-events: none; }
     .ctrl-card { position: absolute; min-width: 168px; background: #252526; border: 1px solid #555; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.4); }
@@ -369,12 +353,8 @@ ${ctrlCardCssRules()}
     <div id="oled-strip-foot">SSD1306 &middot; 128&times;64 &middot; &mdash;</div>
   </div>
   <div id="design-area">
-    <div id="palette">
-      <div class="palette-title">Palette</div>
-${paletteItemsHtml()}
-    </div>
     <div id="canvas-area">
-      <div id="canvas-hint">Drag a control from the palette</div>
+      <div id="canvas-hint">No controls yet &#8212; add devices in the Wiring Editor</div>
     </div>
   </div>
   <div id="sdcard-contents">

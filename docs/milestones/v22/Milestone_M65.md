@@ -31,7 +31,7 @@ rather than declared on its descriptor, so nothing else can reason about pin sui
 
 ---
 
-### [ ] refactor: remove the Controls Editor palette (FR-UDM-2)
+### [x] refactor: remove the Controls Editor palette (FR-UDM-2)
 
 The Controls Editor palette advertises all six controls but its drop handler rejects everything
 except pot/button/led, so dragging Toggle, RGB LED or Encoder silently does nothing. Placement

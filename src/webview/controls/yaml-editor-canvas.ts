@@ -31,7 +31,6 @@ export interface EditorControl {
 export interface YamlEditorCanvas {
   editorLoad(cfg: Partial<ControllerConfig>): void;
   render(): void;
-  addNewControl(kind: 'pot' | 'button' | 'led', x: number, y: number): void;
   getYamlCfg(): ControllerConfig;
   getEditorControls(): EditorControl[];
 }
@@ -47,7 +46,6 @@ export function createYamlEditorCanvas(
     errors: [],
   };
   let editorControls: EditorControl[] = [];
-  let nextCtrlIdx = 0;
 
   function nextPos(state: { ax: number; ay: number }): [number, number] {
     const p: [number, number] = [state.ax, state.ay];
@@ -116,7 +114,6 @@ export function createYamlEditorCanvas(
       for (const p of (cfg.pots || [])) editorControls.push({ kind: 'pot', id: p.id, label: p.label, adcChannel: p.adcChannel, range: p.range || [0, 1], taper: p.taper || 'linear', def: p.default ?? 0.5, gpioPin: null, mode: null, activeLevel: null, pos: p.pos || nextPos(posState) });
       for (const b of (cfg.buttons || [])) editorControls.push({ kind: 'button', id: b.id, label: b.label, adcChannel: null, range: null, taper: null, def: null, gpioPin: b.gpioPin ?? 0, mode: b.mode || 'momentary', activeLevel: b.activeLevel || 'low', pos: b.pos || nextPos(posState) });
       for (const l of (cfg.leds || [])) editorControls.push({ kind: 'led', id: l.id, label: l.label, adcChannel: null, range: null, taper: null, def: null, gpioPin: l.gpioPin ?? 0, mode: null, activeLevel: null, pos: l.pos || nextPos(posState) });
-      nextCtrlIdx = Math.max(editorControls.length, nextCtrlIdx);
       // Canvas rendering is owned by applyControlsConfig() (driven by the
       // 'controlsConfig' message's authoritative missingBlock flag), not here —
       // editorLoad()'s job is only to refresh yamlCfg/editorControls. Every
@@ -138,23 +135,6 @@ export function createYamlEditorCanvas(
       for (const ctrl of editorControls) area.appendChild(buildCard(ctrl));
     },
 
-    addNewControl(kind: 'pot' | 'button' | 'led', x: number, y: number): void {
-      nextCtrlIdx++;
-      const ctrl: EditorControl = {
-        kind, pos: [x, y],
-        id: kind + '_' + nextCtrlIdx,
-        label: (kind === 'pot' ? 'Pot' : kind === 'button' ? 'Button' : 'LED') + ' ' + nextCtrlIdx,
-        adcChannel: kind === 'pot' ? 0 : null, range: kind === 'pot' ? [0, 1] : null,
-        taper: kind === 'pot' ? 'linear' : null, def: kind === 'pot' ? 0.5 : null,
-        gpioPin: kind !== 'pot' ? 0 : null, mode: kind === 'button' ? 'momentary' : null,
-        activeLevel: kind === 'button' ? 'low' : null,
-      };
-      editorControls.push(ctrl);
-      const canvasArea = el<HTMLElement>('canvas-area');
-      canvasArea.appendChild(buildCard(ctrl));
-      const hint = document.getElementById('canvas-hint');
-      if (hint) hint.style.display = 'none';
-    },
 
     getYamlCfg(): ControllerConfig {
       return yamlCfg;
