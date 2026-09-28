@@ -3,7 +3,6 @@ import { PIN_DEFS } from '../devices/pin-table.gen';
 import type { PinDef } from '../devices/pin-table.gen';
 import { REGISTRY, wiredControlIds } from '../devices/registry';
 import type { DeviceType } from '../devices/registry';
-import type { ConventionControl } from '../controllers/controls-convention-parser';
 import type { PeripheralDisplayState } from './peripheral-state';
 import { safeJson } from '../webview/html-safe';
 
@@ -24,19 +23,9 @@ export type ViewPeripheralHandler = (peripheralId: string) => void;
 // FR-UDM-4: reveals a placed device's generated declaration in the effect source.
 export type RevealInCodeHandler = (id: string) => Promise<void>;
 
-// Expands parsed controls into one WiredPin per physical pin — a
-// 'pins'-attachment device (rgbled, encoder — FR-DEV-8/9) occupies more than
-// one, all sharing its id, so a single-pin `{pinNumber: c.pin, ...}` mapping
-// silently drops its other pins. The single shared implementation here
-// replaces three independent inline copies in extension.ts that drifted out
-// of sync (one kept using the old single-pin form after the multi-pin
-// devices landed, clobbering the Wiring Editor's display back down to one
-// highlighted pin on the very next save).
-export function expandToWiredPins(controls: ConventionControl[]): WiredPin[] {
-  return controls.flatMap(c =>
-    (c.pins ?? [c.pin]).map(p => ({ pinNumber: p, deviceType: c.kind as DeviceType, id: c.id })),
-  );
-}
+// FR-UDM-6: lives in wired-pin-state.ts (pure, browser-safe) so
+// drop-targets.ts can share it; re-exported here for existing importers.
+export { expandToWiredPins } from './wired-pin-state';
 
 // Daisy Seed pin definitions for the schematic SVG — generated from
 // resources/Daisy_Seed_Rev4_Pinout.csv, see src/devices/pin-table.gen.ts.

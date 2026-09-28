@@ -14,7 +14,7 @@ Peripherals footer are gone, and free pins are inert.
 
 ## Sprint Tasks
 
-### [ ] feat: compute drop targets as a pure function (FR-UDM-6)
+### [x] feat: compute drop targets as a pure function (FR-UDM-6a)
 
 The highlighting and the host's allocation must agree exactly, so target computation lives in
 one pure module both sides can call.
@@ -43,7 +43,7 @@ All ten devices in one palette, generated from the registry.
 
 ---
 
-### [ ] feat: drag-time board highlighting and footprint preview (FR-UDM-6)
+### [ ] feat: drag-time board highlighting and footprint preview (FR-UDM-6b)
 
 **Affected files:** `src/webview/wiring-webview.ts`, `src/wiring/wiring-panel.ts`
 
