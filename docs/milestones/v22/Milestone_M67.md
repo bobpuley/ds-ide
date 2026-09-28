@@ -15,7 +15,7 @@ looking, without any custom-coloured UI.
 
 ## Sprint Tasks
 
-### [ ] feat: pure transport state model (FR-TRN-5)
+### [x] feat: pure transport state model (FR-TRN-5)
 
 Status-bar text is written from 7 separate places in `extension.ts`, so no single component
 knows the transport state.
