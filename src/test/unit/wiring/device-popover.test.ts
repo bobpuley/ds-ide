@@ -146,3 +146,32 @@ describe('placement conflict mode (FR-UDM-8)', () => {
       .toEqual({ command: 'setPeripheralEnabled', peripheralId: 'oled', enabled: true, bus: 'I2C1', replace: ['b1', 'l1'] });
   });
 });
+
+describe('placement move mode (FR-UDM-9)', () => {
+  const to20: DropTarget = { kind: 'pin', pins: [20], conflicts: [] };
+
+  it('the action reads Add, Move or Replace', () => {
+    expect(describePlacement('pot', to20, wired).action).toBe('Add');
+    expect(describePlacement('pot', to20, wired, true).action).toBe('Move');
+    const occ: DropTarget = { kind: 'pin', pins: [16], conflicts: [{ id: 'gain', label: 'gain (Pot)', kind: 'control' }] };
+    expect(describePlacement('pot', occ, wired, true).action).toBe('Replace');
+  });
+
+  it('a moved control keeps its id, so there is no id field', () => {
+    const m = describePlacement('pot', to20, wired, true);
+    expect(m.needsId).toBe(false);
+    expect(m.defaultId).toBeNull();
+  });
+
+  it('a control move posts moveControl with its id (and any replaced occupants)', () => {
+    expect(placementMessage('pot', to20, null, 'vol')).toEqual({ command: 'moveControl', id: 'vol', pinNumber: 20 });
+    const occ: DropTarget = { kind: 'pin', pins: [16], conflicts: [{ id: 'gain', label: 'gain (Pot)', kind: 'control' }] };
+    expect(placementMessage('pot', occ, null, 'vol')).toEqual({ command: 'moveControl', id: 'vol', pinNumber: 16, replace: ['gain'] });
+  });
+
+  it('a peripheral move is an enable on the new lane', () => {
+    const i2c: DropTarget = { kind: 'lane', bus: 'I2C1', pins: [11, 12], conflicts: [] };
+    expect(describePlacement('oled', i2c, wired, true).action).toBe('Move');
+    expect(placementMessage('oled', i2c, null)).toEqual({ command: 'setPeripheralEnabled', peripheralId: 'oled', enabled: true, bus: 'I2C1' });
+  });
+});

@@ -125,6 +125,7 @@ PIN_DEFS.forEach(def => {
     g.dataset['adc']  = def.adc ? 'true' : 'false';
     g.classList.add(def.adc ? 'pin-adc' : 'pin-unassigned');
     g.addEventListener('click', onPinClick);
+    g.addEventListener('pointerdown', onPinPointerDown);
     // A bus peripheral's pin carries a live "pin · signal · owner" tooltip
     // (FR-DEV-12) — g.dataset['tip'] is set/cleared by applyPeripheralPins()
     // as peripherals are enabled/disabled, so this listener is attached once
@@ -509,6 +510,8 @@ interface DragSession {
   chip: HTMLElement | null;
   /** A moving control's id — its own pins count as free (FR-UDM-9). */
   exclude?: string;
+  /** True when a placed device is being moved rather than added (FR-UDM-9). */
+  moving: boolean;
   targets: Map<string, DropTarget>;
   hover: DropTarget | null;
   started: boolean;
@@ -527,8 +530,10 @@ function startDrag(e: PointerEvent, deviceId: string, chip: HTMLElement | null, 
   if (e.button !== 0 || drag) return;
   e.preventDefault();
   const list = computeDropTargets(deviceId, PIN_DEFS, { wiredPins, peripherals }, exclude);
+  // A placed peripheral is one-per-type, so dragging its chip again moves it.
+  const moving = exclude !== undefined || peripherals.some(p => p.id === deviceId && p.enabled);
   drag = {
-    deviceId, chip, exclude,
+    deviceId, chip, exclude, moving,
     targets: new Map(list.map(t => [targetKey(t), t])),
     hover: null, started: false, x0: e.clientX, y0: e.clientY,
   };
@@ -550,10 +555,12 @@ function onDragMove(e: PointerEvent): void {
     document.body.classList.add('drag-active');
     const d = REGISTRY[drag.deviceId];
     ghost.style.setProperty('--accent', d?.accentColor ?? '#4ec9b0');
-    ghost.querySelector('.lbl')!.textContent = d?.label ?? drag.deviceId;
+    ghost.querySelector('.lbl')!.textContent = drag.exclude ? `${drag.exclude} (${d?.label ?? drag.deviceId})` : d?.label ?? drag.deviceId;
     ghost.style.display = 'block';
     const n = drag.targets.size;
-    hintEl.textContent = `Dragging ${d?.label ?? drag.deviceId} — ${n} valid target${n === 1 ? '' : 's'}. Release off-target or press Esc to cancel.`;
+    const verb = drag.moving ? 'Moving' : 'Dragging';
+    const what = drag.exclude ?? d?.label ?? drag.deviceId;
+    hintEl.textContent = `${verb} ${what} — ${n} valid target${n === 1 ? '' : 's'}. Release off-target or press Esc to cancel.`;
     paintDrag();
   }
   ghost.style.left = (e.clientX + 14) + 'px';
@@ -613,6 +620,14 @@ document.addEventListener('click', e => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && drag) cancelDrag();
 });
+
+// FR-UDM-9: dragging a placed control off one of its pins lifts it. A plain
+// click (no movement past the threshold) still opens its device popover.
+function onPinPointerDown(e: PointerEvent): void {
+  const pin = parseInt((e.currentTarget as HTMLElement).dataset['pin'] ?? '', 10);
+  const wired = wiredPins.find(wp => wp.pinNumber === pin);
+  if (wired) startDrag(e, wired.deviceType, null, wired.id);
+}
 
 paletteCol.querySelectorAll<HTMLElement>('.device-chip').forEach(chip => {
   chip.addEventListener('pointerdown', e => {
@@ -706,7 +721,7 @@ function paintDrag(): void {
 // dropped-on bus, an id field for controls, and Add / Cancel. Cancel (or
 // clicking away) changes nothing.
 function onDrop(session: DragSession, target: DropTarget, e: PointerEvent): void {
-  openPlacementPopover(session.deviceId, target, e);
+  openPlacementPopover(session.deviceId, target, e, session.moving, session.exclude);
 }
 
 function popoverHeader(label: string, accent: string, sub: string | null): HTMLElement {
@@ -752,10 +767,14 @@ function showPopoverAt(e: MouseEvent): void {
   devicePopover.style.top  = Math.max(10, Math.min(e.clientY + 12, window.innerHeight - devicePopover.offsetHeight - 10)) + 'px';
 }
 
-function openPlacementPopover(deviceId: string, target: DropTarget, e: MouseEvent): void {
+// `moveId` is the id of a control being moved (FR-UDM-9); Cancel leaves it
+// exactly where it was, since nothing is sent until Move / Replace.
+function openPlacementPopover(
+  deviceId: string, target: DropTarget, e: MouseEvent, moving = false, moveId?: string,
+): void {
   closePopup();
   hideTooltip();
-  const m = describePlacement(deviceId, target, wiredPins);
+  const m = describePlacement(deviceId, target, wiredPins, moving);
   devicePopover.innerHTML = '';
 
   const body = document.createElement('div');
@@ -768,7 +787,7 @@ function openPlacementPopover(deviceId: string, target: DropTarget, e: MouseEven
   addBtn.id = 'dp-add';
   // FR-UDM-8: conflict mode — Replace / Cancel, naming what goes. No Relocate.
   const conflict = m.conflicts.length > 0;
-  addBtn.textContent = conflict ? 'Replace' : 'Add';
+  addBtn.textContent = m.action;
   if (conflict) {
     addBtn.classList.add('dp-danger');
     const note = document.createElement('div');
@@ -812,7 +831,7 @@ function openPlacementPopover(deviceId: string, target: DropTarget, e: MouseEven
       const msg = validateId(id, m.idPool);
       if (msg) { if (idError) idError.textContent = msg; return; }
     }
-    vscode.postMessage(placementMessage(deviceId, target, id));
+    vscode.postMessage(placementMessage(deviceId, target, id, moveId));
     hideDevicePopover();
   });
 
@@ -820,7 +839,7 @@ function openPlacementPopover(deviceId: string, target: DropTarget, e: MouseEven
   actions.className = 'dp-actions';
   actions.append(addBtn, cancelBtn);
 
-  devicePopover.append(popoverHeader(m.label, m.accentColor, null), body, actions);
+  devicePopover.append(popoverHeader(m.label, m.accentColor, moveId ?? null), body, actions);
   showPopoverAt(e);
   idInput?.focus();
   idInput?.select();

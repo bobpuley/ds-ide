@@ -102,12 +102,21 @@ export interface PlacementModel {
   conflicts: string[];
   /** Wired pins the id is validated against — replaced controls' ids are free again. */
   idPool: WiredPin[];
+  /** The confirm button: Replace in conflict mode, Move for a placed device, else Add. */
+  action: 'Add' | 'Move' | 'Replace';
 }
 
-/** What the popover shows after `deviceId` is dropped on `target`. */
-export function describePlacement(deviceId: string, target: DropTarget, wiredPins: WiredPin[]): PlacementModel {
+/**
+ * What the popover shows after `deviceId` is dropped on `target`. `moving`
+ * is true for a placed device being dragged elsewhere (FR-UDM-9): a moved
+ * control keeps its id, so it gets no id field.
+ */
+export function describePlacement(
+  deviceId: string, target: DropTarget, wiredPins: WiredPin[], moving = false,
+): PlacementModel {
   const d = REGISTRY[deviceId];
   const isControl = target.kind === 'pin';
+  const askId = isControl && !moving;
   const replaced = new Set(target.conflicts.map(c => c.id));
   const idPool = wiredPins.filter(wp => !replaced.has(wp.id));
   return {
@@ -115,10 +124,11 @@ export function describePlacement(deviceId: string, target: DropTarget, wiredPin
     accentColor: d?.accentColor ?? '#9cdcfe',
     rowKey: isControl ? (target.pins.length > 1 ? 'pins' : 'pin') : 'bus',
     rowValue: isControl ? formatPins(target.pins, d?.pinSlots) : formatBus(target.bus ?? null, target.pins),
-    needsId: isControl,
-    defaultId: isControl ? defaultId(deviceId as DeviceType, idPool) : null,
+    needsId: askId,
+    defaultId: askId ? defaultId(deviceId as DeviceType, idPool) : null,
     conflicts: target.conflicts.map(c => c.label),
     idPool,
+    action: target.conflicts.length ? 'Replace' : moving ? 'Move' : 'Add',
   };
 }
 
@@ -127,9 +137,15 @@ export function describePlacement(deviceId: string, target: DropTarget, wiredPin
  * re-derives the rest of the footprint); a peripheral is enabled on the bus
  * of the lane it was dropped on — the lane is the bus choice.
  */
-export function placementMessage(deviceId: string, target: DropTarget, id: string | null): WiringWebviewMessage {
+export function placementMessage(
+  deviceId: string, target: DropTarget, id: string | null, moveId?: string,
+): WiringWebviewMessage {
   // FR-UDM-8: Replace carries the occupant ids; the host removes them in the same edit.
   const replace = target.conflicts.length ? { replace: target.conflicts.map(c => c.id) } : {};
+  if (target.kind === 'pin' && moveId !== undefined) {
+    // FR-UDM-9: the host re-places `moveId` from the start pin, keeping its id.
+    return { command: 'moveControl', id: moveId, pinNumber: target.pins[0] ?? -1, ...replace };
+  }
   if (target.kind === 'pin') {
     return { command: 'wirePin', pinNumber: target.pins[0] ?? -1, deviceType: deviceId as DeviceType, id: id ?? '', ...replace };
   }

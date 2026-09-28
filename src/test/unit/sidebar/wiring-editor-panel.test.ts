@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
 import { WiringViewProvider } from '../../../sidebar/wiring-editor-panel';
-import type { WirePinHandler, UnwirePinHandler, SetPeripheralEnabledHandler, ViewPeripheralHandler, RevealInCodeHandler } from '../../../wiring/wiring-panel';
+import type { WirePinHandler, UnwirePinHandler, SetPeripheralEnabledHandler, ViewPeripheralHandler, RevealInCodeHandler, MoveControlHandler } from '../../../wiring/wiring-panel';
 
 function makeWebviewViewMock() {
   const onDisposeHandlers: Array<() => void> = [];
@@ -44,6 +44,7 @@ describe('WiringViewProvider', () => {
   let onSetPeripheralEnabled: ReturnType<typeof vi.fn>;
   let onViewPeripheral: ReturnType<typeof vi.fn>;
   let onRevealInCode: ReturnType<typeof vi.fn>;
+  let onMoveControl: ReturnType<typeof vi.fn>;
   let provider: WiringViewProvider;
 
   beforeEach(() => {
@@ -53,6 +54,7 @@ describe('WiringViewProvider', () => {
     onSetPeripheralEnabled = vi.fn().mockResolvedValue(undefined);
     onViewPeripheral = vi.fn();
     onRevealInCode = vi.fn().mockResolvedValue(undefined);
+    onMoveControl = vi.fn().mockResolvedValue(undefined);
     provider = new WiringViewProvider(
       { fsPath: '/ext' } as unknown as vscode.Uri,
       onWirePin as unknown as WirePinHandler,
@@ -60,6 +62,7 @@ describe('WiringViewProvider', () => {
       onSetPeripheralEnabled as unknown as SetPeripheralEnabledHandler,
       onViewPeripheral as unknown as ViewPeripheralHandler,
       onRevealInCode as unknown as RevealInCodeHandler,
+      onMoveControl as unknown as MoveControlHandler,
     );
   });
 
@@ -283,6 +286,21 @@ describe('WiringViewProvider', () => {
     await handler({ command: 'wirePin', pinNumber: 15, deviceType: 'button', id: 'b1', replace: ['a b'] });
     await handler({ command: 'wirePin', pinNumber: 15, deviceType: 'button', id: 'b1', replace: Array(17).fill('x') });
     expect(onWirePin).not.toHaveBeenCalled();
+  });
+
+  it('calls onMoveControl for a valid moveControl and drops a malformed one (FR-UDM-9)', async () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
+    await handler({ command: 'moveControl', id: 'vol', pinNumber: 20 });
+    expect(onMoveControl).toHaveBeenCalledWith('vol', 20, undefined);
+    await handler({ command: 'moveControl', id: 'vol', pinNumber: 16, replace: ['gain'] });
+    expect(onMoveControl).toHaveBeenCalledWith('vol', 16, ['gain']);
+    onMoveControl.mockClear();
+    await handler({ command: 'moveControl', id: 'vol', pinNumber: 99 });
+    await handler({ command: 'moveControl', id: 'a b', pinNumber: 3 });
+    await handler({ command: 'moveControl', id: 'vol', pinNumber: 3, replace: [1] });
+    expect(onMoveControl).not.toHaveBeenCalled();
   });
 
   it('drops setPeripheralEnabled with a bus outside the peripheral\'s candidates (FR-UDM-7)', async () => {

@@ -106,6 +106,9 @@ export type WiringWebviewMessage =
   // host removes them and adds the new device in one WorkspaceEdit.
   | { command: 'wirePin'; pinNumber: number; deviceType: DeviceType; id: string; replace?: string[] }
   | { command: 'unwirePin'; pinNumber: number; id: string }
+  // FR-UDM-9: re-place a wired control from `pinNumber`, keeping its id;
+  // `replace` as for wirePin (FR-UDM-8).
+  | { command: 'moveControl'; id: string; pinNumber: number; replace?: string[] }
   // FR-UDM-7: `bus` is the lane a drop landed on; omitted, the host uses
   // the peripheral's current/default bus.
   | { command: 'setPeripheralEnabled'; peripheralId: string; enabled: boolean; bus?: string; replace?: string[] }

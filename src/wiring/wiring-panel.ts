@@ -26,6 +26,8 @@ export type SetPeripheralEnabledHandler = (
 ) => Promise<void>;
 // FR-DEV-15: opens or reveals a peripheral's live view (today: only oled has one).
 export type ViewPeripheralHandler = (peripheralId: string) => void;
+// FR-UDM-9: re-places a wired control from `pinNumber`, keeping its id.
+export type MoveControlHandler = (id: string, pinNumber: number, replace?: string[]) => Promise<void>;
 // FR-UDM-4: reveals a placed device's generated declaration in the effect source.
 export type RevealInCodeHandler = (id: string) => Promise<void>;
 

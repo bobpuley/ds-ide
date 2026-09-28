@@ -40,7 +40,7 @@ the result. If the host rejects anyway (e.g. source changed underneath), it keep
 | `viewPeripheral` | unchanged, now sent by the popover's *Show panel* (already reveal-or-open) | M65 |
 | `setPeripheralEnabled` | gains optional `bus?: string` → passed to `insertPeripheralIntoSource` / `insertPeripheralInitIntoSource` (already `bus`-aware since FR-DEV-14) | M66 |
 | `wirePin` | gains optional `replace?: string[]`: occupant ids removed **in the same `WorkspaceEdit`** as the add (FR-UDM-8, atomic, single undo step) | M66 |
-| `{ command: 'moveControl'; id: string; pinNumber: number }` | **new**: host re-allocates from `pinNumber` excluding the control's own pins, rewrites its pins keeping its id, in one edit | M66 |
+| `{ command: 'moveControl'; id: string; pinNumber: number; replace?: string[] }` | **new**: host re-allocates from `pinNumber` excluding the control's own pins, rewrites its pins keeping its id, in one edit; optional `replace` removes occupants of the new pins in the same edit, as for `wirePin` (decision 2026-09-28) | M66 |
 | `setPeripheralEnabled` with `replace?: string[]` | same atomic replace for peripheral drops | M66 |
 
 Every new or extended message goes through the existing host-side validation (`hasKnownCommand`

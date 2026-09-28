@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
 import {
   WiredPin, WirePinHandler, UnwirePinHandler, SetPeripheralEnabledHandler, ViewPeripheralHandler,
-  RevealInCodeHandler, PeripheralDisplayState, buildHtml,
+  RevealInCodeHandler, MoveControlHandler, PeripheralDisplayState, buildHtml,
 } from '../wiring/wiring-panel';
 import { isDeviceType } from '../devices/registry';
 import { peripheralIds } from '../wiring/peripheral-state';
@@ -14,7 +14,7 @@ import { hasKnownCommand, assertNever } from '../webview/message-guard';
 // switch's `default: assertNever(...)` is the actual drift-detector; this
 // Set only drives the runtime hasKnownCommand narrow.
 const WIRING_WEBVIEW_COMMANDS = new Set<WiringWebviewMessage['command']>([
-  'wirePin', 'unwirePin', 'setPeripheralEnabled', 'viewPeripheral', 'revealInCode',
+  'wirePin', 'unwirePin', 'moveControl', 'setPeripheralEnabled', 'viewPeripheral', 'revealInCode',
 ]);
 
 const ID_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -39,6 +39,7 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
     private readonly onSetPeripheralEnabled: SetPeripheralEnabledHandler,
     private readonly onViewPeripheral: ViewPeripheralHandler,
     private readonly onRevealInCode: RevealInCodeHandler,
+    private readonly onMoveControl: MoveControlHandler,
   ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -97,6 +98,21 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
             await this.onUnwirePin(pinNumber, id);
           } catch (err) {
             void vscode.window.showErrorMessage(`ds-ide: could not unwire pin: ${String(err)}`);
+          }
+          break;
+        }
+        case 'moveControl': {
+          const { id, pinNumber } = msg;
+          if (
+            !Number.isFinite(pinNumber) || !Number.isInteger(pinNumber) ||
+            pinNumber < 0 || pinNumber > 31 ||
+            typeof id !== 'string' || !ID_RE.test(id) ||
+            !isReplaceList(msg.replace)
+          ) return;
+          try {
+            await this.onMoveControl(id, pinNumber, msg.replace);
+          } catch (err) {
+            void vscode.window.showErrorMessage(`ds-ide: could not move ${id}: ${String(err)}`);
           }
           break;
         }

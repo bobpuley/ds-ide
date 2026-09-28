@@ -81,7 +81,7 @@ All ten devices in one palette, generated from the registry.
 
 ---
 
-### [ ] feat: move placed devices by dragging (FR-UDM-9)
+### [x] feat: move placed devices by dragging (FR-UDM-9)
 
 **Affected files:** `src/webview/wiring-webview.ts`, `src/webview/messages.ts`, `src/extension.ts`, `src/test/unit/extension.test.ts`
 
