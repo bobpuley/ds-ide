@@ -74,8 +74,8 @@ export class TransportController implements vscode.Disposable {
 
 export interface TransportEventSources {
   emulator: {
-    on(event: 'exit', listener: (exit: EmulatorExit) => void): unknown;
-    off(event: 'exit', listener: (exit: EmulatorExit) => void): unknown;
+    on(event: 'exit' | 'disconnect', listener: (exit: EmulatorExit) => void): unknown;
+    off(event: 'exit' | 'disconnect', listener: (exit: EmulatorExit) => void): unknown;
   };
   /** A saved file that the next build would pick up. */
   isProjectSource(uri: vscode.Uri): boolean;
@@ -102,7 +102,12 @@ export function wireTransportEvents(
   const onExit = (exit: EmulatorExit): void => {
     controller.dispatch({ type: exit.crashed ? 'emulatorCrashed' : 'emulatorExited' });
   };
+  // FR-TRN-6: the manager only emits 'disconnect' for a connection it didn't
+  // close itself — the emulator is gone as far as the user is concerned,
+  // whether or not its process has exited yet.
+  const onDisconnect = (): void => controller.dispatch({ type: 'emulatorCrashed' });
   sources.emulator.on('exit', onExit);
+  sources.emulator.on('disconnect', onDisconnect);
 
   return [
     vscode.debug.onDidStartDebugSession((session) => {
@@ -135,8 +140,37 @@ export function wireTransportEvents(
     vscode.workspace.onDidSaveTextDocument((doc) => {
       if (sources.isProjectSource(doc.uri)) controller.dispatch({ type: 'sourceSaved' });
     }),
-    { dispose: () => { sources.emulator.off('exit', onExit); } },
+    { dispose: () => {
+      sources.emulator.off('exit', onExit);
+      sources.emulator.off('disconnect', onDisconnect);
+    } },
   ];
+}
+
+export function buildFailedMessage(problems: number | undefined): string {
+  if (!problems) return 'Build failed. Nothing was deployed.';
+  return `Build failed with ${problems} problem${problems === 1 ? '' : 's'}. Nothing was deployed.`;
+}
+
+// FR-TRN-6: failures surface where the user looks — once, on the transition
+// into buildFailed / crashed, whichever path (run, debug, Restart) led there.
+// The errors themselves reach Problems through the existing diagnostics path.
+export function wireTransportNotifications(controller: TransportController): vscode.Disposable {
+  let previous = controller.state.phase;
+  return controller.onDidChange((state) => {
+    const entered = state.phase !== previous ? state.phase : undefined;
+    previous = state.phase;
+    if (entered === 'buildFailed') {
+      void vscode.window.showErrorMessage(buildFailedMessage(state.problems), 'Show Problems').then((choice) => {
+        if (choice === 'Show Problems') void vscode.commands.executeCommand('workbench.actions.view.problems');
+      });
+    } else if (entered === 'crashed') {
+      void vscode.window.showErrorMessage('ds-ide: the emulator crashed.', 'Show Output', 'Debug').then((choice) => {
+        if (choice === 'Show Output') void vscode.commands.executeCommand('ds-ide.showEmulatorOutput');
+        else if (choice === 'Debug') void vscode.commands.executeCommand('ds-ide.debugEffect');
+      });
+    }
+  });
 }
 
 const BUILD_SOURCE_EXTENSIONS: ReadonlySet<string> = new Set(['.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp']);

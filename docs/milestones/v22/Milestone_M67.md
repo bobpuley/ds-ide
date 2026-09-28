@@ -101,7 +101,7 @@ session: no toolbar, no Stop.
 
 ---
 
-### [ ] feat: surface build failures and crashes (FR-TRN-6)
+### [x] feat: surface build failures and crashes (FR-TRN-6)
 
 **Affected files:** `src/transport/transport-controller.ts`, `src/debug/run-config-provider.ts`, `src/test/unit/transport/transport-controller.test.ts`
 

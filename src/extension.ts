@@ -46,7 +46,9 @@ import { getString } from './ipc/narrow';
 // command (build.ts) rather than duplicated, so the ds-ide.effectSource
 // setting can't drift out of sync between call sites.
 import { resolveConfiguredEffectSource as findEffectSource } from './commands/find-effect-source';
-import { TransportController, wireTransportEvents, isBuildSource, countErrors } from './transport/transport-controller';
+import {
+  TransportController, wireTransportEvents, wireTransportNotifications, isBuildSource, countErrors,
+} from './transport/transport-controller';
 import { isTransportBusy, type TransportMode } from './transport/transport-state';
 import { TransportStatusItems } from './transport/status-items';
 import { DaisyViewProvider, DAISY_VIEW_ID, formatAudioDetail, withViewProgress } from './views/daisy-view';
@@ -426,6 +428,7 @@ class DeployCoordinator {
       this.transport.dispatch({ type: 'buildStarted', mode });
       const ok = await buildForEmulator(
         this.manager, this.extensionPath, this.diagnostics, this.buildChannel, this.workspaceState, token,
+        { genericFailureToast: false },
       );
       if (!ok) {
         if (!token.isCancellationRequested) {
@@ -519,10 +522,10 @@ function wireManagerEvents(
     }
   });
 
+  // FR-TRN-6: the transport state turns this into its one crash notification
+  // (Show Output / Debug); here it is only logged.
   manager.on('disconnect', () => {
-    void vscode.window.showErrorMessage(
-      'ds-ide: emulator disconnected unexpectedly — redeploy to restart.',
-    );
+    emulatorChannel.appendLine('ds-ide: emulator disconnected unexpectedly.');
   });
 
   // FR-EXT-6: Node's EventEmitter throws in-process on an unhandled 'error'
@@ -1275,6 +1278,7 @@ export function activate(context: vscode.ExtensionContext): void {
     formatAudioDetail(session.audioSourceState.sampleRate, session.audioSourceState.bufferSize));
   const daisyTreeView = vscode.window.createTreeView(DAISY_VIEW_ID, { treeDataProvider: daisyView });
   const statusItems = new TransportStatusItems(transport, FIDELITY_CAVEAT);
+  const transportNotifications = wireTransportNotifications(transport);
 
   // Stop for a run session and for the view's Stop without a session: ends
   // the emulator process, and resets the panels that show live audio.
@@ -1388,6 +1392,7 @@ export function activate(context: vscode.ExtensionContext): void {
     hardwareChannel,
     flashChannel,
     statusItems,
+    transportNotifications,
     vscode.window.registerWebviewViewProvider('ds-ide.controlsEditor', controlsProvider, {
       webviewOptions: { retainContextWhenHidden: true },
     }),

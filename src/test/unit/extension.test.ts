@@ -176,14 +176,17 @@ describe('extension', () => {
     expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
   });
 
-  it('shows an error notification and does not throw when emulator disconnects', () => {
+  it('an emulator disconnect during a run shows exactly one crash notification, and does not throw (FR-TRN-6)', () => {
     const ctx = makeContext();
     activate(ctx);
+    for (const c of (vscode.debug.onDidStartDebugSession as ReturnType<typeof vi.fn>).mock.calls) {
+      (c[0] as (s: unknown) => void)({ type: 'ds-ide', configuration: { noDebug: true } });
+    }
     const mgr = managerInstances[0]!;
     expect(() => mgr.emit('disconnect')).not.toThrow();
-    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-      expect.stringContaining('emulator disconnected'),
-    );
+    mgr.emit('exit', { pid: 42, crashed: true });
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledOnce();
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('crashed'), 'Show Output', 'Debug');
   });
 
   // FR-EXT-6 / FR-EXT-39: Node's EventEmitter throws in-process on an
@@ -2228,6 +2231,27 @@ describe('deploy sequencing via DeployCoordinator (FR-IPC-7)', () => {
     const phases = (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mock.calls
       .filter((c) => c[0] === 'setContext' && c[1] === 'ds-ide.transportPhase').map((c) => c[2]);
     expect(phases).toEqual(['building', 'deploying', 'running']);
+  });
+
+  it('a failed build on the transport path shows the one FR-TRN-6 notification, not the generic build toast', async () => {
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    await flush();
+    const mgr = managerInstances[0]! as unknown as ManagerSpies;
+    mgr.build.mockRejectedValueOnce(new Error('make failed'));
+    await getCommand('ds-ide.buildAndDeploy')!();
+    const messages = (vscode.window.showErrorMessage as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    expect(messages).toEqual(['Build failed. Nothing was deployed.']);
+  });
+
+  it('the granular ds-ide.build command keeps its own build-failed toast', async () => {
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    await flush();
+    const mgr = managerInstances[0]! as unknown as ManagerSpies;
+    mgr.build.mockRejectedValueOnce(new Error('make failed'));
+    await getCommand('ds-ide.build')!();
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('build failed — make failed'));
   });
 
   it('ds-ide.buildAndDeploy does not deploy when the build step fails', async () => {

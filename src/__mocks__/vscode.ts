@@ -11,7 +11,7 @@ const commands = {
 
 const window = {
   showInformationMessage: vi.fn(),
-  showErrorMessage: vi.fn(),
+  showErrorMessage: vi.fn(async (..._args: unknown[]): Promise<string | undefined> => undefined),
   showWarningMessage: vi.fn(),
   showTextDocument: vi.fn(async () => ({ selection: undefined as unknown, revealRange: vi.fn() })),
   createOutputChannel: vi.fn(() => ({

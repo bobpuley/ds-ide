@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'events';
 import * as vscode from 'vscode';
 import {
-  TransportController, wireTransportEvents, isBuildSource, countErrors, TRANSPORT_PHASE_CONTEXT,
+  TransportController, wireTransportEvents, wireTransportNotifications, isBuildSource, countErrors, TRANSPORT_PHASE_CONTEXT,
 } from '../../../transport/transport-controller';
 
 function session(type: string, configuration: Record<string, unknown> = {}, parentSession?: unknown) {
@@ -205,5 +205,83 @@ describe('countErrors()', () => {
       forEach: (fn: (uri: unknown, diags: Array<{ severity: number }>) => void) => entries.forEach(([u, d]) => fn(u, d)),
     } as unknown as vscode.DiagnosticCollection;
     expect(countErrors(collection)).toBe(2);
+  });
+});
+
+describe('wireTransportNotifications() (FR-TRN-6)', () => {
+  const flush = () => new Promise<void>((r) => setTimeout(r, 0));
+  let c: TransportController;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    c = new TransportController();
+    wireTransportNotifications(c);
+  });
+
+  it('a failed build: "Build failed with N problems. Nothing was deployed." with Show Problems', async () => {
+    (vscode.window.showErrorMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce('Show Problems');
+    c.dispatch({ type: 'buildStarted', mode: 'run' });
+    c.dispatch({ type: 'deployFailed', problems: 3 });
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      'Build failed with 3 problems. Nothing was deployed.', 'Show Problems');
+    await flush();
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('workbench.actions.view.problems');
+  });
+
+  it('singular for one problem, and no count when the build left no parsed problems', () => {
+    c.dispatch({ type: 'buildStarted', mode: 'debug' });
+    c.dispatch({ type: 'deployFailed', problems: 1 });
+    expect(vscode.window.showErrorMessage).toHaveBeenLastCalledWith(
+      'Build failed with 1 problem. Nothing was deployed.', 'Show Problems');
+    c.dispatch({ type: 'buildStarted', mode: 'run' });
+    c.dispatch({ type: 'deployFailed', problems: 0 });
+    expect(vscode.window.showErrorMessage).toHaveBeenLastCalledWith(
+      'Build failed. Nothing was deployed.', 'Show Problems');
+  });
+
+  it('an emulator crash: error notification with Show Output and Debug', async () => {
+    (vscode.window.showErrorMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce('Show Output');
+    c.dispatch({ type: 'sessionStarted', mode: 'run' });
+    c.dispatch({ type: 'emulatorCrashed' });
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      expect.stringContaining('crashed'), 'Show Output', 'Debug');
+    await flush();
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('ds-ide.showEmulatorOutput');
+  });
+
+  it('Debug on the crash notification starts a debug run', async () => {
+    (vscode.window.showErrorMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce('Debug');
+    c.dispatch({ type: 'sessionStarted', mode: 'run' });
+    c.dispatch({ type: 'emulatorCrashed' });
+    await flush();
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('ds-ide.debugEffect');
+  });
+
+  it('notifies once per transition, not on later changes that keep the phase', () => {
+    c.dispatch({ type: 'sessionStarted', mode: 'run' });
+    c.dispatch({ type: 'emulatorCrashed' });
+    c.dispatch({ type: 'boardNotDetected' });
+    c.dispatch({ type: 'emulatorCrashed' });
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledOnce();
+  });
+
+  it('a normal stop or exit shows nothing', () => {
+    c.dispatch({ type: 'sessionStarted', mode: 'run' });
+    c.dispatch({ type: 'emulatorExited' });
+    c.dispatch({ type: 'buildStarted', mode: 'run' });
+    c.dispatch({ type: 'deployAborted' });
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('wireTransportEvents() — IPC disconnect (FR-TRN-6)', () => {
+  it('an unexpected IPC disconnect of a live emulator counts as a crash', () => {
+    vi.clearAllMocks();
+    const c = new TransportController();
+    const emulator = new EventEmitter();
+    wireTransportEvents(c, { emulator, isProjectSource: () => false });
+    c.dispatch({ type: 'sessionStarted', mode: 'run' });
+    emulator.emit('disconnect');
+    expect(c.state.phase).toBe('crashed');
   });
 });
