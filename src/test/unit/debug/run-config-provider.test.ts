@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as vscode from 'vscode';
-import { DaisyRunConfigurationProvider, DsIdeDebugAdapterDescriptorFactory } from '../../../debug/run-config-provider';
+import {
+  DaisyRunConfigurationProvider, DsIdeDebugAdapterDescriptorFactory, LAUNCH_ID_KEY,
+} from '../../../debug/run-config-provider';
 import { RunSessionAdapter, type RunSessionHost } from '../../../debug/run-session-adapter';
 
 const BASE_CONFIG: vscode.DebugConfiguration = {
@@ -22,6 +24,8 @@ function folder(fsPath: string, name: string): vscode.WorkspaceFolder {
   return { uri: { fsPath }, name, index: 0 } as unknown as vscode.WorkspaceFolder;
 }
 
+const PARENT = { id: 'parent-session', configuration: BASE_CONFIG } as unknown as vscode.DebugSession;
+
 describe('DaisyRunConfigurationProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -33,7 +37,7 @@ describe('DaisyRunConfigurationProvider', () => {
 
   describe('provideDebugConfigurations()', () => {
     it('returns one ds-ide launch configuration', () => {
-      const provider = new DaisyRunConfigurationProvider(vi.fn(), vi.fn(), makeWorkspaceState());
+      const provider = new DaisyRunConfigurationProvider(vi.fn(), makeWorkspaceState());
       const configs = provider.provideDebugConfigurations();
       expect(configs).toHaveLength(1);
       expect(configs[0]).toMatchObject({
@@ -45,110 +49,56 @@ describe('DaisyRunConfigurationProvider', () => {
   });
 
   describe('resolveDebugConfiguration()', () => {
-    it('F5: calls buildAndDeploy, starts a daisy-debug attach session, returns undefined', async () => {
+    it('F5: builds + deploys, returns the config so the live ds-ide session starts (FR-TRN-2)', async () => {
       const buildAndDeploy = vi.fn(() => Promise.resolve(true));
-      const getEmulatorPid = vi.fn(() => 1234);
-      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid, makeWorkspaceState());
+      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, makeWorkspaceState());
 
       const result = await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG });
 
       expect(buildAndDeploy).toHaveBeenCalledOnce();
-      const call = (vscode.debug.startDebugging as ReturnType<typeof vi.fn>).mock.calls[0]!;
-      expect(call[1]).toMatchObject({ type: 'daisy-debug', request: 'attach', pid: 1234 });
-      expect(result).toBeUndefined();
+      expect(result).toMatchObject(BASE_CONFIG);
+      // attaching is the session adapter's job now, not the resolver's
+      expect(vscode.debug.startDebugging).not.toHaveBeenCalled();
     });
 
-    it('starts the debug session against the persisted active folder in a multi-root workspace (FR-UX-6)', async () => {
-      const a = folder('/a', 'a');
-      const b = folder('/b', 'b');
-      (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [a, b];
-      const workspaceState = makeWorkspaceState({ 'ds-ide.activeFolder': '/b' });
+    it('Ctrl+F5 (noDebug=true): builds + deploys, returns the config so a live session starts (FR-TRN-1)', async () => {
       const buildAndDeploy = vi.fn(() => Promise.resolve(true));
-      const getEmulatorPid = vi.fn(() => 1234);
-      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid, workspaceState);
+      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, makeWorkspaceState());
 
-      await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG });
-
-      const call = (vscode.debug.startDebugging as ReturnType<typeof vi.fn>).mock.calls[0]!;
-      expect(call[0]).toBe(b);
-    });
-
-    it('Ctrl+F5 (noDebug=true): calls buildAndDeploy, skips startDebugging, returns the config so a live session starts (FR-TRN-1)', async () => {
-      const buildAndDeploy = vi.fn(() => Promise.resolve(true));
-      const getEmulatorPid = vi.fn(() => 1234);
-      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid, makeWorkspaceState());
-
-      const result = await provider.resolveDebugConfiguration(undefined, {
-        ...BASE_CONFIG,
-        noDebug: true,
-      });
+      const result = await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG, noDebug: true });
 
       expect(buildAndDeploy).toHaveBeenCalledOnce();
       expect(vscode.debug.startDebugging).not.toHaveBeenCalled();
       expect(result).toMatchObject({ ...BASE_CONFIG, noDebug: true });
     });
 
-    it('Ctrl+F5: returns undefined (no session) when build+deploy fails', async () => {
-      const provider = new DaisyRunConfigurationProvider(vi.fn(() => Promise.resolve(false)), vi.fn(), makeWorkspaceState());
-      const result = await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG, noDebug: true });
+    it.each([[{}], [{ noDebug: true }]])('returns undefined (no session) when build+deploy fails %j', async (extra) => {
+      const provider = new DaisyRunConfigurationProvider(vi.fn(() => Promise.resolve(false)), makeWorkspaceState());
+      const result = await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG, ...extra });
       expect(result).toBeUndefined();
     });
 
-    it('aborts and returns undefined when build+deploy fails', async () => {
-      const buildAndDeploy = vi.fn(() => Promise.resolve(false));
-      const getEmulatorPid = vi.fn(() => 1234);
-      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid, makeWorkspaceState());
+    it('stamps each resolved config with a launch id that can be consumed exactly once (FR-TRN-2)', async () => {
+      const provider = new DaisyRunConfigurationProvider(vi.fn(() => Promise.resolve(true)), makeWorkspaceState());
 
-      const result = await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG });
+      const first = (await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG }))!;
+      const second = (await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG }))!;
 
-      expect(result).toBeUndefined();
-      expect(getEmulatorPid).not.toHaveBeenCalled();
-      expect(vscode.debug.startDebugging).not.toHaveBeenCalled();
+      expect(first[LAUNCH_ID_KEY]).toEqual(expect.any(String));
+      expect(second[LAUNCH_ID_KEY]).not.toBe(first[LAUNCH_ID_KEY]);
+      expect(provider.consumeLaunch(first)).toBe(true);
+      // VS Code's Restart relaunches with the same resolved config → no longer fresh
+      expect(provider.consumeLaunch(first)).toBe(false);
+      expect(provider.consumeLaunch(second)).toBe(true);
     });
 
-    it('shows an error and returns undefined when emulator PID is unavailable', async () => {
-      const buildAndDeploy = vi.fn(() => Promise.resolve(true));
-      const getEmulatorPid = vi.fn(() => undefined);
-      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid, makeWorkspaceState());
-
-      const result = await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG });
-
-      expect(result).toBeUndefined();
-      expect(vscode.debug.startDebugging).not.toHaveBeenCalled();
-      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-        expect.stringContaining('PID'),
-      );
-    });
-
-    it('shows an error when startDebugging returns false', async () => {
-      (vscode.debug.startDebugging as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
-      const buildAndDeploy = vi.fn(() => Promise.resolve(true));
-      const getEmulatorPid = vi.fn(() => 99);
-      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid, makeWorkspaceState());
-
-      const result = await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG });
-
-      expect(result).toBeUndefined();
-      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-        expect.stringContaining('failed to start debug session'),
-      );
-    });
-
-    it('does not query PID or call startDebugging for Ctrl+F5', async () => {
-      const buildAndDeploy = vi.fn(() => Promise.resolve(true));
-      const getEmulatorPid = vi.fn(() => 99);
-      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid, makeWorkspaceState());
-
-      await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG, noDebug: true });
-
-      expect(getEmulatorPid).not.toHaveBeenCalled();
-      expect(vscode.debug.startDebugging).not.toHaveBeenCalled();
+    it('a config with no launch id is never fresh', () => {
+      const provider = new DaisyRunConfigurationProvider(vi.fn(), makeWorkspaceState());
+      expect(provider.consumeLaunch({ ...BASE_CONFIG })).toBe(false);
     });
 
     it('reports build+deploy progress via withProgress instead of leaving F5 silent (FR-QA-EXT-9)', async () => {
-      const buildAndDeploy = vi.fn(() => Promise.resolve(true));
-      const getEmulatorPid = vi.fn(() => 1234);
-      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid, makeWorkspaceState());
+      const provider = new DaisyRunConfigurationProvider(vi.fn(() => Promise.resolve(true)), makeWorkspaceState());
 
       await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG });
 
@@ -160,8 +110,7 @@ describe('DaisyRunConfigurationProvider', () => {
 
     it('marks the progress notification cancellable and passes the token to onBuildAndDeploy (FR-EXT-16)', async () => {
       const buildAndDeploy = vi.fn(() => Promise.resolve(true));
-      const getEmulatorPid = vi.fn(() => 1234);
-      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, getEmulatorPid, makeWorkspaceState());
+      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, makeWorkspaceState());
 
       await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG });
 
@@ -172,6 +121,69 @@ describe('DaisyRunConfigurationProvider', () => {
       );
     });
   });
+
+  describe('buildAndDeployWithProgress() (FR-TRN-2 relaunch)', () => {
+    it('cancelling the caller token cancels the build+deploy token', async () => {
+      const outer = new vscode.CancellationTokenSource();
+      let cancelledDuringBuild = false;
+      const provider = new DaisyRunConfigurationProvider(
+        vi.fn((token: vscode.CancellationToken) => {
+          outer.cancel();
+          cancelledDuringBuild = token.isCancellationRequested;
+          return Promise.resolve(false);
+        }),
+        makeWorkspaceState(),
+      );
+
+      await provider.buildAndDeployWithProgress(outer.token);
+
+      expect(cancelledDuringBuild).toBe(true);
+    });
+
+    it('an already-cancelled caller token skips the build entirely', async () => {
+      const buildAndDeploy = vi.fn(() => Promise.resolve(true));
+      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, makeWorkspaceState());
+      const outer = new vscode.CancellationTokenSource();
+      outer.cancel();
+
+      expect(await provider.buildAndDeployWithProgress(outer.token)).toBe(false);
+      expect(buildAndDeploy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('attachDebugger()', () => {
+    it('starts a daisy-debug attach session as a child whose lifecycle the ds-ide session manages', async () => {
+      const provider = new DaisyRunConfigurationProvider(vi.fn(), makeWorkspaceState());
+
+      expect(await provider.attachDebugger(PARENT, 1234)).toBe(true);
+
+      const call = (vscode.debug.startDebugging as ReturnType<typeof vi.fn>).mock.calls[0]!;
+      expect(call[1]).toMatchObject({ type: 'daisy-debug', request: 'attach', pid: 1234 });
+      expect(call[2]).toMatchObject({ parentSession: PARENT, lifecycleManagedByParent: true });
+    });
+
+    it('starts the debug session against the persisted active folder in a multi-root workspace (FR-UX-6)', async () => {
+      const a = folder('/a', 'a');
+      const b = folder('/b', 'b');
+      (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [a, b];
+      const provider = new DaisyRunConfigurationProvider(vi.fn(), makeWorkspaceState({ 'ds-ide.activeFolder': '/b' }));
+
+      await provider.attachDebugger(PARENT, 1234);
+
+      const call = (vscode.debug.startDebugging as ReturnType<typeof vi.fn>).mock.calls[0]!;
+      expect(call[0]).toBe(b);
+    });
+
+    it('shows an error and reports failure when startDebugging returns false', async () => {
+      (vscode.debug.startDebugging as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
+      const provider = new DaisyRunConfigurationProvider(vi.fn(), makeWorkspaceState());
+
+      expect(await provider.attachDebugger(PARENT, 99)).toBe(false);
+      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+        expect.stringContaining('failed to start debug session'),
+      );
+    });
+  });
 });
 
 describe('DsIdeDebugAdapterDescriptorFactory', () => {
@@ -179,21 +191,20 @@ describe('DsIdeDebugAdapterDescriptorFactory', () => {
     currentEmulatorPid: () => 1,
     stopEmulator: vi.fn(),
     onEmulatorExit: () => ({ dispose: vi.fn() }),
+    consumeLaunch: () => true,
+    rebuildAndDeploy: async () => true,
+    attachDebugger: async () => true,
   };
   const session = (configuration: Record<string, unknown>) =>
     ({ configuration: { ...BASE_CONFIG, ...configuration } }) as unknown as vscode.DebugSession;
 
-  it('gives a noDebug session the live RunSessionAdapter (FR-TRN-1)', () => {
-    const factory = new DsIdeDebugAdapterDescriptorFactory(host);
-    const result = factory.createDebugAdapterDescriptor(session({ noDebug: true }));
+  it.each([[{ noDebug: true }], [{}]])('gives every ds-ide session (%j) the live RunSessionAdapter, built for that session', (extra) => {
+    const makeHost = vi.fn(() => host);
+    const factory = new DsIdeDebugAdapterDescriptorFactory(makeHost);
+    const s = session(extra);
+    const result = factory.createDebugAdapterDescriptor(s);
     expect(result).toBeInstanceOf(vscode.DebugAdapterInlineImplementation);
     expect((result as unknown as { implementation: unknown }).implementation).toBeInstanceOf(RunSessionAdapter);
-  });
-
-  it('keeps the terminating safety-net adapter for the debug wrapper', () => {
-    const factory = new DsIdeDebugAdapterDescriptorFactory(host);
-    const result = factory.createDebugAdapterDescriptor(session({}));
-    expect(result).toBeInstanceOf(vscode.DebugAdapterInlineImplementation);
-    expect((result as unknown as { implementation: unknown }).implementation).not.toBeInstanceOf(RunSessionAdapter);
+    expect(makeHost).toHaveBeenCalledWith(s);
   });
 });

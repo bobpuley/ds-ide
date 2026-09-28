@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'events';
 import { RunSessionAdapter, type RunSessionHost } from '../../../debug/run-session-adapter';
 import type { EmulatorExit } from '../../../emulator/manager';
+import type * as vscode from 'vscode';
 
 type Dap = { type: string; seq: number; command?: string; event?: string; request_seq?: number; success?: boolean; body?: Record<string, unknown> };
 
@@ -20,6 +21,9 @@ function makeHost(pid: number | undefined = 4242) {
       exits.on('exit', listener);
       return { dispose: () => exits.off('exit', listener) };
     }),
+    consumeLaunch: vi.fn((_config: Record<string, unknown>): boolean => true),
+    rebuildAndDeploy: vi.fn(async (_token: vscode.CancellationToken): Promise<boolean> => { current = 7777; return true; }),
+    attachDebugger: vi.fn(async (_pid: number): Promise<boolean> => true),
   } satisfies RunSessionHost;
   return {
     host,
@@ -166,5 +170,104 @@ describe('RunSessionAdapter (FR-TRN-1)', () => {
     adapter.handleMessage({ type: 'event', event: 'x', seq: 1 } as never);
     await flush();
     expect(io.sent).toHaveLength(0);
+  });
+});
+
+describe('RunSessionAdapter — Restart (FR-TRN-2)', () => {
+  it('a fresh launch (config just resolved) does not rebuild', async () => {
+    const h = makeHost();
+    const io = start(new RunSessionAdapter(h.host));
+    io.request('launch', { noDebug: true, __dsIdeLaunchId: 'a' });
+    await flush();
+    expect(h.host.consumeLaunch).toHaveBeenCalledWith(expect.objectContaining({ __dsIdeLaunchId: 'a' }));
+    expect(h.host.rebuildAndDeploy).not.toHaveBeenCalled();
+  });
+
+  it('a relaunch (config already used — VS Code Restart) rebuilds + redeploys, then binds to the new emulator', async () => {
+    const h = makeHost();
+    h.host.consumeLaunch.mockReturnValue(false);
+    const adapter = new RunSessionAdapter(h.host);
+    const io = start(adapter);
+    io.request('launch', { noDebug: true, __dsIdeLaunchId: 'a' });
+    await flush();
+    expect(h.host.rebuildAndDeploy).toHaveBeenCalledOnce();
+    expect(response(io.sent, 'launch')!.success).toBe(true);
+    expect(events(io.sent, 'terminated')).toHaveLength(0);
+
+    // bound to the redeployed emulator (7777), so a crash of it ends the session
+    h.exit({ pid: 7777, crashed: true });
+    await flush();
+    expect(events(io.sent, 'terminated')).toHaveLength(1);
+  });
+
+  it('a build failure during Restart ends the session without binding', async () => {
+    const h = makeHost(undefined);
+    h.host.consumeLaunch.mockReturnValue(false);
+    h.host.rebuildAndDeploy.mockResolvedValue(false);
+    const io = start(new RunSessionAdapter(h.host));
+    io.request('launch', { noDebug: true });
+    await flush();
+    expect(response(io.sent, 'launch')!.success).toBe(true);
+    expect(events(io.sent, 'terminated')).toHaveLength(1);
+  });
+
+  it('Stop during a Restart rebuild cancels it and never binds the late emulator', async () => {
+    const h = makeHost(undefined);
+    h.host.consumeLaunch.mockReturnValue(false);
+    let release!: (ok: boolean) => void;
+    let seenToken: vscode.CancellationToken | undefined;
+    h.host.rebuildAndDeploy.mockImplementation((token) => {
+      seenToken = token;
+      return new Promise<boolean>((r) => { release = r; });
+    });
+    const io = start(new RunSessionAdapter(h.host));
+    io.request('launch', { noDebug: true });
+    await flush();
+    io.request('disconnect');
+    await flush();
+    expect(seenToken!.isCancellationRequested).toBe(true);
+
+    // The deploy won the race anyway: the late emulator must not outlive the session.
+    h.setPid(8888);
+    release(true);
+    await flush();
+    expect(h.host.stopEmulator).toHaveBeenCalledOnce();
+    expect(events(io.sent, 'terminated')).toHaveLength(1);
+  });
+
+  it('debug mode: after binding, attaches the debugger to the emulator PID', async () => {
+    const h = makeHost();
+    const io = start(new RunSessionAdapter(h.host));
+    io.request('launch', {});
+    await flush();
+    expect(h.host.attachDebugger).toHaveBeenCalledWith(4242);
+    expect(events(io.sent, 'terminated')).toHaveLength(0);
+  });
+
+  it('debug relaunch: rebuilds, then re-attaches to the new PID', async () => {
+    const h = makeHost();
+    h.host.consumeLaunch.mockReturnValue(false);
+    const io = start(new RunSessionAdapter(h.host));
+    io.request('launch', {});
+    await flush();
+    expect(h.host.rebuildAndDeploy).toHaveBeenCalledOnce();
+    expect(h.host.attachDebugger).toHaveBeenCalledWith(7777);
+  });
+
+  it('run mode never attaches the debugger', async () => {
+    const h = makeHost();
+    start(new RunSessionAdapter(h.host)).request('launch', { noDebug: true });
+    await flush();
+    expect(h.host.attachDebugger).not.toHaveBeenCalled();
+  });
+
+  it('debug mode: a failed attach stops the emulator and ends the session', async () => {
+    const h = makeHost();
+    h.host.attachDebugger.mockResolvedValue(false);
+    const io = start(new RunSessionAdapter(h.host));
+    io.request('launch', {});
+    await flush();
+    expect(h.host.stopEmulator).toHaveBeenCalledOnce();
+    expect(events(io.sent, 'terminated')).toHaveLength(1);
   });
 });

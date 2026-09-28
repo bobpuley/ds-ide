@@ -45,7 +45,7 @@ session: no toolbar, no Stop.
 
 ---
 
-### [ ] feat: Restart rebuilds and redeploys (FR-TRN-2)
+### [x] feat: Restart rebuilds and redeploys (FR-TRN-2)
 
 **Affected files:** `src/debug/run-session-adapter.ts`, `src/debug/run-config-provider.ts`, `src/test/unit/debug/run-session-adapter.test.ts`
 
@@ -53,6 +53,15 @@ session: no toolbar, no Stop.
 - the adapter declares no `supportsRestartRequest`, so ↻ / ⇧⌘F5 terminates and relaunches through `resolveDebugConfiguration` (rebuild + redeploy) in the same mode, for run and for debug
 - manual check: a saved edit is running after Restart; a build error during Restart ends the session and surfaces per FR-TRN-6
 - `npm test` green
+
+> **Implementation decision (2026-09-29, user-approved, "adapter-owned Restart"):** VS Code's Restart
+> re-runs `resolveDebugConfiguration` only when launch.json changed; otherwise it resends `launch`
+> with the already-resolved config. So `resolveDebugConfiguration` stamps each config with a one-time
+> `__dsIdeLaunchId`, and the adapter rebuilds + redeploys itself when a launch's id was already
+> consumed. For F5, the `ds-ide` session now stays live too and attaches `daisy-debug` as its child
+> (`parentSession`, `lifecycleManagedByParent: true`), so the debug toolbar's ↻ / ■ reach the ds-ide
+> session. `DsIdeTerminatingAdapter` is removed (every ds-ide session is live). This deviates from
+> 04_architecture's "debug path unchanged / terminating adapter stays" wording.
 
 ---
 

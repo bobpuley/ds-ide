@@ -7,6 +7,12 @@ export interface RunSessionHost {
   currentEmulatorPid(): number | undefined;
   stopEmulator(): void;
   onEmulatorExit(listener: (exit: EmulatorExit) => void): { dispose(): void };
+  /** True once per freshly resolved config; false for a Restart relaunch (FR-TRN-2). */
+  consumeLaunch(config: Record<string, unknown>): boolean;
+  /** Full build + deploy with progress, used on Restart (FR-TRN-2). */
+  rebuildAndDeploy(token: vscode.CancellationToken): Promise<boolean>;
+  /** Starts the daisy-debug child session against `pid` (F5 mode). */
+  attachDebugger(pid: number): Promise<boolean>;
 }
 
 interface DapRequest {
@@ -35,12 +41,20 @@ function makeDap(msg: { type: string; seq: number; [k: string]: unknown }): vsco
 //   - disposal (e.g. window reload) → stops the emulator if still running.
 // It is bound to one emulator by PID, so an old session can never stop the
 // emulator a later launch started.
+//
+// FR-TRN-2: it declares no supportsRestartRequest, so VS Code's Restart is
+// disconnect + a fresh adapter + the same launch request. A launch whose
+// config was already used (host.consumeLaunch) is such a relaunch: the
+// adapter rebuilds and redeploys before binding. In F5 mode it then attaches
+// daisy-debug as its child, so the debug toolbar's Restart / Stop reach here.
 export class RunSessionAdapter implements vscode.DebugAdapter {
   private readonly _emitter = new vscode.EventEmitter<vscode.DebugProtocolMessage>();
   readonly onDidSendMessage: vscode.Event<vscode.DebugProtocolMessage> = this._emitter.event;
   private _seq = 0;
   private _boundPid: number | undefined;
   private _terminated = false;
+  private _stopped = false;
+  private readonly _cts = new vscode.CancellationTokenSource();
   private readonly _exitSub: { dispose(): void };
 
   constructor(private readonly host: RunSessionHost) {
@@ -60,13 +74,15 @@ export class RunSessionAdapter implements vscode.DebugAdapter {
         this.sendEvent('initialized');
         return;
       case 'launch':
-        this.launch(req);
+        void this.launch(req);
         return;
       case 'threads':
         this.respond(req, { threads: [] });
         return;
       case 'disconnect':
       case 'terminate':
+        this._stopped = true;
+        this._cts.cancel();
         this.stopOwnEmulator();
         this.respond(req, {});
         this.sendTerminated();
@@ -76,10 +92,31 @@ export class RunSessionAdapter implements vscode.DebugAdapter {
     }
   }
 
-  private launch(req: DapRequest): void {
-    this._boundPid = this.host.currentEmulatorPid();
+  private async launch(req: DapRequest): Promise<void> {
+    const config = req.arguments ?? {};
+    const debug = !config['noDebug'];
+    if (!this.host.consumeLaunch(config)) {
+      const ok = await this.host.rebuildAndDeploy(this._cts.token);
+      if (!ok || this._stopped) {
+        // Stopped mid-rebuild but the deploy won the race: that emulator
+        // belongs to this session and must not outlive it.
+        if (ok) this.host.stopEmulator();
+        this.respond(req, {});
+        this.sendTerminated();
+        return;
+      }
+    }
+    const pid = this.host.currentEmulatorPid();
+    this._boundPid = pid;
     this.respond(req, {});
-    if (this._boundPid === undefined) this.sendTerminated();
+    if (pid === undefined) {
+      this.sendTerminated();
+      return;
+    }
+    if (debug && !(await this.host.attachDebugger(pid))) {
+      this.stopOwnEmulator();
+      this.sendTerminated();
+    }
   }
 
   // Only the emulator this session was bound to, and only while it's still
@@ -107,6 +144,9 @@ export class RunSessionAdapter implements vscode.DebugAdapter {
   }
 
   dispose(): void {
+    this._stopped = true;
+    this._cts.cancel();
+    this._cts.dispose();
     this.stopOwnEmulator();
     this._exitSub.dispose();
     this._emitter.dispose();

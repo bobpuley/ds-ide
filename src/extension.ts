@@ -1230,7 +1230,6 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const runConfigProvider = new DaisyRunConfigurationProvider(
     (token) => deployCoordinator.performDeploy({ build: true, debug: false }, token),
-    () => manager?.childPid,
     context.workspaceState,
   );
 
@@ -1292,7 +1291,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.debug.registerDebugAdapterDescriptorFactory(DAISY_DEBUG_TYPE, debugAdapterFactory),
     vscode.debug.registerDebugAdapterTrackerFactory(DAISY_DEBUG_TYPE, debugTrackerFactory),
-    vscode.debug.registerDebugAdapterDescriptorFactory(DS_IDE_DEBUG_TYPE, new DsIdeDebugAdapterDescriptorFactory({
+    vscode.debug.registerDebugAdapterDescriptorFactory(DS_IDE_DEBUG_TYPE, new DsIdeDebugAdapterDescriptorFactory((session) => ({
       currentEmulatorPid: () => manager.childPid,
       stopEmulator: () => {
         manager.stop();
@@ -1303,7 +1302,10 @@ export function activate(context: vscode.ExtensionContext): void {
         manager.on('exit', listener);
         return { dispose: () => { manager.off('exit', listener); } };
       },
-    })),
+      consumeLaunch: (config) => runConfigProvider.consumeLaunch(config),
+      rebuildAndDeploy: (token) => runConfigProvider.buildAndDeployWithProgress(token),
+      attachDebugger: (pid) => runConfigProvider.attachDebugger(session, pid),
+    }))),
     vscode.debug.registerDebugConfigurationProvider(DS_IDE_DEBUG_TYPE, runConfigProvider),
     saveListener,
     ...commandDisposables,
