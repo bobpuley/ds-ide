@@ -5,6 +5,18 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.20.0 — 2026-09-28
+
+**M65 — Unified Device Model (Foundation)** *(FR-UDM-1–FR-UDM-4 — DoD green)*
+
+- **FR-UDM-1** — `DeviceDescriptor` gains a declarative `pinRequires?: 'adc' | 'i2c' | 'uart' | 'spi' | 'sdmmc'` (pot declares `'adc'`), and a new pure `isPinEligible(pinDef, deviceId)` in `src/wiring/pin-eligibility.ts` derives pin suitability from it plus `PIN_DEFS`. The hardcoded `pot-warn` badge is gone; the Wiring Editor's assign popup shows a generic per-device requirement warning driven by `isPinEligible`.
+- **FR-UDM-2** — Removed the Controls Editor palette (`paletteItemsHtml()`, `paletteCssRules()`, `#palette`, `palette-drag-drop.ts`, `addNewControl`), which silently ignored Toggle / RGB LED / Encoder drops. The empty-canvas hint now points to the Wiring Editor; control layout and position persistence are unchanged.
+- **FR-UDM-3** — One `#device-popover` for every placed device (a control's pin, a peripheral's bracket or pin, or the micro-USB port for MIDI USB on INTERNAL), replacing `popup-assigned` and `#bus-popover`. It shows the accent dot, label, id, and the pins (with slot names, e.g. `R=D20 G=D21 B=D22`) or the bus and its resolved pins, plus **Show panel** (live-view devices only), **Reveal in code** and **Remove**. The popover content comes from a new pure `src/wiring/device-popover.ts`; the registry gains `pinSlots` (rgbled R/G/B, encoder A/B/SW).
+- **FR-UDM-4** — New `revealInCode` Wiring webview message (validated host-side). The host opens the effect source and selects the device's declaration inside its marker block, for controls and bus/connector peripherals. If the markers are missing or corrupted, it shows a warning naming the device instead of revealing a wrong range.
+- **chore** — `package.json`'s `version` field is bumped to `0.20.0` to match this entry.
+
+---
+
 ## 0.19.2 — 2026-08-30
 
 **M64 — Functional/E2E Test Layer (Foundation)** *(FR-TEST-2 — DoD green)*
