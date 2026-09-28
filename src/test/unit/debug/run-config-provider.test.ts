@@ -102,10 +102,24 @@ describe('DaisyRunConfigurationProvider', () => {
 
       await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG });
 
-      expect(vscode.window.withProgress).toHaveBeenCalledOnce();
-      const [options, task] = (vscode.window.withProgress as ReturnType<typeof vi.fn>).mock.calls[0]!;
-      expect(options).toMatchObject({ location: vscode.ProgressLocation.Notification });
-      expect(typeof task).toBe('function');
+      const locations = (vscode.window.withProgress as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0].location);
+      expect(locations).toContain(vscode.ProgressLocation.Notification);
+    });
+
+    it('also shows the build+deploy progress on the Daisy view (FR-TRN-4)', async () => {
+      const provider = new DaisyRunConfigurationProvider(vi.fn(() => Promise.resolve(true)), makeWorkspaceState());
+
+      await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG });
+
+      const locations = (vscode.window.withProgress as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0].location);
+      expect(locations).toContainEqual({ viewId: 'ds-ide.daisyView' });
+    });
+
+    it.each([[{}, 'debug'], [{ noDebug: true }, 'run']] as const)('passes the session mode to onBuildAndDeploy (%j → %s)', async (extra, mode) => {
+      const buildAndDeploy = vi.fn((_token: vscode.CancellationToken, _mode: 'run' | 'debug') => Promise.resolve(true));
+      const provider = new DaisyRunConfigurationProvider(buildAndDeploy, makeWorkspaceState());
+      await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG, ...extra });
+      expect(buildAndDeploy).toHaveBeenCalledWith(expect.anything(), mode);
     });
 
     it('marks the progress notification cancellable and passes the token to onBuildAndDeploy (FR-EXT-16)', async () => {
@@ -114,10 +128,11 @@ describe('DaisyRunConfigurationProvider', () => {
 
       await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG });
 
-      const [options] = (vscode.window.withProgress as ReturnType<typeof vi.fn>).mock.calls[0]!;
+      const options = (vscode.window.withProgress as ReturnType<typeof vi.fn>).mock.calls
+        .map((c) => c[0]).find((o) => o.location === vscode.ProgressLocation.Notification);
       expect(options).toMatchObject({ cancellable: true });
       expect(buildAndDeploy).toHaveBeenCalledWith(
-        expect.objectContaining({ isCancellationRequested: false }),
+        expect.objectContaining({ isCancellationRequested: false }), 'debug',
       );
     });
   });
@@ -135,7 +150,7 @@ describe('DaisyRunConfigurationProvider', () => {
         makeWorkspaceState(),
       );
 
-      await provider.buildAndDeployWithProgress(outer.token);
+      await provider.buildAndDeployWithProgress('run', outer.token);
 
       expect(cancelledDuringBuild).toBe(true);
     });
@@ -146,7 +161,7 @@ describe('DaisyRunConfigurationProvider', () => {
       const outer = new vscode.CancellationTokenSource();
       outer.cancel();
 
-      expect(await provider.buildAndDeployWithProgress(outer.token)).toBe(false);
+      expect(await provider.buildAndDeployWithProgress('run', outer.token)).toBe(false);
       expect(buildAndDeploy).not.toHaveBeenCalled();
     });
   });
@@ -192,7 +207,7 @@ describe('DsIdeDebugAdapterDescriptorFactory', () => {
     stopEmulator: vi.fn(),
     onEmulatorExit: () => ({ dispose: vi.fn() }),
     consumeLaunch: () => true,
-    rebuildAndDeploy: async () => true,
+    rebuildAndDeploy: async (_mode, _token) => true,
     attachDebugger: async () => true,
   };
   const session = (configuration: Record<string, unknown>) =>

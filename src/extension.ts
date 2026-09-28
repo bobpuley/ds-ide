@@ -46,6 +46,9 @@ import { getString, getBoolean } from './ipc/narrow';
 // command (build.ts) rather than duplicated, so the ds-ide.effectSource
 // setting can't drift out of sync between call sites.
 import { resolveConfiguredEffectSource as findEffectSource } from './commands/find-effect-source';
+import { TransportController, wireTransportEvents, isBuildSource, countErrors } from './transport/transport-controller';
+import { isTransportBusy, type TransportMode } from './transport/transport-state';
+import { DaisyViewProvider, DAISY_VIEW_ID, formatAudioDetail, withViewProgress } from './views/daisy-view';
 import { resolveActiveFolder, promptSelectActiveFolder } from './workspace/active-folder';
 
 const FIDELITY_CAVEAT =
@@ -311,6 +314,9 @@ interface DeployCoordinatorOptions {
   // to the Controls Editor outside debug mode, so it can't use the
   // simpler refreshControlsView() wrapper those triggers share.
   computeControlsConfig: (folder: string, cfg: ControllerConfig) => Promise<ControlsConfig | undefined>;
+  // FR-TRN-4: every build/deploy step is reported to the transport state, and
+  // runs under a token the Daisy view's Cancel action can cancel.
+  transport: TransportController;
 }
 
 class DeployCoordinator {
@@ -331,6 +337,7 @@ class DeployCoordinator {
   private readonly loadControllerConfig: () => Promise<ControllerConfig>;
   private readonly workspaceState: vscode.Memento;
   private readonly computeControlsConfig: (folder: string, cfg: ControllerConfig) => Promise<ControlsConfig | undefined>;
+  private readonly transport: TransportController;
 
   constructor(opts: DeployCoordinatorOptions) {
     this.manager = opts.manager;
@@ -350,6 +357,7 @@ class DeployCoordinator {
     this.loadControllerConfig = opts.loadControllerConfig;
     this.workspaceState = opts.workspaceState;
     this.computeControlsConfig = opts.computeControlsConfig;
+    this.transport = opts.transport;
   }
 
   private setDeploying(): void {
@@ -401,13 +409,44 @@ class DeployCoordinator {
     }
   }
 
-  async performDeploy(opts: { build: boolean; debug: boolean }, token?: vscode.CancellationToken): Promise<boolean> {
+  // `mode` is the transport mode the deploy is for; it defaults from `debug`
+  // (the granular ds-ide.debug path) but F5 passes 'debug' with debug:false,
+  // since the ds-ide session attaches the debugger itself (FR-TRN-2).
+  async performDeploy(
+    opts: { build: boolean; debug: boolean; mode?: TransportMode },
+    token?: vscode.CancellationToken,
+  ): Promise<boolean> {
+    const mode = opts.mode ?? (opts.debug ? 'debug' : 'run');
+    return this.transport.trackWork(token, async (workToken) => {
+      try {
+        const ok = await this.deploy(opts, mode, workToken);
+        if (!ok && isTransportBusy(this.transport.state.phase)) this.transport.dispatch({ type: 'deployAborted' });
+        return ok;
+      } catch (err) {
+        this.transport.dispatch({ type: 'deployAborted' });
+        throw err;
+      }
+    });
+  }
+
+  private async deploy(
+    opts: { build: boolean; debug: boolean },
+    mode: TransportMode,
+    token: vscode.CancellationToken,
+  ): Promise<boolean> {
     if (opts.build) {
+      this.transport.dispatch({ type: 'buildStarted', mode });
       const ok = await buildForEmulator(
         this.manager, this.extensionPath, this.diagnostics, this.buildChannel, this.workspaceState, token,
       );
-      if (!ok) return false;
+      if (!ok) {
+        if (!token.isCancellationRequested) {
+          this.transport.dispatch({ type: 'deployFailed', problems: countErrors(this.diagnostics) });
+        }
+        return false;
+      }
     }
+    this.transport.dispatch({ type: 'deployStarted', mode });
     this.setDeploying();
     const cfg = await this.loadControllerConfig();
     this.potStore.setDefaults(cfg.pots);
@@ -436,6 +475,10 @@ class DeployCoordinator {
         this.workspaceState,
         token,
       );
+      // debugDeploy reports its own failures; whether an emulator is up is
+      // the only outcome it leaves behind.
+      if (this.manager.childPid === undefined) return false;
+      this.transport.dispatch({ type: 'deploySucceeded' });
       return true;
     }
 
@@ -451,6 +494,7 @@ class DeployCoordinator {
       return false;
     }
     this.sendPostDeployState();
+    this.transport.dispatch({ type: 'deploySucceeded' });
     return true;
   }
 }
@@ -823,20 +867,25 @@ interface CommandDeps {
   scopePanel: ScopePanel;
   controlsProvider: ControlsViewProvider;
   initViewsFromProject: () => Promise<void>;
+  emulatorChannel: vscode.OutputChannel;
+  transport: TransportController;
+  daisyView: DaisyViewProvider;
+  stopEmulator: () => void;
 }
 
 // FR-EXT-16: shared wrapper so a hung build/deploy/flash child process can
 // be aborted from the progress notification instead of reloading the
 // extension host window — every long-running command below routes through
 // this instead of calling vscode.window.withProgress ad hoc.
+// FR-TRN-4: the same work also shows progress on the Daisy view.
 async function withCancellableProgress<T>(
   title: string,
   task: (token: vscode.CancellationToken) => Promise<T>,
 ): Promise<T> {
-  return vscode.window.withProgress(
+  return withViewProgress(() => vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title, cancellable: true },
     (_progress, token) => task(token),
-  );
+  ));
 }
 
 // FR-EXT-9: command registration extracted from activate() — every
@@ -845,6 +894,7 @@ function registerCommands(deps: CommandDeps): vscode.Disposable[] {
   const {
     manager, diagnostics, buildChannel, hardwareChannel, flashChannel,
     workspaceState, extensionPath, deployCoordinator, scopePanel, controlsProvider, initViewsFromProject,
+    emulatorChannel, transport, daisyView, stopEmulator,
   } = deps;
 
   return [
@@ -917,6 +967,23 @@ function registerCommands(deps: CommandDeps): vscode.Disposable[] {
         flashToHardware(folder.uri.fsPath, flashChannel, {}, token),
       );
     }),
+    // FR-TRN-4: Daisy view title / row actions.
+    vscode.commands.registerCommand('ds-ide.stopEffect', async () => {
+      if (transport.session) {
+        await vscode.debug.stopDebugging(transport.session);
+        return;
+      }
+      // Deployed through a granular command — no session to end.
+      stopEmulator();
+    }),
+    vscode.commands.registerCommand('ds-ide.cancelTransport', () => transport.cancelWork()),
+    vscode.commands.registerCommand('ds-ide.restartEffect', () =>
+      transport.session
+        ? vscode.commands.executeCommand('workbench.action.debug.restart')
+        : vscode.commands.executeCommand('ds-ide.buildAndDeploy'),
+    ),
+    vscode.commands.registerCommand('ds-ide.refreshBoard', () => daisyView.refresh()),
+    vscode.commands.registerCommand('ds-ide.showEmulatorOutput', () => emulatorChannel.show()),
     vscode.commands.registerCommand('ds-ide.createNewEffectProject', () => createEffectProject(extensionPath)),
     vscode.commands.registerCommand('ds-ide.selectActiveFolder', async () => {
       const chosen = await promptSelectActiveFolder(workspaceState);
@@ -1224,6 +1291,21 @@ export function activate(context: vscode.ExtensionContext): void {
 
   wireManagerEvents(manager, statusBar, controlsProvider, emulatorChannel);
 
+  // FR-TRN-4: one transport state for the Daisy view (and, below, every
+  // other transport surface).
+  const transport = new TransportController();
+  const daisyView = new DaisyViewProvider(transport, () =>
+    formatAudioDetail(session.audioSourceState.sampleRate, session.audioSourceState.bufferSize));
+  const daisyTreeView = vscode.window.createTreeView(DAISY_VIEW_ID, { treeDataProvider: daisyView });
+
+  // Stop for a run session and for the view's Stop without a session: ends
+  // the emulator process, and resets the panels that show live audio.
+  function stopEmulator(): void {
+    manager.stop();
+    scopePanel.notifyStopped();
+    controlsProvider.postStatus({ type: 'status', running: false });
+  }
+
   const debugAdapterFactory = new DaisyDebugAdapterFactory();
   const debugTrackerFactory = new DaisyDebugAdapterTrackerFactory((mode) => manager?.sendAudioMode(mode));
 
@@ -1251,10 +1333,11 @@ export function activate(context: vscode.ExtensionContext): void {
     loadControllerConfig,
     workspaceState: context.workspaceState,
     computeControlsConfig,
+    transport,
   });
 
   const runConfigProvider = new DaisyRunConfigurationProvider(
-    (token) => deployCoordinator.performDeploy({ build: true, debug: false }, token),
+    (token, mode) => deployCoordinator.performDeploy({ build: true, debug: false, mode }, token),
     context.workspaceState,
   );
 
@@ -1308,6 +1391,7 @@ export function activate(context: vscode.ExtensionContext): void {
     manager, diagnostics, buildChannel, hardwareChannel, flashChannel,
     workspaceState: context.workspaceState, extensionPath: context.extensionPath,
     deployCoordinator, scopePanel, controlsProvider, initViewsFromProject,
+    emulatorChannel, transport, daisyView, stopEmulator,
   });
 
   const saveListener = createSaveListener({
@@ -1315,7 +1399,21 @@ export function activate(context: vscode.ExtensionContext): void {
     wiringProvider, controlsProvider,
   });
 
+  // Registered after the listeners above so theirs run first.
+  const transportEventDisposables = wireTransportEvents(transport, {
+    emulator: manager,
+    isProjectSource: (uri) => {
+      const active = resolveActiveFolder(context.workspaceState);
+      return active !== undefined && isBuildSource(uri.fsPath)
+        && vscode.workspace.getWorkspaceFolder(uri)?.uri.fsPath === active.uri.fsPath;
+    },
+  });
+
   context.subscriptions.push(
+    transport,
+    daisyView,
+    daisyTreeView,
+    ...transportEventDisposables,
     vscode.window.onDidChangeActiveTextEditor(updateEffectSourceContext),
     diagnostics,
     buildChannel,
@@ -1333,17 +1431,13 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.debug.registerDebugAdapterTrackerFactory(DAISY_DEBUG_TYPE, debugTrackerFactory),
     vscode.debug.registerDebugAdapterDescriptorFactory(DS_IDE_DEBUG_TYPE, new DsIdeDebugAdapterDescriptorFactory((session) => ({
       currentEmulatorPid: () => manager.childPid,
-      stopEmulator: () => {
-        manager.stop();
-        scopePanel.notifyStopped();
-        controlsProvider.postStatus({ type: 'status', running: false });
-      },
+      stopEmulator,
       onEmulatorExit: (listener) => {
         manager.on('exit', listener);
         return { dispose: () => { manager.off('exit', listener); } };
       },
       consumeLaunch: (config) => runConfigProvider.consumeLaunch(config),
-      rebuildAndDeploy: (token) => runConfigProvider.buildAndDeployWithProgress(token),
+      rebuildAndDeploy: (mode, token) => runConfigProvider.buildAndDeployWithProgress(mode, token),
       attachDebugger: (pid) => runConfigProvider.attachDebugger(session, pid),
     }))),
     vscode.debug.registerDebugConfigurationProvider(DS_IDE_DEBUG_TYPE, runConfigProvider),

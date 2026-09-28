@@ -22,7 +22,7 @@ function makeHost(pid: number | undefined = 4242) {
       return { dispose: () => exits.off('exit', listener) };
     }),
     consumeLaunch: vi.fn((_config: Record<string, unknown>): boolean => true),
-    rebuildAndDeploy: vi.fn(async (_token: vscode.CancellationToken): Promise<boolean> => { current = 7777; return true; }),
+    rebuildAndDeploy: vi.fn(async (_mode: 'run' | 'debug', _token: vscode.CancellationToken): Promise<boolean> => { current = 7777; return true; }),
     attachDebugger: vi.fn(async (_pid: number): Promise<boolean> => true),
   } satisfies RunSessionHost;
   return {
@@ -190,7 +190,7 @@ describe('RunSessionAdapter — Restart (FR-TRN-2)', () => {
     const io = start(adapter);
     io.request('launch', { noDebug: true, __dsIdeLaunchId: 'a' });
     await flush();
-    expect(h.host.rebuildAndDeploy).toHaveBeenCalledOnce();
+    expect(h.host.rebuildAndDeploy).toHaveBeenCalledWith('run', expect.anything());
     expect(response(io.sent, 'launch')!.success).toBe(true);
     expect(events(io.sent, 'terminated')).toHaveLength(0);
 
@@ -216,7 +216,7 @@ describe('RunSessionAdapter — Restart (FR-TRN-2)', () => {
     h.host.consumeLaunch.mockReturnValue(false);
     let release!: (ok: boolean) => void;
     let seenToken: vscode.CancellationToken | undefined;
-    h.host.rebuildAndDeploy.mockImplementation((token) => {
+    h.host.rebuildAndDeploy.mockImplementation((_mode, token) => {
       seenToken = token;
       return new Promise<boolean>((r) => { release = r; });
     });
@@ -250,7 +250,7 @@ describe('RunSessionAdapter — Restart (FR-TRN-2)', () => {
     const io = start(new RunSessionAdapter(h.host));
     io.request('launch', {});
     await flush();
-    expect(h.host.rebuildAndDeploy).toHaveBeenCalledOnce();
+    expect(h.host.rebuildAndDeploy).toHaveBeenCalledWith('debug', expect.anything());
     expect(h.host.attachDebugger).toHaveBeenCalledWith(7777);
   });
 

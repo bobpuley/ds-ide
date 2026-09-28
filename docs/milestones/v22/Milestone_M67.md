@@ -77,7 +77,7 @@ session: no toolbar, no Stop.
 
 ---
 
-### [ ] feat: Daisy view in the Run and Debug container (FR-TRN-4)
+### [x] feat: Daisy view in the Run and Debug container (FR-TRN-4)
 
 **Affected files:** `package.json`, `src/views/daisy-view.ts`, `src/transport/transport-controller.ts`, `src/extension.ts`, `src/test/unit/views/daisy-view.test.ts`
 

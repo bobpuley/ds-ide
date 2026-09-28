@@ -52,14 +52,37 @@ describe('reduceTransport()', () => {
     expect(s.problems).toBeUndefined();
   });
 
-  it('deploy cancelled → stopped', () => {
-    const s = run([{ type: 'buildStarted', mode: 'run' }, { type: 'deployCancelled' }]);
+  it('deploy aborted (cancelled, or the emulator failed to start) → stopped', () => {
+    const s = run([{ type: 'buildStarted', mode: 'run' }, { type: 'deployAborted' }]);
     expect(s.phase).toBe('stopped');
+  });
+
+  it('deploy succeeded in debug mode → debugging (a debug Restart redeploys inside the session)', () => {
+    const s = run([{ type: 'buildStarted', mode: 'debug' }, { type: 'deploySucceeded' }]);
+    expect(s.phase).toBe('debugging');
+  });
+
+  it("a Restart's rebuild is not undone by the old session ending or the old emulator exiting", () => {
+    const s = run([
+      { type: 'sessionStarted', mode: 'run' },
+      { type: 'buildStarted', mode: 'run' },
+      { type: 'emulatorExited' },
+      { type: 'emulatorCrashed' },
+      { type: 'sessionEnded' },
+    ]);
+    expect(s.phase).toBe('building');
+    expect(s.mode).toBe('run');
+  });
+
+  it('an emulator exit while stopped or after a build failure changes nothing', () => {
+    expect(run([{ type: 'emulatorCrashed' }]).phase).toBe('stopped');
+    const failed = run([{ type: 'buildStarted', mode: 'run' }, { type: 'deployFailed', problems: 1 }, { type: 'emulatorExited' }]);
+    expect(failed.phase).toBe('buildFailed');
   });
 
   it('debug session started → debugging, mode debug', () => {
     const s = run([
-      { type: 'buildStarted', mode: 'debug' }, { type: 'deploySucceeded' },
+      { type: 'buildStarted', mode: 'run' }, { type: 'deploySucceeded' },
       { type: 'sessionStarted', mode: 'debug' },
     ]);
     expect(s.phase).toBe('debugging');

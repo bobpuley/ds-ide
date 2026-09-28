@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { EmulatorExit } from '../emulator/manager';
+import type { TransportMode } from '../transport/transport-state';
 
 // What the run session needs from the rest of the extension — kept narrow so
 // the adapter is testable without an EmulatorManager.
@@ -10,7 +11,7 @@ export interface RunSessionHost {
   /** True once per freshly resolved config; false for a Restart relaunch (FR-TRN-2). */
   consumeLaunch(config: Record<string, unknown>): boolean;
   /** Full build + deploy with progress, used on Restart (FR-TRN-2). */
-  rebuildAndDeploy(token: vscode.CancellationToken): Promise<boolean>;
+  rebuildAndDeploy(mode: TransportMode, token: vscode.CancellationToken): Promise<boolean>;
   /** Starts the daisy-debug child session against `pid` (F5 mode). */
   attachDebugger(pid: number): Promise<boolean>;
 }
@@ -94,9 +95,9 @@ export class RunSessionAdapter implements vscode.DebugAdapter {
 
   private async launch(req: DapRequest): Promise<void> {
     const config = req.arguments ?? {};
-    const debug = !config['noDebug'];
+    const mode: TransportMode = config['noDebug'] ? 'run' : 'debug';
     if (!this.host.consumeLaunch(config)) {
-      const ok = await this.host.rebuildAndDeploy(this._cts.token);
+      const ok = await this.host.rebuildAndDeploy(mode, this._cts.token);
       if (!ok || this._stopped) {
         // Stopped mid-rebuild but the deploy won the race: that emulator
         // belongs to this session and must not outlive it.
@@ -113,7 +114,7 @@ export class RunSessionAdapter implements vscode.DebugAdapter {
       this.sendTerminated();
       return;
     }
-    if (debug && !(await this.host.attachDebugger(pid))) {
+    if (mode === 'debug' && !(await this.host.attachDebugger(pid))) {
       this.stopOwnEmulator();
       this.sendTerminated();
     }

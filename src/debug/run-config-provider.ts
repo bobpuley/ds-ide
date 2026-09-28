@@ -3,6 +3,8 @@ import * as vscode from 'vscode';
 import { DAISY_DEBUG_TYPE } from '../commands/debug-deploy';
 import { resolveActiveFolder } from '../workspace/active-folder';
 import { RunSessionAdapter, type RunSessionHost } from './run-session-adapter';
+import { withViewProgress } from '../views/daisy-view';
+import type { TransportMode } from '../transport/transport-state';
 
 export const DS_IDE_DEBUG_TYPE = 'ds-ide';
 
@@ -26,7 +28,7 @@ export class DaisyRunConfigurationProvider implements vscode.DebugConfigurationP
   private readonly freshLaunchIds = new Set<string>();
 
   constructor(
-    private readonly onBuildAndDeploy: (token: vscode.CancellationToken) => Promise<boolean>,
+    private readonly onBuildAndDeploy: (token: vscode.CancellationToken, mode: TransportMode) => Promise<boolean>,
     private readonly workspaceState: vscode.Memento,
   ) {}
 
@@ -38,7 +40,7 @@ export class DaisyRunConfigurationProvider implements vscode.DebugConfigurationP
     _folder: vscode.WorkspaceFolder | undefined,
     config: vscode.DebugConfiguration,
   ): Promise<vscode.DebugConfiguration | undefined> {
-    const ok = await this.buildAndDeployWithProgress();
+    const ok = await this.buildAndDeployWithProgress(config['noDebug'] ? 'run' : 'debug');
     if (!ok) return undefined;
     // FR-TRN-1/2: both Ctrl+F5 and F5 start a live ds-ide session
     // (RunSessionAdapter) that lasts as long as the emulator does. For F5,
@@ -58,9 +60,9 @@ export class DaisyRunConfigurationProvider implements vscode.DebugConfigurationP
   // cancellable: true lets the user abort a hung build/deploy instead of
   // reloading the extension host window (FR-EXT-16). `token` lets a session
   // Stop cancel a Restart's rebuild too (FR-TRN-2).
-  async buildAndDeployWithProgress(token?: vscode.CancellationToken): Promise<boolean> {
+  async buildAndDeployWithProgress(mode: TransportMode, token?: vscode.CancellationToken): Promise<boolean> {
     if (token?.isCancellationRequested) return false;
-    return vscode.window.withProgress(
+    return withViewProgress(() => vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: 'ds-ide: building and deploying…', cancellable: true },
       async (_progress, progressToken) => {
         const linked = new vscode.CancellationTokenSource();
@@ -69,13 +71,13 @@ export class DaisyRunConfigurationProvider implements vscode.DebugConfigurationP
           token?.onCancellationRequested(() => linked.cancel()),
         ];
         try {
-          return await this.onBuildAndDeploy(linked.token);
+          return await this.onBuildAndDeploy(linked.token, mode);
         } finally {
           for (const sub of subs) sub?.dispose();
           linked.dispose();
         }
       },
-    );
+    ));
   }
 
   // The daisy-debug (lldb-dap) session is a child of the live ds-ide

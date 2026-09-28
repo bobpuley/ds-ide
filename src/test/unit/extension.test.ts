@@ -42,6 +42,7 @@ vi.mock('../../emulator/manager', () => {
     sendAudioMode = vi.fn();
     sendAudioDevice = vi.fn();
     sendWavFile = vi.fn();
+    stop = vi.fn();
     dispose = vi.fn();
     get childPid() { return 42; }
     get isConnected() { return true; }
@@ -337,6 +338,54 @@ describe('extension', () => {
     expect(call[2]?.noDebug).toBeFalsy();
   });
 
+  it('registers the Daisy tree view and disposes it with the extension (FR-TRN-4)', () => {
+    const ctx = makeContext();
+    activate(ctx);
+    const call = (vscode.window.createTreeView as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(call[0]).toBe('ds-ide.daisyView');
+    expect(call[1]).toMatchObject({ treeDataProvider: expect.anything() });
+    expect(ctx.subscriptions).toContain((vscode.window.createTreeView as ReturnType<typeof vi.fn>).mock.results[0]!.value);
+  });
+
+  it('registers the Daisy view commands (FR-TRN-4)', () => {
+    activate(makeContext());
+    const ids = (vscode.commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[0]);
+    expect(ids).toEqual(expect.arrayContaining([
+      'ds-ide.stopEffect', 'ds-ide.cancelTransport', 'ds-ide.restartEffect', 'ds-ide.refreshBoard', 'ds-ide.showEmulatorOutput',
+    ]));
+  });
+
+  it('ds-ide.stopEffect with no transport session stops the emulator directly (FR-TRN-4)', async () => {
+    activate(makeContext());
+    await commandHandler('ds-ide.stopEffect')();
+    expect((managerInstances[0] as unknown as { stop: ReturnType<typeof vi.fn> }).stop).toHaveBeenCalledOnce();
+    expect(vscode.debug.stopDebugging).not.toHaveBeenCalled();
+  });
+
+  it('ds-ide.stopEffect ends the tracked transport session (FR-TRN-4)', async () => {
+    activate(makeContext());
+    const startCb = (vscode.debug.onDidStartDebugSession as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => c[0] as (s: unknown) => void);
+    const s = { type: 'ds-ide', configuration: { noDebug: true } };
+    for (const cb of startCb) cb(s);
+    await commandHandler('ds-ide.stopEffect')();
+    expect(vscode.debug.stopDebugging).toHaveBeenCalledWith(s);
+  });
+
+  it('ds-ide.restartEffect with no session rebuilds and redeploys (FR-TRN-4)', async () => {
+    activate(makeContext());
+    await commandHandler('ds-ide.restartEffect')();
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('ds-ide.buildAndDeploy');
+  });
+
+  it('ds-ide.showEmulatorOutput reveals the emulator channel (FR-TRN-4)', () => {
+    activate(makeContext());
+    const channels = (vscode.window.createOutputChannel as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    const emulator = (vscode.window.createOutputChannel as ReturnType<typeof vi.fn>).mock.results[channels.indexOf('Daisy IDE Emulator')]!.value;
+    commandHandler('ds-ide.showEmulatorOutput')();
+    expect(emulator.show).toHaveBeenCalled();
+  });
+
   it('updates status bar text when a daisy-debug session starts', () => {
     const ctx = makeContext();
     activate(ctx);
@@ -397,7 +446,8 @@ describe('extension view initialization (FR-CE-9, FR-WE-11)', () => {
     const { activate: act } = await import('../../extension');
     const ctx = makeContext();
     act(ctx);
-    expect(vscode.workspace.onDidSaveTextDocument).toHaveBeenCalledTimes(1);
+    // the view-sync watcher, plus the transport's stale-source watcher (FR-TRN-4)
+    expect(vscode.workspace.onDidSaveTextDocument).toHaveBeenCalledTimes(2);
   });
 
   it('onDidSaveTextDocument cb registered is a function (FR-CE-9, FR-WE-11)', async () => {
@@ -2099,9 +2149,12 @@ describe('deploy sequencing via DeployCoordinator (FR-IPC-7)', () => {
       await getCommand(id)!();
     }
 
-    const calls = (vscode.window.withProgress as ReturnType<typeof vi.fn>).mock.calls;
-    expect(calls.length).toBeGreaterThanOrEqual(4);
-    for (const [options] of calls) {
+    // Each also reports on the Daisy view (FR-TRN-4) — that location has no
+    // cancel button; the notification is the cancellable one.
+    const notifications = (vscode.window.withProgress as ReturnType<typeof vi.fn>).mock.calls
+      .map(([options]) => options).filter((o) => o.location === vscode.ProgressLocation.Notification);
+    expect(notifications.length).toBeGreaterThanOrEqual(4);
+    for (const options of notifications) {
       expect(options).toMatchObject({ cancellable: true });
     }
   });
@@ -2117,6 +2170,28 @@ describe('deploy sequencing via DeployCoordinator (FR-IPC-7)', () => {
     const deployCmd = getCommand('ds-ide.deploy')!;
     await deployCmd();
     expect(statusBar.text).toContain('stopped');
+  });
+
+  it('a failed build publishes the buildFailed transport phase (FR-TRN-4)', async () => {
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    await flush();
+    const mgr = managerInstances[0]! as unknown as ManagerSpies;
+    mgr.build.mockRejectedValueOnce(new Error('build failed'));
+    await getCommand('ds-ide.buildAndDeploy')!();
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('setContext', 'ds-ide.transportPhase', 'building');
+    expect(vscode.commands.executeCommand).toHaveBeenLastCalledWith('setContext', 'ds-ide.transportPhase', 'buildFailed');
+  });
+
+  it('a successful build + deploy publishes building → deploying → running (FR-TRN-4)', async () => {
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    await flush();
+    (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mockClear();
+    await getCommand('ds-ide.buildAndDeploy')!();
+    const phases = (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mock.calls
+      .filter((c) => c[0] === 'setContext' && c[1] === 'ds-ide.transportPhase').map((c) => c[2]);
+    expect(phases).toEqual(['building', 'deploying', 'running']);
   });
 
   it('ds-ide.buildAndDeploy does not deploy when the build step fails', async () => {

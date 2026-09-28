@@ -39,6 +39,11 @@ const window = {
     dispose: vi.fn(),
   })),
   registerWebviewViewProvider: vi.fn(() => ({ dispose: vi.fn() })),
+  createTreeView: vi.fn((_id: string, _opts: unknown) => ({
+    visible: false,
+    onDidChangeVisibility: vi.fn(() => ({ dispose: vi.fn() })),
+    dispose: vi.fn(),
+  })),
   showOpenDialog: vi.fn(),
   showSaveDialog: vi.fn(),
   showInputBox: vi.fn(),
@@ -140,6 +145,7 @@ const languages = {
   createDiagnosticCollection: vi.fn((_name?: string) => ({
     set: vi.fn(),
     clear: vi.fn(),
+    forEach: vi.fn(),
     dispose: vi.fn(),
   })),
 };
@@ -153,6 +159,8 @@ const debug = {
   onDidStartDebugSession: vi.fn(() => ({ dispose: vi.fn() })),
   onDidTerminateDebugSession: vi.fn(() => ({ dispose: vi.fn() })),
   startDebugging: vi.fn(() => Promise.resolve(true)),
+  stopDebugging: vi.fn(() => Promise.resolve()),
+  activeDebugSession: undefined as unknown,
 };
 
 class DebugAdapterExecutable {
@@ -179,6 +187,26 @@ class EventEmitter<T = unknown> {
   dispose(): void {
     this._handlers = [];
   }
+}
+
+const TreeItemCollapsibleState = { None: 0, Collapsed: 1, Expanded: 2 } as const;
+
+class TreeItem {
+  description?: string;
+  tooltip?: string;
+  iconPath?: unknown;
+  command?: { command: string; title: string; arguments?: unknown[] };
+  contextValue?: string;
+  id?: string;
+  constructor(public label: string, public collapsibleState: number = TreeItemCollapsibleState.None) {}
+}
+
+class ThemeColor {
+  constructor(public readonly id: string) {}
+}
+
+class ThemeIcon {
+  constructor(public readonly id: string, public readonly color?: ThemeColor) {}
 }
 
 class Position {
@@ -222,5 +250,5 @@ export {
   DiagnosticSeverity, Position, Range, Selection, TextEditorRevealType, WorkspaceEdit, Diagnostic,
   StatusBarAlignment, ProgressLocation, languages, ConfigurationTarget,
   debug, DebugAdapterExecutable, DebugAdapterInlineImplementation, EventEmitter,
-  CancellationTokenSource,
+  CancellationTokenSource, TreeItem, TreeItemCollapsibleState, ThemeIcon, ThemeColor,
 };
