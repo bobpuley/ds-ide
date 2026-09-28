@@ -490,7 +490,12 @@ function onDragMove(e: PointerEvent): void {
     document.body.classList.add('drag-active');
     const d = REGISTRY[drag.deviceId];
     ghost.style.setProperty('--accent', d?.accentColor ?? '#4ec9b0');
-    ghost.querySelector('.lbl')!.textContent = drag.exclude ? `${drag.exclude} (${d?.label ?? drag.deviceId})` : d?.label ?? drag.deviceId;
+    // The label carries the device's palette icon (cloned from its chip).
+    const lbl = ghost.querySelector('.lbl')!;
+    const text = document.createElement('span');
+    text.textContent = drag.exclude ? `${drag.exclude} (${d?.label ?? drag.deviceId})` : d?.label ?? drag.deviceId;
+    const icon = paletteCol.querySelector(`.device-chip[data-device="${CSS.escape(drag.deviceId)}"] svg.icon`)?.cloneNode(true);
+    lbl.replaceChildren(...(icon ? [icon] : []), text);
     ghost.style.display = 'block';
     const n = drag.targets.size;
     const verb = drag.moving ? 'Moving' : 'Dragging';
@@ -565,10 +570,13 @@ function onPinPointerDown(e: PointerEvent): void {
 }
 
 paletteCol.querySelectorAll<HTMLElement>('.device-chip').forEach(chip => {
-  // Collapsed to a rail, a chip is just a dot — name it on hover (FR-UDM-5).
+  // Collapsed to a rail, a chip is just an icon — name it on hover
+  // (FR-UDM-5); a placed peripheral also says it moves when dragged.
   chip.addEventListener('mousemove', e => {
     const tip = chip.dataset['tip'];
-    if (tip && !drag && paletteCol.classList.contains('collapsed')) showTooltip(tip, e);
+    const placed = chip.classList.contains('placed');
+    if (!tip || drag || (!placed && !paletteCol.classList.contains('collapsed'))) return;
+    showTooltip(placed ? `${tip} · placed — drag to move` : tip, e);
   });
   chip.addEventListener('mouseleave', hideTooltip);
   chip.addEventListener('pointerdown', e => {

@@ -6,6 +6,7 @@ import { resolveBusFootprint } from '../devices/attachment';
 import { peripheralIds } from './peripheral-state';
 import { candidateBusesFor } from './conflict-remedy';
 import { escapeHtml } from '../webview/html-safe';
+import { deviceIconSvg } from './device-icons';
 import type { DeviceType } from '../devices/registry';
 import type { PeripheralDisplayState } from './peripheral-state';
 import { safeJson } from '../webview/html-safe';
@@ -70,6 +71,9 @@ export function paletteRequirement(id: string): string {
     .join(' / ');
 }
 
+// An icon tile (docs/mockups/v22-unified-device-model_alt1.html): device
+// icon, uppercase name, requirement, and the registry accent as underline /
+// hover border. `data-tip` feeds the editor tooltip on the collapsed rail.
 function paletteChipHtml(id: string): string {
   const d = REGISTRY[id]!;
   const label = escapeHtml(d.label);
@@ -77,11 +81,10 @@ function paletteChipHtml(id: string): string {
   // Only a peripheral is ever "placed" as a whole (one instance per type);
   // wiring-webview.ts toggles `.placed` from the live peripheral state.
   const badge = d.attachmentKind === 'bus' || d.attachmentKind === 'connector'
-    ? '<div class="badge">✓ placed — drag to move</div>'
+    ? '<span class="badge">✓</span>'
     : '';
-  return `      <div class="device-chip" data-device="${escapeHtml(id)}" style="--accent: ${escapeHtml(d.accentColor)}" data-tip="${label} — ${req}">`
-    + `<span class="dot"></span><span class="chip-text"><span>${label}</span><div class="meta">${req}</div>${badge}</span>`
-    + '<span class="grip">⠿</span></div>';
+  return `        <div class="device-chip" data-device="${escapeHtml(id)}" style="--accent: ${escapeHtml(d.accentColor)}" data-tip="${label} — ${req}">`
+    + `${deviceIconSvg(id, d.accentColor)}<div class="name">${label}</div><div class="meta">${req}</div>${badge}</div><!-- /chip -->`;
 }
 
 // FR-UDM-5: one palette for all devices, generated from REGISTRY and grouped
@@ -91,10 +94,14 @@ function devicePaletteHtml(): string {
     <div id="palette-head"><span class="pal-title">Devices</span><button id="palette-toggle" type="button" title="Collapse palette">◀</button></div>
     <div id="palette">
       <div class="pal-grp">Controls</div>
+      <div class="pal-grid">
 ${wiredControlIds().map(paletteChipHtml).join('\n')}
+      </div>
       <div class="pal-sep"></div>
-      <div class="pal-grp">Peripherals</div>
+      <div class="pal-grp">Peripherals · one each</div>
+      <div class="pal-grid">
 ${peripheralIds().map(paletteChipHtml).join('\n')}
+      </div>
     </div>
   </div><!-- /palette -->`;
 }
@@ -122,34 +129,46 @@ export function buildHtml(
             border-bottom: 1px solid #3c3c3c; flex-shrink: 0; }
     #main { flex: 1; display: flex; min-height: 0; }
     #svg-wrap { flex: 1; overflow: auto; padding: 16px; display: flex; justify-content: center; }
-    /* Device palette (FR-UDM-5) — collapsible to a rail of draggable colour dots */
-    #palette-col { width: 150px; flex-shrink: 0; overflow: auto; padding: 8px; border-right: 1px solid #3c3c3c; background: #1b1b1b; }
+    /* Device palette (FR-UDM-5) — icon tiles per docs/mockups/v22-unified-device-model_alt1.html;
+       collapsible to a rail of small, still-draggable icons */
+    #palette-col { width: 176px; flex-shrink: 0; overflow: auto; padding: 8px; border-right: 1px solid #3c3c3c; background: #1b1b1b; }
     #palette-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
     .pal-title { font-size: 11px; color: #9cdcfe; }
     #palette-toggle { margin-left: auto; background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; width: 20px; height: 20px;
                       border-radius: 2px; cursor: pointer; font-family: monospace; font-size: 10px; line-height: 1; }
     #palette-toggle:hover { background: #4a4a4a; }
-    .pal-grp { font-size: 9px; color: #6a6a6a; margin: 10px 0 5px; letter-spacing: .04em; text-transform: uppercase; }
+    .pal-grp { font-size: 9px; color: #6a6a6a; margin: 10px 0 6px; letter-spacing: 1px; text-transform: uppercase; }
+    .pal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
     .pal-sep { display: none; border-top: 1px solid #3c3c3c; margin: 8px 2px; }
-    .device-chip { display: flex; align-items: center; gap: 7px; background: #252526; border: 1px solid #555;
-                   border-left: 4px solid var(--accent); border-radius: 3px; padding: 6px 8px; margin-bottom: 6px;
-                   cursor: grab; font-size: 11px; user-select: none; touch-action: none; }
-    .device-chip:hover { background: #2f2f2f; }
+    .device-chip { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px;
+                   padding: 8px 4px 7px; border-radius: 8px; border: 1px solid transparent; background: rgba(255,255,255,.03);
+                   cursor: grab; user-select: none; touch-action: none;
+                   transition: background .15s, border-color .15s, transform .15s, box-shadow .15s; }
+    .device-chip::after { content: ''; position: absolute; left: 22%; right: 22%; bottom: 2px; height: 2px; border-radius: 2px;
+                          background: var(--accent); opacity: .75; }
+    .device-chip:hover { background: #2a2d2e; border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.35); }
+    .device-chip:active { transform: translateY(0); }
     .device-chip.dragging { opacity: .35; }
-    .device-chip .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
-    .device-chip .meta { font-size: 8px; color: #6a6a6a; }
-    .device-chip .badge { display: none; font-size: 8px; color: #4ec9b0; }
-    .device-chip.placed { opacity: .6; }
+    .device-chip svg.icon { width: 40px; height: 40px; filter: drop-shadow(0 2px 4px rgba(0,0,0,.3)); pointer-events: none; }
+    .device-chip .name { font-size: 9px; color: #a0a0b0; letter-spacing: 1px; text-transform: uppercase; white-space: nowrap; }
+    .device-chip:hover .name { color: #e0e0e0; }
+    .device-chip .meta { font-size: 8px; color: #6a6a6a; text-align: center; line-height: 1.2; }
+    .device-chip .badge { display: none; position: absolute; top: 3px; right: 5px; font-size: 10px; color: #4ec9b0; }
+    .device-chip.placed { opacity: .5; }
     .device-chip.placed .badge { display: block; }
-    .device-chip .grip { color: #555; font-size: 10px; margin-left: auto; }
-    #palette-col.collapsed { width: 34px; padding: 8px 4px; }
+    #palette-col.collapsed { width: 44px; padding: 8px 4px; }
     #palette-col.collapsed .pal-title,
     #palette-col.collapsed .pal-grp,
-    #palette-col.collapsed .device-chip > :not(.dot) { display: none; }
+    #palette-col.collapsed .device-chip .name,
+    #palette-col.collapsed .device-chip .meta { display: none; }
     #palette-col.collapsed #palette-toggle { margin: 0 auto; }
+    #palette-col.collapsed .pal-grid { grid-template-columns: 1fr; gap: 4px; }
     #palette-col.collapsed .pal-sep { display: block; }
-    #palette-col.collapsed .device-chip { justify-content: center; padding: 8px 0; border-left-width: 1px; border-color: var(--accent); }
-    #palette-col.collapsed .device-chip .dot { width: 12px; height: 12px; }
+    #palette-col.collapsed .device-chip { padding: 5px 0 6px; }
+    #palette-col.collapsed .device-chip svg.icon { width: 28px; height: 28px; }
+    #palette-col.collapsed .device-chip .badge { top: 0; right: 1px; font-size: 9px; }
+    #ghost .lbl { display: flex; align-items: center; gap: 6px; }
+    #ghost .lbl svg { width: 20px; height: 20px; }
     svg { max-width: 560px; width: 100%; }
     /* Pin dots — free pins are grey and inert (FR-UDM-10); only a placed
        device's pins react to the pointer (click: popover, drag: move). */

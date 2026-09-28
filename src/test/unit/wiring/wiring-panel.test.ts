@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { buildHtml, PIN_DEFS, WiredPin, expandToWiredPins, paletteRequirement } from '../../../wiring/wiring-panel';
 import { REGISTRY } from '../../../devices/registry';
+import { deviceIconSvg, DEVICE_ICONS } from '../../../wiring/device-icons';
 import type { ConventionControl } from '../../../controllers/controls-convention-parser';
 
 // ── PIN_DEFS integrity ───────────────────────────────────────────────────────
@@ -277,7 +278,7 @@ describe('device palette (FR-UDM-5)', () => {
 
   it('groups controls and peripherals', () => {
     const controls = section('Controls');
-    const peripherals = section('Peripherals');
+    const peripherals = section('Peripherals · one each');
     for (const id of ['pot', 'button', 'led', 'toggle', 'rgbled', 'encoder']) {
       expect(controls).toContain(`data-device="${id}"`);
       expect(peripherals).not.toContain(`data-device="${id}"`);
@@ -311,6 +312,21 @@ describe('device palette (FR-UDM-5)', () => {
     expect(html).toContain('<div class="meta">SPI1 / I2C1</div>');
   });
 
+  it('renders every chip as an icon tile in a two-column grid (alt1 palette)', () => {
+    expect(html.match(/<div class="pal-grid">/g)).toHaveLength(2);
+    for (const id of Object.keys(REGISTRY)) {
+      const chip = html.match(new RegExp(`<div class="device-chip" data-device="${id}"[^>]*>([\\s\\S]*?)<\\/div><!-- /chip -->`));
+      expect(chip, id).not.toBeNull();
+      expect(chip![1]).toContain('<svg class="icon" viewBox="0 0 48 48"');
+      expect(chip![1]).toContain(`<div class="name">${REGISTRY[id]!.label}</div>`);
+    }
+  });
+
+  it('marks a placed-capable (peripheral) chip with a hidden ✓ badge only', () => {
+    expect(html).toMatch(/data-device="oled"[^>]*>[\s\S]*?<span class="badge">✓<\/span>/);
+    expect(html).not.toMatch(/data-device="pot"[^>]*>(?:(?!<!-- \/chip -->)[\s\S])*class="badge"/);
+  });
+
   it('has a collapse toggle', () => {
     expect(html).toContain('id="palette-toggle"');
     expect(html).toContain('id="palette-col"');
@@ -324,5 +340,21 @@ describe('device palette (FR-UDM-5)', () => {
     } finally {
       delete REGISTRY['servo'];
     }
+  });
+});
+
+describe('device icons (alt1 palette)', () => {
+  it('has an illustrated icon for every shipped registry device', () => {
+    for (const id of Object.keys(REGISTRY)) expect(DEVICE_ICONS[id], id).toBeTruthy();
+  });
+
+  it('falls back to an accent-coloured dot for a device with no icon', () => {
+    const svg = deviceIconSvg('servo', '#123456');
+    expect(svg).toContain('<svg class="icon" viewBox="0 0 48 48"');
+    expect(svg).toContain('fill="#123456"');
+  });
+
+  it('escapes the fallback colour', () => {
+    expect(deviceIconSvg('servo', '"><script>')).not.toContain('<script>');
   });
 });
