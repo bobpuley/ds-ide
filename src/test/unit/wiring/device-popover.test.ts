@@ -121,3 +121,28 @@ describe('placementMessage (FR-UDM-7)', () => {
       .toEqual({ command: 'setPeripheralEnabled', peripheralId: 'oled', enabled: true, bus: 'I2C1' });
   });
 });
+
+describe('placement conflict mode (FR-UDM-8)', () => {
+  const occupied: DropTarget = { kind: 'pin', pins: [15], conflicts: [{ id: 'vol', label: 'vol (Pot)', kind: 'control' }] };
+  const lane: DropTarget = {
+    kind: 'lane', bus: 'I2C1', pins: [11, 12],
+    conflicts: [{ id: 'b1', label: 'b1 (Button)', kind: 'control' }, { id: 'l1', label: 'l1 (LED)', kind: 'control' }],
+  };
+
+  it('names every device the drop would remove', () => {
+    expect(describePlacement('button', occupied, wired).conflicts).toEqual(['vol (Pot)']);
+    expect(describePlacement('oled', lane, wired).conflicts).toEqual(['b1 (Button)', 'l1 (LED)']);
+    expect(describePlacement('button', { kind: 'pin', pins: [3], conflicts: [] }, wired).conflicts).toEqual([]);
+  });
+
+  it('the replaced ids are free for the new device\'s id', () => {
+    expect(describePlacement('pot', occupied, wired).idPool.map(wp => wp.id)).not.toContain('vol');
+  });
+
+  it('Replace posts the occupant ids alongside the add', () => {
+    expect(placementMessage('button', occupied, 'bypass'))
+      .toEqual({ command: 'wirePin', pinNumber: 15, deviceType: 'button', id: 'bypass', replace: ['vol'] });
+    expect(placementMessage('oled', lane, null))
+      .toEqual({ command: 'setPeripheralEnabled', peripheralId: 'oled', enabled: true, bus: 'I2C1', replace: ['b1', 'l1'] });
+  });
+});

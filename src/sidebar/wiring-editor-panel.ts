@@ -17,6 +17,16 @@ const WIRING_WEBVIEW_COMMANDS = new Set<WiringWebviewMessage['command']>([
   'wirePin', 'unwirePin', 'setPeripheralEnabled', 'viewPeripheral', 'revealInCode',
 ]);
 
+const ID_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+// Generous bound: a lane holds at most six pins, so at most six occupants.
+const MAX_REPLACE = 16;
+
+// FR-UDM-8: an optional list of occupant ids (control ids or peripheral ids).
+function isReplaceList(v: unknown): v is string[] | undefined {
+  return v === undefined ||
+    (Array.isArray(v) && v.length <= MAX_REPLACE && v.every(x => typeof x === 'string' && ID_RE.test(x)));
+}
+
 export class WiringViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
   private lastWiredPins: WiredPin[] = [];
@@ -57,7 +67,8 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
             !Number.isFinite(pinNumber) || !Number.isInteger(pinNumber) ||
             pinNumber < 0 || pinNumber > 31 ||
             typeof deviceType !== 'string' || !isDeviceType(deviceType) ||
-            typeof id !== 'string' || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id)
+            typeof id !== 'string' || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id) ||
+            !isReplaceList(msg.replace)
           ) return;
           // FR-EXT-8: onWirePin performs file I/O (workspace edit + save) that
           // can throw (e.g. a permission error) — left unguarded, that would
@@ -68,7 +79,7 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
               pinNumber:  pinNumber,
               deviceType: deviceType as WiredPin['deviceType'],
               id:         id,
-            });
+            }, msg.replace);
           } catch (err) {
             void vscode.window.showErrorMessage(`ds-ide: could not wire pin: ${String(err)}`);
           }
@@ -96,10 +107,11 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
           if (
             typeof peripheralId !== 'string' || !peripheralIds().includes(peripheralId) ||
             typeof enabled !== 'boolean' ||
-            (bus !== undefined && (typeof bus !== 'string' || !candidateBusesFor(peripheralId).includes(bus)))
+            (bus !== undefined && (typeof bus !== 'string' || !candidateBusesFor(peripheralId).includes(bus))) ||
+            !isReplaceList(msg.replace)
           ) return;
           try {
-            await this.onSetPeripheralEnabled(peripheralId, enabled, bus);
+            await this.onSetPeripheralEnabled(peripheralId, enabled, bus, msg.replace);
           } catch (err) {
             void vscode.window.showErrorMessage(`ds-ide: could not update peripheral: ${String(err)}`);
           }

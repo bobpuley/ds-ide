@@ -22,7 +22,9 @@ import { REGISTRY } from './devices/registry';
 import type { Attachment } from './devices/attachment';
 import { peripheralEditText } from './wiring/peripheral-config';
 import { computePeripheralDisplayStates, PeripheralDisplayState, currentBusOf } from './wiring/peripheral-state';
-import { checkConflict, buildOccupants, formatRejection, candidateBusesFor } from './wiring/conflict-remedy';
+import {
+  checkConflict, buildOccupants, formatRejection, candidateBusesFor, removeOccupantsFromSource,
+} from './wiring/conflict-remedy';
 import { PotStore } from './controllers/pot-store';
 import { ButtonStore } from './controllers/button-store';
 import { ToggleStore } from './controllers/toggle-store';
@@ -605,7 +607,7 @@ function createWiringProvider(context: vscode.ExtensionContext, deps: WiringProv
 
   const wiringProvider = new WiringViewProvider(
     context.extensionUri,
-    async (wp: WiredPin) => {
+    async (wp: WiredPin, replace?: string[]) => {
       const folder = resolveActiveFolder(workspaceState)?.uri.fsPath ?? '';
       const effectPath = await findEffectSource(folder);
       if (!effectPath) {
@@ -614,6 +616,10 @@ function createWiringProvider(context: vscode.ExtensionContext, deps: WiringProv
       }
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
       const oldText = doc.getText();
+      // FR-UDM-8: a conflict drop's occupants are removed first; allocation,
+      // the conflict check and the add all run against that text, and the
+      // whole change is written as one edit (a single undo step).
+      const baseText = replace?.length ? removeOccupantsFromSource(oldText, replace) : oldText;
 
       // FR-DEV-8: a 'pins'-attachment device (rgbled) auto-claims its
       // remaining pins from the nearest free ones after the clicked pin,
@@ -623,7 +629,7 @@ function createWiringProvider(context: vscode.ExtensionContext, deps: WiringProv
       const pinCount = REGISTRY[wp.deviceType]!.pinCount;
       let pins: number[] | undefined;
       if (pinCount !== undefined) {
-        const allocated = computeDropTargets(wp.deviceType, PIN_DEFS, occupancyFromSource(oldText))
+        const allocated = computeDropTargets(wp.deviceType, PIN_DEFS, occupancyFromSource(baseText))
           .find(t => t.kind === 'pin' && t.pins[0] === wp.pinNumber)?.pins;
         if (!allocated) {
           void vscode.window.showErrorMessage(
@@ -641,7 +647,7 @@ function createWiringProvider(context: vscode.ExtensionContext, deps: WiringProv
       // previously succeeded silently. No peripheral is being toggled here,
       // so nothing is excluded from the occupant set.
       const candidateAttachment: Attachment = pins ? { kind: 'pins', pins } : { kind: 'pin', pin: wp.pinNumber };
-      const wireRejection = checkConflict(candidateAttachment, buildOccupants(oldText), PIN_DEFS, candidateBusesFor);
+      const wireRejection = checkConflict(candidateAttachment, buildOccupants(baseText), PIN_DEFS, candidateBusesFor);
       if (wireRejection) {
         void vscode.window.showErrorMessage(
           formatRejection(`${wp.id} (${REGISTRY[wp.deviceType]!.label})`, wireRejection),
@@ -649,7 +655,7 @@ function createWiringProvider(context: vscode.ExtensionContext, deps: WiringProv
         return;
       }
 
-      const afterDecl = insertIntoSource(oldText, wp.id, wp.deviceType, wp.pinNumber, pins);
+      const afterDecl = insertIntoSource(baseText, wp.id, wp.deviceType, wp.pinNumber, pins);
       const { controls: controlsAfterDecl } = parseControlsConvention(afterDecl);
       const allPots = controlsAfterDecl.filter(c => c.kind === 'pot');
       const newText = insertInitIntoSource(afterDecl, wp.id, wp.deviceType, wp.pinNumber, allPots, pins);
@@ -669,6 +675,7 @@ function createWiringProvider(context: vscode.ExtensionContext, deps: WiringProv
       const { controls } = parseControlsConvention(newText);
       const wiredPinList: WiredPin[] = expandToWiredPins(controls);
       wiringProvider?.postWiredPins(wiredPinList);
+      if (replace?.length) wiringProvider?.postPeripherals(computePeripheralDisplayStates(newText));
       const cfg = await loadControllerConfig();
       await refreshControlsView(folder, cfg);
     },
@@ -703,7 +710,7 @@ function createWiringProvider(context: vscode.ExtensionContext, deps: WiringProv
       const cfg = await loadControllerConfig();
       await refreshControlsView(folder, cfg);
     },
-    async (peripheralId: string, enabled: boolean, requestedBus?: string) => {
+    async (peripheralId: string, enabled: boolean, requestedBus?: string, replace?: string[]) => {
       const folder = resolveActiveFolder(workspaceState)?.uri.fsPath ?? '';
       const effectPath = await findEffectSource(folder);
       if (!effectPath) {
@@ -712,6 +719,8 @@ function createWiringProvider(context: vscode.ExtensionContext, deps: WiringProv
       }
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
       const oldText = doc.getText();
+      // FR-UDM-8: same one-edit replace as the wire handler above.
+      const baseText = replace?.length ? removeOccupantsFromSource(oldText, replace) : oldText;
 
       // FR-DEV-13: a colliding enable is refused before any mutation, never
       // applied-and-flagged. Disabling a peripheral can never create a
@@ -723,7 +732,7 @@ function createWiringProvider(context: vscode.ExtensionContext, deps: WiringProv
       const bus = requestedBus ?? currentBusOf(oldText, peripheralId);
       if (enabled) {
         if (bus) {
-          const occupants = buildOccupants(oldText, peripheralId);
+          const occupants = buildOccupants(baseText, peripheralId);
           const rejection = checkConflict(
             { kind: 'bus', bus },
             occupants,
@@ -737,7 +746,7 @@ function createWiringProvider(context: vscode.ExtensionContext, deps: WiringProv
         }
       }
 
-      const newText = peripheralEditText(oldText, peripheralId, enabled, bus ?? undefined);
+      const newText = peripheralEditText(baseText, peripheralId, enabled, bus ?? undefined);
       const { edit, needsAppendConfirmation } = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
       if (needsAppendConfirmation && !(await confirmAppendMarkerBlocks())) {
         return;
@@ -749,6 +758,10 @@ function createWiringProvider(context: vscode.ExtensionContext, deps: WiringProv
       }
       await doc.save();
       wiringProvider?.postPeripherals(computePeripheralDisplayStates(newText));
+      if (replace?.length) {
+        wiringProvider?.postWiredPins(expandToWiredPins(parseControlsConvention(newText).controls));
+        await refreshControlsView(folder, await loadControllerConfig());
+      }
     },
     (peripheralId: string) => {
       if (peripheralId === 'oled') {

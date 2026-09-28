@@ -98,19 +98,27 @@ export interface PlacementModel {
   needsId: boolean;
   /** The id field's pre-fill (defaultId), or null for a peripheral. */
   defaultId: string | null;
+  /** FR-UDM-8: labels of every device the drop would remove (conflict mode when non-empty). */
+  conflicts: string[];
+  /** Wired pins the id is validated against — replaced controls' ids are free again. */
+  idPool: WiredPin[];
 }
 
 /** What the popover shows after `deviceId` is dropped on `target`. */
 export function describePlacement(deviceId: string, target: DropTarget, wiredPins: WiredPin[]): PlacementModel {
   const d = REGISTRY[deviceId];
   const isControl = target.kind === 'pin';
+  const replaced = new Set(target.conflicts.map(c => c.id));
+  const idPool = wiredPins.filter(wp => !replaced.has(wp.id));
   return {
     label: d?.label ?? deviceId,
     accentColor: d?.accentColor ?? '#9cdcfe',
     rowKey: isControl ? (target.pins.length > 1 ? 'pins' : 'pin') : 'bus',
     rowValue: isControl ? formatPins(target.pins, d?.pinSlots) : formatBus(target.bus ?? null, target.pins),
     needsId: isControl,
-    defaultId: isControl ? defaultId(deviceId as DeviceType, wiredPins) : null,
+    defaultId: isControl ? defaultId(deviceId as DeviceType, idPool) : null,
+    conflicts: target.conflicts.map(c => c.label),
+    idPool,
   };
 }
 
@@ -120,8 +128,10 @@ export function describePlacement(deviceId: string, target: DropTarget, wiredPin
  * of the lane it was dropped on — the lane is the bus choice.
  */
 export function placementMessage(deviceId: string, target: DropTarget, id: string | null): WiringWebviewMessage {
+  // FR-UDM-8: Replace carries the occupant ids; the host removes them in the same edit.
+  const replace = target.conflicts.length ? { replace: target.conflicts.map(c => c.id) } : {};
   if (target.kind === 'pin') {
-    return { command: 'wirePin', pinNumber: target.pins[0] ?? -1, deviceType: deviceId as DeviceType, id: id ?? '' };
+    return { command: 'wirePin', pinNumber: target.pins[0] ?? -1, deviceType: deviceId as DeviceType, id: id ?? '', ...replace };
   }
-  return { command: 'setPeripheralEnabled', peripheralId: deviceId, enabled: true, bus: target.bus };
+  return { command: 'setPeripheralEnabled', peripheralId: deviceId, enabled: true, bus: target.bus, ...replace };
 }

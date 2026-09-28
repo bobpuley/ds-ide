@@ -69,7 +69,7 @@ All ten devices in one palette, generated from the registry.
 
 ---
 
-### [ ] feat: replace an occupant on conflict drop (FR-UDM-8)
+### [x] feat: replace an occupant on conflict drop (FR-UDM-8)
 
 **Affected files:** `src/webview/wiring-webview.ts`, `src/webview/messages.ts`, `src/extension.ts`, `src/test/unit/extension.test.ts`, `src/test/unit/wiring/conflict-remedy.test.ts`
 

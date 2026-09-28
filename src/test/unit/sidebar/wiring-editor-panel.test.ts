@@ -151,7 +151,7 @@ describe('WiringViewProvider', () => {
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);
     const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
     await handler({ command: 'wirePin', pinNumber: 15, deviceType: 'pot', id: 'filter' });
-    expect(onWirePin).toHaveBeenCalledWith({ pinNumber: 15, deviceType: 'pot', id: 'filter' });
+    expect(onWirePin).toHaveBeenCalledWith({ pinNumber: 15, deviceType: 'pot', id: 'filter' }, undefined);
   });
 
   // Regression test: this deviceType check used to be a hardcoded
@@ -165,7 +165,7 @@ describe('WiringViewProvider', () => {
       provider.resolveWebviewView(view as unknown as vscode.WebviewView);
       const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
       await handler({ command: 'wirePin', pinNumber: 15, deviceType, id: 'x1' });
-      expect(onWirePin).toHaveBeenCalledWith({ pinNumber: 15, deviceType, id: 'x1' });
+      expect(onWirePin).toHaveBeenCalledWith({ pinNumber: 15, deviceType, id: 'x1' }, undefined);
     },
   );
 
@@ -260,7 +260,7 @@ describe('WiringViewProvider', () => {
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);
     const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
     await handler({ command: 'setPeripheralEnabled', peripheralId: 'sdcard', enabled: true });
-    expect(onSetPeripheralEnabled).toHaveBeenCalledWith('sdcard', true, undefined);
+    expect(onSetPeripheralEnabled).toHaveBeenCalledWith('sdcard', true, undefined, undefined);
   });
 
   it('passes a dropped lane\'s bus through to onSetPeripheralEnabled (FR-UDM-7)', async () => {
@@ -268,7 +268,21 @@ describe('WiringViewProvider', () => {
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);
     const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
     await handler({ command: 'setPeripheralEnabled', peripheralId: 'oled', enabled: true, bus: 'I2C1' });
-    expect(onSetPeripheralEnabled).toHaveBeenCalledWith('oled', true, 'I2C1');
+    expect(onSetPeripheralEnabled).toHaveBeenCalledWith('oled', true, 'I2C1', undefined);
+  });
+
+  it('passes a replace list through, and drops a malformed one (FR-UDM-8)', async () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
+    await handler({ command: 'wirePin', pinNumber: 15, deviceType: 'button', id: 'b1', replace: ['vol'] });
+    expect(onWirePin).toHaveBeenCalledWith({ pinNumber: 15, deviceType: 'button', id: 'b1' }, ['vol']);
+    await handler({ command: 'setPeripheralEnabled', peripheralId: 'oled', enabled: true, bus: 'I2C1', replace: ['b1', 'l1'] });
+    expect(onSetPeripheralEnabled).toHaveBeenCalledWith('oled', true, 'I2C1', ['b1', 'l1']);
+    onWirePin.mockClear();
+    await handler({ command: 'wirePin', pinNumber: 15, deviceType: 'button', id: 'b1', replace: ['a b'] });
+    await handler({ command: 'wirePin', pinNumber: 15, deviceType: 'button', id: 'b1', replace: Array(17).fill('x') });
+    expect(onWirePin).not.toHaveBeenCalled();
   });
 
   it('drops setPeripheralEnabled with a bus outside the peripheral\'s candidates (FR-UDM-7)', async () => {

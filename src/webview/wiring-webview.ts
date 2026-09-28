@@ -766,7 +766,16 @@ function openPlacementPopover(deviceId: string, target: DropTarget, e: MouseEven
   addBtn.type = 'button';
   addBtn.className = 'dp-primary';
   addBtn.id = 'dp-add';
-  addBtn.textContent = 'Add';
+  // FR-UDM-8: conflict mode — Replace / Cancel, naming what goes. No Relocate.
+  const conflict = m.conflicts.length > 0;
+  addBtn.textContent = conflict ? 'Replace' : 'Add';
+  if (conflict) {
+    addBtn.classList.add('dp-danger');
+    const note = document.createElement('div');
+    note.className = 'dp-conflict';
+    note.textContent = `⚠ Replaces ${m.conflicts.join(', ')} — ${m.conflicts.length === 1 ? 'it' : 'they'} will be removed.`;
+    body.append(note);
+  }
 
   let idInput: HTMLInputElement | null = null;
   let idError: HTMLElement | null = null;
@@ -779,7 +788,7 @@ function openPlacementPopover(deviceId: string, target: DropTarget, e: MouseEven
     const err = document.createElement('div');
     err.className = 'dp-error';
     const validate = (): void => {
-      const msg = validateId(input.value.trim(), wiredPins);
+      const msg = validateId(input.value.trim(), m.idPool);
       err.textContent = msg ?? '';
       addBtn.disabled = !!msg;
     };
@@ -800,7 +809,7 @@ function openPlacementPopover(deviceId: string, target: DropTarget, e: MouseEven
   addBtn.addEventListener('click', () => {
     const id = idInput ? idInput.value.trim() : null;
     if (id !== null) {
-      const msg = validateId(id, wiredPins);
+      const msg = validateId(id, m.idPool);
       if (msg) { if (idError) idError.textContent = msg; return; }
     }
     vscode.postMessage(placementMessage(deviceId, target, id));

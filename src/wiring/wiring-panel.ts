@@ -19,9 +19,11 @@ export interface WiredPin {
   id: string;
 }
 
-export type WirePinHandler   = (pin: WiredPin) => Promise<void>;
+export type WirePinHandler   = (pin: WiredPin, replace?: string[]) => Promise<void>;
 export type UnwirePinHandler = (pinNumber: number, id: string) => Promise<void>;
-export type SetPeripheralEnabledHandler = (peripheralId: string, enabled: boolean, bus?: string) => Promise<void>;
+export type SetPeripheralEnabledHandler = (
+  peripheralId: string, enabled: boolean, bus?: string, replace?: string[],
+) => Promise<void>;
 // FR-DEV-15: opens or reveals a peripheral's live view (today: only oled has one).
 export type ViewPeripheralHandler = (peripheralId: string) => void;
 // FR-UDM-4: reveals a placed device's generated declaration in the effect source.
@@ -199,6 +201,8 @@ ${pinDeviceCssRules()}
     #device-popover button:disabled { opacity: .4; cursor: default; }
     #device-popover input[type=text] { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; font-family: monospace;
                                        font-size: 11px; padding: 3px 6px; border-radius: 2px; width: 150px; }
+    #device-popover .dp-conflict { background: #3a2a10; border: 1px solid #f4c430; color: #f4c430; padding: 6px 8px;
+                                   border-radius: 3px; margin: 6px 0; font-size: 9.5px; line-height: 1.5; }
     #device-popover .dp-error { font-size: 10px; color: #f48771; min-height: 14px; line-height: 1.4; }
     #device-popover button.dp-danger { background: #5a1a1a; border-color: #c94040; color: #f48771; }
     /* Labels */

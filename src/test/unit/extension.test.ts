@@ -1629,6 +1629,104 @@ describe('placement drop (FR-UDM-7)', () => {
   });
 });
 
+describe('replace on conflict drop (FR-UDM-8)', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    managerInstances.length = 0;
+    const fsMock = (await import('fs')) as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    const promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['access']!.mockImplementation((p: unknown) => {
+      const fp = String(p);
+      if (fp.endsWith('CMakeLists.txt') || fp.endsWith('.cpp')) return Promise.resolve();
+      return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    });
+    promisesMock['readdir']!.mockResolvedValue(['effect.cpp']);
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [
+      { uri: { fsPath: '/proj' } },
+    ];
+    (vscode.workspace.applyEdit as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mockResolvedValue('Append');
+  });
+
+  afterEach(() => {
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = undefined;
+  });
+
+  function useSource(source: string): void {
+    (vscode.workspace.openTextDocument as ReturnType<typeof vi.fn>).mockResolvedValue({
+      getText: vi.fn(() => source),
+      lineCount: source.split('\n').length,
+      lineAt: vi.fn((n: number) => ({ range: { end: { line: n, character: (source.split('\n')[n] ?? '').length } } })),
+      save: vi.fn(async () => true),
+    });
+  }
+
+  async function wiringHandler(): Promise<(msg: unknown) => Promise<void> | void> {
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const registerCalls = (vscode.window.registerWebviewViewProvider as ReturnType<typeof vi.fn>).mock.calls;
+    const provider = registerCalls.find((c: unknown[]) => c[0] === 'ds-ide.wiringEditor')?.[1] as
+      { resolveWebviewView: (view: unknown) => void };
+    const onDidReceiveMessage = vi.fn(() => ({ dispose: vi.fn() }));
+    provider.resolveWebviewView({
+      webview: { html: '', options: {}, onDidReceiveMessage, postMessage: vi.fn(), asWebviewUri: vi.fn((u: unknown) => u), cspSource: '' },
+      visible: true,
+      onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
+      onDidChangeVisibility: vi.fn(() => ({ dispose: vi.fn() })),
+      show: vi.fn(),
+    });
+    return (onDidReceiveMessage.mock.calls[0] as unknown[])[0] as (msg: unknown) => Promise<void> | void;
+  }
+
+  function writtenText(): string {
+    const edit = (vscode.workspace.applyEdit as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
+      { insert: ReturnType<typeof vi.fn>; replace: ReturnType<typeof vi.fn> };
+    return [...edit.insert.mock.calls, ...edit.replace.mock.calls].map(c => String(c[c.length - 1])).join('\n');
+  }
+
+  const controls = (...lines: string[]): string =>
+    ['// ds-ide:controls:begin', ...lines, '// ds-ide:controls:end', ''].join('\n');
+
+  it('a control replaces a control in one edit', async () => {
+    useSource(controls('// ds-ide: id=vol, kind=pot, pin=15'));
+    const handler = await wiringHandler();
+    await handler({ command: 'wirePin', pinNumber: 15, deviceType: 'button', id: 'bypass', replace: ['vol'] });
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+    expect(vscode.workspace.applyEdit).toHaveBeenCalledTimes(1);
+    expect(writtenText()).toContain('id=bypass');
+    expect(writtenText()).not.toContain('id=vol');
+  });
+
+  it('a peripheral replaces the controls on its lane in one edit', async () => {
+    useSource(controls('// ds-ide: id=b1, kind=button, pin=11', '// ds-ide: id=l1, kind=led, pin=12'));
+    const handler = await wiringHandler();
+    await handler({ command: 'setPeripheralEnabled', peripheralId: 'oled', enabled: true, bus: 'I2C1', replace: ['b1', 'l1'] });
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+    expect(vscode.workspace.applyEdit).toHaveBeenCalledTimes(1);
+    expect(writtenText()).toContain('SSD130xI2c128x64Driver');
+    expect(writtenText()).not.toMatch(/id=b1|id=l1/);
+  });
+
+  it('rejects with formatRejection when the source changed underneath (stale replace)', async () => {
+    // The webview asked to replace vol, but gain is on D15 now.
+    useSource(controls('// ds-ide: id=gain, kind=pot, pin=15'));
+    const handler = await wiringHandler();
+    await handler({ command: 'wirePin', pinNumber: 15, deviceType: 'button', id: 'bypass', replace: ['vol'] });
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringMatching(/D15.*gain/s));
+    expect(vscode.workspace.applyEdit).not.toHaveBeenCalled();
+  });
+
+  it('drops a malformed replace list', async () => {
+    useSource(controls('// ds-ide: id=vol, kind=pot, pin=15'));
+    const handler = await wiringHandler();
+    await handler({ command: 'wirePin', pinNumber: 15, deviceType: 'button', id: 'bypass', replace: 'vol' });
+    await handler({ command: 'wirePin', pinNumber: 15, deviceType: 'button', id: 'bypass', replace: ['bad id'] });
+    await handler({ command: 'setPeripheralEnabled', peripheralId: 'oled', enabled: true, replace: [3] });
+    expect(vscode.workspace.applyEdit).not.toHaveBeenCalled();
+  });
+});
+
 // ── FR-UX-3: a configured effectSource outside the workspace is refused ──
 
 describe('effectSource containment (FR-UX-3)', () => {

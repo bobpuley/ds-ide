@@ -9,7 +9,9 @@ import type { Attachment } from '../devices/attachment';
 import { resolveFootprint } from '../devices/attachment';
 import { REGISTRY } from '../devices/registry';
 import { parseControlsConvention } from '../controllers/controls-convention-parser';
-import { computePeripheralDisplayStates } from './peripheral-state';
+import { computePeripheralDisplayStates, peripheralIds, isPeripheralEnabled } from './peripheral-state';
+import { removeFromSource, removeInitFromSource } from './controls-writer';
+import { peripheralEditText } from './peripheral-config';
 
 export interface Occupant {
   id: string;
@@ -193,4 +195,23 @@ export function buildOccupants(source: string, excludingPeripheralId?: string): 
     }));
 
   return [...controlOccupants, ...peripheralOccupants];
+}
+
+// FR-UDM-8: removes the occupants a conflict drop replaces — each control
+// exactly as its Remove action would, each peripheral as Disable would — so
+// the caller can add the new device to the result and write both in one
+// edit. An id no longer on the board is skipped: the caller's follow-up
+// checkConflict then reports whatever is there instead (stale replace).
+export function removeOccupantsFromSource(source: string, ids: string[]): string {
+  let text = source;
+  for (const id of ids) {
+    if (parseControlsConvention(text).controls.some(c => c.id === id)) {
+      const afterDecl = removeFromSource(text, id);
+      const pots = parseControlsConvention(afterDecl).controls.filter(c => c.kind === 'pot');
+      text = removeInitFromSource(afterDecl, id, pots);
+    } else if (peripheralIds().includes(id) && isPeripheralEnabled(text, id)) {
+      text = peripheralEditText(text, id, false);
+    }
+  }
+  return text;
 }
