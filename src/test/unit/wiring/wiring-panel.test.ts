@@ -155,9 +155,13 @@ describe('buildHtml', () => {
     expect(html).toContain('id="popup-remove"');
   });
 
-  it('contains non-ADC pin warning badge', () => {
-    expect(html).toContain('id="pot-warn"');
+  // FR-UDM-1: the pot-only `pot-warn` badge is replaced by one generic badge
+  // per pin-constrained device, derived from its registry `pinRequires`.
+  it('renders a pin-requirement warning badge from pinRequires, not a pot special case (FR-UDM-1)', () => {
+    expect(html).not.toContain('pot-warn');
+    expect(html).toContain('id="warn-pot"');
     expect(html).toContain('non-ADC pin');
+    expect(html).not.toContain('id="warn-button"');
   });
 
   it('serialises PIN_DEFS as JSON in script', () => {

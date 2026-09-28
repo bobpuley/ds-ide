@@ -16,7 +16,7 @@ for M66's drag model.
 
 ## Sprint Tasks
 
-### [ ] feat: add declarative pinRequires to the device registry (FR-UDM-1)
+### [x] feat: add declarative pinRequires to the device registry (FR-UDM-1)
 
 Pot's ADC requirement is hardcoded as a warn badge (`wiring-panel.ts`'s `id === 'pot'` case)
 rather than declared on its descriptor, so nothing else can reason about pin suitability.

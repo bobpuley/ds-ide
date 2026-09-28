@@ -121,7 +121,16 @@ export interface DeviceDescriptor {
    * comment named this exact moment as the trigger to generalize).
    */
   hasLiveView?: boolean;
+  /**
+   * FR-UDM-1: the pin capability a pin-attached device needs, checked
+   * against the pin table by wiring/pin-eligibility.ts's isPinEligible —
+   * undefined means any assignable pin. Bus devices keep expressing their
+   * footprint through `bus` / `busChoices` instead. Today only pot sets it.
+   */
+  pinRequires?: PinRequirement;
 }
+
+export type PinRequirement = 'adc' | 'i2c' | 'uart' | 'spi' | 'sdmmc';
 
 // The enumerable literal-type source of truth. REGISTRY itself stays a
 // loosely-typed Record (rather than keyof typeof REGISTRY) so it remains a
@@ -147,6 +156,7 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     attachmentKind: 'pin',
     initArgs: null,
     codegen: potCodegen,
+    pinRequires: 'adc',
   },
   button: {
     id: 'button',

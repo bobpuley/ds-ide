@@ -55,15 +55,15 @@ function pinDeviceCssRules(): string {
     .join('\n');
 }
 
-// The pot button carries an extra non-ADC-pin warning badge — pin-suitability
-// warnings aren't part of the registry descriptor (only pot has one today),
-// so this stays a small special case rather than a registry field.
+// FR-UDM-1: a device declaring `pinRequires` gets a hidden warning badge;
+// wiring-webview.ts shows it when isPinEligible() says the clicked pin
+// doesn't satisfy that requirement. No device id is special-cased here.
 function popupDeviceButtonsHtml(): string {
   return wiredControlIds()
     .map(id => {
       const d = REGISTRY[id]!;
-      const warnBadge = id === 'pot'
-        ? '<span class="warn-badge" id="pot-warn" style="display:none">⚠ non-ADC pin</span>'
+      const warnBadge = d.pinRequires
+        ? `<span class="warn-badge" id="warn-${id}" style="display:none">⚠ non-${d.pinRequires.toUpperCase()} pin</span>`
         : '';
       return `      <button class="popup-btn" id="btn-${id}">${d.label}${warnBadge}</button>`;
     })

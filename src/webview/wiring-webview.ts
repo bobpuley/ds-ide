@@ -6,6 +6,7 @@ import { defaultId, validateId } from '../wiring/id-validation';
 import { REGISTRY, wiredControlIds } from '../devices/registry';
 import { computeBusBrackets, type BusBracket } from '../wiring/bus-bracket';
 import { computePinOverlayStates } from '../wiring/pin-overlay-state';
+import { isPinEligible } from '../wiring/pin-eligibility';
 import { hasKnownCommand } from './message-guard';
 import { el } from './dom-lookup';
 import { readDataIsland, showDataIslandError } from './data-island';
@@ -446,7 +447,11 @@ function closePopup(): void {
 function showAssignPopup(pinNumber: number, adc: boolean, e: MouseEvent): void {
   popupPin = { pinNumber, adc };
   el<HTMLElement>('popup-title').textContent = 'Assign pin D' + pinNumber;
-  el<HTMLElement>('pot-warn').style.display = (!adc) ? 'inline' : 'none';
+  const pinDef = PIN_DEFS.find(d => d.pin === pinNumber);
+  for (const id of wiredControlIds()) {
+    const badge = document.getElementById('warn-' + id);
+    if (badge) badge.style.display = pinDef && !isPinEligible(pinDef, id) ? 'inline' : 'none';
+  }
   el<HTMLElement>('popup-assign').style.display = 'block';
   el<HTMLElement>('popup-assigned').style.display = 'none';
   selectedKind = null;

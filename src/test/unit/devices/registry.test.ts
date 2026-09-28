@@ -31,6 +31,13 @@ describe('REGISTRY (FR-DEV-2)', () => {
     expect(REGISTRY['toggle']!.attachmentKind).toBe('pin');
   });
 
+  it('declares pot as requiring an ADC pin and no other device as pin-constrained (FR-UDM-1)', () => {
+    expect(REGISTRY['pot']!.pinRequires).toBe('adc');
+    for (const id of ['button', 'led', 'toggle', 'rgbled', 'encoder']) {
+      expect(REGISTRY[id]!.pinRequires).toBeUndefined();
+    }
+  });
+
   it('declares toggle with the multi-position primitive (FR-DEV-7)', () => {
     expect(REGISTRY['toggle']!.primitive).toBe('multi-position');
     expect(REGISTRY['toggle']!.declaredClassName).toBe('Switch3');
