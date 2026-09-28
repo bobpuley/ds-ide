@@ -31,6 +31,22 @@ describe('REGISTRY (FR-DEV-2)', () => {
     expect(REGISTRY['toggle']!.attachmentKind).toBe('pin');
   });
 
+  it('declares pot as requiring an ADC pin and no other device as pin-constrained (FR-UDM-1)', () => {
+    expect(REGISTRY['pot']!.pinRequires).toBe('adc');
+    for (const id of ['button', 'led', 'toggle', 'rgbled', 'encoder']) {
+      expect(REGISTRY[id]!.pinRequires).toBeUndefined();
+    }
+  });
+
+  it('names each multi-pin device\'s pin slots in Init() argument order (FR-UDM-3)', () => {
+    expect(REGISTRY['rgbled']!.pinSlots).toEqual(['R', 'G', 'B']);
+    expect(REGISTRY['encoder']!.pinSlots).toEqual(['A', 'B', 'SW']);
+    for (const id of Object.keys(REGISTRY)) {
+      const d = REGISTRY[id]!;
+      if (d.pinSlots) expect(d.pinSlots).toHaveLength(d.pinCount!);
+    }
+  });
+
   it('declares toggle with the multi-position primitive (FR-DEV-7)', () => {
     expect(REGISTRY['toggle']!.primitive).toBe('multi-position');
     expect(REGISTRY['toggle']!.declaredClassName).toBe('Switch3');
@@ -151,12 +167,11 @@ describe('adding a registry entry surfaces it everywhere (FR-DEV-2)', () => {
     expect(html).toContain('Fakekind');
   });
 
-  it('surfaces in the Controls Editor palette CSS and button', () => {
+  it('surfaces in the Controls Editor card CSS', () => {
     addFakeDevice();
     const html = buildControlsHtml('test-nonce', 'vscode-resource://x.js');
-    expect(html).toContain('data-kind="fakekind"');
+    expect(html).toContain('.ctrl-card[data-kind="fakekind"]');
     expect(html).toContain('#abc123');
-    expect(html).toContain('Fakekind');
   });
 
   it('surfaces in controls-writer.ts codegen via declaredClassName', () => {
@@ -180,7 +195,7 @@ describe('bus-attached peripherals are excluded from pin/palette pickers (FR-DEV
     expect(html).not.toContain('id="btn-sdcard"');
   });
 
-  it('sdcard has no palette item in the Controls Editor', () => {
+  it('sdcard has no control-card style in the Controls Editor', () => {
     const html = buildControlsHtml('test-nonce', 'vscode-resource://x.js');
     expect(html).not.toContain('data-kind="sdcard"');
   });

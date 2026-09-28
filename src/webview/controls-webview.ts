@@ -13,7 +13,6 @@ import { readDataIsland, showDataIslandError } from './data-island';
 import { createDocListenerTracker } from './controls/doc-listeners';
 import { createConventionCanvas } from './controls/convention-canvas';
 import { createYamlEditorCanvas } from './controls/yaml-editor-canvas';
-import { wirePaletteDragDrop } from './controls/palette-drag-drop';
 import { wireSaveButton } from './controls/save';
 import { createSdCardPanel } from './controls/sd-card-panel';
 import { createOledStrip } from './controls/oled-strip';
@@ -52,8 +51,6 @@ const conventionCanvas = createConventionCanvas(
 const sdCardPanel = createSdCardPanel(vscode);
 const oledStrip = createOledStrip(vscode);
 
-wirePaletteDragDrop((kind, x, y) => yamlEditorCanvas.addNewControl(kind, x, y));
-
 let conventionMissing = true;
 
 wireSaveButton({
@@ -70,8 +67,6 @@ function applyControlsConfig(msg: ControlsConfigMsg): void {
   conventionMissing = !!msg.missingBlock;
   const banner = document.getElementById('convention-banner');
   if (banner) banner.style.display = conventionMissing ? 'flex' : 'none';
-  const palette = document.getElementById('palette');
-  if (palette) palette.style.display = conventionMissing ? 'flex' : 'none';
   if (!conventionMissing) {
     conventionCanvas.apply(msg.controls || [], msg.placements || []);
   } else {

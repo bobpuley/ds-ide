@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
 import {
   WiredPin, WirePinHandler, UnwirePinHandler, SetPeripheralEnabledHandler, ViewPeripheralHandler,
-  PeripheralDisplayState, buildHtml,
+  RevealInCodeHandler, PeripheralDisplayState, buildHtml,
 } from '../wiring/wiring-panel';
 import { isDeviceType } from '../devices/registry';
 import { peripheralIds } from '../wiring/peripheral-state';
@@ -13,7 +13,7 @@ import { hasKnownCommand, assertNever } from '../webview/message-guard';
 // switch's `default: assertNever(...)` is the actual drift-detector; this
 // Set only drives the runtime hasKnownCommand narrow.
 const WIRING_WEBVIEW_COMMANDS = new Set<WiringWebviewMessage['command']>([
-  'wirePin', 'unwirePin', 'setPeripheralEnabled', 'viewPeripheral',
+  'wirePin', 'unwirePin', 'setPeripheralEnabled', 'viewPeripheral', 'revealInCode',
 ]);
 
 export class WiringViewProvider implements vscode.WebviewViewProvider {
@@ -27,6 +27,7 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
     private readonly onUnwirePin: UnwirePinHandler,
     private readonly onSetPeripheralEnabled: SetPeripheralEnabledHandler,
     private readonly onViewPeripheral: ViewPeripheralHandler,
+    private readonly onRevealInCode: RevealInCodeHandler,
   ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -105,6 +106,16 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
           const peripheralId = msg.peripheralId;
           if (typeof peripheralId !== 'string' || !peripheralIds().includes(peripheralId)) return;
           this.onViewPeripheral(peripheralId);
+          break;
+        }
+        case 'revealInCode': {
+          const id = msg.id;
+          if (typeof id !== 'string' || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(id)) return;
+          try {
+            await this.onRevealInCode(id);
+          } catch (err) {
+            void vscode.window.showErrorMessage(`ds-ide: could not reveal ${id} in code: ${String(err)}`);
+          }
           break;
         }
         default:

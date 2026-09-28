@@ -151,13 +151,25 @@ describe('buildHtml', () => {
     expect(html).toContain('id="id-error"');
   });
 
-  it('contains Remove button', () => {
-    expect(html).toContain('id="popup-remove"');
+  // FR-UDM-3: one #device-popover replaces popup-assigned and #bus-popover.
+  it('contains the unified device popover, not the old assigned/bus popovers (FR-UDM-3)', () => {
+    expect(html).toContain('id="device-popover"');
+    expect(html).not.toContain('popup-assigned');
+    expect(html).not.toContain('id="popup-remove"');
+    expect(html).not.toContain('bus-popover');
   });
 
-  it('contains non-ADC pin warning badge', () => {
-    expect(html).toContain('id="pot-warn"');
+  it('keeps the click-a-free-pin assign popup until M66 (FR-UDM-3)', () => {
+    expect(html).toContain('id="popup-assign"');
+  });
+
+  // FR-UDM-1: the pot-only `pot-warn` badge is replaced by one generic badge
+  // per pin-constrained device, derived from its registry `pinRequires`.
+  it('renders a pin-requirement warning badge from pinRequires, not a pot special case (FR-UDM-1)', () => {
+    expect(html).not.toContain('pot-warn');
+    expect(html).toContain('id="warn-pot"');
     expect(html).toContain('non-ADC pin');
+    expect(html).not.toContain('id="warn-button"');
   });
 
   it('serialises PIN_DEFS as JSON in script', () => {
@@ -239,8 +251,5 @@ describe('buildHtml bus bracket tooltip/popover', () => {
     expect(html).toContain('id="tooltip"');
   });
 
-  it('contains a bus popover container', () => {
-    expect(html).toContain('id="bus-popover"');
-  });
 });
 

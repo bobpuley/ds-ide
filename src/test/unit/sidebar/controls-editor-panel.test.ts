@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
-import { ControlsViewProvider, truncId } from '../../../sidebar/controls-editor-panel';
+import { ControlsViewProvider, truncId, buildHtml } from '../../../sidebar/controls-editor-panel';
 
 function makeWebviewViewMock() {
   const onDisposeHandlers: Array<() => void> = [];
@@ -524,5 +524,24 @@ describe('truncId', () => {
   it('truncates id of exactly 16 chars', () => {
     const result = truncId('1234567890123456');
     expect(result).toBe('12345678901234…');
+  });
+});
+
+// FR-UDM-2: the Controls Editor only lays out already-wired controls — its
+// palette (which silently dropped toggle/rgbled/encoder) is gone, and the
+// empty-canvas hint points to the Wiring Editor instead.
+describe('Controls Editor palette removal (FR-UDM-2)', () => {
+  const html = buildHtml('test-nonce', 'vscode-resource://x.js');
+
+  it('renders no palette or draggable palette item', () => {
+    expect(html).not.toContain('id="palette"');
+    expect(html).not.toContain('palette-item');
+    expect(html).not.toContain('draggable="true"');
+  });
+
+  it('empty-canvas hint points to the Wiring Editor', () => {
+    expect(html).toContain('id="canvas-hint"');
+    expect(html).not.toContain('Drag a control from the palette');
+    expect(html).toMatch(/id="canvas-hint">[^<]*Wiring Editor/);
   });
 });

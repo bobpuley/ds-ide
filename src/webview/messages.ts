@@ -105,4 +105,7 @@ export type WiringWebviewMessage =
   | { command: 'wirePin'; pinNumber: number; deviceType: DeviceType; id: string }
   | { command: 'unwirePin'; pinNumber: number; id: string }
   | { command: 'setPeripheralEnabled'; peripheralId: string; enabled: boolean }
-  | { command: 'viewPeripheral'; peripheralId: string };
+  | { command: 'viewPeripheral'; peripheralId: string }
+  // FR-UDM-4: the device popover's "Reveal in code" — `id` is a control's
+  // instance id or a peripheral's registry id.
+  | { command: 'revealInCode'; id: string };

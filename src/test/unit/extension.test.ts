@@ -60,7 +60,8 @@ vi.mock('../../emulator/manager', () => {
 
 // Imported for type inference only — each test describe re-imports dynamically.
 import type { activate as ActivateFn, deactivate as DeactivateFn } from '../../extension';
-import { makeBlockEdit } from '../../extension';
+import { makeBlockEdit, findDeviceDeclarationLine, revealDeviceInCode } from '../../extension';
+import { oledCodegen } from '../../devices/codegen/oled';
 
 function makeContext(): vscode.ExtensionContext {
   return {
@@ -1811,5 +1812,85 @@ describe('multi-root workspace folder selection (FR-UX-4)', () => {
     await selectCmd();
 
     expect(ctx.workspaceState.get('ds-ide.activeFolder')).toBe('/b');
+  });
+});
+
+// ── FR-UDM-4: Reveal in code ─────────────────────────────────────────────────
+
+describe('findDeviceDeclarationLine (FR-UDM-4)', () => {
+  const SRC = [
+    '#include "daisy_seed.h"',                                            // 0
+    '// ds-ide:controls:begin',                                           // 1
+    '  AdcChannelConfig adc_cfg[1];',                                     // 2
+    '  // ds-ide: id=vol, kind=pot, pin=15',                              // 3
+    '  RgbLed rgb1; // ds-ide: id=rgb1, kind=rgbled, pin=20, pins=20/21/22', // 4
+    '  Switch vol2; // ds-ide: id=vol2, kind=button, pin=5',              // 5
+    '// ds-ide:controls:end',                                             // 6
+    '// ds-ide:peripherals:begin',                                        // 7
+    oledCodegen.declLine('I2C1'),                                        // 8
+    '// ds-ide:peripherals:end',                                          // 9
+  ].join('\n');
+
+  it('finds a control\'s annotated declaration inside the controls block', () => {
+    expect(findDeviceDeclarationLine(SRC, 'vol')).toEqual({ line: 3 });
+    expect(findDeviceDeclarationLine(SRC, 'rgb1')).toEqual({ line: 4 });
+    // `vol` must not match `vol2`'s annotation and vice versa
+    expect(findDeviceDeclarationLine(SRC, 'vol2')).toEqual({ line: 5 });
+  });
+
+  it('finds a bus peripheral\'s declaration inside the peripherals block', () => {
+    expect(findDeviceDeclarationLine(SRC, 'oled')).toEqual({ line: 8 });
+  });
+
+  it('reports not-found for an unknown id, a disabled peripheral or a hand-deleted annotation', () => {
+    expect(findDeviceDeclarationLine(SRC, 'nope')).toBe('not-found');
+    expect(findDeviceDeclarationLine(SRC, 'sdcard')).toBe('not-found');
+    expect(findDeviceDeclarationLine(SRC.replace('// ds-ide: id=vol, kind=pot, pin=15', '// hand edited'), 'vol')).toBe('not-found');
+  });
+
+  it('refuses to locate anything inside a corrupted (duplicated) marker block', () => {
+    const dup = SRC.replace('// ds-ide:controls:end', '// ds-ide:controls:end\n// ds-ide:controls:end');
+    expect(findDeviceDeclarationLine(dup, 'vol')).toBe('ambiguous');
+  });
+
+  it('ignores a matching annotation outside the marker block', () => {
+    const outside = SRC + '\n  // ds-ide: id=ghost, kind=pot, pin=16';
+    expect(findDeviceDeclarationLine(outside, 'ghost')).toBe('not-found');
+  });
+});
+
+describe('revealDeviceInCode (FR-UDM-4)', () => {
+  const SRC = ['// ds-ide:controls:begin', '  Switch btn1; // ds-ide: id=btn1, kind=button, pin=5', '// ds-ide:controls:end'].join('\n');
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (vscode.workspace.openTextDocument as ReturnType<typeof vi.fn>).mockResolvedValue({
+      getText: () => SRC,
+      lineAt: (n: number) => ({ text: SRC.split('\n')[n]!, range: { end: new vscode.Position(n, SRC.split('\n')[n]!.length) } }),
+    });
+  });
+
+  it('opens the effect source and selects + reveals the declaration line', async () => {
+    const editor = { selection: undefined as unknown, revealRange: vi.fn() };
+    (vscode.window.showTextDocument as ReturnType<typeof vi.fn>).mockResolvedValue(editor);
+    await revealDeviceInCode('/proj/effect.cpp', 'btn1');
+    expect(vscode.window.showTextDocument).toHaveBeenCalled();
+    const sel = editor.selection as vscode.Selection & { anchorLine: number; activeLine: number };
+    expect(sel.anchorLine).toBe(1);
+    expect(sel.activeLine).toBe(1);
+    expect(editor.revealRange).toHaveBeenCalled();
+    expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+  });
+
+  it('warns naming the device and reveals nothing when the declaration is missing', async () => {
+    await revealDeviceInCode('/proj/effect.cpp', 'ghost');
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(expect.stringContaining('ghost'));
+    expect(vscode.window.showTextDocument).not.toHaveBeenCalled();
+  });
+
+  it('warns with the peripheral\'s label when its declaration is missing', async () => {
+    await revealDeviceInCode('/proj/effect.cpp', 'oled');
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(expect.stringContaining('OLED'));
+    expect(vscode.window.showTextDocument).not.toHaveBeenCalled();
   });
 });

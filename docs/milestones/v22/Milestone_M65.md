@@ -16,7 +16,7 @@ for M66's drag model.
 
 ## Sprint Tasks
 
-### [ ] feat: add declarative pinRequires to the device registry (FR-UDM-1)
+### [x] feat: add declarative pinRequires to the device registry (FR-UDM-1)
 
 Pot's ADC requirement is hardcoded as a warn badge (`wiring-panel.ts`'s `id === 'pot'` case)
 rather than declared on its descriptor, so nothing else can reason about pin suitability.
@@ -31,7 +31,7 @@ rather than declared on its descriptor, so nothing else can reason about pin sui
 
 ---
 
-### [ ] refactor: remove the Controls Editor palette (FR-UDM-2)
+### [x] refactor: remove the Controls Editor palette (FR-UDM-2)
 
 The Controls Editor palette advertises all six controls but its drop handler rejects everything
 except pot/button/led, so dragging Toggle, RGB LED or Encoder silently does nothing. Placement
@@ -48,7 +48,7 @@ moves wholly to the Wiring Editor.
 
 ---
 
-### [ ] feat: one popover for every placed device (FR-UDM-3)
+### [x] feat: one popover for every placed device (FR-UDM-3)
 
 Today a placed control opens `popup-assigned` (Remove/Cancel only) and a peripheral opens the
 separate bus popover (pin map + Disable); the live-view "View" button lives only in the footer.
@@ -64,7 +64,7 @@ separate bus popover (pin map + Disable); the live-view "View" button lives only
 
 ---
 
-### [ ] feat: reveal a placed device's generated code (FR-UDM-4)
+### [x] feat: reveal a placed device's generated code (FR-UDM-4)
 
 Generated declarations are marker-delimited and `findMarkerRange` already locates them, but
 nothing lets the user jump from the board to the code.

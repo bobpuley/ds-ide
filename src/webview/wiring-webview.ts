@@ -4,8 +4,10 @@ import type { PinDef, WiredPin, DeviceType, PeripheralDisplayState } from '../wi
 import { computePinDisplayStates } from '../wiring/wired-pin-state';
 import { defaultId, validateId } from '../wiring/id-validation';
 import { REGISTRY, wiredControlIds } from '../devices/registry';
-import { computeBusBrackets, type BusBracket } from '../wiring/bus-bracket';
+import { computeBusBrackets } from '../wiring/bus-bracket';
 import { computePinOverlayStates } from '../wiring/pin-overlay-state';
+import { isPinEligible } from '../wiring/pin-eligibility';
+import { describePlacedDevice, peripheralOwningPin, type PopoverTarget } from '../wiring/device-popover';
 import { hasKnownCommand } from './message-guard';
 import { el } from './dom-lookup';
 import { readDataIsland, showDataIslandError } from './data-island';
@@ -31,7 +33,7 @@ const vscode      = acquireVsCodeApi() as unknown as VsCodeApiForWiring;
 const svg         = el<HTMLElement & SVGSVGElement>('pinout');
 const popup       = el<HTMLElement>('popup');
 const tooltip     = el<HTMLElement>('tooltip');
-const busPopover  = el<HTMLElement>('bus-popover');
+const devicePopover = el<HTMLElement>('device-popover');
 
 function isPinDefArray(v: unknown): v is PinDef[] {
   return Array.isArray(v) && v.every(x =>
@@ -77,8 +79,8 @@ const peripheralsResult = readDataIsland<PeripheralDisplayState[]>(
 );
 if (peripheralsResult.error) showDataIslandError('peripherals-data', peripheralsResult.error);
 let peripherals: PeripheralDisplayState[] = peripheralsResult.value;
-// { pinNumber, adc } for unassigned; { pinNumber, id, deviceType } for assigned.
-let popupPin: { pinNumber: number; adc?: boolean; deviceType?: DeviceType; id?: string } | null = null;
+// The free pin the assign popup is open for.
+let popupPin: { pinNumber: number } | null = null;
 let selectedKind: DeviceType | null = null;
 
 // ── Build SVG pins ────────────────────────────────────────────────────────
@@ -200,6 +202,12 @@ usbPortGroup?.addEventListener('mousemove', (e) => {
   showTooltip(tip, e as MouseEvent);
 });
 usbPortGroup?.addEventListener('mouseleave', hideTooltip);
+usbPortGroup?.addEventListener('click', (e) => {
+  const owner = peripherals.find(p => p.enabled && p.bus === 'INTERNAL');
+  if (!owner) return;
+  e.stopPropagation();
+  openDevicePopover({ kind: 'peripheral', id: owner.id }, e as MouseEvent);
+});
 
 function updateUsbPortIndicator(): void {
   if (!usbPortGroup) return;
@@ -297,59 +305,93 @@ function hideTooltip(): void {
   tooltip.style.display = 'none';
 }
 
-let busPopoverId: string | null = null;
+// ── Device popover (FR-UDM-3) ─────────────────────────────────────────────
+// One popover for every placed device — a control's pin, a peripheral's
+// bracket or pin, or the micro-USB port. Content comes from the pure
+// describePlacedDevice(); this only renders it and wires the actions.
 
-function hideBusPopover(): void {
-  busPopover.style.display = 'none';
-  busPopoverId = null;
+let devicePopoverOpen = false;
+
+function hideDevicePopover(): void {
+  devicePopover.style.display = 'none';
+  devicePopoverOpen = false;
 }
 
-// Structured popover for a bracket click: pin map (pin → signal) plus a
-// disable action. A peripheral with more than one candidate bus would also
-// show a bus choice here — none does yet (sdcard has exactly one, SDMMC1),
-// so that section is deferred until a real multi-bus peripheral (OLED,
-// M46) needs it, per FR-DEV-13's conflict check.
-function renderBusPopover(bracket: BusBracket, e: MouseEvent): void {
-  const p = peripherals.find(pp => pp.id === bracket.id);
-  if (!p) { hideBusPopover(); return; }
+function openDevicePopover(target: PopoverTarget, e: MouseEvent): void {
+  closePopup();
+  hideTooltip();
+  const m = describePlacedDevice(target, wiredPins, peripherals);
+  if (!m) { hideDevicePopover(); return; }
 
-  busPopover.innerHTML = '';
+  devicePopover.innerHTML = '';
 
-  const h = document.createElement('h3');
-  h.textContent = p.label;
-  busPopover.appendChild(h);
-
-  const table = document.createElement('table');
-  for (const rp of bracket.pins) {
-    const tr = document.createElement('tr');
-    const tdPin = document.createElement('td');
-    tdPin.textContent = 'D' + rp.pin;
-    const tdSig = document.createElement('td');
-    tdSig.textContent = rp.signal ?? '—';
-    tr.append(tdPin, tdSig);
-    table.appendChild(tr);
+  const hdr = document.createElement('div');
+  hdr.className = 'dp-hdr';
+  const dot = document.createElement('div');
+  dot.className = 'dp-dot';
+  dot.style.background = m.accentColor;
+  const title = document.createElement('div');
+  title.className = 'dp-title';
+  title.textContent = m.label;
+  hdr.append(dot, title);
+  if (m.subtitle !== null) {
+    const sub = document.createElement('div');
+    sub.className = 'dp-sub';
+    sub.textContent = m.subtitle;
+    hdr.append(sub);
   }
-  busPopover.appendChild(table);
+
+  const body = document.createElement('div');
+  body.className = 'dp-body';
+  const row = document.createElement('div');
+  row.className = 'dp-row';
+  const key = document.createElement('span');
+  key.className = 'dp-key';
+  key.textContent = m.rowKey;
+  const val = document.createElement('span');
+  val.textContent = m.rowValue;
+  row.append(key, val);
+  body.append(row);
 
   const actions = document.createElement('div');
-  actions.className = 'bus-popover-actions';
-  const closeBtn = document.createElement('button');
-  closeBtn.textContent = 'Close';
-  closeBtn.addEventListener('click', hideBusPopover);
-  const disableBtn = document.createElement('button');
-  disableBtn.textContent = 'Disable';
-  disableBtn.className = 'bus-popover-disable';
-  disableBtn.addEventListener('click', () => {
-    vscode.postMessage({ command: 'setPeripheralEnabled', peripheralId: p.id, enabled: false });
-    hideBusPopover();
+  actions.className = 'dp-actions';
+  if (m.showPanel) {
+    const showBtn = document.createElement('button');
+    showBtn.type = 'button';
+    showBtn.className = 'dp-primary';
+    showBtn.id = 'dp-show-panel';
+    showBtn.textContent = '▣ Show panel';
+    showBtn.addEventListener('click', () => {
+      vscode.postMessage({ command: 'viewPeripheral', peripheralId: target.id });
+      hideDevicePopover();
+    });
+    actions.append(showBtn);
+  }
+  const revealBtn = document.createElement('button');
+  revealBtn.type = 'button';
+  revealBtn.id = 'dp-reveal';
+  revealBtn.textContent = 'Reveal in code';
+  revealBtn.addEventListener('click', () => {
+    // A control is found by its instance id; a peripheral by its registry id.
+    vscode.postMessage({ command: 'revealInCode', id: m.subtitle ?? target.id });
+    hideDevicePopover();
   });
-  actions.append(closeBtn, disableBtn);
-  busPopover.appendChild(actions);
+  const removeBtn = document.createElement('button');
+  removeBtn.type = 'button';
+  removeBtn.className = 'dp-danger';
+  removeBtn.id = 'dp-remove';
+  removeBtn.textContent = 'Remove';
+  removeBtn.addEventListener('click', () => {
+    vscode.postMessage(m.remove);
+    hideDevicePopover();
+  });
+  actions.append(revealBtn, removeBtn);
 
-  busPopover.style.display = 'block';
-  busPopoverId = bracket.id;
-  busPopover.style.left = Math.min(e.clientX + 12, window.innerWidth - 240) + 'px';
-  busPopover.style.top  = Math.max(10, Math.min(e.clientY + 12, window.innerHeight - 160)) + 'px';
+  devicePopover.append(hdr, body, actions);
+  devicePopover.style.display = 'block';
+  devicePopoverOpen = true;
+  devicePopover.style.left = Math.min(e.clientX + 12, window.innerWidth - 280) + 'px';
+  devicePopover.style.top  = Math.max(10, Math.min(e.clientY + 12, window.innerHeight - 180)) + 'px';
 }
 
 // Redraws every enabled peripheral's collapsed bracket (FR-DEV-12) — one
@@ -393,14 +435,14 @@ function renderBusBrackets(): void {
     g.append(hit, path, label);
     g.addEventListener('click', (e) => {
       e.stopPropagation();
-      renderBusPopover(b, e as MouseEvent);
+      openDevicePopover({ kind: 'peripheral', id: b.id }, e as MouseEvent);
     });
     svg.appendChild(g);
   }
 }
 
 document.addEventListener('click', e => {
-  if (busPopover.style.display === 'block' && !busPopover.contains(e.target as Node)) hideBusPopover();
+  if (devicePopoverOpen && !devicePopover.contains(e.target as Node)) hideDevicePopover();
 });
 
 renderPeripherals();
@@ -410,13 +452,15 @@ function onPinClick(e: Event): void {
   e.stopPropagation();
   const g         = e.currentTarget as HTMLElement;
   const pinNumber = parseInt(g.dataset['pin'] || '', 10);
-  const adc       = g.dataset['adc'] === 'true';
   const existing  = wiredPins.find(wp => wp.pinNumber === pinNumber);
+  const periphId  = existing ? null : peripheralOwningPin(pinNumber, peripherals);
 
   if (existing) {
-    showAssignedPopup(pinNumber, existing.deviceType, existing.id, e as MouseEvent);
+    openDevicePopover({ kind: 'control', id: existing.id }, e as MouseEvent);
+  } else if (periphId !== null) {
+    openDevicePopover({ kind: 'peripheral', id: periphId }, e as MouseEvent);
   } else {
-    showAssignPopup(pinNumber, adc, e as MouseEvent);
+    showAssignPopup(pinNumber, e as MouseEvent);
   }
 }
 
@@ -433,8 +477,6 @@ function closePopup(): void {
   popup.style.display = 'none';
   popupPin   = null;
   selectedKind = null;
-  el<HTMLElement>('popup-assign').style.display = 'block';
-  el<HTMLElement>('popup-assigned').style.display = 'none';
   el<HTMLInputElement>('id-input').value = '';
   el<HTMLElement>('id-error').textContent = '';
   el<HTMLButtonElement>('popup-confirm').disabled = true;
@@ -443,25 +485,19 @@ function closePopup(): void {
   });
 }
 
-function showAssignPopup(pinNumber: number, adc: boolean, e: MouseEvent): void {
-  popupPin = { pinNumber, adc };
+function showAssignPopup(pinNumber: number, e: MouseEvent): void {
+  hideDevicePopover();
+  popupPin = { pinNumber };
   el<HTMLElement>('popup-title').textContent = 'Assign pin D' + pinNumber;
-  el<HTMLElement>('pot-warn').style.display = (!adc) ? 'inline' : 'none';
-  el<HTMLElement>('popup-assign').style.display = 'block';
-  el<HTMLElement>('popup-assigned').style.display = 'none';
+  const pinDef = PIN_DEFS.find(d => d.pin === pinNumber);
+  for (const id of wiredControlIds()) {
+    const badge = document.getElementById('warn-' + id);
+    if (badge) badge.style.display = pinDef && !isPinEligible(pinDef, id) ? 'inline' : 'none';
+  }
   selectedKind = null;
   el<HTMLInputElement>('id-input').value = '';
   el<HTMLElement>('id-error').textContent = '';
   el<HTMLButtonElement>('popup-confirm').disabled = true;
-  positionPopup(e);
-}
-
-function showAssignedPopup(pinNumber: number, deviceType: DeviceType, id: string, e: MouseEvent): void {
-  popupPin = { pinNumber, deviceType, id };
-  el<HTMLElement>('popup-title').textContent = 'Pin D' + pinNumber;
-  el<HTMLElement>('assigned-info').textContent = REGISTRY[deviceType]!.label + ' · id: ' + id;
-  el<HTMLElement>('popup-assign').style.display = 'none';
-  el<HTMLElement>('popup-assigned').style.display = 'block';
   positionPopup(e);
 }
 
@@ -503,13 +539,6 @@ el<HTMLButtonElement>('popup-confirm').addEventListener('click', () => {
 });
 
 el<HTMLElement>('popup-cancel-assign').addEventListener('click', closePopup);
-el<HTMLElement>('popup-cancel-assigned').addEventListener('click', closePopup);
-
-el<HTMLElement>('popup-remove').addEventListener('click', () => {
-  if (!popupPin || popupPin.id === undefined) return;
-  vscode.postMessage({ command: 'unwirePin', pinNumber: popupPin.pinNumber, id: popupPin.id });
-  closePopup();
-});
 
 // Close popup on outside click
 document.addEventListener('click', e => {
@@ -525,12 +554,13 @@ window.addEventListener('message', (e: MessageEvent<unknown>) => {
   if (msg.command === 'wiredPins') {
     applyWiredPins(msg.pins || []);
     applyPeripheralPins();
+    if (devicePopoverOpen) hideDevicePopover();
   } else if (msg.command === 'peripherals') {
     peripherals = msg.peripherals || [];
     renderPeripherals();
     // An externally-driven change (another view, a reload) can update the
-    // very peripheral this webview's popover is open for — closing it
-    // rather than leaving stale pin-map content on screen is simplest.
-    if (busPopoverId !== null) hideBusPopover();
+    // very device this webview's popover is open for — closing it rather
+    // than leaving stale content on screen is simplest.
+    if (devicePopoverOpen) hideDevicePopover();
   }
 });

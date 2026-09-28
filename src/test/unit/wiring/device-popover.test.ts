@@ -1,0 +1,77 @@
+import { describe, it, expect } from 'vitest';
+import { describePlacedDevice, peripheralOwningPin } from '../../../wiring/device-popover';
+import type { WiredPin } from '../../../wiring/wiring-panel';
+import type { PeripheralDisplayState } from '../../../wiring/peripheral-state';
+
+const wired: WiredPin[] = [
+  { pinNumber: 15, deviceType: 'pot', id: 'vol' },
+  { pinNumber: 20, deviceType: 'rgbled', id: 'rgb1' },
+  { pinNumber: 21, deviceType: 'rgbled', id: 'rgb1' },
+  { pinNumber: 22, deviceType: 'rgbled', id: 'rgb1' },
+  { pinNumber: 5, deviceType: 'encoder', id: 'enc1' },
+  { pinNumber: 6, deviceType: 'encoder', id: 'enc1' },
+  { pinNumber: 7, deviceType: 'encoder', id: 'enc1' },
+];
+
+const periphs: PeripheralDisplayState[] = [
+  { id: 'oled', label: 'OLED', enabled: true, bus: 'I2C1', pins: [{ pin: 11, signal: 'I2C1_SCL' }, { pin: 12, signal: 'I2C1_SDA' }] },
+  { id: 'sdcard', label: 'SD Card', enabled: true, bus: 'SDMMC1', pins: [1, 2, 3, 4, 5, 6].map(pin => ({ pin, signal: null })) },
+  { id: 'midiUsb', label: 'MIDI USB', enabled: true, bus: 'INTERNAL', pins: [] },
+  { id: 'midiTrs', label: 'MIDI TRS', enabled: false, bus: 'USART1', pins: [{ pin: 13, signal: 'USART1_TX' }, { pin: 14, signal: 'USART1_RX' }] },
+];
+
+describe('describePlacedDevice (FR-UDM-3)', () => {
+  it('describes a single-pin control with its id, pin and no Show panel', () => {
+    const m = describePlacedDevice({ kind: 'control', id: 'vol' }, wired, periphs)!;
+    expect(m.label).toBe('Pot');
+    expect(m.accentColor).toBe('#4ec9b0');
+    expect(m.subtitle).toBe('vol');
+    expect(m.rowKey).toBe('pin');
+    expect(m.rowValue).toBe('D15');
+    expect(m.showPanel).toBe(false);
+    expect(m.remove).toEqual({ command: 'unwirePin', pinNumber: 15, id: 'vol' });
+  });
+
+  it('labels a multi-pin control\'s pins with registry slot names', () => {
+    expect(describePlacedDevice({ kind: 'control', id: 'rgb1' }, wired, periphs)!.rowValue).toBe('R=D20 G=D21 B=D22');
+    const enc = describePlacedDevice({ kind: 'control', id: 'enc1' }, wired, periphs)!;
+    expect(enc.rowKey).toBe('pins');
+    expect(enc.rowValue).toBe('A=D5 B=D6 SW=D7');
+  });
+
+  it('describes a bus peripheral with its bus and resolved pins; Show panel only with a live view', () => {
+    const oled = describePlacedDevice({ kind: 'peripheral', id: 'oled' }, wired, periphs)!;
+    expect(oled.subtitle).toBeNull();
+    expect(oled.rowKey).toBe('bus');
+    expect(oled.rowValue).toBe('I2C1 · D11, D12');
+    expect(oled.showPanel).toBe(true);
+    expect(oled.remove).toEqual({ command: 'setPeripheralEnabled', peripheralId: 'oled', enabled: false });
+
+    const sd = describePlacedDevice({ kind: 'peripheral', id: 'sdcard' }, wired, periphs)!;
+    expect(sd.showPanel).toBe(false);
+  });
+
+  it('describes a connector peripheral on INTERNAL as the micro USB port', () => {
+    const m = describePlacedDevice({ kind: 'peripheral', id: 'midiUsb' }, wired, periphs)!;
+    expect(m.rowValue).toBe('micro USB (INTERNAL)');
+    expect(m.showPanel).toBe(true);
+  });
+
+  it('returns null for an unknown control, a disabled peripheral or an unknown id', () => {
+    expect(describePlacedDevice({ kind: 'control', id: 'nope' }, wired, periphs)).toBeNull();
+    expect(describePlacedDevice({ kind: 'peripheral', id: 'midiTrs' }, wired, periphs)).toBeNull();
+    expect(describePlacedDevice({ kind: 'peripheral', id: 'servo' }, wired, periphs)).toBeNull();
+  });
+});
+
+describe('peripheralOwningPin (FR-UDM-3)', () => {
+  it('finds the enabled peripheral whose footprint contains a pin', () => {
+    expect(peripheralOwningPin(11, periphs)).toBe('oled');
+    expect(peripheralOwningPin(3, periphs)).toBe('sdcard');
+  });
+
+  it('ignores disabled peripherals and unowned pins', () => {
+    expect(peripheralOwningPin(13, periphs)).toBeNull();
+    expect(peripheralOwningPin(28, periphs)).toBeNull();
+  });
+});

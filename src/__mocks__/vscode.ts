@@ -13,6 +13,7 @@ const window = {
   showInformationMessage: vi.fn(),
   showErrorMessage: vi.fn(),
   showWarningMessage: vi.fn(),
+  showTextDocument: vi.fn(async () => ({ selection: undefined as unknown, revealRange: vi.fn() })),
   createOutputChannel: vi.fn(() => ({
     appendLine: vi.fn(),
     show: vi.fn(),
@@ -191,6 +192,14 @@ class Range {
   ) {}
 }
 
+class Selection extends Range {
+  constructor(public anchorLine: number, public anchorCharacter: number, public activeLine: number, public activeCharacter: number) {
+    super(anchorLine, anchorCharacter, activeLine, activeCharacter);
+  }
+}
+
+const TextEditorRevealType = { Default: 0, InCenter: 1, InCenterIfOutsideViewport: 2, AtTop: 3 };
+
 class WorkspaceEdit {
   replace = vi.fn();
   insert  = vi.fn();
@@ -208,7 +217,7 @@ class Diagnostic {
 
 export {
   commands, window, workspace, Uri, ViewColumn,
-  DiagnosticSeverity, Position, Range, WorkspaceEdit, Diagnostic,
+  DiagnosticSeverity, Position, Range, Selection, TextEditorRevealType, WorkspaceEdit, Diagnostic,
   StatusBarAlignment, ProgressLocation, languages, ConfigurationTarget,
   debug, DebugAdapterExecutable, DebugAdapterInlineImplementation, EventEmitter,
   CancellationTokenSource,
