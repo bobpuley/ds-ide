@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
 import { WiringViewProvider } from '../../../sidebar/wiring-editor-panel';
-import type { WirePinHandler, UnwirePinHandler, SetPeripheralEnabledHandler, ViewPeripheralHandler } from '../../../wiring/wiring-panel';
+import type { WirePinHandler, UnwirePinHandler, SetPeripheralEnabledHandler, ViewPeripheralHandler, RevealInCodeHandler } from '../../../wiring/wiring-panel';
 
 function makeWebviewViewMock() {
   const onDisposeHandlers: Array<() => void> = [];
@@ -43,6 +43,7 @@ describe('WiringViewProvider', () => {
   let onUnwirePin: ReturnType<typeof vi.fn>;
   let onSetPeripheralEnabled: ReturnType<typeof vi.fn>;
   let onViewPeripheral: ReturnType<typeof vi.fn>;
+  let onRevealInCode: ReturnType<typeof vi.fn>;
   let provider: WiringViewProvider;
 
   beforeEach(() => {
@@ -51,13 +52,45 @@ describe('WiringViewProvider', () => {
     onUnwirePin = vi.fn().mockResolvedValue(undefined);
     onSetPeripheralEnabled = vi.fn().mockResolvedValue(undefined);
     onViewPeripheral = vi.fn();
+    onRevealInCode = vi.fn().mockResolvedValue(undefined);
     provider = new WiringViewProvider(
       { fsPath: '/ext' } as unknown as vscode.Uri,
       onWirePin as unknown as WirePinHandler,
       onUnwirePin as unknown as UnwirePinHandler,
       onSetPeripheralEnabled as unknown as SetPeripheralEnabledHandler,
       onViewPeripheral as unknown as ViewPeripheralHandler,
+      onRevealInCode as unknown as RevealInCodeHandler,
     );
+  });
+
+  // ── FR-UDM-4: Reveal in code ────────────────────────────────────────────
+  it('calls onRevealInCode for a revealInCode message (FR-UDM-4)', async () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
+    await handler({ command: 'revealInCode', id: 'vol' });
+    await handler({ command: 'revealInCode', id: 'oled' });
+    expect(onRevealInCode).toHaveBeenNthCalledWith(1, 'vol');
+    expect(onRevealInCode).toHaveBeenNthCalledWith(2, 'oled');
+  });
+
+  it('drops revealInCode with a missing or non-identifier id (FR-UDM-4)', async () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
+    await handler({ command: 'revealInCode' });
+    await handler({ command: 'revealInCode', id: 42 });
+    await handler({ command: 'revealInCode', id: 'x; rm -rf' });
+    expect(onRevealInCode).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a thrown revealInCode error via showErrorMessage (FR-UDM-4)', async () => {
+    onRevealInCode.mockRejectedValue(new Error('boom'));
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
+    await expect(handler({ command: 'revealInCode', id: 'vol' })).resolves.toBeUndefined();
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('boom'));
   });
 
   it('resolveWebviewView sets enableScripts and localResourceRoots on webview options (FR-TWE-2)', () => {

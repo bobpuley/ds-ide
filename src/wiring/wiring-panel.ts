@@ -21,6 +21,8 @@ export type UnwirePinHandler = (pinNumber: number, id: string) => Promise<void>;
 export type SetPeripheralEnabledHandler = (peripheralId: string, enabled: boolean) => Promise<void>;
 // FR-DEV-15: opens or reveals a peripheral's live view (today: only oled has one).
 export type ViewPeripheralHandler = (peripheralId: string) => void;
+// FR-UDM-4: reveals a placed device's generated declaration in the effect source.
+export type RevealInCodeHandler = (id: string) => Promise<void>;
 
 // Expands parsed controls into one WiredPin per physical pin — a
 // 'pins'-attachment device (rgbled, encoder — FR-DEV-8/9) occupies more than

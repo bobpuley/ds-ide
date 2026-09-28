@@ -65,6 +65,53 @@ function findMarkerRange(lines: string[], begin: string, end: string): MarkerRan
   return e! > s! ? { s: s!, e: e! } : 'ambiguous';
 }
 
+// FR-UDM-4: where a placed device's generated declaration lives — a control
+// by its `// ds-ide: id=<id>, …` annotation inside the controls block, a
+// bus/connector peripheral by its codegen's declaration line inside the
+// peripherals block. Only a unique, well-formed marker block is searched
+// (same findMarkerRange rule the edit path uses), so a hand-edited or
+// duplicated block never yields a wrong line.
+export type DeviceDeclarationLookup = { line: number } | 'not-found' | 'ambiguous';
+
+export function findDeviceDeclarationLine(source: string, id: string): DeviceDeclarationLookup {
+  const lines = source.split('\n');
+  const periphCodegen = REGISTRY[id]?.peripheralCodegen;
+  const [begin, end] = periphCodegen
+    ? ['// ds-ide:peripherals:begin', '// ds-ide:peripherals:end']
+    : ['// ds-ide:controls:begin', '// ds-ide:controls:end'];
+  const range = findMarkerRange(lines, begin, end);
+  if (range === 'ambiguous') return 'ambiguous';
+  if (range === 'absent') return 'not-found';
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const annotation = new RegExp(`// ds-ide:\\s*id=${escaped}\\s*,`);
+  for (let i = range.s + 1; i < range.e; i++) {
+    const line = lines[i]!.replace(/\r$/, '');
+    if (periphCodegen ? periphCodegen.isDeclLine(line) : annotation.test(line)) return { line: i };
+  }
+  return 'not-found';
+}
+
+// FR-UDM-4: opens the effect source and selects + reveals the device's
+// declaration; warns (naming the device) rather than guessing when it can't
+// be located.
+export async function revealDeviceInCode(effectPath: string, id: string): Promise<void> {
+  const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
+  const found = findDeviceDeclarationLine(doc.getText(), id);
+  if (typeof found !== 'object') {
+    const name = REGISTRY[id]?.peripheralCodegen ? REGISTRY[id]!.label : id;
+    void vscode.window.showWarningMessage(
+      found === 'ambiguous'
+        ? `ds-ide: can't reveal ${name} — its ds-ide marker block is duplicated or malformed.`
+        : `ds-ide: can't find the generated code for ${name} — its ds-ide marker block may have been edited by hand.`,
+    );
+    return;
+  }
+  const editor = await vscode.window.showTextDocument(doc);
+  const endChar = doc.lineAt(found.line).text.length;
+  editor.selection = new vscode.Selection(found.line, 0, found.line, endChar);
+  editor.revealRange(new vscode.Range(found.line, 0, found.line, endChar), vscode.TextEditorRevealType.InCenter);
+}
+
 export interface BlockEditResult {
   edit: vscode.WorkspaceEdit;
   // True when at least one marker pair doesn't exist in oldText yet — the
@@ -554,8 +601,8 @@ interface WiringProviderDeps {
 }
 
 // FR-EXT-9: view-provider construction extracted from activate() — builds
-// the Wiring Editor's WiringViewProvider and its four message handlers
-// (wirePin/unwirePin/setPeripheralEnabled/viewPeripheral).
+// the Wiring Editor's WiringViewProvider and its five message handlers
+// (wirePin/unwirePin/setPeripheralEnabled/viewPeripheral/revealInCode).
 function createWiringProvider(context: vscode.ExtensionContext, deps: WiringProviderDeps): WiringViewProvider {
   const { workspaceState, loadControllerConfig, refreshControlsView, showOledPanel, midiPanel } = deps;
 
@@ -715,6 +762,15 @@ function createWiringProvider(context: vscode.ExtensionContext, deps: WiringProv
       } else if (peripheralId === 'midiTrs' || peripheralId === 'midiUsb') {
         midiPanel.show();
       }
+    },
+    async (id: string) => {
+      const folder = resolveActiveFolder(workspaceState)?.uri.fsPath ?? '';
+      const effectPath = await findEffectSource(folder);
+      if (!effectPath) {
+        void vscode.window.showErrorMessage('ds-ide: no effect source file found — set ds-ide.effectSource');
+        return;
+      }
+      await revealDeviceInCode(effectPath, id);
     },
   );
 

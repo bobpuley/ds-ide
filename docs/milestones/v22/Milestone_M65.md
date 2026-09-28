@@ -64,7 +64,7 @@ separate bus popover (pin map + Disable); the live-view "View" button lives only
 
 ---
 
-### [ ] feat: reveal a placed device's generated code (FR-UDM-4)
+### [x] feat: reveal a placed device's generated code (FR-UDM-4)
 
 Generated declarations are marker-delimited and `findMarkerRange` already locates them, but
 nothing lets the user jump from the board to the code.

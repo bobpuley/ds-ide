@@ -371,6 +371,11 @@ function openDevicePopover(target: PopoverTarget, e: MouseEvent): void {
   revealBtn.type = 'button';
   revealBtn.id = 'dp-reveal';
   revealBtn.textContent = 'Reveal in code';
+  revealBtn.addEventListener('click', () => {
+    // A control is found by its instance id; a peripheral by its registry id.
+    vscode.postMessage({ command: 'revealInCode', id: m.subtitle ?? target.id });
+    hideDevicePopover();
+  });
   const removeBtn = document.createElement('button');
   removeBtn.type = 'button';
   removeBtn.className = 'dp-danger';
