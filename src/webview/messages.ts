@@ -104,7 +104,9 @@ export type WiringHostMessage =
 export type WiringWebviewMessage =
   | { command: 'wirePin'; pinNumber: number; deviceType: DeviceType; id: string }
   | { command: 'unwirePin'; pinNumber: number; id: string }
-  | { command: 'setPeripheralEnabled'; peripheralId: string; enabled: boolean }
+  // FR-UDM-7: `bus` is the lane a drop landed on; omitted, the host uses
+  // the peripheral's current/default bus.
+  | { command: 'setPeripheralEnabled'; peripheralId: string; enabled: boolean; bus?: string }
   | { command: 'viewPeripheral'; peripheralId: string }
   // FR-UDM-4: the device popover's "Reveal in code" — `id` is a control's
   // instance id or a peripheral's registry id.

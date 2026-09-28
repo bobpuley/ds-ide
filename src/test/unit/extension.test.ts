@@ -1530,6 +1530,105 @@ describe('setPeripheralEnabled conflict rejection (FR-DEV-13)', () => {
   });
 });
 
+describe('placement drop (FR-UDM-7)', () => {
+  let promisesMock: Record<string, ReturnType<typeof vi.fn>>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    managerInstances.length = 0;
+    const fsMock = (await import('fs')) as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['access']!.mockImplementation((p: unknown) => {
+      const fp = String(p);
+      if (fp.endsWith('CMakeLists.txt') || fp.endsWith('.cpp')) return Promise.resolve();
+      return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    });
+    promisesMock['readdir']!.mockResolvedValue(['effect.cpp']);
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [
+      { uri: { fsPath: '/proj' } },
+    ];
+    (vscode.workspace.applyEdit as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mockResolvedValue('Append');
+  });
+
+  afterEach(() => {
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = undefined;
+  });
+
+  function useSource(source: string): void {
+    (vscode.workspace.openTextDocument as ReturnType<typeof vi.fn>).mockResolvedValue({
+      getText: vi.fn(() => source),
+      lineCount: source.split('\n').length,
+      lineAt: vi.fn((n: number) => ({ range: { end: { line: n, character: (source.split('\n')[n] ?? '').length } } })),
+      save: vi.fn(async () => true),
+    });
+  }
+
+  async function wiringHandler(): Promise<(msg: unknown) => Promise<void> | void> {
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const registerCalls = (vscode.window.registerWebviewViewProvider as ReturnType<typeof vi.fn>).mock.calls;
+    const provider = registerCalls.find((c: unknown[]) => c[0] === 'ds-ide.wiringEditor')?.[1] as
+      { resolveWebviewView: (view: unknown) => void };
+    const onDidReceiveMessage = vi.fn(() => ({ dispose: vi.fn() }));
+    provider.resolveWebviewView({
+      webview: { html: '', options: {}, onDidReceiveMessage, postMessage: vi.fn(), asWebviewUri: vi.fn((u: unknown) => u), cspSource: '' },
+      visible: true,
+      onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
+      onDidChangeVisibility: vi.fn(() => ({ dispose: vi.fn() })),
+      show: vi.fn(),
+    });
+    return (onDidReceiveMessage.mock.calls[0] as unknown[])[0] as (msg: unknown) => Promise<void> | void;
+  }
+
+  // The FR-UX-3 append path inserts every new marker block as one string.
+  function writtenText(): string {
+    const edit = (vscode.workspace.applyEdit as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
+      { insert: ReturnType<typeof vi.fn>; replace: ReturnType<typeof vi.fn> };
+    return [...edit.insert.mock.calls, ...edit.replace.mock.calls].map(c => String(c[c.length - 1])).join('\n');
+  }
+
+  it('enables a multi-bus peripheral on the lane it was dropped on', async () => {
+    useSource('int main() {}\n');
+    const handler = await wiringHandler();
+    await handler({ command: 'setPeripheralEnabled', peripheralId: 'oled', enabled: true, bus: 'I2C1' });
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+    expect(writtenText()).toContain('SSD130xI2c128x64Driver');
+    expect(writtenText()).not.toContain('SSD130x4WireSpi128x64Driver');
+  });
+
+  it('checks conflicts against the dropped bus, not the default one', async () => {
+    // D8 = SPI1_SCK: blocks OLED's default SPI1, but not I2C1 (D11/D12).
+    useSource(['// ds-ide:controls:begin', '// ds-ide: id=btn1, kind=button, pin=8', '// ds-ide:controls:end', ''].join('\n'));
+    const handler = await wiringHandler();
+    await handler({ command: 'setPeripheralEnabled', peripheralId: 'oled', enabled: true, bus: 'I2C1' });
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+    expect(vscode.workspace.applyEdit).toHaveBeenCalled();
+  });
+
+  it('ignores a bus that is not one of the peripheral\'s candidates', async () => {
+    useSource('int main() {}\n');
+    const handler = await wiringHandler();
+    await handler({ command: 'setPeripheralEnabled', peripheralId: 'oled', enabled: true, bus: 'USART1' });
+    await handler({ command: 'setPeripheralEnabled', peripheralId: 'oled', enabled: true, bus: 42 });
+    expect(vscode.workspace.applyEdit).not.toHaveBeenCalled();
+  });
+
+  it('allocates a multi-pin control\'s footprint exactly as the drag preview showed it', async () => {
+    // Button on D5 and OLED on SPI1 (D7-D10): computeDropTargets previews
+    // an RGB LED dropped on D4 as D4, D6, D11 — the host must write the same.
+    useSource([
+      '// ds-ide:controls:begin', '// ds-ide: id=btn1, kind=button, pin=5', '// ds-ide:controls:end',
+      '// ds-ide:peripherals:begin', '  OledDisplay<SSD130x4WireSpi128x64Driver> ds_ide_oled;', '// ds-ide:peripherals:end', '',
+    ].join('\n'));
+    const handler = await wiringHandler();
+    await handler({ command: 'wirePin', pinNumber: 4, deviceType: 'rgbled', id: 'rgb1' });
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+    expect(writtenText()).toContain('pins=4,6,11');
+  });
+});
+
 // ── FR-UX-3: a configured effectSource outside the workspace is refused ──
 
 describe('effectSource containment (FR-UX-3)', () => {

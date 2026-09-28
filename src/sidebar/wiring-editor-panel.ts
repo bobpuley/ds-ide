@@ -6,6 +6,7 @@ import {
 } from '../wiring/wiring-panel';
 import { isDeviceType } from '../devices/registry';
 import { peripheralIds } from '../wiring/peripheral-state';
+import { candidateBusesFor } from '../wiring/conflict-remedy';
 import { WiringWebviewMessage } from '../webview/messages';
 import { hasKnownCommand, assertNever } from '../webview/message-guard';
 
@@ -91,12 +92,14 @@ export class WiringViewProvider implements vscode.WebviewViewProvider {
         case 'setPeripheralEnabled': {
           const peripheralId = msg.peripheralId;
           const enabled      = msg.enabled;
+          const bus          = msg.bus;
           if (
             typeof peripheralId !== 'string' || !peripheralIds().includes(peripheralId) ||
-            typeof enabled !== 'boolean'
+            typeof enabled !== 'boolean' ||
+            (bus !== undefined && (typeof bus !== 'string' || !candidateBusesFor(peripheralId).includes(bus)))
           ) return;
           try {
-            await this.onSetPeripheralEnabled(peripheralId, enabled);
+            await this.onSetPeripheralEnabled(peripheralId, enabled, bus);
           } catch (err) {
             void vscode.window.showErrorMessage(`ds-ide: could not update peripheral: ${String(err)}`);
           }

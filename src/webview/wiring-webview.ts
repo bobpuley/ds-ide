@@ -7,7 +7,9 @@ import { REGISTRY, wiredControlIds } from '../devices/registry';
 import { computeBusBrackets } from '../wiring/bus-bracket';
 import { computePinOverlayStates } from '../wiring/pin-overlay-state';
 import { isPinEligible } from '../wiring/pin-eligibility';
-import { describePlacedDevice, peripheralOwningPin, type PopoverTarget } from '../wiring/device-popover';
+import {
+  describePlacedDevice, peripheralOwningPin, describePlacement, placementMessage, type PopoverTarget,
+} from '../wiring/device-popover';
 import { computeDropTargets, type DropTarget } from '../wiring/drop-targets';
 import { targetKey, pinDragStates, previewSlots, dragLabel } from '../wiring/drag-view';
 import { hasKnownCommand } from './message-guard';
@@ -592,9 +594,21 @@ function cancelDrag(): void {
 
 function onDragUp(e: PointerEvent): void {
   const d = endDrag();
-  if (!d || !d.started || !d.hover) return;
-  onDrop(d, d.hover, e);
+  if (!d || !d.started) return;
+  // The browser follows this pointerup with a click on the common ancestor
+  // of the chip and the drop point — swallow it, or the outside-click
+  // handlers would close the popover the drop is about to open.
+  suppressNextClick = true;
+  setTimeout(() => { suppressNextClick = false; }, 0);
+  if (d.hover) onDrop(d, d.hover, e);
 }
+
+let suppressNextClick = false;
+document.addEventListener('click', e => {
+  if (!suppressNextClick) return;
+  suppressNextClick = false;
+  e.stopPropagation();
+}, true);
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && drag) cancelDrag();
@@ -688,9 +702,119 @@ function paintDrag(): void {
   }
 }
 
-// A drop on a target. FR-UDM-7 opens the placement popover from here.
-function onDrop(_session: DragSession, _target: DropTarget, _e: PointerEvent): void {
-  // Placement popover lands with FR-UDM-7.
+// FR-UDM-7: a drop opens the placement popover — pins (slot names) or the
+// dropped-on bus, an id field for controls, and Add / Cancel. Cancel (or
+// clicking away) changes nothing.
+function onDrop(session: DragSession, target: DropTarget, e: PointerEvent): void {
+  openPlacementPopover(session.deviceId, target, e);
+}
+
+function popoverHeader(label: string, accent: string, sub: string | null): HTMLElement {
+  const hdr = document.createElement('div');
+  hdr.className = 'dp-hdr';
+  const dot = document.createElement('div');
+  dot.className = 'dp-dot';
+  dot.style.background = accent;
+  const title = document.createElement('div');
+  title.className = 'dp-title';
+  title.textContent = label;
+  hdr.append(dot, title);
+  if (sub !== null) {
+    const s = document.createElement('div');
+    s.className = 'dp-sub';
+    s.textContent = sub;
+    hdr.append(s);
+  }
+  return hdr;
+}
+
+function popoverRow(key: string, value: string | HTMLElement): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'dp-row';
+  const k = document.createElement('span');
+  k.className = 'dp-key';
+  k.textContent = key;
+  row.append(k);
+  if (typeof value === 'string') {
+    const v = document.createElement('span');
+    v.textContent = value;
+    row.append(v);
+  } else {
+    row.append(value);
+  }
+  return row;
+}
+
+function showPopoverAt(e: MouseEvent): void {
+  devicePopover.style.display = 'block';
+  devicePopoverOpen = true;
+  devicePopover.style.left = Math.min(e.clientX + 12, window.innerWidth - 280) + 'px';
+  devicePopover.style.top  = Math.max(10, Math.min(e.clientY + 12, window.innerHeight - devicePopover.offsetHeight - 10)) + 'px';
+}
+
+function openPlacementPopover(deviceId: string, target: DropTarget, e: MouseEvent): void {
+  closePopup();
+  hideTooltip();
+  const m = describePlacement(deviceId, target, wiredPins);
+  devicePopover.innerHTML = '';
+
+  const body = document.createElement('div');
+  body.className = 'dp-body';
+  body.append(popoverRow(m.rowKey, m.rowValue));
+
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'dp-primary';
+  addBtn.id = 'dp-add';
+  addBtn.textContent = 'Add';
+
+  let idInput: HTMLInputElement | null = null;
+  let idError: HTMLElement | null = null;
+  if (m.needsId) {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.id = 'dp-id';
+    input.value = m.defaultId ?? '';
+    input.spellcheck = false;
+    const err = document.createElement('div');
+    err.className = 'dp-error';
+    const validate = (): void => {
+      const msg = validateId(input.value.trim(), wiredPins);
+      err.textContent = msg ?? '';
+      addBtn.disabled = !!msg;
+    };
+    input.addEventListener('input', validate);
+    input.addEventListener('keydown', ev => { if (ev.key === 'Enter' && !addBtn.disabled) addBtn.click(); });
+    body.append(popoverRow('id', input), err);
+    idInput = input;
+    idError = err;
+    validate();
+  }
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.id = 'dp-cancel';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.addEventListener('click', hideDevicePopover);
+
+  addBtn.addEventListener('click', () => {
+    const id = idInput ? idInput.value.trim() : null;
+    if (id !== null) {
+      const msg = validateId(id, wiredPins);
+      if (msg) { if (idError) idError.textContent = msg; return; }
+    }
+    vscode.postMessage(placementMessage(deviceId, target, id));
+    hideDevicePopover();
+  });
+
+  const actions = document.createElement('div');
+  actions.className = 'dp-actions';
+  actions.append(addBtn, cancelBtn);
+
+  devicePopover.append(popoverHeader(m.label, m.accentColor, null), body, actions);
+  showPopoverAt(e);
+  idInput?.focus();
+  idInput?.select();
 }
 
 // ── Pin click handler ─────────────────────────────────────────────────────

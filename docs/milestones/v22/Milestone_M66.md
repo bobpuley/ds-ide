@@ -57,7 +57,7 @@ All ten devices in one palette, generated from the registry.
 
 ---
 
-### [ ] feat: drop opens the placement popover (FR-UDM-7)
+### [x] feat: drop opens the placement popover (FR-UDM-7)
 
 **Affected files:** `src/webview/wiring-webview.ts`, `src/webview/messages.ts`, `src/sidebar/wiring-editor-panel.ts`, `src/extension.ts`, `src/test/unit/extension.test.ts`
 

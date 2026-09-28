@@ -17,13 +17,10 @@ import { parseControlsConvention } from './controllers/controls-convention-parse
 import { ControlsConfig, ControlsPlacement } from './webview/scope-panel';
 import { WiredPin, DeviceType, PIN_DEFS, expandToWiredPins } from './wiring/wiring-panel';
 import { insertIntoSource, removeFromSource, insertInitIntoSource, removeInitFromSource } from './wiring/controls-writer';
-import { allocateAdjacentPins } from './wiring/multi-pin-alloc';
+import { computeDropTargets, occupancyFromSource } from './wiring/drop-targets';
 import { REGISTRY } from './devices/registry';
 import type { Attachment } from './devices/attachment';
-import {
-  insertPeripheralIntoSource, removePeripheralFromSource,
-  insertPeripheralInitIntoSource, removePeripheralInitFromSource,
-} from './wiring/peripheral-config';
+import { peripheralEditText } from './wiring/peripheral-config';
 import { computePeripheralDisplayStates, PeripheralDisplayState, currentBusOf } from './wiring/peripheral-state';
 import { checkConflict, buildOccupants, formatRejection, candidateBusesFor } from './wiring/conflict-remedy';
 import { PotStore } from './controllers/pot-store';
@@ -621,12 +618,13 @@ function createWiringProvider(context: vscode.ExtensionContext, deps: WiringProv
       // FR-DEV-8: a 'pins'-attachment device (rgbled) auto-claims its
       // remaining pins from the nearest free ones after the clicked pin,
       // rather than requiring a redesigned multi-pin picker in the popup.
+      // FR-UDM-6: the footprint comes from the same computeDropTargets() the
+      // drag preview used, so the pins written are the pins the user saw.
       const pinCount = REGISTRY[wp.deviceType]!.pinCount;
       let pins: number[] | undefined;
       if (pinCount !== undefined) {
-        const { controls: existingControls } = parseControlsConvention(oldText);
-        const occupied = new Set(existingControls.flatMap(c => c.pins ?? [c.pin]));
-        const allocated = allocateAdjacentPins(wp.pinNumber, pinCount, PIN_DEFS, occupied);
+        const allocated = computeDropTargets(wp.deviceType, PIN_DEFS, occupancyFromSource(oldText))
+          .find(t => t.kind === 'pin' && t.pins[0] === wp.pinNumber)?.pins;
         if (!allocated) {
           void vscode.window.showErrorMessage(
             `ds-ide: not enough free pins after D${wp.pinNumber} to wire a ${REGISTRY[wp.deviceType]!.label} (needs ${pinCount}).`,
@@ -705,7 +703,7 @@ function createWiringProvider(context: vscode.ExtensionContext, deps: WiringProv
       const cfg = await loadControllerConfig();
       await refreshControlsView(folder, cfg);
     },
-    async (peripheralId: string, enabled: boolean) => {
+    async (peripheralId: string, enabled: boolean, requestedBus?: string) => {
       const folder = resolveActiveFolder(workspaceState)?.uri.fsPath ?? '';
       const effectPath = await findEffectSource(folder);
       if (!effectPath) {
@@ -721,7 +719,8 @@ function createWiringProvider(context: vscode.ExtensionContext, deps: WiringProv
       // whichever `currentBusOf` resolves to — the peripheral's current
       // declaration if already enabled, or its default first choice
       // otherwise (FR-DEV-14).
-      const bus = currentBusOf(oldText, peripheralId);
+      // FR-UDM-7: a drop names its lane's bus; the checkbox path never did.
+      const bus = requestedBus ?? currentBusOf(oldText, peripheralId);
       if (enabled) {
         if (bus) {
           const occupants = buildOccupants(oldText, peripheralId);
@@ -738,12 +737,7 @@ function createWiringProvider(context: vscode.ExtensionContext, deps: WiringProv
         }
       }
 
-      const afterDecl = enabled
-        ? insertPeripheralIntoSource(oldText, peripheralId, bus ?? undefined)
-        : removePeripheralFromSource(oldText, peripheralId);
-      const newText = enabled
-        ? insertPeripheralInitIntoSource(afterDecl, peripheralId, bus ?? undefined)
-        : removePeripheralInitFromSource(afterDecl, peripheralId);
+      const newText = peripheralEditText(oldText, peripheralId, enabled, bus ?? undefined);
       const { edit, needsAppendConfirmation } = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
       if (needsAppendConfirmation && !(await confirmAppendMarkerBlocks())) {
         return;

@@ -260,7 +260,24 @@ describe('WiringViewProvider', () => {
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);
     const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
     await handler({ command: 'setPeripheralEnabled', peripheralId: 'sdcard', enabled: true });
-    expect(onSetPeripheralEnabled).toHaveBeenCalledWith('sdcard', true);
+    expect(onSetPeripheralEnabled).toHaveBeenCalledWith('sdcard', true, undefined);
+  });
+
+  it('passes a dropped lane\'s bus through to onSetPeripheralEnabled (FR-UDM-7)', async () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
+    await handler({ command: 'setPeripheralEnabled', peripheralId: 'oled', enabled: true, bus: 'I2C1' });
+    expect(onSetPeripheralEnabled).toHaveBeenCalledWith('oled', true, 'I2C1');
+  });
+
+  it('drops setPeripheralEnabled with a bus outside the peripheral\'s candidates (FR-UDM-7)', async () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => Promise<void>;
+    await handler({ command: 'setPeripheralEnabled', peripheralId: 'sdcard', enabled: true, bus: 'SPI1' });
+    await handler({ command: 'setPeripheralEnabled', peripheralId: 'oled', enabled: true, bus: 7 });
+    expect(onSetPeripheralEnabled).not.toHaveBeenCalled();
   });
 
   it('drops setPeripheralEnabled for an unknown peripheral id', async () => {
