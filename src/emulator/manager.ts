@@ -16,7 +16,11 @@ const KILL_ESCALATION_MS = 200;
 
 // SIGTERM first, escalating to SIGKILL only if `pid` is still alive after a
 // short grace period. Never throws — safe to call fire-and-forget.
-async function escalateKill(pid: number): Promise<void> {
+async function escalateKill(pid: number, immediate = false): Promise<void> {
+  if (immediate) {
+    try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
+    return;
+  }
   try { process.kill(pid, 'SIGTERM'); } catch { return; }
   const deadline = Date.now() + KILL_ESCALATION_MS;
   let alive = true;
@@ -105,8 +109,18 @@ export interface EmulatorManagerDeps {
   rm?: typeof fs.promises.rm;
 }
 
+// FR-TRN-1: emitted once per emulator that became ready, when its process
+// exits. `crashed` is false when the extension itself ended it (stop(),
+// redeploy, dispose) — the run session uses this to end with its emulator.
+export interface EmulatorExit {
+  pid: number | undefined;
+  crashed: boolean;
+}
+
 export class EmulatorManager extends EventEmitter {
   private childProcess: cp.ChildProcess | null = null;
+  // Children the extension killed on purpose, so their exit isn't a crash.
+  private readonly stoppedChildren = new WeakSet<cp.ChildProcess>();
   private ipcClient: IpcClient | null = null;
   private buildDir = '';
   private socketPath: string | null = null;
@@ -187,6 +201,7 @@ export class EmulatorManager extends EventEmitter {
 
           return new Promise<void>((resolve, reject) => {
             let resolved = false;
+            let ready = false;
             const timeout = setTimeout(() => {
               if (!resolved) {
                 reject(new Error(`Emulator did not announce socket path within ${SOCKET_TIMEOUT_MS / 1000}s`));
@@ -214,6 +229,7 @@ export class EmulatorManager extends EventEmitter {
                 const match = trimmed.match(/^DAISY_EMU_SOCKET:(.+)$/);
                 if (match && !resolved) {
                   resolved = true;
+                  ready = true;
                   clearTimeout(timeout);
                   cancelSub?.dispose();
                   // Persist PID so a future session can clean up this process
@@ -246,6 +262,10 @@ export class EmulatorManager extends EventEmitter {
               // Guard: only clear the reference if it still points to this child,
               // not to a new child spawned by a subsequent deploy.
               if (this.childProcess === child) this.childProcess = null;
+              if (ready) {
+                const exit: EmulatorExit = { pid: child.pid, crashed: !this.stoppedChildren.has(child) };
+                this.emit('exit', exit);
+              }
             });
 
             // FR-EXT-18: dispose() may have run during the mkdir/killStalePid
@@ -399,6 +419,14 @@ export class EmulatorManager extends EventEmitter {
     return this.ipcClient?.connected ?? false;
   }
 
+  // FR-TRN-1: ends the running emulator without disposing the manager, so a
+  // run session's Stop can kill it and a later deploy still works.
+  // `immediate` skips SIGTERM: with lldb attached, SIGTERM is caught and
+  // pauses the process (VS Code then jumps into the shim) instead of ending it.
+  stop(opts: { immediate?: boolean } = {}): void {
+    this.killExisting(opts.immediate ?? false);
+  }
+
   dispose(): void {
     this.disposed = true;
     this.killExisting();
@@ -450,6 +478,7 @@ export class EmulatorManager extends EventEmitter {
       // malformed/version-mismatched response) leaves it orphaned until the
       // next stale-PID reaper or an explicit dispose().
       if (this.childProcess) {
+        this.stoppedChildren.add(this.childProcess);
         this.childProcess.kill();
         this.childProcess = null;
       }
@@ -511,15 +540,16 @@ export class EmulatorManager extends EventEmitter {
     });
   }
 
-  private killExisting(): void {
+  private killExisting(immediate = false): void {
     this.intentionalDisconnect = true;  // suppress the subsequent disconnect event
     if (this.childProcess) {
       const pid = this.childProcess.pid;
+      this.stoppedChildren.add(this.childProcess);
       this.childProcess = null;
       // SIGTERM → wait KILL_ESCALATION_MS → SIGKILL, matching killStalePid's
       // escalation so a child that ignores/misses SIGTERM (e.g. blocked in a
       // native audio callback) is still force-terminated (FR-EXT-13).
-      if (pid) void escalateKill(pid);
+      if (pid) void escalateKill(pid, immediate);
     }
     if (this.ipcClient) {
       this.ipcClient.disconnect();

@@ -15,7 +15,7 @@ looking, without any custom-coloured UI.
 
 ## Sprint Tasks
 
-### [ ] feat: pure transport state model (FR-TRN-5)
+### [x] feat: pure transport state model (FR-TRN-5)
 
 Status-bar text is written from 7 separate places in `extension.ts`, so no single component
 knows the transport state.
@@ -29,7 +29,7 @@ knows the transport state.
 
 ---
 
-### [ ] feat: Ctrl+F5 starts a real run session (FR-TRN-1)
+### [x] feat: Ctrl+F5 starts a real run session (FR-TRN-1)
 
 Today `resolveDebugConfiguration` returns `undefined` for `noDebug`, so a run creates no
 session: no toolbar, no Stop.
@@ -45,7 +45,7 @@ session: no toolbar, no Stop.
 
 ---
 
-### [ ] feat: Restart rebuilds and redeploys (FR-TRN-2)
+### [x] feat: Restart rebuilds and redeploys (FR-TRN-2)
 
 **Affected files:** `src/debug/run-session-adapter.ts`, `src/debug/run-config-provider.ts`, `src/test/unit/debug/run-session-adapter.test.ts`
 
@@ -54,9 +54,18 @@ session: no toolbar, no Stop.
 - manual check: a saved edit is running after Restart; a build error during Restart ends the session and surfaces per FR-TRN-6
 - `npm test` green
 
+> **Implementation decision (2026-09-29, user-approved, "adapter-owned Restart"):** VS Code's Restart
+> re-runs `resolveDebugConfiguration` only when launch.json changed; otherwise it resends `launch`
+> with the already-resolved config. So `resolveDebugConfiguration` stamps each config with a one-time
+> `__dsIdeLaunchId`, and the adapter rebuilds + redeploys itself when a launch's id was already
+> consumed. For F5, the `ds-ide` session now stays live too and attaches `daisy-debug` as its child
+> (`parentSession`, `lifecycleManagedByParent: true`), so the debug toolbar's ↻ / ■ reach the ds-ide
+> session. `DsIdeTerminatingAdapter` is removed (every ds-ide session is live). This deviates from
+> 04_architecture's "debug path unchanged / terminating adapter stays" wording.
+
 ---
 
-### [ ] feat: editor-title ▶ with Run / Debug / Flash (FR-TRN-3)
+### [x] feat: editor-title ▶ with Run / Debug / Flash (FR-TRN-3)
 
 **Affected files:** `package.json`, `src/extension.ts`, `src/test/unit/extension.test.ts`
 
@@ -68,7 +77,7 @@ session: no toolbar, no Stop.
 
 ---
 
-### [ ] feat: Daisy view in the Run and Debug container (FR-TRN-4)
+### [x] feat: Daisy view in the Run and Debug container (FR-TRN-4)
 
 **Affected files:** `package.json`, `src/views/daisy-view.ts`, `src/transport/transport-controller.ts`, `src/extension.ts`, `src/test/unit/views/daisy-view.test.ts`
 
@@ -80,7 +89,7 @@ session: no toolbar, no Stop.
 
 ---
 
-### [ ] feat: status bar reduced to a clickable state item + Flash (FR-TRN-5)
+### [x] feat: status bar reduced to a clickable state item + Flash (FR-TRN-5)
 
 **Affected files:** `src/transport/transport-controller.ts`, `src/extension.ts`, `src/test/unit/extension.test.ts`
 
@@ -92,7 +101,7 @@ session: no toolbar, no Stop.
 
 ---
 
-### [ ] feat: surface build failures and crashes (FR-TRN-6)
+### [x] feat: surface build failures and crashes (FR-TRN-6)
 
 **Affected files:** `src/transport/transport-controller.ts`, `src/debug/run-config-provider.ts`, `src/test/unit/transport/transport-controller.test.ts`
 
@@ -103,7 +112,7 @@ session: no toolbar, no Stop.
 
 ---
 
-### [ ] feat: Build & Flash with on-demand board detection (FR-TRN-7)
+### [x] feat: Build & Flash with on-demand board detection (FR-TRN-7)
 
 No part of ds-ide detects a board today; `dfu-flash.ts` just runs `dfu-util` and reports.
 

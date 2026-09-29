@@ -77,6 +77,67 @@
         "command": "ds-ide.selectActiveFolder",
         "title": "Select Active Workspace Folder",
         "category": "Daisy IDE"
+      },
+      {
+        "command": "ds-ide.runEffect",
+        "title": "Run Daisy Effect",
+        "category": "Daisy IDE",
+        "icon": "$(play)",
+        "enablement": "ds-ide.isDaisyProject"
+      },
+      {
+        "command": "ds-ide.debugEffect",
+        "title": "Debug Daisy Effect",
+        "category": "Daisy IDE",
+        "icon": "$(debug-alt)",
+        "enablement": "ds-ide.isDaisyProject"
+      },
+      {
+        "command": "ds-ide.buildAndFlash",
+        "title": "Build & Flash to Daisy Seed",
+        "category": "Daisy IDE",
+        "icon": "$(zap)",
+        "enablement": "ds-ide.isDaisyProject"
+      },
+      {
+        "command": "ds-ide.stopEffect",
+        "title": "Stop Daisy Effect",
+        "category": "Daisy IDE",
+        "icon": "$(debug-stop)",
+        "enablement": "ds-ide.isDaisyProject"
+      },
+      {
+        "command": "ds-ide.cancelTransport",
+        "title": "Cancel Build / Deploy",
+        "category": "Daisy IDE",
+        "icon": "$(close)",
+        "enablement": "ds-ide.isDaisyProject"
+      },
+      {
+        "command": "ds-ide.restartEffect",
+        "title": "Restart to Apply Changes",
+        "category": "Daisy IDE",
+        "icon": "$(debug-restart)",
+        "enablement": "ds-ide.isDaisyProject"
+      },
+      {
+        "command": "ds-ide.refreshBoard",
+        "title": "Refresh Board Detection",
+        "category": "Daisy IDE",
+        "icon": "$(refresh)",
+        "enablement": "ds-ide.isDaisyProject"
+      },
+      {
+        "command": "ds-ide.showEmulatorOutput",
+        "title": "Show Emulator Output",
+        "category": "Daisy IDE",
+        "icon": "$(output)"
+      },
+      {
+        "command": "ds-ide.revealDaisyView",
+        "title": "Show Daisy View",
+        "category": "Daisy IDE",
+        "icon": "$(circuit-board)"
       }
     ],
     "keybindings": [
@@ -105,6 +166,74 @@
         "when": "ds-ide.isDaisyProject"
       }
     ],
+    "menus": {
+      "editor/title/run": [
+        {
+          "command": "ds-ide.runEffect",
+          "when": "ds-ide.isDaisyProject && ds-ide.isEffectSource",
+          "group": "navigation@1"
+        },
+        {
+          "command": "ds-ide.debugEffect",
+          "when": "ds-ide.isDaisyProject && ds-ide.isEffectSource",
+          "group": "navigation@2"
+        },
+        {
+          "command": "ds-ide.buildAndFlash",
+          "when": "ds-ide.isDaisyProject && ds-ide.isEffectSource",
+          "group": "navigation@3"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "ds-ide.runEffect",
+          "when": "view == ds-ide.daisyView && ds-ide.transportPhase =~ /^(stopped|buildFailed|crashed)$/",
+          "group": "navigation@1"
+        },
+        {
+          "command": "ds-ide.debugEffect",
+          "when": "view == ds-ide.daisyView && ds-ide.transportPhase =~ /^(stopped|buildFailed|crashed)$/",
+          "group": "navigation@2"
+        },
+        {
+          "command": "ds-ide.stopEffect",
+          "when": "view == ds-ide.daisyView && ds-ide.transportPhase =~ /^(running|debugging|paused)$/",
+          "group": "navigation@1"
+        },
+        {
+          "command": "ds-ide.cancelTransport",
+          "when": "view == ds-ide.daisyView && ds-ide.transportPhase =~ /^(building|deploying)$/",
+          "group": "navigation@1"
+        },
+        {
+          "command": "ds-ide.buildAndFlash",
+          "when": "view == ds-ide.daisyView",
+          "group": "navigation@3"
+        },
+        {
+          "command": "ds-ide.refreshBoard",
+          "when": "view == ds-ide.daisyView",
+          "group": "navigation@4"
+        },
+        {
+          "command": "ds-ide.showEmulatorOutput",
+          "when": "view == ds-ide.daisyView",
+          "group": "navigation@5"
+        },
+        {
+          "command": "ds-ide.buildHardware",
+          "when": "view == ds-ide.daisyView",
+          "group": "1_hardware@1"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "ds-ide.restartEffect",
+          "when": "view == ds-ide.daisyView && viewItem == daisy.stale",
+          "group": "inline"
+        }
+      ]
+    },
     "viewsContainers": {
       "activitybar": [
         {
@@ -132,6 +261,13 @@
           "type": "webview",
           "id": "ds-ide.wiringEditor",
           "name": "Wiring Editor"
+        }
+      ],
+      "debug": [
+        {
+          "id": "ds-ide.daisyView",
+          "name": "Daisy",
+          "when": "ds-ide.isDaisyProject"
         }
       ]
     },

@@ -75,3 +75,89 @@ describe('debug contribution discoverability (FR-QA-EXT-9)', () => {
     expect(daisyDebug!.label).toMatch(/internal/i);
   });
 });
+
+describe('editor-title run button (FR-TRN-3)', () => {
+  const commands: Array<{ command: string; title: string; icon?: string }> = pkg.contributes?.commands ?? [];
+  const runMenu: Array<{ command: string; when?: string; group?: string }> = pkg.contributes?.menus?.['editor/title/run'] ?? [];
+
+  it.each(['ds-ide.runEffect', 'ds-ide.debugEffect', 'ds-ide.buildAndFlash'])('declares %s with an icon', (id) => {
+    const cmd = commands.find((c) => c.command === id);
+    expect(cmd).toBeDefined();
+    expect(cmd!.icon).toMatch(/^\$\(.+\)$/);
+  });
+
+  it('titles the run/debug actions as the requirement names them', () => {
+    expect(commands.find((c) => c.command === 'ds-ide.runEffect')!.title).toBe('Run Daisy Effect');
+    expect(commands.find((c) => c.command === 'ds-ide.debugEffect')!.title).toBe('Debug Daisy Effect');
+    expect(commands.find((c) => c.command === 'ds-ide.buildAndFlash')!.title).toBe('Build & Flash to Daisy Seed');
+  });
+
+  it('contributes Run, Debug and Build & Flash to editor/title/run, in that order', () => {
+    expect(runMenu.map((m) => m.command)).toEqual(['ds-ide.runEffect', 'ds-ide.debugEffect', 'ds-ide.buildAndFlash']);
+  });
+
+  it('shows them only on the effect source of a Daisy project', () => {
+    for (const item of runMenu) {
+      expect(item.when).toBe('ds-ide.isDaisyProject && ds-ide.isEffectSource');
+    }
+  });
+
+  it('keeps the Run / Debug shortcuts shown in the dropdown (Ctrl+F5 / F5) — no new keybindings', () => {
+    const kbs: Array<{ command: string }> = pkg.contributes?.keybindings ?? [];
+    expect(kbs.map((k) => k.command)).not.toContain('ds-ide.runEffect');
+    expect(kbs.map((k) => k.command)).not.toContain('ds-ide.debugEffect');
+  });
+});
+
+describe('Daisy view in Run and Debug (FR-TRN-4)', () => {
+  const commands: Array<{ command: string; icon?: string }> = pkg.contributes?.commands ?? [];
+  const viewTitle: Array<{ command: string; when?: string; group?: string }> = pkg.contributes?.menus?.['view/title'] ?? [];
+  const viewItem: Array<{ command: string; when?: string; group?: string }> = pkg.contributes?.menus?.['view/item/context'] ?? [];
+  const inView = (cmd: string) => viewTitle.find((m) => m.command === cmd && m.when?.includes('view == ds-ide.daisyView'));
+
+  it('contributes ds-ide.daisyView to the debug container, shown only in Daisy projects', () => {
+    expect(pkg.contributes.views.debug).toContainEqual({ id: 'ds-ide.daisyView', name: 'Daisy', when: 'ds-ide.isDaisyProject' });
+  });
+
+  it('declares ds-ide.revealDaisyView (the state item\'s click action, FR-TRN-5)', () => {
+    expect(commands.find((c) => c.command === 'ds-ide.revealDaisyView')).toBeDefined();
+  });
+
+  it.each(['ds-ide.stopEffect', 'ds-ide.cancelTransport', 'ds-ide.restartEffect', 'ds-ide.refreshBoard', 'ds-ide.showEmulatorOutput'])(
+    'declares %s with an icon', (id) => {
+      expect(commands.find((c) => c.command === id)?.icon).toMatch(/^\$\(.+\)$/);
+    });
+
+  it('shows Run / Debug only when nothing is running or building', () => {
+    for (const cmd of ['ds-ide.runEffect', 'ds-ide.debugEffect']) {
+      expect(inView(cmd)?.when).toContain('ds-ide.transportPhase =~ /^(stopped|buildFailed|crashed)$/');
+      expect(inView(cmd)?.group).toMatch(/^navigation/);
+    }
+  });
+
+  it('shows Stop while live and Cancel while building / deploying', () => {
+    expect(inView('ds-ide.stopEffect')?.when).toContain('ds-ide.transportPhase =~ /^(running|debugging|paused)$/');
+    expect(inView('ds-ide.cancelTransport')?.when).toContain('ds-ide.transportPhase =~ /^(building|deploying)$/');
+  });
+
+  it('always offers Build & Flash, Refresh and Show Emulator Output', () => {
+    for (const cmd of ['ds-ide.buildAndFlash', 'ds-ide.refreshBoard', 'ds-ide.showEmulatorOutput']) {
+      expect(inView(cmd)?.when).toBe('view == ds-ide.daisyView');
+      expect(inView(cmd)?.group).toMatch(/^navigation/);
+    }
+  });
+
+  it('keeps build-for-hardware-only reachable from the view overflow menu', () => {
+    const item = inView('ds-ide.buildHardware');
+    expect(item).toBeDefined();
+    expect(item!.group).not.toMatch(/^navigation/);
+  });
+
+  it('puts Restart to apply inline on the Source changed row', () => {
+    expect(viewItem).toContainEqual({
+      command: 'ds-ide.restartEffect',
+      when: 'view == ds-ide.daisyView && viewItem == daisy.stale',
+      group: 'inline',
+    });
+  });
+});

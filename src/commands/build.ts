@@ -14,6 +14,10 @@ export async function buildForEmulator(
   outputChannel: vscode.OutputChannel,
   workspaceState: vscode.Memento,
   token?: vscode.CancellationToken,
+  // FR-TRN-6: the run / debug / restart path reports a failed build through
+  // its own "Build failed with N problems" notification, so it turns off the
+  // generic toast here. The specific non-portable-symbol diagnosis stays.
+  toasts: { genericFailureToast?: boolean } = {},
 ): Promise<boolean> {
   const folder = resolveActiveFolder(workspaceState);
   if (!folder) {
@@ -70,7 +74,7 @@ export async function buildForEmulator(
         `ds-ide: build failed — symbol(s) not emulated: ${nonPortable.map(s => `'${s}'`).join(', ')}. ` +
         `Add stubs or remove these hardware-only API calls.`,
       );
-    } else {
+    } else if (toasts.genericFailureToast !== false) {
       const msg = err instanceof Error ? err.message : String(err);
       void vscode.window.showErrorMessage(`ds-ide: build failed — ${msg}`);
     }

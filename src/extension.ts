@@ -11,7 +11,9 @@ import { buildForEmulator } from './commands/build';
 import { deployToEmulator } from './commands/deploy';
 import { startAudio, stopAudio } from './commands/transport';
 import { debugDeploy, DAISY_DEBUG_TYPE } from './commands/debug-deploy';
-import { DaisyRunConfigurationProvider, DsIdeDebugAdapterDescriptorFactory, DS_IDE_DEBUG_TYPE } from './debug/run-config-provider';
+import {
+  DaisyRunConfigurationProvider, DsIdeDebugAdapterDescriptorFactory, DS_IDE_DEBUG_TYPE, DS_IDE_LAUNCH_CONFIG,
+} from './debug/run-config-provider';
 import { parseControllerConfig, serializeControllerConfig, ControllerConfig } from './controllers/controller-config';
 import { parseControlsConvention } from './controllers/controls-convention-parser';
 import { ControlsConfig, ControlsPlacement } from './webview/scope-panel';
@@ -39,11 +41,18 @@ import { ControlsViewProvider } from './sidebar/controls-editor-panel';
 import { WiringViewProvider } from './sidebar/wiring-editor-panel';
 import { createEffectProject } from './commands/create-effect-project';
 import * as os from 'os';
-import { getString, getBoolean } from './ipc/narrow';
+import { getString } from './ipc/narrow';
 // FR-EXT-10: the resolution/error-handling wrapper is shared with the build
 // command (build.ts) rather than duplicated, so the ds-ide.effectSource
 // setting can't drift out of sync between call sites.
 import { resolveConfiguredEffectSource as findEffectSource } from './commands/find-effect-source';
+import {
+  TransportController, wireTransportEvents, wireTransportNotifications, isBuildSource, countErrors,
+} from './transport/transport-controller';
+import { isTransportBusy, type BoardInfo, type TransportMode } from './transport/transport-state';
+import { detectBoard } from './hardware/board-detect';
+import { TransportStatusItems } from './transport/status-items';
+import { DaisyViewProvider, DAISY_VIEW_ID, formatAudioDetail, withViewProgress } from './views/daisy-view';
 import { resolveActiveFolder, promptSelectActiveFolder } from './workspace/active-folder';
 
 const FIDELITY_CAVEAT =
@@ -292,7 +301,6 @@ class SessionState {
 // transposed pair at a call site type-checks silently.
 interface DeployCoordinatorOptions {
   manager: EmulatorManager;
-  statusBar: vscode.StatusBarItem;
   stores: { pot: PotStore; button: ButtonStore; toggle: ToggleStore };
   session: SessionState;
   panels: { scope: ScopePanel; oled: OledPanel; midi: MidiPanel };
@@ -309,11 +317,13 @@ interface DeployCoordinatorOptions {
   // to the Controls Editor outside debug mode, so it can't use the
   // simpler refreshControlsView() wrapper those triggers share.
   computeControlsConfig: (folder: string, cfg: ControllerConfig) => Promise<ControlsConfig | undefined>;
+  // FR-TRN-4: every build/deploy step is reported to the transport state, and
+  // runs under a token the Daisy view's Cancel action can cancel.
+  transport: TransportController;
 }
 
 class DeployCoordinator {
   private readonly manager: EmulatorManager;
-  private readonly statusBar: vscode.StatusBarItem;
   private readonly potStore: PotStore;
   private readonly buttonStore: ButtonStore;
   private readonly toggleStore: ToggleStore;
@@ -329,10 +339,10 @@ class DeployCoordinator {
   private readonly loadControllerConfig: () => Promise<ControllerConfig>;
   private readonly workspaceState: vscode.Memento;
   private readonly computeControlsConfig: (folder: string, cfg: ControllerConfig) => Promise<ControlsConfig | undefined>;
+  private readonly transport: TransportController;
 
   constructor(opts: DeployCoordinatorOptions) {
     this.manager = opts.manager;
-    this.statusBar = opts.statusBar;
     this.potStore = opts.stores.pot;
     this.buttonStore = opts.stores.button;
     this.toggleStore = opts.stores.toggle;
@@ -348,11 +358,7 @@ class DeployCoordinator {
     this.loadControllerConfig = opts.loadControllerConfig;
     this.workspaceState = opts.workspaceState;
     this.computeControlsConfig = opts.computeControlsConfig;
-  }
-
-  private setDeploying(): void {
-    this.statusBar.text = '$(loading~spin) Daisy: deploying…';
-    this.statusBar.tooltip = FIDELITY_CAVEAT;
+    this.transport = opts.transport;
   }
 
   // FR-DEV-15: unlike scopePanel (always shown — audio is core), the OLED
@@ -381,11 +387,6 @@ class DeployCoordinator {
     if (enabled) this.midiPanel.show();
   }
 
-  private setStopped(): void {
-    this.statusBar.text = '$(debug-stop) Daisy: stopped';
-    this.statusBar.tooltip = FIDELITY_CAVEAT;
-  }
-
   sendPostDeployState(): void {
     this.manager.sendControlSnapshot(
       this.potStore.getSnapshot(), this.buttonStore.getSnapshot(), this.toggleStore.getSnapshot(),
@@ -399,14 +400,45 @@ class DeployCoordinator {
     }
   }
 
-  async performDeploy(opts: { build: boolean; debug: boolean }, token?: vscode.CancellationToken): Promise<boolean> {
+  // `mode` is the transport mode the deploy is for; it defaults from `debug`
+  // (the granular ds-ide.debug path) but F5 passes 'debug' with debug:false,
+  // since the ds-ide session attaches the debugger itself (FR-TRN-2).
+  async performDeploy(
+    opts: { build: boolean; debug: boolean; mode?: TransportMode },
+    token?: vscode.CancellationToken,
+  ): Promise<boolean> {
+    const mode = opts.mode ?? (opts.debug ? 'debug' : 'run');
+    return this.transport.trackWork(token, async (workToken) => {
+      try {
+        const ok = await this.deploy(opts, mode, workToken);
+        if (!ok && isTransportBusy(this.transport.state.phase)) this.transport.dispatch({ type: 'deployAborted' });
+        return ok;
+      } catch (err) {
+        this.transport.dispatch({ type: 'deployAborted' });
+        throw err;
+      }
+    });
+  }
+
+  private async deploy(
+    opts: { build: boolean; debug: boolean },
+    mode: TransportMode,
+    token: vscode.CancellationToken,
+  ): Promise<boolean> {
     if (opts.build) {
+      this.transport.dispatch({ type: 'buildStarted', mode });
       const ok = await buildForEmulator(
         this.manager, this.extensionPath, this.diagnostics, this.buildChannel, this.workspaceState, token,
+        { genericFailureToast: false },
       );
-      if (!ok) return false;
+      if (!ok) {
+        if (!token.isCancellationRequested) {
+          this.transport.dispatch({ type: 'deployFailed', problems: countErrors(this.diagnostics) });
+        }
+        return false;
+      }
     }
-    this.setDeploying();
+    this.transport.dispatch({ type: 'deployStarted', mode });
     const cfg = await this.loadControllerConfig();
     this.potStore.setDefaults(cfg.pots);
     this.buttonStore.setDefaults(cfg.buttons);
@@ -434,6 +466,10 @@ class DeployCoordinator {
         this.workspaceState,
         token,
       );
+      // debugDeploy reports its own failures; whether an emulator is up is
+      // the only outcome it leaves behind.
+      if (this.manager.childPid === undefined) return false;
+      this.transport.dispatch({ type: 'deploySucceeded' });
       return true;
     }
 
@@ -444,21 +480,19 @@ class DeployCoordinator {
     if (controlsConfig) this.controlsProvider.postControlsConfig(controlsConfig);
     void vscode.commands.executeCommand('workbench.view.extension.ds-ide-controls');
     const deployed = await deployToEmulator(this.manager, this.emulatorChannel, token);
-    if (!deployed) {
-      this.setStopped();
-      return false;
-    }
+    if (!deployed) return false;
     this.sendPostDeployState();
+    this.transport.dispatch({ type: 'deploySucceeded' });
     return true;
   }
 }
 
 // FR-EXT-9: status/message routing extracted from activate() — this is the
 // only place manager 'message'/'disconnect'/'error' events are translated
-// into status-bar and webview updates.
+// into webview updates and notifications. The status bar renders from the
+// transport state instead (FR-TRN-5).
 function wireManagerEvents(
   manager: EmulatorManager,
-  statusBar: vscode.StatusBarItem,
   controlsProvider: ControlsViewProvider,
   emulatorChannel: vscode.OutputChannel,
 ): void {
@@ -472,9 +506,6 @@ function wireManagerEvents(
       }
     }
     if (msg['type'] === 'status') {
-      const running = getBoolean(msg, 'running') ?? false;
-      statusBar.text = running ? '$(play) Daisy: running' : '$(debug-stop) Daisy: stopped';
-      statusBar.tooltip = FIDELITY_CAVEAT;
       controlsProvider?.postStatus(msg);
     }
     if (msg['type'] === 'led') {
@@ -492,12 +523,10 @@ function wireManagerEvents(
     }
   });
 
+  // FR-TRN-6: the transport state turns this into its one crash notification
+  // (Show Output / Debug); here it is only logged.
   manager.on('disconnect', () => {
-    statusBar.text = '$(warning) Daisy: crashed';
-    statusBar.tooltip = FIDELITY_CAVEAT;
-    void vscode.window.showErrorMessage(
-      'ds-ide: emulator disconnected unexpectedly — redeploy to restart.',
-    );
+    emulatorChannel.appendLine('ds-ide: emulator disconnected unexpectedly.');
   });
 
   // FR-EXT-6: Node's EventEmitter throws in-process on an unhandled 'error'
@@ -821,20 +850,26 @@ interface CommandDeps {
   scopePanel: ScopePanel;
   controlsProvider: ControlsViewProvider;
   initViewsFromProject: () => Promise<void>;
+  emulatorChannel: vscode.OutputChannel;
+  transport: TransportController;
+  daisyView: DaisyViewProvider;
+  stopEmulator: () => void;
+  refreshBoard: () => Promise<BoardInfo | null>;
 }
 
 // FR-EXT-16: shared wrapper so a hung build/deploy/flash child process can
 // be aborted from the progress notification instead of reloading the
 // extension host window — every long-running command below routes through
 // this instead of calling vscode.window.withProgress ad hoc.
+// FR-TRN-4: the same work also shows progress on the Daisy view.
 async function withCancellableProgress<T>(
   title: string,
   task: (token: vscode.CancellationToken) => Promise<T>,
 ): Promise<T> {
-  return vscode.window.withProgress(
+  return withViewProgress(() => vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title, cancellable: true },
     (_progress, token) => task(token),
-  );
+  ));
 }
 
 // FR-EXT-9: command registration extracted from activate() — every
@@ -843,6 +878,7 @@ function registerCommands(deps: CommandDeps): vscode.Disposable[] {
   const {
     manager, diagnostics, buildChannel, hardwareChannel, flashChannel,
     workspaceState, extensionPath, deployCoordinator, scopePanel, controlsProvider, initViewsFromProject,
+    emulatorChannel, transport, stopEmulator, refreshBoard,
   } = deps;
 
   return [
@@ -892,6 +928,67 @@ function registerCommands(deps: CommandDeps): vscode.Disposable[] {
         deployCoordinator.performDeploy({ build: false, debug: true }, token),
       ),
     ),
+    // FR-TRN-3: the editor-title ▶ and its dropdown. Run / Debug go through
+    // the one ds-ide launch configuration, so they get the same live session
+    // (toolbar, Restart, Stop) as Ctrl+F5 / F5.
+    vscode.commands.registerCommand('ds-ide.runEffect', () =>
+      vscode.debug.startDebugging(resolveActiveFolder(workspaceState), { ...DS_IDE_LAUNCH_CONFIG }, { noDebug: true }),
+    ),
+    vscode.commands.registerCommand('ds-ide.debugEffect', () =>
+      vscode.debug.startDebugging(resolveActiveFolder(workspaceState), { ...DS_IDE_LAUNCH_CONFIG }),
+    ),
+    // FR-TRN-7: detect the board first — with none in DFU mode, no hardware
+    // build is started — then confirm, then reuse the buildHardware / flash
+    // paths (flash's own BOOT/RESET prompt is already covered by detection).
+    vscode.commands.registerCommand('ds-ide.buildAndFlash', async (): Promise<void> => {
+      const folder = resolveActiveFolder(workspaceState);
+      if (!folder) {
+        void vscode.window.showErrorMessage('ds-ide: no workspace folder open');
+        return;
+      }
+      let board = await refreshBoard();
+      while (!board) {
+        const retry = await vscode.window.showWarningMessage(
+          'ds-ide: no Daisy Seed found in DFU mode. Hold BOOT, press and release RESET, then release BOOT — and retry.',
+          'Retry',
+        );
+        if (retry !== 'Retry') return;
+        board = await refreshBoard();
+      }
+      const confirm = await vscode.window.showInformationMessage(
+        `Build "${folder.name}" for hardware and flash it to the ${board.name} (DFU ${board.usbId})?`,
+        { modal: true },
+        'Build & Flash',
+      );
+      if (confirm !== 'Build & Flash') return;
+      const built = await withCancellableProgress('ds-ide: building for hardware…', (token) =>
+        buildForHardware(folder.uri.fsPath, diagnostics, hardwareChannel, {}, token),
+      );
+      if (!built) return;
+      await withCancellableProgress('ds-ide: flashing…', (token) =>
+        flashToHardware(folder.uri.fsPath, flashChannel, { confirmBootloader: false }, token),
+      );
+    }),
+    // FR-TRN-4: Daisy view title / row actions.
+    vscode.commands.registerCommand('ds-ide.stopEffect', async () => {
+      if (transport.session) {
+        await vscode.debug.stopDebugging(transport.session);
+        return;
+      }
+      // Deployed through a granular command — no session to end.
+      stopEmulator();
+    }),
+    vscode.commands.registerCommand('ds-ide.cancelTransport', () => transport.cancelWork()),
+    vscode.commands.registerCommand('ds-ide.restartEffect', () =>
+      transport.session
+        ? vscode.commands.executeCommand('workbench.action.debug.restart')
+        : vscode.commands.executeCommand('ds-ide.buildAndDeploy'),
+    ),
+    vscode.commands.registerCommand('ds-ide.refreshBoard', () => refreshBoard()),
+    vscode.commands.registerCommand('ds-ide.showEmulatorOutput', () => emulatorChannel.show()),
+    // FR-TRN-5: the state item's default click action.
+    vscode.commands.registerCommand('ds-ide.revealDaisyView', () =>
+      vscode.commands.executeCommand(`${DAISY_VIEW_ID}.focus`)),
     vscode.commands.registerCommand('ds-ide.createNewEffectProject', () => createEffectProject(extensionPath)),
     vscode.commands.registerCommand('ds-ide.selectActiveFolder', async () => {
       const chosen = await promptSelectActiveFolder(workspaceState);
@@ -1062,11 +1159,6 @@ export function activate(context: vscode.ExtensionContext): void {
   const hardwareChannel = vscode.window.createOutputChannel('Daisy IDE Hardware Build');
   const flashChannel    = vscode.window.createOutputChannel('Daisy IDE Flash');
 
-  const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-  statusBar.text = '$(circuit-board) Daisy';
-  statusBar.tooltip = FIDELITY_CAVEAT;
-  statusBar.show();
-
   // FR-CE-1 follow-up: buildControlsConfig() used to be independently
   // called and pushed from six separate triggers (activation, layout save,
   // wirePin, unwirePin, any yaml/cpp save, deploy) — each doing its own
@@ -1197,26 +1289,40 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   );
 
-  wireManagerEvents(manager, statusBar, controlsProvider, emulatorChannel);
+  wireManagerEvents(manager, controlsProvider, emulatorChannel);
+
+  // FR-TRN-4: one transport state for the Daisy view (and, below, every
+  // other transport surface).
+  const transport = new TransportController();
+  const daisyView = new DaisyViewProvider(transport, () =>
+    formatAudioDetail(session.audioSourceState.sampleRate, session.audioSourceState.bufferSize));
+  const daisyTreeView = vscode.window.createTreeView(DAISY_VIEW_ID, { treeDataProvider: daisyView });
+  // FR-TRN-7: board detection is on demand only — here, on Refresh, and
+  // before Build & Flash. No background polling.
+  async function refreshBoard(): Promise<BoardInfo | null> {
+    const board = await detectBoard();
+    transport.dispatch(board ? { type: 'boardDetected', board } : { type: 'boardNotDetected' });
+    return board;
+  }
+  const boardOnVisible = daisyTreeView.onDidChangeVisibility((e) => {
+    if (e.visible) void refreshBoard();
+  });
+  const statusItems = new TransportStatusItems(transport, FIDELITY_CAVEAT);
+  const transportNotifications = wireTransportNotifications(transport);
+
+  // Stop for a run session and for the view's Stop without a session: ends
+  // the emulator process, and resets the panels that show live audio.
+  function stopEmulator(opts: { immediate?: boolean } = {}): void {
+    manager.stop(opts);
+    scopePanel.notifyStopped();
+    controlsProvider.postStatus({ type: 'status', running: false });
+  }
 
   const debugAdapterFactory = new DaisyDebugAdapterFactory();
   const debugTrackerFactory = new DaisyDebugAdapterTrackerFactory((mode) => manager?.sendAudioMode(mode));
 
-  const startSessionDisposable = vscode.debug.onDidStartDebugSession((debugSession) => {
-    if (debugSession.type === DAISY_DEBUG_TYPE) {
-      statusBar.text = '$(bug) Daisy: debugging';
-      statusBar.tooltip = FIDELITY_CAVEAT;
-    }
-  });
-  const terminateSessionDisposable = vscode.debug.onDidTerminateDebugSession((debugSession) => {
-    if (debugSession.type === DAISY_DEBUG_TYPE) {
-      statusBar.text = '$(debug-stop) Daisy: stopped';
-      statusBar.tooltip = FIDELITY_CAVEAT;
-    }
-  });
-
   const deployCoordinator = new DeployCoordinator({
-    manager, statusBar,
+    manager,
     stores: { pot: potStore, button: buttonStore, toggle: toggleStore },
     session,
     panels: { scope: scopePanel, oled: oledPanel, midi: midiPanel },
@@ -1226,18 +1332,31 @@ export function activate(context: vscode.ExtensionContext): void {
     loadControllerConfig,
     workspaceState: context.workspaceState,
     computeControlsConfig,
+    transport,
   });
 
   const runConfigProvider = new DaisyRunConfigurationProvider(
-    (token) => deployCoordinator.performDeploy({ build: true, debug: false }, token),
-    () => manager?.childPid,
+    (token, mode) => deployCoordinator.performDeploy({ build: true, debug: false, mode }, token),
     context.workspaceState,
   );
+
+  // FR-TRN-3: the editor-title ▶ is shown only on the project's effect
+  // source, tracked here as the ds-ide.isEffectSource context key.
+  let effectSourcePath: string | undefined;
+  function updateEffectSourceContext(editor: vscode.TextEditor | undefined): void {
+    const active = editor?.document.uri.fsPath;
+    const isEffectSource = effectSourcePath !== undefined && active !== undefined
+      && path.resolve(active) === path.resolve(effectSourcePath);
+    void vscode.commands.executeCommand('setContext', 'ds-ide.isEffectSource', isEffectSource);
+  }
 
   async function initViewsFromProject(): Promise<void> {
     const activeFolder = resolveActiveFolder(context.workspaceState);
     if (!activeFolder) {
+      effectSourcePath = undefined;
       void vscode.commands.executeCommand('setContext', 'ds-ide.isDaisyProject', false);
+      statusItems.setVisible(false);
+      updateEffectSourceContext(vscode.window.activeTextEditor);
       return;
     }
     const folder = activeFolder.uri.fsPath;
@@ -1247,6 +1366,9 @@ export function activate(context: vscode.ExtensionContext): void {
     // Scopes the ds-ide.* keybindings (package.json) so they don't fire in
     // unrelated workspaces (FR-QA-EXT-6).
     void vscode.commands.executeCommand('setContext', 'ds-ide.isDaisyProject', effectPath !== undefined);
+    statusItems.setVisible(effectPath !== undefined);
+    effectSourcePath = effectPath;
+    updateEffectSourceContext(vscode.window.activeTextEditor);
     let wiredPins: WiredPin[] = [];
     let peripherals: PeripheralDisplayState[] = computePeripheralDisplayStates('');
     if (effectPath) {
@@ -1270,6 +1392,7 @@ export function activate(context: vscode.ExtensionContext): void {
     manager, diagnostics, buildChannel, hardwareChannel, flashChannel,
     workspaceState: context.workspaceState, extensionPath: context.extensionPath,
     deployCoordinator, scopePanel, controlsProvider, initViewsFromProject,
+    emulatorChannel, transport, daisyView, stopEmulator, refreshBoard,
   });
 
   const saveListener = createSaveListener({
@@ -1277,13 +1400,30 @@ export function activate(context: vscode.ExtensionContext): void {
     wiringProvider, controlsProvider,
   });
 
+  // Registered after the listeners above so theirs run first.
+  const transportEventDisposables = wireTransportEvents(transport, {
+    emulator: manager,
+    isProjectSource: (uri) => {
+      const active = resolveActiveFolder(context.workspaceState);
+      return active !== undefined && isBuildSource(uri.fsPath)
+        && vscode.workspace.getWorkspaceFolder(uri)?.uri.fsPath === active.uri.fsPath;
+    },
+  });
+
   context.subscriptions.push(
+    transport,
+    daisyView,
+    daisyTreeView,
+    boardOnVisible,
+    ...transportEventDisposables,
+    vscode.window.onDidChangeActiveTextEditor(updateEffectSourceContext),
     diagnostics,
     buildChannel,
     emulatorChannel,
     hardwareChannel,
     flashChannel,
-    statusBar,
+    statusItems,
+    transportNotifications,
     vscode.window.registerWebviewViewProvider('ds-ide.controlsEditor', controlsProvider, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
@@ -1292,7 +1432,17 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.debug.registerDebugAdapterDescriptorFactory(DAISY_DEBUG_TYPE, debugAdapterFactory),
     vscode.debug.registerDebugAdapterTrackerFactory(DAISY_DEBUG_TYPE, debugTrackerFactory),
-    vscode.debug.registerDebugAdapterDescriptorFactory(DS_IDE_DEBUG_TYPE, new DsIdeDebugAdapterDescriptorFactory()),
+    vscode.debug.registerDebugAdapterDescriptorFactory(DS_IDE_DEBUG_TYPE, new DsIdeDebugAdapterDescriptorFactory((session) => ({
+      currentEmulatorPid: () => manager.childPid,
+      stopEmulator,
+      onEmulatorExit: (listener) => {
+        manager.on('exit', listener);
+        return { dispose: () => { manager.off('exit', listener); } };
+      },
+      consumeLaunch: (config) => runConfigProvider.consumeLaunch(config),
+      rebuildAndDeploy: (mode, token) => runConfigProvider.buildAndDeployWithProgress(mode, token),
+      attachDebugger: (pid) => runConfigProvider.attachDebugger(session, pid),
+    }))),
     vscode.debug.registerDebugConfigurationProvider(DS_IDE_DEBUG_TYPE, runConfigProvider),
     saveListener,
     ...commandDisposables,
@@ -1300,8 +1450,6 @@ export function activate(context: vscode.ExtensionContext): void {
       manager?.dispose(); scopePanel?.dispose(); oledPanel?.dispose(); midiPanel?.dispose();
       hostMidiBridge?.stop();
     } },
-    startSessionDisposable,
-    terminateSessionDisposable,
   );
 }
 

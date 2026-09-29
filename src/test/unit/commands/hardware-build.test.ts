@@ -66,6 +66,13 @@ describe('buildForHardware()', () => {
     );
   });
 
+  it('reports success / failure as its result so Build & Flash can stop on a failed build (FR-TRN-3)', async () => {
+    expect(await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn: makeSpawn(0) })).toBe(true);
+    expect(await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn: makeSpawn(2) })).toBe(false);
+    (detectArmToolchain as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
+    expect(await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn: makeSpawn(0) })).toBe(false);
+  });
+
   it('shows error and skips make when toolchain is not found', async () => {
     (detectArmToolchain as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
     const spawn = makeSpawn(0);

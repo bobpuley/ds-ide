@@ -198,6 +198,15 @@ describe('flashToHardware()', () => {
     );
   });
 
+  it('skips its own bootloader prompt when Build & Flash already confirmed a detected board (FR-TRN-7)', async () => {
+    const deps = { ...makeFlashDeps(0), confirmBootloader: false };
+    await flashToHardware('/project', makeChannel(), deps);
+    const prompts = (vscode.window.showInformationMessage as ReturnType<typeof vi.fn>).mock.calls
+      .filter((c: unknown[]) => typeof c[0] === 'string' && (c[0] as string).includes('bootloader'));
+    expect(prompts).toHaveLength(0);
+    expect(deps.spawn).toHaveBeenCalled();
+  });
+
   it('shows the bootloader prompt before flashing', async () => {
     const deps = makeFlashDeps(0);
     await flashToHardware('/project', makeChannel(), deps);

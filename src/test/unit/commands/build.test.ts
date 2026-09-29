@@ -150,6 +150,35 @@ describe('buildForEmulator success notification (FR-UX-2)', () => {
   });
 });
 
+describe('buildForEmulator failure toast on the transport path (FR-TRN-6)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [
+      { uri: { fsPath: '/proj' } },
+    ];
+    vi.mocked(fs.promises.readdir).mockResolvedValue(['effect.cpp'] as never);
+    vi.mocked(fs.promises.stat).mockRejectedValue(new Error('ENOENT'));
+  });
+
+  it('with genericFailureToast: false, a plain build failure shows no toast (the transport shows its own)', async () => {
+    const manager = { build: vi.fn().mockRejectedValue(new Error('boom')) } as unknown as EmulatorManager;
+    const ok = await buildForEmulator(manager, '/ext', undefined, makeChannel(), makeWorkspaceState(), undefined, { genericFailureToast: false });
+    expect(ok).toBe(false);
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+  });
+
+  it('with genericFailureToast: false, a non-portable-symbol diagnosis is still shown', async () => {
+    const manager = {
+      build: vi.fn((_o: unknown, onLine: (l: string) => void) => {
+        onLine("undefined reference to `daisy::QSPIHandle::Init()'");
+        return Promise.reject(new Error('link failed'));
+      }),
+    } as unknown as EmulatorManager;
+    await buildForEmulator(manager, '/ext', undefined, makeChannel(), makeWorkspaceState(), undefined, { genericFailureToast: false });
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('not emulated'));
+  });
+});
+
 describe('buildForEmulator active folder resolution (FR-UX-4)', () => {
   beforeEach(() => {
     vi.clearAllMocks();

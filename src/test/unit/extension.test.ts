@@ -42,6 +42,7 @@ vi.mock('../../emulator/manager', () => {
     sendAudioMode = vi.fn();
     sendAudioDevice = vi.fn();
     sendWavFile = vi.fn();
+    stop = vi.fn();
     dispose = vi.fn();
     get childPid() { return 42; }
     get isConnected() { return true; }
@@ -58,10 +59,23 @@ vi.mock('../../emulator/manager', () => {
   };
 });
 
+vi.mock('../../hardware/board-detect', () => ({
+  detectBoard: vi.fn(async () => null),
+}));
+vi.mock('../../commands/hardware-build', () => ({
+  buildForHardware: vi.fn(async () => true),
+}));
+vi.mock('../../commands/dfu-flash', () => ({
+  flashToHardware: vi.fn(async () => undefined),
+}));
+
 // Imported for type inference only — each test describe re-imports dynamically.
 import type { activate as ActivateFn, deactivate as DeactivateFn } from '../../extension';
 import { makeBlockEdit, findDeviceDeclarationLine, revealDeviceInCode } from '../../extension';
 import { oledCodegen } from '../../devices/codegen/oled';
+import { detectBoard } from '../../hardware/board-detect';
+import { buildForHardware } from '../../commands/hardware-build';
+import { flashToHardware } from '../../commands/dfu-flash';
 
 function makeContext(): vscode.ExtensionContext {
   return {
@@ -175,14 +189,17 @@ describe('extension', () => {
     expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
   });
 
-  it('shows an error notification and does not throw when emulator disconnects', () => {
+  it('an emulator disconnect during a run shows exactly one crash notification, and does not throw (FR-TRN-6)', () => {
     const ctx = makeContext();
     activate(ctx);
+    for (const c of (vscode.debug.onDidStartDebugSession as ReturnType<typeof vi.fn>).mock.calls) {
+      (c[0] as (s: unknown) => void)({ type: 'ds-ide', configuration: { noDebug: true } });
+    }
     const mgr = managerInstances[0]!;
     expect(() => mgr.emit('disconnect')).not.toThrow();
-    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-      expect.stringContaining('emulator disconnected'),
-    );
+    mgr.emit('exit', { pid: 42, crashed: true });
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledOnce();
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('crashed'), 'Show Output', 'Debug');
   });
 
   // FR-EXT-6 / FR-EXT-39: Node's EventEmitter throws in-process on an
@@ -310,27 +327,112 @@ describe('extension', () => {
     expect(vscode.workspace.onDidSaveTextDocument).toHaveBeenCalled();
   });
 
-  it('updates status bar text when a daisy-debug session starts', () => {
-    const ctx = makeContext();
-    activate(ctx);
-    // Retrieve the onDidStartDebugSession callback registered during activate
-    const startCb = (vscode.debug.onDidStartDebugSession as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
-      ((s: { type: string }) => void) | undefined;
-    const statusBar = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.results[0]?.value as
-      { text: string };
-    startCb?.({ type: 'daisy-debug' });
-    expect(statusBar?.text).toContain('debug');
+  it('registers the editor-title transport commands (FR-TRN-3)', () => {
+    activate(makeContext());
+    const ids = (vscode.commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[0]);
+    expect(ids).toEqual(expect.arrayContaining(['ds-ide.runEffect', 'ds-ide.debugEffect', 'ds-ide.buildAndFlash']));
   });
 
-  it('updates status bar text when a daisy-debug session terminates', () => {
+  function commandHandler(id: string): (...args: unknown[]) => unknown {
+    const call = (vscode.commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.find((c: unknown[]) => c[0] === id);
+    return call![1] as (...args: unknown[]) => unknown;
+  }
+
+  it('ds-ide.runEffect starts the ds-ide launch config without debugging (FR-TRN-3)', async () => {
+    activate(makeContext());
+    await commandHandler('ds-ide.runEffect')();
+    const call = (vscode.debug.startDebugging as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(call[1]).toMatchObject({ type: 'ds-ide', request: 'launch' });
+    expect(call[2]).toMatchObject({ noDebug: true });
+  });
+
+  it('ds-ide.debugEffect starts the ds-ide launch config with debugging (FR-TRN-3)', async () => {
+    activate(makeContext());
+    await commandHandler('ds-ide.debugEffect')();
+    const call = (vscode.debug.startDebugging as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(call[1]).toMatchObject({ type: 'ds-ide', request: 'launch' });
+    expect(call[2]?.noDebug).toBeFalsy();
+  });
+
+  it('registers the Daisy tree view and disposes it with the extension (FR-TRN-4)', () => {
     const ctx = makeContext();
     activate(ctx);
-    const terminateCb = (vscode.debug.onDidTerminateDebugSession as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as
-      ((s: { type: string }) => void) | undefined;
-    const statusBar = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.results[0]?.value as
-      { text: string };
-    terminateCb?.({ type: 'daisy-debug' });
-    expect(statusBar?.text).toContain('stopped');
+    const call = (vscode.window.createTreeView as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(call[0]).toBe('ds-ide.daisyView');
+    expect(call[1]).toMatchObject({ treeDataProvider: expect.anything() });
+    expect(ctx.subscriptions).toContain((vscode.window.createTreeView as ReturnType<typeof vi.fn>).mock.results[0]!.value);
+  });
+
+  it('registers the Daisy view commands (FR-TRN-4)', () => {
+    activate(makeContext());
+    const ids = (vscode.commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[0]);
+    expect(ids).toEqual(expect.arrayContaining([
+      'ds-ide.stopEffect', 'ds-ide.cancelTransport', 'ds-ide.restartEffect', 'ds-ide.refreshBoard', 'ds-ide.showEmulatorOutput',
+    ]));
+  });
+
+  it('ds-ide.stopEffect with no transport session stops the emulator directly (FR-TRN-4)', async () => {
+    activate(makeContext());
+    await commandHandler('ds-ide.stopEffect')();
+    expect((managerInstances[0] as unknown as { stop: ReturnType<typeof vi.fn> }).stop).toHaveBeenCalledOnce();
+    expect(vscode.debug.stopDebugging).not.toHaveBeenCalled();
+  });
+
+  it('ds-ide.stopEffect ends the tracked transport session (FR-TRN-4)', async () => {
+    activate(makeContext());
+    const startCb = (vscode.debug.onDidStartDebugSession as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => c[0] as (s: unknown) => void);
+    const s = { type: 'ds-ide', configuration: { noDebug: true } };
+    for (const cb of startCb) cb(s);
+    await commandHandler('ds-ide.stopEffect')();
+    expect(vscode.debug.stopDebugging).toHaveBeenCalledWith(s);
+  });
+
+  it('ds-ide.restartEffect with no session rebuilds and redeploys (FR-TRN-4)', async () => {
+    activate(makeContext());
+    await commandHandler('ds-ide.restartEffect')();
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('ds-ide.buildAndDeploy');
+  });
+
+  it('ds-ide.showEmulatorOutput reveals the emulator channel (FR-TRN-4)', () => {
+    activate(makeContext());
+    const channels = (vscode.window.createOutputChannel as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    const emulator = (vscode.window.createOutputChannel as ReturnType<typeof vi.fn>).mock.results[channels.indexOf('Daisy IDE Emulator')]!.value;
+    commandHandler('ds-ide.showEmulatorOutput')();
+    expect(emulator.show).toHaveBeenCalled();
+  });
+
+  function stateItem(): { text: string; command?: unknown; show: ReturnType<typeof vi.fn> } {
+    const calls = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.calls;
+    const i = calls.findIndex((c) => c[0] === 'ds-ide.transportState');
+    return (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.results[i]!.value;
+  }
+
+  it('shows debugging on the state item when a standalone daisy-debug session starts (FR-TRN-5)', () => {
+    activate(makeContext());
+    const startCbs = (vscode.debug.onDidStartDebugSession as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0] as (s: unknown) => void);
+    for (const cb of startCbs) cb({ type: 'daisy-debug', configuration: {} });
+    expect(stateItem().text).toContain('debugging');
+  });
+
+  it('shows stopped on the state item when that session terminates (FR-TRN-5)', () => {
+    activate(makeContext());
+    const s = { type: 'daisy-debug', configuration: {} };
+    for (const c of (vscode.debug.onDidStartDebugSession as ReturnType<typeof vi.fn>).mock.calls) (c[0] as (s: unknown) => void)(s);
+    for (const c of (vscode.debug.onDidTerminateDebugSession as ReturnType<typeof vi.fn>).mock.calls) (c[0] as (s: unknown) => void)(s);
+    expect(stateItem().text).toContain('stopped');
+  });
+
+  it('writes the status bar only through the transport state items — no other status item exists (FR-TRN-5)', () => {
+    activate(makeContext());
+    const ids = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    expect(ids).toEqual(['ds-ide.transportState', 'ds-ide.flash']);
+  });
+
+  it('registers ds-ide.revealDaisyView, which focuses the Daisy view (FR-TRN-5)', async () => {
+    activate(makeContext());
+    await commandHandler('ds-ide.revealDaisyView')();
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('ds-ide.daisyView.focus');
   });
 });
 
@@ -370,7 +472,8 @@ describe('extension view initialization (FR-CE-9, FR-WE-11)', () => {
     const { activate: act } = await import('../../extension');
     const ctx = makeContext();
     act(ctx);
-    expect(vscode.workspace.onDidSaveTextDocument).toHaveBeenCalledTimes(1);
+    // the view-sync watcher, plus the transport's stale-source watcher (FR-TRN-4)
+    expect(vscode.workspace.onDidSaveTextDocument).toHaveBeenCalledTimes(2);
   });
 
   it('onDidSaveTextDocument cb registered is a function (FR-CE-9, FR-WE-11)', async () => {
@@ -459,6 +562,56 @@ describe('extension view initialization (FR-CE-9, FR-WE-11)', () => {
     await vi.waitFor(() => {
       expect(vscode.commands.executeCommand).toHaveBeenCalledWith('setContext', 'ds-ide.isDaisyProject', true);
     });
+  });
+
+  it('sets ds-ide.isEffectSource from the active editor, true only for the effect source (FR-TRN-3)', async () => {
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    await vi.waitFor(() => {
+      expect(vscode.commands.executeCommand).toHaveBeenCalledWith('setContext', 'ds-ide.isDaisyProject', true);
+    });
+    const onChange = (vscode.window.onDidChangeActiveTextEditor as ReturnType<typeof vi.fn>).mock.calls[0]![0] as
+      (e: { document: { uri: { fsPath: string } } } | undefined) => void;
+
+    (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mockClear();
+    onChange({ document: { uri: { fsPath: path.join('/proj', 'effect.cpp') } } });
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('setContext', 'ds-ide.isEffectSource', true);
+
+    (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mockClear();
+    onChange({ document: { uri: { fsPath: path.join('/proj', 'other.h') } } });
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('setContext', 'ds-ide.isEffectSource', false);
+
+    (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mockClear();
+    onChange(undefined);
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('setContext', 'ds-ide.isEffectSource', false);
+  });
+
+  it('sets ds-ide.isEffectSource for an effect source that is already open at activation (FR-TRN-3)', async () => {
+    (vscode.window as unknown as Record<string, unknown>)['activeTextEditor'] = {
+      document: { uri: { fsPath: path.join('/proj', 'effect.cpp') } },
+    };
+    try {
+      const { activate: act } = await import('../../extension');
+      act(makeContext());
+      await vi.waitFor(() => {
+        expect(vscode.commands.executeCommand).toHaveBeenCalledWith('setContext', 'ds-ide.isEffectSource', true);
+      });
+    } finally {
+      (vscode.window as unknown as Record<string, unknown>)['activeTextEditor'] = undefined;
+    }
+  });
+
+  it('keeps the state items hidden when no effect source is found (FR-TRN-5)', async () => {
+    const promisesMock = fsMock['promises'] as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    promisesMock['readdir']!.mockResolvedValue([]);
+    promisesMock['access']!.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    const results = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.results.map((r) => r.value);
+    await vi.waitFor(() => {
+      for (const item of results) expect(item.hide).toHaveBeenCalled();
+    });
+    for (const item of results) expect(item.show).not.toHaveBeenCalled();
   });
 
   it('sets the ds-ide.isDaisyProject context key to false when no effect source is found (FR-QA-EXT-6)', async () => {
@@ -2035,24 +2188,83 @@ describe('deploy sequencing via DeployCoordinator (FR-IPC-7)', () => {
       await getCommand(id)!();
     }
 
-    const calls = (vscode.window.withProgress as ReturnType<typeof vi.fn>).mock.calls;
-    expect(calls.length).toBeGreaterThanOrEqual(4);
-    for (const [options] of calls) {
+    // Each also reports on the Daisy view (FR-TRN-4) — that location has no
+    // cancel button; the notification is the cancellable one.
+    const notifications = (vscode.window.withProgress as ReturnType<typeof vi.fn>).mock.calls
+      .map(([options]) => options).filter((o) => o.location === vscode.ProgressLocation.Notification);
+    expect(notifications.length).toBeGreaterThanOrEqual(4);
+    for (const options of notifications) {
       expect(options).toMatchObject({ cancellable: true });
     }
   });
 
-  it('ds-ide.deploy sets the status bar to deploying, then back to stopped when deploy fails', async () => {
+  it('ds-ide.deploy sets the state item to deploying, then back to stopped when deploy fails', async () => {
     const { activate: act } = await import('../../extension');
     const ctx = makeContext();
     act(ctx);
     await flush();
     const mgr = managerInstances[0]! as unknown as ManagerSpies;
-    mgr.deploy.mockRejectedValueOnce(new Error('boom'));
+    let duringDeploy = '';
     const statusBar = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.results[0]?.value as { text: string };
+    mgr.deploy.mockImplementationOnce(() => { duringDeploy = statusBar.text; return Promise.reject(new Error('boom')); });
     const deployCmd = getCommand('ds-ide.deploy')!;
     await deployCmd();
+    expect(duringDeploy).toContain('deploying');
     expect(statusBar.text).toContain('stopped');
+  });
+
+  it('shows the state items once the workspace is known to be a Daisy project (FR-TRN-5)', async () => {
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    const results = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.results.map((r) => r.value);
+    for (const item of results) expect(item.show).not.toHaveBeenCalled();
+    // this suite's workspace has an effect.cpp → a Daisy project
+    await vi.waitFor(() => {
+      for (const item of results) expect(item.show).toHaveBeenCalled();
+    });
+  });
+
+  it('a failed build publishes the buildFailed transport phase (FR-TRN-4)', async () => {
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    await flush();
+    const mgr = managerInstances[0]! as unknown as ManagerSpies;
+    mgr.build.mockRejectedValueOnce(new Error('build failed'));
+    await getCommand('ds-ide.buildAndDeploy')!();
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('setContext', 'ds-ide.transportPhase', 'building');
+    expect(vscode.commands.executeCommand).toHaveBeenLastCalledWith('setContext', 'ds-ide.transportPhase', 'buildFailed');
+  });
+
+  it('a successful build + deploy publishes building → deploying → running (FR-TRN-4)', async () => {
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    await flush();
+    (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mockClear();
+    await getCommand('ds-ide.buildAndDeploy')!();
+    const phases = (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mock.calls
+      .filter((c) => c[0] === 'setContext' && c[1] === 'ds-ide.transportPhase').map((c) => c[2]);
+    expect(phases).toEqual(['building', 'deploying', 'running']);
+  });
+
+  it('a failed build on the transport path shows the one FR-TRN-6 notification, not the generic build toast', async () => {
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    await flush();
+    const mgr = managerInstances[0]! as unknown as ManagerSpies;
+    mgr.build.mockRejectedValueOnce(new Error('make failed'));
+    await getCommand('ds-ide.buildAndDeploy')!();
+    const messages = (vscode.window.showErrorMessage as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    expect(messages).toEqual(['Build failed. Nothing was deployed.']);
+  });
+
+  it('the granular ds-ide.build command keeps its own build-failed toast', async () => {
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    await flush();
+    const mgr = managerInstances[0]! as unknown as ManagerSpies;
+    mgr.build.mockRejectedValueOnce(new Error('make failed'));
+    await getCommand('ds-ide.build')!();
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('build failed — make failed'));
   });
 
   it('ds-ide.buildAndDeploy does not deploy when the build step fails', async () => {
@@ -2203,3 +2415,118 @@ describe('revealDeviceInCode (FR-UDM-4)', () => {
     expect(vscode.window.showTextDocument).not.toHaveBeenCalled();
   });
 });
+
+// ── FR-TRN-7: Build & Flash with on-demand board detection ──
+
+describe('Build & Flash with on-demand board detection (FR-TRN-7)', () => {
+  const BOARD = { name: 'Daisy Seed', usbId: '0483:df11' };
+  const handler = (id: string) => {
+    const call = (vscode.commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.find((c: unknown[]) => c[0] === id);
+    return call![1] as () => Promise<unknown>;
+  };
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    // Once-queued results must not leak between these tests.
+    vi.mocked(detectBoard).mockReset().mockResolvedValue(null);
+    vi.mocked(buildForHardware).mockReset().mockResolvedValue(true);
+    vi.mocked(flashToHardware).mockReset().mockResolvedValue(undefined);
+    (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mockReset();
+    (vscode.window.showInformationMessage as ReturnType<typeof vi.fn>).mockReset();
+    managerInstances.length = 0;
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [{ uri: { fsPath: '/proj' }, name: 'my-fx' }];
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+  });
+
+  afterEach(() => {
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = undefined;
+  });
+
+  it('no board: warns with BOOT + RESET instructions and Retry, and starts no hardware build', async () => {
+    vi.mocked(detectBoard).mockResolvedValueOnce(null);
+    await handler('ds-ide.buildAndFlash')();
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      expect.stringMatching(/BOOT.*RESET/), 'Retry');
+    expect(buildForHardware).not.toHaveBeenCalled();
+    expect(flashToHardware).not.toHaveBeenCalled();
+  });
+
+  it('Retry detects again, and proceeds once the board shows up', async () => {
+    vi.mocked(detectBoard).mockResolvedValueOnce(null).mockResolvedValueOnce(BOARD);
+    (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce('Retry');
+    (vscode.window.showInformationMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce('Build & Flash');
+    await handler('ds-ide.buildAndFlash')();
+    expect(detectBoard).toHaveBeenCalledTimes(2);
+    expect(buildForHardware).toHaveBeenCalledOnce();
+  });
+
+  it('board found: modal confirmation naming the project and the board, then build + flash', async () => {
+    vi.mocked(detectBoard).mockResolvedValueOnce(BOARD);
+    (vscode.window.showInformationMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce('Build & Flash');
+    await handler('ds-ide.buildAndFlash')();
+    const [message, options] = (vscode.window.showInformationMessage as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(message).toContain('my-fx');
+    expect(message).toContain('Daisy Seed');
+    expect(message).toContain('0483:df11');
+    expect(options).toMatchObject({ modal: true });
+    expect(buildForHardware).toHaveBeenCalledWith('/proj', expect.anything(), expect.anything(), {}, expect.anything());
+    expect(flashToHardware).toHaveBeenCalledWith('/proj', expect.anything(), { confirmBootloader: false }, expect.anything());
+  });
+
+  it('declining the confirmation builds nothing', async () => {
+    vi.mocked(detectBoard).mockResolvedValueOnce(BOARD);
+    (vscode.window.showInformationMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
+    await handler('ds-ide.buildAndFlash')();
+    expect(buildForHardware).not.toHaveBeenCalled();
+  });
+
+  it('a failed hardware build does not flash', async () => {
+    vi.mocked(detectBoard).mockResolvedValueOnce(BOARD);
+    (vscode.window.showInformationMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce('Build & Flash');
+    vi.mocked(buildForHardware).mockResolvedValueOnce(false);
+    await handler('ds-ide.buildAndFlash')();
+    expect(flashToHardware).not.toHaveBeenCalled();
+  });
+
+  it('build and flash run with cancellable progress', async () => {
+    vi.mocked(detectBoard).mockResolvedValueOnce(BOARD);
+    (vscode.window.showInformationMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce('Build & Flash');
+    await handler('ds-ide.buildAndFlash')();
+    const notifications = (vscode.window.withProgress as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => c[0]).filter((o) => o.location === vscode.ProgressLocation.Notification);
+    expect(notifications.map((o) => o.title)).toEqual(['ds-ide: building for hardware…', 'ds-ide: flashing…']);
+    for (const o of notifications) expect(o.cancellable).toBe(true);
+  });
+
+  it('Refresh runs detection and shows the result on the Board row', async () => {
+    vi.mocked(detectBoard).mockResolvedValueOnce(BOARD);
+    await handler('ds-ide.refreshBoard')();
+    expect(detectBoard).toHaveBeenCalledOnce();
+    const flashItem = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.results[1]!.value;
+    expect(flashItem.tooltip).toContain('Daisy Seed');
+  });
+
+  it('no board: the ⚡ Flash item says no board', async () => {
+    vi.mocked(detectBoard).mockResolvedValueOnce(null);
+    await handler('ds-ide.refreshBoard')();
+    const flashItem = (vscode.window.createStatusBarItem as ReturnType<typeof vi.fn>).mock.results[1]!.value;
+    expect(flashItem.text).toBe('$(zap) Flash: no board');
+  });
+
+  it('detects when the Daisy view becomes visible, and not while it is hidden — no polling', async () => {
+    const view = (vscode.window.createTreeView as ReturnType<typeof vi.fn>).mock.results[0]!.value;
+    const onVisibility = view.onDidChangeVisibility.mock.calls[0]![0] as (e: { visible: boolean }) => void;
+    onVisibility({ visible: false });
+    expect(detectBoard).not.toHaveBeenCalled();
+    onVisibility({ visible: true });
+    expect(detectBoard).toHaveBeenCalledOnce();
+  });
+
+  it('the old granular buildHardware / flash commands keep their own paths', async () => {
+    await handler('ds-ide.flash')();
+    expect(detectBoard).not.toHaveBeenCalled();
+    expect(flashToHardware).toHaveBeenCalledWith('/proj', expect.anything(), {}, expect.anything());
+  });
+});
+
