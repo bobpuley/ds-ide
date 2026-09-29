@@ -3,6 +3,18 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.20.3 — 2026-09-29
+
+**M68 — Extension Views Follow the IDE Theme** *(FR-THM-1–FR-THM-6 — DoD green)*
+
+- **FR-THM-1** — All five webviews (Scope, OLED, MIDI, Controls Editor, Wiring Editor) take their chrome from one shared `--ds-*` layer (`src/webview/theme/theme-css.ts`) that aliases VS Code's `--vscode-*` tokens, so Light+, Dark+ and both high-contrast themes render correctly. Editor panels use the editor background, sidebar views the sidebar's; high-contrast kinds get a contrast border and visible focus. The token map and accent variants were confirmed in `docs/mockups/v22-themes.html`.
+- **FR-THM-2** — Scope and spectrum traces, grid, axis labels, the running / stopped indicator and the MIDI monitor / keyboard highlights use VS Code chart and status tokens (`scope-colors.ts`).
+- **FR-THM-3** — `DeviceDescriptor.accentColor` becomes `accent: { dark, light }` (type-checked); views read `var(--ds-accent-<id>)`. Every variant is unit-tested for WCAG 3:1 against `#ffffff` / `#1e1e1e`.
+- **FR-THM-4** — The board drawing (`board-art.ts`), device icons (on a fixed plate) and OLED glass keep their colours inside themed frames.
+- **FR-THM-5** — Live theme switching: `onThemeChange()` (`theme-runtime.ts`) repaints the scope and spectrum canvases, even when stopped; the Controls Editor knobs and encoder are CSS-variable SVG (`knob-svg.ts`) and follow automatically.
+- **FR-THM-6** — `no-hardcoded-colours.test.ts` fails, naming file and line, on any hex / `rgb()` / `hsl()` literal in `src/webview`, `src/sidebar` or `src/wiring` outside the board art and device icons.
+- Fix (manual test) — the virtual button, toggle and LED widgets in the Controls Editor were invisible on the card; they now have solid accent outlines.
+
 ---
 
 ## 0.20.2 — 2026-09-29
