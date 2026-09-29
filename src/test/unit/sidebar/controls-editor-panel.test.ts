@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
 import { ControlsViewProvider, truncId, buildHtml } from '../../../sidebar/controls-editor-panel';
+import { wiredControlIds } from '../../../devices/registry';
 import { themeCss } from '../../../webview/theme/theme-css';
 
 function makeWebviewViewMock() {
@@ -573,6 +574,36 @@ describe('Controls Editor theming (FR-THM-1, FR-THM-3, FR-THM-4)', () => {
 
   it('sizes the live art for the card', () => {
     expect(html).toMatch(/svg\.icon-live\s*\{[^}]*width:\s*72px/);
+  });
+
+  // FR-CWS-3: the card is the palette chip's tile — themed frame, accent underline.
+  describe('palette-style card frame (FR-CWS-3)', () => {
+    const cardRule = (sel: string): string =>
+      html.split('\n').find(l => l.trim().startsWith(sel))!;
+
+    it('frames the card like a palette tile with the shared theme tokens', () => {
+      const rule = cardRule('.ctrl-card {');
+      expect(rule).toContain('border-radius: 8px');
+      expect(rule).toContain('var(--ds-surface-raised)');
+      expect(rule).toContain('1px solid var(--ds-border)');
+      expect(rule).toContain('var(--ds-shadow)');
+    });
+
+    it('draws the accent underline from the per-kind --accent variable', () => {
+      const rule = cardRule('.ctrl-card::after');
+      expect(rule).toContain('background: var(--accent)');
+      expect(rule).toContain('bottom: 2px');
+    });
+
+    it('sets --accent from the device accent for every wired control kind', () => {
+      for (const id of wiredControlIds()) {
+        expect(html).toContain(`.ctrl-card[data-kind="${id}"] { --accent: var(--ds-accent-${id}); }`);
+      }
+    });
+
+    it('no longer uses the old accent top border', () => {
+      expect(html).not.toContain('border-top: 3px solid');
+    });
   });
 
   it('keeps the docked OLED glass black inside a themed frame', () => {

@@ -62,7 +62,7 @@ export function createYamlEditorCanvas(
     const modeOpts  = (['momentary', 'toggle'] as const).map(m => '<option value="' + m + '"' + (ctrl.mode === m ? ' selected' : '') + '>' + m + '</option>').join('');
 
     const card = document.createElement('div');
-    card.className = 'ctrl-card';
+    card.className = 'ctrl-card ds-hc';
     card.dataset['kind'] = ctrl.kind;
     card.style.left = ctrl.pos[0] + 'px';
     card.style.top  = ctrl.pos[1] + 'px';

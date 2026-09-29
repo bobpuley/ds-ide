@@ -251,7 +251,7 @@ function statusPayload(msg: IpcMessage): Record<string, unknown> {
 // added in the Wiring Editor.)
 function ctrlCardCssRules(): string {
   return wiredControlIds()
-    .map(id => `    .ctrl-card[data-kind="${id}"] { border-top: 3px solid ${accentVar(REGISTRY[id]!.id)}; }`)
+    .map(id => `    .ctrl-card[data-kind="${id}"] { --accent: ${accentVar(REGISTRY[id]!.id)}; }`)
     .join('\n');
 }
 
@@ -289,7 +289,9 @@ ${themeCss({ surface: 'sidebar' })}
     #design-area { display: flex; flex: 1; min-height: 0; overflow: hidden; }
     #canvas-area { flex: 1; position: relative; overflow: auto; background: var(--ds-surface); }
     #canvas-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--ds-text-muted); font-size: 13px; pointer-events: none; }
-    .ctrl-card { position: absolute; min-width: 168px; background: var(--ds-surface-raised); border: 1px solid var(--ds-border); border-radius: 4px; box-shadow: 0 2px 6px var(--ds-shadow); }
+    /* FR-CWS-3: the palette chip's tile — themed frame, accent underline. */
+    .ctrl-card { position: absolute; min-width: 132px; background: var(--ds-surface-raised); border: 1px solid var(--ds-border); border-radius: 8px; box-shadow: 0 2px 6px var(--ds-shadow); }
+    .ctrl-card::after { content: ''; position: absolute; left: 22%; right: 22%; bottom: 2px; height: 2px; border-radius: 2px; background: var(--accent); opacity: .75; pointer-events: none; }
 ${ctrlCardCssRules()}
     .card-header { padding: 4px 6px 4px 8px; display: flex; align-items: center; justify-content: space-between; cursor: grab; background: var(--ds-surface); }
     .card-kind { font-size: 9px; color: var(--ds-text-muted); text-transform: uppercase; letter-spacing: 0.5px; }

@@ -74,7 +74,7 @@ export function createConventionCanvas(
   function buildConventionCard(ctrl: ConventionControl, pos: [number, number]): HTMLElement {
     const kindLabel = KIND_LABELS[ctrl.kind];
     const card = document.createElement('div');
-    card.className = 'ctrl-card';
+    card.className = 'ctrl-card ds-hc';
     card.dataset['kind'] = ctrl.kind;
     card.dataset['id'] = ctrl.id;
     card.style.minWidth = '90px';
@@ -199,7 +199,7 @@ export function createConventionCanvas(
 
   function buildNotInCodeCard(pl: ControlsPlacement): HTMLElement {
     const card = document.createElement('div');
-    card.className = 'ctrl-card not-in-code-card';
+    card.className = 'ctrl-card ds-hc not-in-code-card';
     card.dataset['id'] = pl.id;
     card.style.left = pl.pos[0] + 'px';
     card.style.top = pl.pos[1] + 'px';

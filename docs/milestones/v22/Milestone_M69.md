@@ -54,13 +54,13 @@ standalone mockup before any code changes.
 
 ---
 
-### [ ] feat: Controls Editor cards use the palette tile frame (FR-CWS-3)
+### [x] feat: Controls Editor cards use the palette tile frame (FR-CWS-3)
 
 **Affected files:** `src/sidebar/controls-editor-panel.ts`, `src/test/unit/sidebar/controls-editor-panel.test.ts`
 
 **DoD:**
 - each card uses the palette tile look: themed frame, `--ds-accent-<id>` underline, art on its fixed plate; the drag handle, id label and pin label stay
-- the M68 widget-outline rules for `.btn-ce`, `.tgl-ce`, `.vled-dot` and `.vrgb-dot` are removed with the elements they styled
+- the M68 widget-outline rules for `.btn-ce`, `.tgl-ce`, `.vled-dot` and `.vrgb-dot` are gone (replaced by the live-widget rules of the previous task) and the old accent top border is replaced by the tile underline
 - the frame follows all four theme kinds while the art looks the same in each
 - `no-hardcoded-colours.test.ts` still passes with no new allow-list entry
 - `npm test` green; manual check in the four theme kinds
