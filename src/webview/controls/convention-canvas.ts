@@ -10,14 +10,13 @@ import type { ControlsPlacement } from '../scope-panel';
 import type { ButtonMode } from '../../controllers/controller-config';
 import type { DeviceType } from '../../wiring/wiring-panel';
 import type { ControlsWebviewMessage } from '../messages';
-import { computeKnobGeometry } from '../knob-math';
 import { createRafCoalescer } from '../raf-coalesce';
 import { TOGGLE_POSITIONS } from '../../devices/codegen/toggle';
 import { wrapEncoderPosition } from '../../devices/codegen/encoder';
 import { escJ, truncId } from './text-utils';
 import { adcChannelFromPin } from './adc-channel';
 import { makeDraggable } from './drag';
-import { knobSvg, encoderSvg } from './knob-svg';
+import { widgetHtml, potState, encoderState, toggleState, applyVars } from './device-widget';
 
 // sdcard (FR-DEV-10), oled (FR-DEV-14), midiTrs (FR-DEV-16) and midiUsb
 // (FR-DEV-17) are bus-attached peripherals and never appear as a control card
@@ -64,64 +63,28 @@ export function createConventionCanvas(
     });
   }
 
-  function updateKnobPaths(knobWrap: HTMLElement, value: number): number {
-    const { clampedValue, valuePath, dotX, dotY } = computeKnobGeometry(value);
-    const vp = knobWrap.querySelector('.knob-value-path') as SVGPathElement | null;
-    if (vp) {
-      if (valuePath) {
-        vp.setAttribute('d', valuePath);
-        vp.style.display = '';
-      } else {
-        vp.style.display = 'none';
-      }
-    }
-    const dot = knobWrap.querySelector('.knob-dot');
-    if (dot) { dot.setAttribute('cx', dotX.toFixed(2)); dot.setAttribute('cy', dotY.toFixed(2)); }
+  function updateKnob(knobWrap: HTMLElement, value: number): number {
+    const { value: clamped, vars } = potState(value);
+    applyVars(knobWrap, vars);
     const valEl = knobWrap.querySelector('.knob-value');
-    if (valEl) valEl.textContent = clampedValue.toFixed(3);
-    return clampedValue;
+    if (valEl) valEl.textContent = clamped.toFixed(3);
+    return clamped;
   }
 
   function buildConventionCard(ctrl: ConventionControl, pos: [number, number]): HTMLElement {
     const kindLabel = KIND_LABELS[ctrl.kind];
     const card = document.createElement('div');
-    card.className = 'ctrl-card';
+    card.className = 'ctrl-card ds-hc';
     card.dataset['kind'] = ctrl.kind;
     card.dataset['id'] = ctrl.id;
     card.style.minWidth = '90px';
     card.style.left = pos[0] + 'px';
     card.style.top = pos[1] + 'px';
 
-    let bodyInnerHtml = '';
-    let adcCh = 0;
-    if (ctrl.kind === 'pot') {
-      adcCh = adcChannelFromPin(ctrl.pin);
-      bodyInnerHtml =
-        '<div class="knob-wrap" data-channel="' + adcCh + '" data-value="0">' +
-          knobSvg(0) +
-          '<span class="knob-value">0.000</span>' +
-        '</div>';
-    } else if (ctrl.kind === 'button') {
-      bodyInnerHtml =
-        '<button class="btn-ce" type="button" data-pin="' + ctrl.pin + '" aria-pressed="false"></button>';
-    } else if (ctrl.kind === 'toggle') {
-      bodyInnerHtml =
-        '<button class="tgl-ce" type="button" data-pin="' + ctrl.pin + '" data-pos="0">0</button>';
-    } else if (ctrl.kind === 'rgbled') {
-      // Keyed by the primary (first/red-channel) pin — matches the IPC
-      // rgbLed message's gpioPin, which is the shim's r_pin_ (FR-DEV-8).
-      bodyInnerHtml =
-        '<span class="vrgb-dot" data-pin="' + ctrl.pin + '"></span>';
-    } else if (ctrl.kind === 'encoder') {
-      bodyInnerHtml =
-        '<div class="enc-wrap" data-pos="0">' +
-          encoderSvg(0) +
-          '<span class="enc-value">0</span>' +
-        '</div>';
-    } else {
-      bodyInnerHtml =
-        '<span class="vled-dot" data-pin="' + ctrl.pin + '"></span>';
-    }
+    // RGB LED keyed by its primary (first / red-channel) pin — matches the IPC
+    // rgbLed message's gpioPin, which is the shim's r_pin_ (FR-DEV-8).
+    const adcCh = ctrl.kind === 'pot' ? adcChannelFromPin(ctrl.pin) : 0;
+    const bodyInnerHtml = widgetHtml(ctrl.kind, { pin: ctrl.pin, channel: adcCh });
 
     card.innerHTML =
       '<div class="ctrl-handle" title="' + escJ(kindLabel + ' \xb7 pin ' + ctrl.pin) + '">' +
@@ -147,7 +110,7 @@ export function createConventionCanvas(
       // (FR-UX-5). The extension-host side (PotStore) separately debounces its
       // own workspaceState persistence — this only bounds the webview's work.
       const flushKnobMove = createRafCoalescer<number>((targetValue) => {
-        const newVal = updateKnobPaths(knobWrap, targetValue);
+        const newVal = updateKnob(knobWrap, targetValue);
         knobWrap.dataset['value'] = String(newVal);
         vscode.postMessage({ command: 'pot', channel: adcCh, value: newVal });
       }, (cb) => requestAnimationFrame(cb));
@@ -188,7 +151,9 @@ export function createConventionCanvas(
       tgl.addEventListener('click', () => {
         const next = (parseInt(tgl.dataset['pos'] || '0', 10) + 1) % TOGGLE_POSITIONS;
         tgl.dataset['pos'] = String(next);
-        tgl.textContent = String(next);
+        applyVars(tgl, toggleState(next).vars);
+        const posEl = tgl.querySelector('.tgl-pos');
+        if (posEl) posEl.textContent = String(next);
         vscode.postMessage({ command: 'toggle', gpioPin, position: next });
       });
     } else if (ctrl.kind === 'encoder') {
@@ -209,7 +174,9 @@ export function createConventionCanvas(
       const flushEncoderMove = createRafCoalescer<number>((targetPos) => {
         const wrapped = wrapEncoderPosition(targetPos);
         encWrap.dataset['pos'] = String(wrapped);
-        encWrap.innerHTML = encoderSvg(wrapped) + '<span class="enc-value">' + wrapped + '</span>';
+        applyVars(encWrap, encoderState(wrapped).vars);
+        const valEl = encWrap.querySelector('.enc-value');
+        if (valEl) valEl.textContent = String(wrapped);
         if (wrapped !== eLastSentPos) {
           eLastSentPos = wrapped;
           vscode.postMessage({ command: 'encoder', gpioPin, position: wrapped });
@@ -232,7 +199,7 @@ export function createConventionCanvas(
 
   function buildNotInCodeCard(pl: ControlsPlacement): HTMLElement {
     const card = document.createElement('div');
-    card.className = 'ctrl-card not-in-code-card';
+    card.className = 'ctrl-card ds-hc not-in-code-card';
     card.dataset['id'] = pl.id;
     card.style.left = pl.pos[0] + 'px';
     card.style.top = pl.pos[1] + 'px';

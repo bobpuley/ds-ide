@@ -129,3 +129,23 @@
   Run and Debug container; no status-bar Run button (status bar = state item + ⚡ Flash only).
   The status-bar colour for no-debug runs is left to VS Code's own behaviour (not
   extension-controllable) and verified during implementation.
+
+### 2026-09-29 — Extension views follow the IDE theme (M68)
+
+- **As received:** "feature add M68 milestone to v22, goal: make the extension views supporting
+  IDE themes."
+- **Observed state (2026-09-29):** every webview hardcodes its colours: about 370 hex literals
+  across `scope-panel.ts` / `scope-webview.ts`, `oled-panel.ts`, `midi-panel.ts`,
+  `controls-editor-panel.ts` / `convention-canvas.ts`, `wiring-panel.ts` / `wiring-webview.ts` /
+  `device-icons.ts` / `device-popover.ts`. None uses a `var(--vscode-*)` theme variable. The M67
+  Daisy view is a native TreeView and already follows the theme.
+
+### 2026-09-29 — Controls Editor devices in the wiring-palette style (M69)
+
+- **As received:** "feature add M69 milestone to v22, goal: make the control panel devices same
+  style as the wiring palette (except for OLED, sd card and midi)."
+- **Observed state (2026-09-29):** the Wiring Editor palette (M66) shows each device as an
+  illustrated icon tile (`device-icons.ts`, on a fixed dark plate, accent underline). The
+  Controls Editor still draws its own plain widgets per card: an SVG arc knob (pot), an empty
+  button, a text toggle, a plain dot (LED, RGB LED) and an SVG dial (encoder). The OLED, SD card
+  and MIDI devices are excluded because they have no card in the Controls Editor.

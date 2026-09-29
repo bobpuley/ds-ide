@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
 import { ControlsViewProvider, truncId, buildHtml } from '../../../sidebar/controls-editor-panel';
+import { wiredControlIds } from '../../../devices/registry';
 import { themeCss } from '../../../webview/theme/theme-css';
 
 function makeWebviewViewMock() {
@@ -362,12 +363,6 @@ describe('ControlsViewProvider', () => {
     expect(view.webview.html).toContain('justify-content: center');
   });
 
-  it('HTML includes box-shadow on btn-ce', () => {
-    const view = makeWebviewViewMock();
-    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
-    expect(view.webview.html).toContain('box-shadow: 0 3px 0 var(--ds-accent-button)');
-  });
-
   // ── SD card content viewer (FR-SD-1) ──────────────────────────────────
 
   it('calls onSdRefresh when sdRefresh message received', () => {
@@ -561,25 +556,54 @@ describe('Controls Editor theming (FR-THM-1, FR-THM-3, FR-THM-4)', () => {
     expect(own).not.toMatch(/\brgba?\(|\bhsla?\(/);
   });
 
-  // The card is --ds-surface-raised and --ds-border is translucent, so a widget
-  // outlined with either disappears into the card (M68 manual test finding).
-  it.each(['.btn-ce', '.tgl-ce', '.vled-dot', '.vrgb-dot'])(
-    '%s is outlined in a solid contrasting colour, not the faint border token',
-    selector => {
-      const rule = new RegExp('\\' + selector + '\\s*\\{([^}]*)\\}').exec(html)![1]!;
-      const border = /border(?:-color)?:[^;]*/.exec(rule)![0];
-      expect(border).toMatch(/var\(--ds-(accent-\w+|text-muted|text)\)/);
-      expect(border).not.toContain('--ds-border');
-    },
-  );
-
-  it('fills the virtual button and unlit LED from an input surface distinct from the card', () => {
-    expect(html).toMatch(/\.btn-ce\s*\{[^}]*background:\s*var\(--ds-input-bg\)/);
-    expect(html).toMatch(/\.vled-dot\s*\{[^}]*background:\s*var\(--ds-input-bg\)/);
+  it.each([
+    ['.knob-wrap [data-part="pointer"]', '--v'],
+    ['.enc-wrap [data-part="pointer"]', '--e'],
+    ['.tgl-ce [data-part="lever"]', '--p'],
+    ['.vrgb-dot [data-part="lens"]', '--c'],
+  ])('%s is driven by the %s variable (FR-CWS-2)', (selector, variable) => {
+    const rule = html.split('\n').find(l => l.trim().startsWith(selector))!;
+    expect(rule).toContain(`var(${variable}`);
   });
 
-  it('colours the lit virtual LED from the led accent', () => {
-    expect(html).toMatch(/\.vled-lit\s*\{[^}]*var\(--ds-accent-led\)/);
+  it('presses the button cap and lights the LED from state classes / attributes (FR-CWS-2)', () => {
+    expect(html).toContain('.btn-ce[aria-pressed="true"] [data-part="cap"]');
+    expect(html).toContain('.vled-dot.vled-lit [data-part="lens"]');
+    expect(html).toContain('.vled-dot.vled-lit [data-part="glow"]');
+  });
+
+  it('sizes the live art for the card', () => {
+    expect(html).toMatch(/svg\.icon-live\s*\{[^}]*width:\s*72px/);
+  });
+
+  // FR-CWS-3: the card is the palette chip's tile — themed frame, accent underline.
+  describe('palette-style card frame (FR-CWS-3)', () => {
+    const cardRule = (sel: string): string =>
+      html.split('\n').find(l => l.trim().startsWith(sel))!;
+
+    it('frames the card like a palette tile with the shared theme tokens', () => {
+      const rule = cardRule('.ctrl-card {');
+      expect(rule).toContain('border-radius: 8px');
+      expect(rule).toContain('var(--ds-surface-raised)');
+      expect(rule).toContain('1px solid var(--ds-border)');
+      expect(rule).toContain('var(--ds-shadow)');
+    });
+
+    it('draws the accent underline from the per-kind --accent variable', () => {
+      const rule = cardRule('.ctrl-card::after');
+      expect(rule).toContain('background: var(--accent)');
+      expect(rule).toContain('bottom: 2px');
+    });
+
+    it('sets --accent from the device accent for every wired control kind', () => {
+      for (const id of wiredControlIds()) {
+        expect(html).toContain(`.ctrl-card[data-kind="${id}"] { --accent: var(--ds-accent-${id}); }`);
+      }
+    });
+
+    it('no longer uses the old accent top border', () => {
+      expect(html).not.toContain('border-top: 3px solid');
+    });
   });
 
   it('keeps the docked OLED glass black inside a themed frame', () => {
