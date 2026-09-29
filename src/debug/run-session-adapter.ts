@@ -6,7 +6,8 @@ import type { TransportMode } from '../transport/transport-state';
 // the adapter is testable without an EmulatorManager.
 export interface RunSessionHost {
   currentEmulatorPid(): number | undefined;
-  stopEmulator(): void;
+  /** `immediate`: kill without SIGTERM — used while a debugger is attached. */
+  stopEmulator(opts: { immediate: boolean }): void;
   onEmulatorExit(listener: (exit: EmulatorExit) => void): { dispose(): void };
   /** True once per freshly resolved config; false for a Restart relaunch (FR-TRN-2). */
   consumeLaunch(config: Record<string, unknown>): boolean;
@@ -53,6 +54,7 @@ export class RunSessionAdapter implements vscode.DebugAdapter {
   readonly onDidSendMessage: vscode.Event<vscode.DebugProtocolMessage> = this._emitter.event;
   private _seq = 0;
   private _boundPid: number | undefined;
+  private _mode: TransportMode = 'run';
   private _terminated = false;
   private _stopped = false;
   private readonly _cts = new vscode.CancellationTokenSource();
@@ -96,12 +98,13 @@ export class RunSessionAdapter implements vscode.DebugAdapter {
   private async launch(req: DapRequest): Promise<void> {
     const config = req.arguments ?? {};
     const mode: TransportMode = config['noDebug'] ? 'run' : 'debug';
+    this._mode = mode;
     if (!this.host.consumeLaunch(config)) {
       const ok = await this.host.rebuildAndDeploy(mode, this._cts.token);
       if (!ok || this._stopped) {
         // Stopped mid-rebuild but the deploy won the race: that emulator
         // belongs to this session and must not outlive it.
-        if (ok) this.host.stopEmulator();
+        if (ok) this.host.stopEmulator({ immediate: false });
         this.respond(req, {});
         this.sendTerminated();
         return;
@@ -125,7 +128,9 @@ export class RunSessionAdapter implements vscode.DebugAdapter {
   private stopOwnEmulator(): void {
     const pid = this._boundPid;
     this._boundPid = undefined;
-    if (pid !== undefined && this.host.currentEmulatorPid() === pid) this.host.stopEmulator();
+    if (pid !== undefined && this.host.currentEmulatorPid() === pid) {
+      this.host.stopEmulator({ immediate: this._mode === 'debug' });
+    }
   }
 
   private respond(req: DapRequest, body: Record<string, unknown>): void {

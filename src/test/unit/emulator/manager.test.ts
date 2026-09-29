@@ -1278,6 +1278,14 @@ describe('EmulatorManager', () => {
       expect(onExit).toHaveBeenCalledWith({ pid: 12345, crashed: false });
     });
 
+    it('stop({ immediate: true }) sends SIGKILL straight away — a debugger cannot intercept it (FR-TRN-1)', async () => {
+      await manager.build(opts, () => undefined);
+      await manager.deploy(() => undefined);
+      manager.stop({ immediate: true });
+      expect(process.kill).toHaveBeenCalledWith(12345, 'SIGKILL');
+      expect(process.kill).not.toHaveBeenCalledWith(12345, 'SIGTERM');
+    });
+
     it('stop() does not dispose the manager — a later deploy still works', async () => {
       await manager.build(opts, () => undefined);
       await manager.deploy(() => undefined);

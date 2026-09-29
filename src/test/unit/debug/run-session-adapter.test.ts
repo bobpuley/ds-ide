@@ -271,3 +271,24 @@ describe('RunSessionAdapter — Restart (FR-TRN-2)', () => {
     expect(events(io.sent, 'terminated')).toHaveLength(1);
   });
 });
+
+describe('RunSessionAdapter — how the emulator is stopped', () => {
+  it('run mode: a normal (graceful) stop', async () => {
+    const h = makeHost();
+    const io = start(new RunSessionAdapter(h.host));
+    io.request('launch', { noDebug: true });
+    await flush();
+    io.request('disconnect');
+    expect(h.host.stopEmulator).toHaveBeenCalledWith({ immediate: false });
+  });
+
+  it('debug mode: an immediate stop, so lldb does not catch SIGTERM and pause in the shim', async () => {
+    const h = makeHost();
+    const io = start(new RunSessionAdapter(h.host));
+    io.request('launch', {});
+    await flush();
+    io.request('disconnect');
+    expect(h.host.stopEmulator).toHaveBeenCalledWith({ immediate: true });
+  });
+});
+

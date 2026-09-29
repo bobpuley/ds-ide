@@ -1312,8 +1312,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Stop for a run session and for the view's Stop without a session: ends
   // the emulator process, and resets the panels that show live audio.
-  function stopEmulator(): void {
-    manager.stop();
+  function stopEmulator(opts: { immediate?: boolean } = {}): void {
+    manager.stop(opts);
     scopePanel.notifyStopped();
     controlsProvider.postStatus({ type: 'status', running: false });
   }
