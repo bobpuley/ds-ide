@@ -311,13 +311,13 @@ ${ctrlCardCssRules()}
     .knob-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: ns-resize; user-select: none; padding: 2px 4px; }
     .knob-svg { display: block; }
     .knob-value { color: var(--ds-text); font-size: 10px; font-family: monospace; min-width: 36px; text-align: center; }
-    .btn-ce { background: var(--ds-surface-raised); border: 1px solid var(--ds-border); border-radius: 6px; padding: 7px; cursor: pointer; box-shadow: 0 3px 0 var(--ds-border); transition: box-shadow 0.06s, transform 0.06s, background 0.06s; flex-shrink: 0; user-select: none; }
+    .btn-ce { background: var(--ds-input-bg); border: 2px solid var(--ds-accent-button); border-radius: 6px; padding: 7px; cursor: pointer; box-shadow: 0 3px 0 var(--ds-accent-button); transition: box-shadow 0.06s, transform 0.06s, background 0.06s; flex-shrink: 0; user-select: none; }
     .btn-ce[aria-pressed="true"] { box-shadow: none; transform: translateY(3px); background: var(--ds-accent-button); border-color: var(--ds-accent-button); }
-    .tgl-ce { background: var(--ds-surface-raised); border: 1px solid var(--ds-border); border-radius: 4px; padding: 5px 10px; cursor: pointer; color: var(--ds-text); font-family: monospace; font-size: 12px; flex-shrink: 0; user-select: none; }
+    .tgl-ce { background: var(--ds-input-bg); border: 1px solid var(--ds-accent-toggle); border-radius: 4px; padding: 5px 10px; cursor: pointer; color: var(--ds-text); font-family: monospace; font-size: 12px; flex-shrink: 0; user-select: none; }
     .tgl-ce:hover { background: var(--ds-hover-bg); }
-    .vled-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--ds-input-bg); border: 1px solid var(--ds-border); box-shadow: none; display: inline-block; }
+    .vled-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--ds-input-bg); border: 2px solid var(--ds-accent-led); box-shadow: none; display: inline-block; }
     .vled-dot.vled-lit { background: var(--ds-accent-led); border-color: var(--ds-accent-led); box-shadow: 0 0 6px 1px var(--ds-accent-led); }
-    .vrgb-dot { width: 14px; height: 14px; border-radius: 50%; background: black; border: 1px solid var(--ds-border); display: inline-block; }
+    .vrgb-dot { width: 14px; height: 14px; border-radius: 50%; background: black; border: 1px solid var(--ds-text-muted); display: inline-block; }
     .enc-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: ns-resize; user-select: none; padding: 2px 4px; }
     .enc-value { color: var(--ds-text); font-size: 10px; font-family: monospace; min-width: 24px; text-align: center; }
     .section-label { color: var(--ds-text-muted); align-self: center; }

@@ -365,7 +365,7 @@ describe('ControlsViewProvider', () => {
   it('HTML includes box-shadow on btn-ce', () => {
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);
-    expect(view.webview.html).toContain('box-shadow: 0 3px 0 var(--ds-border)');
+    expect(view.webview.html).toContain('box-shadow: 0 3px 0 var(--ds-accent-button)');
   });
 
   // ── SD card content viewer (FR-SD-1) ──────────────────────────────────
@@ -559,6 +559,23 @@ describe('Controls Editor theming (FR-THM-1, FR-THM-3, FR-THM-4)', () => {
   it('has no hex / rgb() / hsl() colour literals of its own', () => {
     expect(own).not.toMatch(/(?<![&\w])#[0-9a-fA-F]{3,8}\b/);
     expect(own).not.toMatch(/\brgba?\(|\bhsla?\(/);
+  });
+
+  // The card is --ds-surface-raised and --ds-border is translucent, so a widget
+  // outlined with either disappears into the card (M68 manual test finding).
+  it.each(['.btn-ce', '.tgl-ce', '.vled-dot', '.vrgb-dot'])(
+    '%s is outlined in a solid contrasting colour, not the faint border token',
+    selector => {
+      const rule = new RegExp('\\' + selector + '\\s*\\{([^}]*)\\}').exec(html)![1]!;
+      const border = /border(?:-color)?:[^;]*/.exec(rule)![0];
+      expect(border).toMatch(/var\(--ds-(accent-\w+|text-muted|text)\)/);
+      expect(border).not.toContain('--ds-border');
+    },
+  );
+
+  it('fills the virtual button and unlit LED from an input surface distinct from the card', () => {
+    expect(html).toMatch(/\.btn-ce\s*\{[^}]*background:\s*var\(--ds-input-bg\)/);
+    expect(html).toMatch(/\.vled-dot\s*\{[^}]*background:\s*var\(--ds-input-bg\)/);
   });
 
   it('colours the lit virtual LED from the led accent', () => {
