@@ -3,6 +3,17 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.20.4 — 2026-09-29
+
+**M69 — Controls Editor Devices in the Wiring-Palette Style** *(FR-CWS-1–FR-CWS-3 — DoD green)*
+
+- **FR-CWS-1** — The palette's device art (`device-icons.ts`) exposes `data-part` hooks on the moving parts of the six control kinds (pot / encoder pointer, button cap, toggle lever, LED lens and glow, RGB LED lens). The palette looks identical: a test hashes the art with the hooks stripped against the shipped art. `deviceIconSvg(…, { live: true })` marks the art for card sizing.
+- **FR-CWS-2** — Controls Editor cards render that same art as live widgets (`device-widget.ts`). State is applied as CSS variables on the widget root (pot angle, encoder detent, toggle position, RGB `color(srgb …)`), so the SVG is never rebuilt; the button cap presses and the LED glows through state attributes and classes. Existing handlers and IPC messages are unchanged. The M68 arc knob and its geometry (`knob-svg.ts`, `knob-math.ts`) are removed.
+- **FR-CWS-3** — Cards use the palette tile frame: themed border and background, rounded corners, and an accent underline from `--ds-accent-<id>`, with a contrast border in high-contrast themes. The layout and state visuals were confirmed in `docs/mockups/v22-control-widgets.html`.
+- Fix — `package.json` was left at 0.20.2 by the 0.20.3 release commit; it is now 0.20.4.
+
+---
+
 ## 0.20.3 — 2026-09-29
 
 **M68 — Extension Views Follow the IDE Theme** *(FR-THM-1–FR-THM-6 — DoD green)*
