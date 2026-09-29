@@ -36,6 +36,10 @@ const TOKEN_MAP: ReadonlyArray<readonly [string, string]> = [
   ['trace-out', '--vscode-charts-orange'],
   ['grid', '--vscode-charts-lines'],
   ['axis', '--vscode-charts-foreground'],
+  ['warning-bg', '--vscode-inputValidation-warningBackground'],
+  ['warning-border', '--vscode-inputValidation-warningBorder'],
+  ['warning-fg', '--vscode-editorWarning-foreground'],
+  ['shadow', '--vscode-widget-shadow'],
   ['ok', '--vscode-testing-iconPassed'],
   ['error', '--vscode-errorForeground'],
 ];

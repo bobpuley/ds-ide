@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
 import { ControlsViewProvider, truncId, buildHtml } from '../../../sidebar/controls-editor-panel';
+import { themeCss } from '../../../webview/theme/theme-css';
 
 function makeWebviewViewMock() {
   const onDisposeHandlers: Array<() => void> = [];
@@ -364,7 +365,7 @@ describe('ControlsViewProvider', () => {
   it('HTML includes box-shadow on btn-ce', () => {
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);
-    expect(view.webview.html).toContain('box-shadow: 0 3px 0 #111');
+    expect(view.webview.html).toContain('box-shadow: 0 3px 0 var(--ds-border)');
   });
 
   // ── SD card content viewer (FR-SD-1) ──────────────────────────────────
@@ -543,5 +544,29 @@ describe('Controls Editor palette removal (FR-UDM-2)', () => {
     expect(html).toContain('id="canvas-hint"');
     expect(html).not.toContain('Drag a control from the palette');
     expect(html).toMatch(/id="canvas-hint">[^<]*Wiring Editor/);
+  });
+});
+
+describe('Controls Editor theming (FR-THM-1, FR-THM-3, FR-THM-4)', () => {
+  const html = buildHtml('test-nonce', 'vscode-resource://x.js');
+  const own = html.replace(themeCss({ surface: 'sidebar' }), '');
+
+  it('includes the shared sidebar-surface theme block', () => {
+    expect(html).toContain(themeCss({ surface: 'sidebar' }));
+    expect(html).toContain('background: var(--ds-surface)');
+  });
+
+  it('has no hex / rgb() / hsl() colour literals of its own', () => {
+    expect(own).not.toMatch(/(?<![&\w])#[0-9a-fA-F]{3,8}\b/);
+    expect(own).not.toMatch(/\brgba?\(|\bhsla?\(/);
+  });
+
+  it('colours the lit virtual LED from the led accent', () => {
+    expect(html).toMatch(/\.vled-lit\s*\{[^}]*var\(--ds-accent-led\)/);
+  });
+
+  it('keeps the docked OLED glass black inside a themed frame', () => {
+    expect(html).toMatch(/#oled-strip-canvas\s*\{[^}]*background:\s*black/);
+    expect(html).toMatch(/#oled-strip\s*\{[^}]*var\(--ds-surface-raised\)/);
   });
 });

@@ -66,7 +66,7 @@ standalone mockup before any view changes.
 
 ---
 
-### [ ] feat: Controls Editor follows the theme (FR-THM-1)
+### [x] feat: Controls Editor follows the theme (FR-THM-1)
 
 **Affected files:** `src/sidebar/controls-editor-panel.ts`, `src/webview/controls/convention-canvas.ts`, `src/test/unit/sidebar/controls-editor-panel.test.ts`
 

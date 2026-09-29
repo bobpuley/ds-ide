@@ -149,6 +149,8 @@ not once per view (decision 2026-09-29).
 | `trace-in` / `trace-out` | `charts.blue` / `charts.orange` |
 | `grid` / `axis` | `charts.lines` / `charts.foreground` |
 | `ok` / `error` | `testing.iconPassed` / `errorForeground` |
+| `warning-bg` / `warning-border` / `warning-fg` | `inputValidation.warningBackground` / `inputValidation.warningBorder` / `editorWarning.foreground` |
+| `hover-bg` / `button-hover-bg` / `shadow` | `toolbar.hoverBackground` / `button.hoverBackground` / `widget.shadow` |
 
 ### Device accent variants (confirmed 2026-09-29)
 

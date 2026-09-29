@@ -10,13 +10,14 @@ import type { ControlsPlacement } from '../scope-panel';
 import type { ButtonMode } from '../../controllers/controller-config';
 import type { DeviceType } from '../../wiring/wiring-panel';
 import type { ControlsWebviewMessage } from '../messages';
-import { computeKnobGeometry, KNOB_SVG_SIZE, KNOB_CENTER } from '../knob-math';
+import { computeKnobGeometry } from '../knob-math';
 import { createRafCoalescer } from '../raf-coalesce';
 import { TOGGLE_POSITIONS } from '../../devices/codegen/toggle';
 import { wrapEncoderPosition } from '../../devices/codegen/encoder';
 import { escJ, truncId } from './text-utils';
 import { adcChannelFromPin } from './adc-channel';
 import { makeDraggable } from './drag';
+import { knobSvg, encoderSvg } from './knob-svg';
 
 // sdcard (FR-DEV-10), oled (FR-DEV-14), midiTrs (FR-DEV-16) and midiUsb
 // (FR-DEV-17) are bus-attached peripherals and never appear as a control card
@@ -33,7 +34,6 @@ const KIND_LABELS: Record<DeviceType, string> = {
 // pointer's angle is the wrapped position mapped onto a coarser visual
 // detent count purely for legibility (the wire value stays the full
 // ENCODER_POSITION_MODULUS-resolution position — see codegen/encoder.ts).
-const ENCODER_VISIBLE_DETENTS = 32;
 const ENCODER_PX_PER_DETENT = 12;
 
 export interface ConventionCanvas {
@@ -64,16 +64,6 @@ export function createConventionCanvas(
     });
   }
 
-  function buildKnobSvg(value: number): string {
-    const { trackPath, valuePath, dotX, dotY } = computeKnobGeometry(value);
-    return `<svg class="knob-svg" viewBox="0 0 ${KNOB_SVG_SIZE} ${KNOB_SVG_SIZE}" width="${KNOB_SVG_SIZE}" height="${KNOB_SVG_SIZE}">` +
-      `<circle cx="${KNOB_CENTER}" cy="${KNOB_CENTER}" r="18" fill="#1e1e1e" stroke="#3c3c3c" stroke-width="1.5"/>` +
-      '<path d="' + trackPath + '" fill="none" stroke="#3c3c3c" stroke-width="3" stroke-linecap="round"/>' +
-      '<path class="knob-value-path" d="' + (valuePath ?? 'M 0 0') + '" fill="none" stroke="#4ec9b0" stroke-width="3" stroke-linecap="round"' + (valuePath ? '' : ' style="display:none"') + '/>' +
-      '<circle class="knob-dot" cx="' + dotX.toFixed(2) + '" cy="' + dotY.toFixed(2) + '" r="2.5" fill="#4ec9b0"/>' +
-      '</svg>';
-  }
-
   function updateKnobPaths(knobWrap: HTMLElement, value: number): number {
     const { clampedValue, valuePath, dotX, dotY } = computeKnobGeometry(value);
     const vp = knobWrap.querySelector('.knob-value-path') as SVGPathElement | null;
@@ -92,19 +82,6 @@ export function createConventionCanvas(
     return clampedValue;
   }
 
-  function buildEncoderSvg(position: number): string {
-    const cx = KNOB_CENTER, cy = KNOB_CENTER, r = 18;
-    const angleDeg = (position % ENCODER_VISIBLE_DETENTS) * (360 / ENCODER_VISIBLE_DETENTS);
-    const rad = (angleDeg * Math.PI) / 180;
-    const dotX = cx + r * 0.7 * Math.sin(rad);
-    const dotY = cy - r * 0.7 * Math.cos(rad);
-    return `<svg class="knob-svg" viewBox="0 0 ${KNOB_SVG_SIZE} ${KNOB_SVG_SIZE}" width="${KNOB_SVG_SIZE}" height="${KNOB_SVG_SIZE}">` +
-      `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#1e1e1e" stroke="#3c3c3c" stroke-width="1.5"/>` +
-      `<line x1="${cx}" y1="${cy}" x2="${dotX.toFixed(2)}" y2="${dotY.toFixed(2)}" stroke="#dcdcaa" stroke-width="2" stroke-linecap="round"/>` +
-      `<circle cx="${dotX.toFixed(2)}" cy="${dotY.toFixed(2)}" r="2.5" fill="#dcdcaa"/>` +
-      '</svg>';
-  }
-
   function buildConventionCard(ctrl: ConventionControl, pos: [number, number]): HTMLElement {
     const kindLabel = KIND_LABELS[ctrl.kind];
     const card = document.createElement('div');
@@ -121,7 +98,7 @@ export function createConventionCanvas(
       adcCh = adcChannelFromPin(ctrl.pin);
       bodyInnerHtml =
         '<div class="knob-wrap" data-channel="' + adcCh + '" data-value="0">' +
-          buildKnobSvg(0) +
+          knobSvg(0) +
           '<span class="knob-value">0.000</span>' +
         '</div>';
     } else if (ctrl.kind === 'button') {
@@ -138,7 +115,7 @@ export function createConventionCanvas(
     } else if (ctrl.kind === 'encoder') {
       bodyInnerHtml =
         '<div class="enc-wrap" data-pos="0">' +
-          buildEncoderSvg(0) +
+          encoderSvg(0) +
           '<span class="enc-value">0</span>' +
         '</div>';
     } else {
@@ -232,7 +209,7 @@ export function createConventionCanvas(
       const flushEncoderMove = createRafCoalescer<number>((targetPos) => {
         const wrapped = wrapEncoderPosition(targetPos);
         encWrap.dataset['pos'] = String(wrapped);
-        encWrap.innerHTML = buildEncoderSvg(wrapped) + '<span class="enc-value">' + wrapped + '</span>';
+        encWrap.innerHTML = encoderSvg(wrapped) + '<span class="enc-value">' + wrapped + '</span>';
         if (wrapped !== eLastSentPos) {
           eLastSentPos = wrapped;
           vscode.postMessage({ command: 'encoder', gpioPin, position: wrapped });
@@ -261,7 +238,7 @@ export function createConventionCanvas(
     card.style.top = pl.pos[1] + 'px';
     card.style.opacity = '0.4';
     card.innerHTML =
-      '<div class="card-header"><span class="card-kind" style="color:#f48771">not in code</span></div>' +
+      '<div class="card-header"><span class="card-kind" style="color:var(--ds-error)">not in code</span></div>' +
       '<div class="card-body"><div class="card-field"><label>id</label><span class="card-val">' + escJ(pl.id) + '</span></div></div>';
     return card;
   }
