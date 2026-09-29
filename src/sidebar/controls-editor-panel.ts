@@ -4,7 +4,7 @@ import { IpcMessage } from '../emulator/ipc-client';
 import { getBoolean, getNumber } from '../ipc/narrow';
 import { ControllerConfig, parseControllerConfig, serializeControllerConfig } from '../controllers/controller-config';
 import { ControlsConfig } from '../webview/scope-panel';
-import { REGISTRY, wiredControlIds } from '../devices/registry';
+import { REGISTRY, wiredControlIds, accentVar } from '../devices/registry';
 import { TOGGLE_POSITIONS } from '../devices/codegen/toggle';
 import { ENCODER_POSITION_MODULUS } from '../devices/codegen/encoder';
 import { SdEntry } from '../webview/sd-viewer';
@@ -16,6 +16,7 @@ import { ControlsWebviewMessage } from '../webview/messages';
 // lives in webview/id-truncate.ts, shared with the webview side (FR-EXT-38).
 export { truncId, TRUNC_MAX_LEN };
 import { hasKnownCommand, assertNever } from '../webview/message-guard';
+import { themeCss } from '../webview/theme/theme-css';
 
 // FR-EXT-33: the discriminated union's own command literals, kept as a
 // runtime Set so hasKnownCommand can narrow an incoming postMessage payload
@@ -250,7 +251,7 @@ function statusPayload(msg: IpcMessage): Record<string, unknown> {
 // added in the Wiring Editor.)
 function ctrlCardCssRules(): string {
   return wiredControlIds()
-    .map(id => `    .ctrl-card[data-kind="${id}"] { border-top: 3px solid ${REGISTRY[id]!.accentColor}; }`)
+    .map(id => `    .ctrl-card[data-kind="${id}"] { border-top: 3px solid ${accentVar(REGISTRY[id]!.id)}; }`)
     .join('\n');
 }
 
@@ -263,77 +264,78 @@ export function buildHtml(nonce: string, scriptUri: string): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>DS-IDE Controls</title>
   <style>
+${themeCss({ surface: 'sidebar' })}
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #1e1e1e; color: #d4d4d4; font-family: monospace; font-size: 12px; display: flex; flex-direction: column; height: 100vh; }
-    #editor-toolbar { padding: 6px 12px; background: #252526; border-bottom: 1px solid #3c3c3c; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
-    #save-btn { background: #0e639c; color: #fff; border: none; padding: 4px 14px; font-family: monospace; cursor: pointer; border-radius: 2px; font-size: 12px; }
-    #save-btn:hover { background: #1177bb; }
-    #save-status { font-size: 11px; color: #b5cea8; }
+    body { background: var(--ds-surface); color: var(--ds-text); font-family: monospace; font-size: 12px; display: flex; flex-direction: column; height: 100vh; }
+    #editor-toolbar { padding: 6px 12px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+    #save-btn { background: var(--ds-button-bg); color: var(--ds-button-fg); border: 1px solid transparent; padding: 4px 14px; font-family: monospace; cursor: pointer; border-radius: 2px; font-size: 12px; }
+    #save-btn:hover { background: var(--ds-button-hover-bg); }
+    #save-status { font-size: 11px; color: var(--ds-ok); }
     #ce-emu-status { font-size: 11px; }
-    .ce-emu-running { color: #4ec94e; }
-    .ce-emu-stopped { color: #f04a4a; }
-    .emu-sep { color: #3c3c3c; user-select: none; }
-    #convention-banner { display: none; align-items: center; gap: 8px; padding: 5px 12px; background: #3a2f00; border-bottom: 1px solid #7a6500; color: #f4c430; font-size: 11px; flex-shrink: 0; }
+    .ce-emu-running { color: var(--ds-ok); }
+    .ce-emu-stopped { color: var(--ds-error); }
+    .emu-sep { color: var(--ds-border); user-select: none; }
+    #convention-banner { display: none; align-items: center; gap: 8px; padding: 5px 12px; background: var(--ds-warning-bg); border-bottom: 1px solid var(--ds-warning-border); color: var(--ds-warning-fg); font-size: 11px; flex-shrink: 0; }
     /* OLED docked strip (FR-CE-2) — collapses to nothing (display:none) when
        the oled peripheral is disabled, so #design-area's flex:1 fills the
        space exactly as it does today; mirrors #convention-banner's toggle. */
-    #oled-strip { display: none; flex-direction: column; align-items: center; justify-content: center; gap: 4px; height: 130px; flex-shrink: 0; background: #000; border-bottom: 1px solid #3c3c3c; position: relative; padding: 4px 0; }
+    #oled-strip { display: none; flex-direction: column; align-items: center; justify-content: center; gap: 4px; height: 130px; flex-shrink: 0; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); position: relative; padding: 4px 0; }
     #oled-strip.enabled { display: flex; }
-    #oled-strip-label { position: absolute; top: 5px; left: 8px; font-size: 9px; color: #6a6a6a; }
-    #oled-popout-btn { position: absolute; top: 4px; right: 8px; background: #252526; border: 1px solid #555; color: #9cdcfe; padding: 2px 7px; border-radius: 2px; cursor: pointer; font-family: monospace; font-size: 9px; }
-    #oled-popout-btn:hover { background: #2f2f2f; }
-    #oled-strip-canvas { image-rendering: pixelated; background: #000; width: 192px; height: 96px; }
-    #oled-strip-foot { font-size: 9px; color: #6a6a6a; }
+    #oled-strip-label { position: absolute; top: 5px; left: 8px; font-size: 9px; color: var(--ds-text-muted); }
+    #oled-popout-btn { position: absolute; top: 4px; right: 8px; background: var(--ds-surface-raised); border: 1px solid var(--ds-border); color: var(--ds-text-muted); padding: 2px 7px; border-radius: 2px; cursor: pointer; font-family: monospace; font-size: 9px; }
+    #oled-popout-btn:hover { background: var(--ds-hover-bg); }
+    #oled-strip-canvas { image-rendering: pixelated; background: black; width: 192px; height: 96px; }
+    #oled-strip-foot { font-size: 9px; color: var(--ds-text-muted); }
     #design-area { display: flex; flex: 1; min-height: 0; overflow: hidden; }
-    #canvas-area { flex: 1; position: relative; overflow: auto; background: #1e1e1e; }
-    #canvas-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #3c3c3c; font-size: 13px; pointer-events: none; }
-    .ctrl-card { position: absolute; min-width: 168px; background: #252526; border: 1px solid #555; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.4); }
+    #canvas-area { flex: 1; position: relative; overflow: auto; background: var(--ds-surface); }
+    #canvas-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--ds-text-muted); font-size: 13px; pointer-events: none; }
+    .ctrl-card { position: absolute; min-width: 168px; background: var(--ds-surface-raised); border: 1px solid var(--ds-border); border-radius: 4px; box-shadow: 0 2px 6px var(--ds-shadow); }
 ${ctrlCardCssRules()}
-    .card-header { padding: 4px 6px 4px 8px; display: flex; align-items: center; justify-content: space-between; cursor: grab; background: rgba(255,255,255,0.03); }
-    .card-kind { font-size: 9px; color: #6a6a6a; text-transform: uppercase; letter-spacing: 0.5px; }
-    .card-del { background: none; border: none; color: #555; cursor: pointer; font-size: 15px; padding: 0 2px; line-height: 1; }
-    .card-del:hover { color: #f04a4a; }
+    .card-header { padding: 4px 6px 4px 8px; display: flex; align-items: center; justify-content: space-between; cursor: grab; background: var(--ds-surface); }
+    .card-kind { font-size: 9px; color: var(--ds-text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .card-del { background: none; border: none; color: var(--ds-text-muted); cursor: pointer; font-size: 15px; padding: 0 2px; line-height: 1; }
+    .card-del:hover { color: var(--ds-error); }
     .card-body { padding: 5px 8px 8px; display: flex; flex-direction: column; gap: 4px; }
     .card-field { display: flex; align-items: center; gap: 5px; }
-    .card-field label { font-size: 10px; color: #9a9a9a; min-width: 46px; }
-    .card-inp { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 2px 4px; font-family: monospace; font-size: 11px; flex: 1; min-width: 0; }
-    .card-sel { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 2px 4px; font-family: monospace; font-size: 11px; flex: 1; }
-    .card-val { color: #b5cea8; font-size: 11px; }
-    .ctrl-handle { display: flex; align-items: center; gap: 6px; padding: 4px 6px 4px 8px; cursor: grab; background: rgba(255,255,255,0.03); border-bottom: 1px solid #3c3c3c; user-select: none; }
+    .card-field label { font-size: 10px; color: var(--ds-text-muted); min-width: 46px; }
+    .card-inp { background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-border); padding: 2px 4px; font-family: monospace; font-size: 11px; flex: 1; min-width: 0; }
+    .card-sel { background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-border); padding: 2px 4px; font-family: monospace; font-size: 11px; flex: 1; }
+    .card-val { color: var(--ds-text); font-size: 11px; }
+    .ctrl-handle { display: flex; align-items: center; gap: 6px; padding: 4px 6px 4px 8px; cursor: grab; background: var(--ds-surface); border-bottom: 1px solid var(--ds-border); user-select: none; }
     .ctrl-handle:active { cursor: grabbing; }
-    .handle-glyph { color: #555; font-size: 13px; }
-    .card-id-label { flex: 1; color: #d4d4d4; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .card-pin-label { color: #6a6a6a; font-size: 10px; }
+    .handle-glyph { color: var(--ds-text-muted); font-size: 13px; }
+    .card-id-label { flex: 1; color: var(--ds-text); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .card-pin-label { color: var(--ds-text-muted); font-size: 10px; }
     .ctrl-body { padding: 6px 8px 8px; display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
     .body-disabled { opacity: 0.35; pointer-events: none; }
     .knob-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: ns-resize; user-select: none; padding: 2px 4px; }
     .knob-svg { display: block; }
-    .knob-value { color: #b5cea8; font-size: 10px; font-family: monospace; min-width: 36px; text-align: center; }
-    .btn-ce { background: #4a4a4a; border: 1px solid #666; border-radius: 6px; padding: 7px; cursor: pointer; box-shadow: 0 3px 0 #111; transition: box-shadow 0.06s, transform 0.06s, background 0.06s; flex-shrink: 0; user-select: none; }
-    .btn-ce[aria-pressed="true"] { box-shadow: none; transform: translateY(3px); background: #0e639c; border-color: #1177bb; }
-    .tgl-ce { background: #4a4a4a; border: 1px solid #666; border-radius: 4px; padding: 5px 10px; cursor: pointer; color: #d4d4d4; font-family: monospace; font-size: 12px; flex-shrink: 0; user-select: none; }
-    .tgl-ce:hover { background: #5a5a5a; }
-    .vled-dot { width: 12px; height: 12px; border-radius: 50%; background: #3c3c3c; border: 1px solid #555; box-shadow: none; display: inline-block; }
-    .vled-dot.vled-lit { background: #f04a4a; border-color: #ff6a6a; box-shadow: 0 0 6px 1px #f04a4a; }
-    .vrgb-dot { width: 14px; height: 14px; border-radius: 50%; background: #000; border: 1px solid #555; display: inline-block; }
+    .knob-value { color: var(--ds-text); font-size: 10px; font-family: monospace; min-width: 36px; text-align: center; }
+    .btn-ce { background: var(--ds-input-bg); border: 2px solid var(--ds-accent-button); border-radius: 6px; padding: 7px; cursor: pointer; box-shadow: 0 3px 0 var(--ds-accent-button); transition: box-shadow 0.06s, transform 0.06s, background 0.06s; flex-shrink: 0; user-select: none; }
+    .btn-ce[aria-pressed="true"] { box-shadow: none; transform: translateY(3px); background: var(--ds-accent-button); border-color: var(--ds-accent-button); }
+    .tgl-ce { background: var(--ds-input-bg); border: 1px solid var(--ds-accent-toggle); border-radius: 4px; padding: 5px 10px; cursor: pointer; color: var(--ds-text); font-family: monospace; font-size: 12px; flex-shrink: 0; user-select: none; }
+    .tgl-ce:hover { background: var(--ds-hover-bg); }
+    .vled-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--ds-input-bg); border: 2px solid var(--ds-accent-led); box-shadow: none; display: inline-block; }
+    .vled-dot.vled-lit { background: var(--ds-accent-led); border-color: var(--ds-accent-led); box-shadow: 0 0 6px 1px var(--ds-accent-led); }
+    .vrgb-dot { width: 14px; height: 14px; border-radius: 50%; background: black; border: 1px solid var(--ds-text-muted); display: inline-block; }
     .enc-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: ns-resize; user-select: none; padding: 2px 4px; }
-    .enc-value { color: #dcdcaa; font-size: 10px; font-family: monospace; min-width: 24px; text-align: center; }
-    .section-label { color: #9cdcfe; align-self: center; }
+    .enc-value { color: var(--ds-text); font-size: 10px; font-family: monospace; min-width: 24px; text-align: center; }
+    .section-label { color: var(--ds-text-muted); align-self: center; }
     /* SD card content viewer (FR-SD-1) — inline accordion, mirrors the
        Wiring Editor's #peripherals section (.section-hdr/.periph rows). */
-    #sdcard-contents { display: none; flex-direction: column; flex-shrink: 0; max-height: 260px; border-top: 1px solid #3c3c3c; overflow: auto; }
-    #sdcard-contents .section-hdr { padding: 6px 14px; font-size: 11px; color: #9cdcfe; background: #252526; border-bottom: 1px solid #3c3c3c; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
-    #sdcard-contents .section-hdr .count { color: #6a6a6a; font-weight: normal; }
-    #sd-refresh-btn { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; padding: 2px 8px; border-radius: 2px; cursor: pointer; font-family: monospace; font-size: 10px; }
-    #sd-refresh-btn:hover { background: #4a4a4a; }
+    #sdcard-contents { display: none; flex-direction: column; flex-shrink: 0; max-height: 260px; border-top: 1px solid var(--ds-border); overflow: auto; }
+    #sdcard-contents .section-hdr { padding: 6px 14px; font-size: 11px; color: var(--ds-text-muted); background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+    #sdcard-contents .section-hdr .count { color: var(--ds-text-muted); font-weight: normal; }
+    #sd-refresh-btn { background: var(--ds-input-bg); border: 1px solid var(--ds-border); color: var(--ds-input-fg); padding: 2px 8px; border-radius: 2px; cursor: pointer; font-family: monospace; font-size: 10px; }
+    #sd-refresh-btn:hover { background: var(--ds-hover-bg); }
     #sd-list { overflow: auto; }
-    .sd-row { display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-bottom: 1px solid #2a2a2a; cursor: pointer; }
-    .sd-row:hover { background: #252526; }
-    .sd-row .name { flex: 1; color: #d4d4d4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .sd-row .size { color: #6a6a6a; font-size: 10px; }
-    .sd-preview { padding: 8px 14px 10px 22px; background: #161616; border-bottom: 1px solid #2a2a2a; color: #ce9178; font-size: 11px; white-space: pre-wrap; word-break: break-word; }
-    .sd-preview.unavailable { color: #6a6a6a; font-style: italic; }
-    .sd-empty-state { padding: 16px 14px; text-align: center; color: #6a6a6a; font-size: 11px; }
+    .sd-row { display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-bottom: 1px solid var(--ds-border); cursor: pointer; }
+    .sd-row:hover { background: var(--ds-hover-bg); }
+    .sd-row .name { flex: 1; color: var(--ds-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sd-row .size { color: var(--ds-text-muted); font-size: 10px; }
+    .sd-preview { padding: 8px 14px 10px 22px; background: var(--ds-input-bg); border-bottom: 1px solid var(--ds-border); color: var(--ds-text); font-size: 11px; white-space: pre-wrap; word-break: break-word; }
+    .sd-preview.unavailable { color: var(--ds-text-muted); font-style: italic; }
+    .sd-empty-state { padding: 16px 14px; text-align: center; color: var(--ds-text-muted); font-size: 11px; }
   </style>
 </head>
 <body>

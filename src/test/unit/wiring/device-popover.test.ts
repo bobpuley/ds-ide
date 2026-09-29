@@ -25,7 +25,7 @@ describe('describePlacedDevice (FR-UDM-3)', () => {
   it('describes a single-pin control with its id, pin and no Show panel', () => {
     const m = describePlacedDevice({ kind: 'control', id: 'vol' }, wired, periphs)!;
     expect(m.label).toBe('Pot');
-    expect(m.accentColor).toBe('#4ec9b0');
+    expect(m.accentColor).toBe('var(--ds-accent-pot)');
     expect(m.subtitle).toBe('vol');
     expect(m.rowKey).toBe('pin');
     expect(m.rowValue).toBe('D15');
@@ -83,7 +83,7 @@ describe('describePlacement (FR-UDM-7)', () => {
   it('a single-pin control shows its pin and asks for an id pre-filled by defaultId', () => {
     const m = describePlacement('pot', pin([16]), wired);
     expect(m.label).toBe('Pot');
-    expect(m.accentColor).toBe('#4ec9b0');
+    expect(m.accentColor).toBe('var(--ds-accent-pot)');
     expect(m.rowKey).toBe('pin');
     expect(m.rowValue).toBe('D16');
     expect(m.needsId).toBe(true);

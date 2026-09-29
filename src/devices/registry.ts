@@ -48,8 +48,13 @@ export interface DeviceDescriptor {
    * instead (FR-DEV-11) and never appears in the Controls Editor at all.
    */
   primitive?: InteractionPrimitive;
-  /** CSS color: wiring-editor pin stroke and controls-editor palette border. */
-  accentColor: string;
+  /**
+   * Identity colour per theme kind (FR-THM-3): `dark` for Dark+ / High Contrast
+   * Dark, `light` for Light+ / High Contrast Light. Views never read these
+   * literals — theme-css.ts turns them into `--ds-accent-<id>` variables and
+   * views use `accentVar(id)`.
+   */
+  accent: { dark: string; light: string };
   /** CSS fill color for the wiring-editor pin dot. */
   pinFill: string;
   /**
@@ -148,6 +153,11 @@ export const DEVICE_TYPES = ['pot', 'button', 'led', 'toggle', 'rgbled', 'encode
 
 export type DeviceType = typeof DEVICE_TYPES[number];
 
+/** CSS reference to a device's per-theme accent variable (see theme-css.ts). */
+export function accentVar(id: string): string {
+  return `var(--ds-accent-${id})`;
+}
+
 // Invariant: every DEVICE_TYPES member has an entry here (enforced by
 // registry.test.ts's "every DeviceType has a REGISTRY entry" check) — so
 // `REGISTRY[kind]!` is safe for any `kind: DeviceType` across the codebase
@@ -157,7 +167,7 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     id: 'pot',
     label: 'Pot',
     primitive: 'continuous',
-    accentColor: '#4ec9b0',
+    accent: { dark: '#4ec9b0', light: '#007a66' },
     pinFill: '#1a4a4a',
     declaredClassName: null,
     attachmentKind: 'pin',
@@ -169,7 +179,7 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     id: 'button',
     label: 'Button',
     primitive: 'momentary',
-    accentColor: '#569cd6',
+    accent: { dark: '#569cd6', light: '#1f6fb5' },
     pinFill: '#1a2a4a',
     declaredClassName: 'Switch',
     attachmentKind: 'pin',
@@ -179,7 +189,7 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     id: 'led',
     label: 'LED',
     primitive: 'indicator',
-    accentColor: '#f04a4a',
+    accent: { dark: '#f04a4a', light: '#d32f2f' },
     pinFill: '#4a1a1a',
     declaredClassName: 'Led',
     attachmentKind: 'pin',
@@ -192,7 +202,7 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     id: 'toggle',
     label: 'Toggle',
     primitive: 'multi-position',
-    accentColor: '#c586c0',
+    accent: { dark: '#c586c0', light: '#9c3f96' },
     pinFill: '#3a1a4a',
     declaredClassName: 'Switch3',
     attachmentKind: 'pin',
@@ -205,7 +215,7 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     id: 'rgbled',
     label: 'RGB LED',
     primitive: 'indicator',
-    accentColor: '#ce9178',
+    accent: { dark: '#ce9178', light: '#a8552e' },
     pinFill: '#4a2a1a',
     declaredClassName: 'RgbLed',
     attachmentKind: 'pins',
@@ -225,7 +235,7 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
     id: 'encoder',
     label: 'Encoder',
     primitive: 'delta',
-    accentColor: '#dcdcaa',
+    accent: { dark: '#dcdcaa', light: '#7d7a00' },
     pinFill: '#4a4a1a',
     declaredClassName: 'Encoder',
     attachmentKind: 'pins',
@@ -241,7 +251,7 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
   sdcard: {
     id: 'sdcard',
     label: 'SD Card',
-    accentColor: '#f4c430',
+    accent: { dark: '#f4c430', light: '#8a6d00' },
     pinFill: '#4a3a1a',
     declaredClassName: null,
     attachmentKind: 'bus',
@@ -257,7 +267,7 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
   oled: {
     id: 'oled',
     label: 'OLED',
-    accentColor: '#4fc1ff',
+    accent: { dark: '#4fc1ff', light: '#0072b1' },
     pinFill: '#1a3a4a',
     declaredClassName: null,
     attachmentKind: 'bus',
@@ -275,7 +285,7 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
   midiTrs: {
     id: 'midiTrs',
     label: 'MIDI TRS',
-    accentColor: '#c586c0',
+    accent: { dark: '#c586c0', light: '#9c3f96' },
     pinFill: '#3a1a3a',
     declaredClassName: null,
     attachmentKind: 'bus',
@@ -295,7 +305,7 @@ export const REGISTRY: Record<string, DeviceDescriptor> = {
   midiUsb: {
     id: 'midiUsb',
     label: 'MIDI USB',
-    accentColor: '#569cd6',
+    accent: { dark: '#569cd6', light: '#1f6fb5' },
     pinFill: '#1a2a4a',
     declaredClassName: null,
     attachmentKind: 'bus',

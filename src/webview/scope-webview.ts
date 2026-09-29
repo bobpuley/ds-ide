@@ -3,6 +3,8 @@ import type { ScopeHostMessage } from './messages';
 import { hasKnownCommand } from './message-guard';
 import { el } from './dom-lookup';
 import { createRafCoalescer } from './raf-coalesce';
+import { readThemeColor, onThemeChange } from './theme/theme-runtime';
+import { loadScopeColors } from './scope-colors';
 
 const vscode = acquireVsCodeApi();
 const canvas = el<HTMLCanvasElement>('scope');
@@ -25,6 +27,10 @@ const wavLoopEl = el<HTMLInputElement>('wav-loop');
 const outputVolEl = el<HTMLInputElement>('output-vol');
 const volValEl = el<HTMLElement>('vol-val');
 
+// Canvas colours come from the theme (FR-THM-2): read once here and again only
+// when the theme changes (FR-THM-5), never per frame.
+let colors = loadScopeColors(n => readThemeColor(n));
+
 let lastIn: number[] = [], lastOut: number[] = [];
 let lastSpecIn: number[] = [], lastSpecOut: number[] = [], lastBinHz = 0;
 const activeEvents = new Set<string>();
@@ -37,7 +43,7 @@ let lastStatusBlockSize = 0;
 function updateStatusEl(): void {
   if (!statusEl || !hasStatus) return;
   const symbol = lastStatusRunning ? '▶' : '■';
-  const color  = lastStatusRunning ? '#4ec94e' : '#f04a4a';
+  const color  = lastStatusRunning ? colors.running : colors.stopped;
   // Built via DOM APIs, never innerHTML — sampleRate/blockSize/xrunCount
   // originate from the emulator's IPC socket (FR-IPC-2).
   statusEl.textContent = '';
@@ -70,17 +76,17 @@ function resize(): void {
 function draw(): void {
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#1e1e1e';
+  ctx.fillStyle = colors.background;
   ctx.fillRect(0, 0, W, H);
-  ctx.strokeStyle = '#3c3c3c';
+  ctx.strokeStyle = colors.grid;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2);
   ctx.moveTo(0, H / 4); ctx.lineTo(W, H / 4);
   ctx.moveTo(0, 3 * H / 4); ctx.lineTo(W, 3 * H / 4);
   ctx.stroke();
-  drawWave(lastIn,  '#4ec9b0');
-  drawWave(lastOut, '#ce9178');
+  drawWave(lastIn,  colors.traceIn);
+  drawWave(lastOut, colors.traceOut);
 }
 
 function drawWave(pts: number[], color: string): void {
@@ -101,7 +107,7 @@ function drawWave(pts: number[], color: string): void {
 function drawSpectrum(): void {
   const W = specCanvas.width, H = specCanvas.height;
   specCtx.clearRect(0, 0, W, H);
-  specCtx.fillStyle = '#1a1a1a';
+  specCtx.fillStyle = colors.background;
   specCtx.fillRect(0, 0, W, H);
   if (!lastSpecIn || lastSpecIn.length < 2) return;
   const N = lastSpecIn.length;
@@ -120,19 +126,19 @@ function drawSpectrum(): void {
   let lastDbLabelY = -Infinity;
   for (let db = 0; db >= -60; db -= 20) {
     const y = ampToY(Math.pow(10, db / 20) * peak);
-    specCtx.strokeStyle = '#2a2a2a';
+    specCtx.strokeStyle = colors.grid;
     specCtx.lineWidth = 1;
     specCtx.beginPath();
     specCtx.moveTo(LEFT, y); specCtx.lineTo(W, y);
     specCtx.stroke();
     if (y - lastDbLabelY >= 11) {
-      specCtx.fillStyle = '#777';
+      specCtx.fillStyle = colors.axis;
       specCtx.fillText(db + 'dB', LEFT - 4, y + 4);
       lastDbLabelY = y;
     }
   }
   specCtx.textAlign = 'left';
-  specCtx.strokeStyle = '#3c3c3c';
+  specCtx.strokeStyle = colors.grid;
   specCtx.lineWidth = 1;
   specCtx.beginPath();
   specCtx.moveTo(LEFT, TOP + plotH); specCtx.lineTo(W, TOP + plotH);
@@ -149,10 +155,10 @@ function drawSpectrum(): void {
     }
     specCtx.stroke();
   }
-  drawSpecLine(lastSpecIn,  '#4ec9b0');
-  drawSpecLine(lastSpecOut, '#ce9178');
+  drawSpecLine(lastSpecIn,  colors.traceIn);
+  drawSpecLine(lastSpecOut, colors.traceOut);
   if (lastBinHz > 0) {
-    specCtx.fillStyle = '#999';
+    specCtx.fillStyle = colors.axis;
     specCtx.font = '10px monospace';
     specCtx.textAlign = 'left';
     const freqLabels = [1000, 2000, 5000, 10000, 20000];
@@ -216,6 +222,13 @@ outputVolEl?.addEventListener('input', () => {
 });
 
 window.addEventListener('resize', resize);
+// Repaint in the new theme even when nothing is streaming (stopped scope, FR-THM-5).
+onThemeChange(() => {
+  colors = loadScopeColors(n => readThemeColor(n));
+  updateStatusEl();
+  draw();
+  drawSpectrum();
+});
 resize();
 
 // FR-EXT-34: 'scope'/'spectrum' IPC messages can arrive well above the

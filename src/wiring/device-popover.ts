@@ -2,7 +2,7 @@
 // device — a pin-attached control or an enabled bus/connector peripheral.
 // Pure (no DOM, no `vscode`) so the webview only renders the model and the
 // content rules stay unit-testable, same convention as pin-overlay-state.ts.
-import { REGISTRY } from '../devices/registry';
+import { REGISTRY, accentVar } from '../devices/registry';
 import type { WiredPin } from './wiring-panel';
 import type { PeripheralDisplayState } from './peripheral-state';
 import type { WiringWebviewMessage } from '../webview/messages';
@@ -47,7 +47,7 @@ function describeControl(id: string, wiredPins: WiredPin[]): DevicePopoverModel 
   const rowValue = formatPins(pins.map(wp => wp.pinNumber), d.pinSlots);
   return {
     label: d.label,
-    accentColor: d.accentColor,
+    accentColor: accentVar(d.id),
     subtitle: id,
     rowKey: pins.length > 1 ? 'pins' : 'pin',
     rowValue,
@@ -63,7 +63,7 @@ function describePeripheral(id: string, peripherals: PeripheralDisplayState[]): 
   const rowValue = formatBus(p.bus, p.pins.map(rp => rp.pin));
   return {
     label: p.label,
-    accentColor: d.accentColor,
+    accentColor: accentVar(d.id),
     subtitle: null,
     rowKey: 'bus',
     rowValue,
@@ -121,7 +121,7 @@ export function describePlacement(
   const idPool = wiredPins.filter(wp => !replaced.has(wp.id));
   return {
     label: d?.label ?? deviceId,
-    accentColor: d?.accentColor ?? '#9cdcfe',
+    accentColor: d ? accentVar(d.id) : 'var(--ds-text-muted)',
     rowKey: isControl ? (target.pins.length > 1 ? 'pins' : 'pin') : 'bus',
     rowValue: isControl ? formatPins(target.pins, d?.pinSlots) : formatBus(target.bus ?? null, target.pins),
     needsId: askId,

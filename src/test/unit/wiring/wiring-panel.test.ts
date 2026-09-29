@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { buildHtml, PIN_DEFS, WiredPin, expandToWiredPins, paletteRequirement } from '../../../wiring/wiring-panel';
 import { REGISTRY } from '../../../devices/registry';
 import { deviceIconSvg, DEVICE_ICONS } from '../../../wiring/device-icons';
+import { themeCss } from '../../../webview/theme/theme-css';
+import { BOARD_ART_CSS } from '../../../wiring/board-art';
 import type { ConventionControl } from '../../../controllers/controls-convention-parser';
 
 // ── PIN_DEFS integrity ───────────────────────────────────────────────────────
@@ -290,8 +292,8 @@ describe('device palette (FR-UDM-5)', () => {
   });
 
   it('colours each chip with its device accent', () => {
-    expect(html).toContain(`data-device="pot" style="--accent: ${REGISTRY['pot']!.accentColor}"`);
-    expect(html).toContain(`data-device="oled" style="--accent: ${REGISTRY['oled']!.accentColor}"`);
+    expect(html).toContain(`data-device="pot" style="--accent: var(--ds-accent-pot)"`);
+    expect(html).toContain(`data-device="oled" style="--accent: var(--ds-accent-oled)"`);
   });
 
   it('carries a hover tip naming the device, for the collapsed rail', () => {
@@ -337,10 +339,10 @@ describe('device palette (FR-UDM-5)', () => {
   });
 
   it('a device added to the registry appears with no Wiring Editor edit', () => {
-    REGISTRY['servo'] = { ...REGISTRY['button']!, id: 'servo', label: 'Servo', accentColor: '#123456' };
+    REGISTRY['servo'] = { ...REGISTRY['button']!, id: 'servo', label: 'Servo', accent: { dark: '#123456', light: '#654321' } };
     try {
       const withServo = buildHtml([], [], TEST_NONCE, SCRIPT);
-      expect(withServo).toContain('data-device="servo" style="--accent: #123456"');
+      expect(withServo).toContain('data-device="servo" style="--accent: var(--ds-accent-servo)"');
     } finally {
       delete REGISTRY['servo'];
     }
@@ -353,12 +355,67 @@ describe('device icons (alt1 palette)', () => {
   });
 
   it('falls back to an accent-coloured dot for a device with no icon', () => {
-    const svg = deviceIconSvg('servo', '#123456');
+    const svg = deviceIconSvg('servo', 'var(--ds-accent-servo)');
     expect(svg).toContain('<svg class="icon" viewBox="0 0 48 48"');
-    expect(svg).toContain('fill="#123456"');
+    expect(svg).toContain('style="fill:var(--ds-accent-servo)"');
   });
 
   it('escapes the fallback colour', () => {
     expect(deviceIconSvg('servo', '"><script>')).not.toContain('<script>');
+  });
+});
+
+describe('Wiring Editor theming (FR-THM-1, FR-THM-3, FR-THM-4)', () => {
+  const html = buildHtml([], [], 'test-nonce-abc123', 'vscode-resource://x.js');
+
+  // Literals that are allowed: the shared theme block (accent palette), the
+  // board art, the illustrated icons and the registry's pin fills.
+  function ownMarkup(): string {
+    let own = html.replace(themeCss({ surface: 'sidebar' }), '').replace(BOARD_ART_CSS, '');
+    own = own.replace(/<svg class="icon"[\s\S]*?<\/svg>/g, '');
+    for (const d of Object.values(REGISTRY)) own = own.split(d.pinFill).join('');
+    return own;
+  }
+
+  it('includes the shared sidebar-surface theme block', () => {
+    expect(html).toContain(themeCss({ surface: 'sidebar' }));
+    expect(html).toContain('background: var(--ds-surface)');
+  });
+
+  it('has no hex / rgb() / hsl() colour literals outside the allow-list', () => {
+    const own = ownMarkup();
+    expect(own).not.toMatch(/(?<![&\w])#[0-9a-fA-F]{3,8}\b/);
+    expect(own).not.toMatch(/\brgba?\(|\bhsla?\(/);
+  });
+
+  it('draws the board inside a themed frame with a contrast border', () => {
+    expect(html).toMatch(/<div id="board-frame" class="ds-hc">\s*<svg id="pinout"/);
+    expect(html).toMatch(/#board-frame\s*\{[^}]*var\(--ds-surface-raised\)[^}]*var\(--ds-border\)/);
+  });
+
+  it('keeps the board art colours from the board-art module', () => {
+    expect(html).toContain(BOARD_ART_CSS);
+    expect(BOARD_ART_CSS).toMatch(/\.board-body\s*\{[^}]*#/);
+  });
+
+  it('shows bus pins, brackets and the conflict hatch in the theme warning colour', () => {
+    expect(html).toMatch(/\.pin-bus circle\s*\{[^}]*var\(--ds-warning-fg\)/);
+    expect(html).toMatch(/\.bus-bracket\s*\{[^}]*var\(--ds-warning-fg\)/);
+    expect(html).toMatch(/\.ctx-occ circle\s*\{[^}]*var\(--ds-warning-fg\)/);
+    expect(html).toContain('class="hatch-a"');
+  });
+
+  it('marks the micro-USB indicator with the midiUsb accent when active', () => {
+    expect(html).toMatch(/#usb-port-group\.active \.usb-port\s*\{[^}]*var\(--ds-accent-midiUsb\)/);
+  });
+
+  it('themes the popover and the cursor label', () => {
+    expect(html).toMatch(/#device-popover\s*\{[^}]*var\(--ds-surface-raised\)/);
+    expect(html).toMatch(/#ghost\s*\{[^}]*var\(--ds-surface-raised\)/);
+    expect(html).toMatch(/#ghost\.warn \.tgt\s*\{\s*color:\s*var\(--ds-warning-fg\)/);
+  });
+
+  it('gives palette icons a fixed plate so the art reads on any theme', () => {
+    expect(deviceIconSvg('pot', 'var(--ds-accent-pot)')).toMatch(/<svg class="icon"[^>]*><rect class="icon-plate"/);
   });
 });

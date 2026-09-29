@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { REGISTRY, DEVICE_TYPES, isDeviceType, DeviceType, wiredControlIds } from '../../../devices/registry';
+import { REGISTRY, DEVICE_TYPES, isDeviceType, DeviceType, wiredControlIds, accentVar, type DeviceDescriptor } from '../../../devices/registry';
 import { parseControlsConvention } from '../../../controllers/controls-convention-parser';
 import { buildHtml as buildWiringHtml } from '../../../wiring/wiring-panel';
 import { buildHtml as buildControlsHtml } from '../../../sidebar/controls-editor-panel';
@@ -137,7 +137,7 @@ describe('adding a registry entry surfaces it everywhere (FR-DEV-2)', () => {
       id: FAKE_ID,
       label: 'Fakekind',
       primitive: 'latching',
-      accentColor: '#abc123',
+      accent: { dark: '#abc123', light: '#123abc' },
       pinFill: '#111222',
       declaredClassName: 'FakeKindSwitch',
       attachmentKind: 'pin',
@@ -161,7 +161,9 @@ describe('adding a registry entry surfaces it everywhere (FR-DEV-2)', () => {
     addFakeDevice();
     const html = buildWiringHtml([], [], 'test-nonce', 'vscode-resource://x.js');
     expect(html).toContain('.pin-fakekind');
-    expect(html).toContain('#abc123');
+    expect(html).toContain('var(--ds-accent-fakekind)');
+    expect(html).toContain('--ds-accent-fakekind: #abc123;');
+    expect(html).toContain('--ds-accent-fakekind: #123abc;');
     expect(html).toContain('#111222');
     expect(html).toContain('data-device="fakekind"');
     expect(html).toContain('Fakekind');
@@ -171,7 +173,7 @@ describe('adding a registry entry surfaces it everywhere (FR-DEV-2)', () => {
     addFakeDevice();
     const html = buildControlsHtml('test-nonce', 'vscode-resource://x.js');
     expect(html).toContain('.ctrl-card[data-kind="fakekind"]');
-    expect(html).toContain('#abc123');
+    expect(html).toContain('var(--ds-accent-fakekind)');
   });
 
   it('surfaces in controls-writer.ts codegen via declaredClassName', () => {
@@ -198,5 +200,41 @@ describe('bus-attached peripherals are excluded from pin/palette pickers (FR-DEV
   it('sdcard has no control-card style in the Controls Editor', () => {
     const html = buildControlsHtml('test-nonce', 'vscode-resource://x.js');
     expect(html).not.toContain('data-kind="sdcard"');
+  });
+});
+
+// FR-THM-3: each device's accent is a dark/light pair; the light variant must
+// read on Light+'s white editor background and the dark one on Dark+'s #1e1e1e.
+function luminance(hex: string): number {
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
+    .map(v => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
+  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+}
+function contrastRatio(a: string, b: string): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi! + 0.05) / (lo! + 0.05);
+}
+
+describe('device accent variants (FR-THM-3)', () => {
+  const HEX = /^#[0-9a-f]{6}$/i;
+
+  it.each(Object.values(REGISTRY).map(d => [d.id, d] as const))(
+    '%s has dark and light hex variants that reach WCAG 3:1 on their theme background',
+    (_id, d) => {
+      expect(d.accent.dark).toMatch(HEX);
+      expect(d.accent.light).toMatch(HEX);
+      expect(contrastRatio(d.accent.light, '#ffffff')).toBeGreaterThanOrEqual(3);
+      expect(contrastRatio(d.accent.dark, '#1e1e1e')).toBeGreaterThanOrEqual(3);
+    },
+  );
+
+  it('accentVar names the per-device CSS variable', () => {
+    expect(accentVar('pot')).toBe('var(--ds-accent-pot)');
+  });
+
+  it('a device without both variants fails to type-check', () => {
+    // @ts-expect-error — `accent.light` is required
+    const missingLight: DeviceDescriptor['accent'] = { dark: '#000000' };
+    expect(missingLight.dark).toBe('#000000');
   });
 });
