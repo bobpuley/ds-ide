@@ -108,3 +108,82 @@
   stay visible everywhere and link back to it; no status-bar Run button (decided).
 - **R7 — Accidental flash.** ⚡ Flash sits in the always-visible status bar and overwrites the
   board's program. Mitigation: modal confirmation naming the project and target before building.
+
+## Extension views follow the IDE theme (intake 2026-09-29, M68)
+
+### Bets
+
+- **B6 — VS Code's own theme variables cover most of the work.** VS Code injects the active
+  theme's colours into every webview as `--vscode-*` CSS variables and marks `<body>` with the
+  theme kind (`vscode-light`, `vscode-dark`, `vscode-high-contrast`,
+  `vscode-high-contrast-light`). Pointing the UI chrome of all five webviews at those variables
+  makes it follow every theme, including user-installed ones, without a palette of our own.
+
+### Assumptions
+
+> ⚠️ ASSUMPTION: The `charts.*` colour tokens (`charts.blue`, `charts.red`, `charts.green`,
+> `charts.yellow`, `charts.orange`, `charts.purple`, `charts.lines`, `charts.foreground`) have
+> built-in defaults for every theme kind, so traces and grid stay visible even when a theme
+> doesn't define them.
+
+> ⚠️ ASSUMPTION: The hardware depictions (the Daisy board drawing, the illustrated device icons,
+> the OLED glass) stay readable on light and high-contrast backgrounds once framed by a themed
+> border. They are not re-coloured, because the real hardware looks the same in any theme
+> (decided 2026-09-29).
+
+> ⚠️ ASSUMPTION: Reading canvas colours from computed CSS once per theme change, not per frame,
+> keeps the scope and spectrum at today's frame rate.
+
+### Risks
+
+- **R8 — Accent colours that lose contrast or become indistinguishable.** Ten device accents must
+  each stay distinct from one another and readable on both light and dark editor backgrounds.
+  Mitigation: every accent has a dark and a light variant in the registry, and a unit test checks
+  each variant against the default Light+ / Dark+ editor background at WCAG 3:1. HC themes reuse
+  the matching variant plus a contrast border.
+- **R9 — Hardcoded colours creeping back.** With about 370 literals today, a new view or a quick
+  fix can easily reintroduce one. Mitigation: a guard test fails on any hex / `rgb()` literal in
+  webview code outside an explicit allow-list (accent palette, board art, device icons, OLED
+  glass).
+- **R10 — Stale canvases after a theme switch.** A stopped scope, or the Controls Editor canvas,
+  doesn't redraw by itself, so it could keep the old theme's colours. Mitigation: every canvas
+  view re-reads its colours and repaints when the body's theme class changes (decided
+  2026-09-29: live update, no reopen).
+
+## Controls Editor devices in the wiring-palette style (intake 2026-09-29, M69)
+
+### Bets
+
+- **B7 — One set of device art serves both editors.** The palette's illustrated icons can carry
+  small class hooks on their moving parts (pot pointer, LED lens, button cap, toggle lever,
+  encoder pointer, RGB segments) without changing how the palette looks, so the Controls Editor
+  animates the same art instead of keeping a second, live copy.
+
+### Assumptions
+
+> ⚠️ ASSUMPTION: Scope is the six control kinds that have a card today: pot, button, LED,
+> toggle, encoder, RGB LED. OLED, SD card, MIDI TRS and MIDI USB are excluded because they never
+> get a Controls Editor card (decided 2026-09-29).
+
+> ⚠️ ASSUMPTION: The illustrated art is drawn on a 48 × 48 grid; scaled up to a usable size
+> (about 64 px) it stays sharp, and grabbing a knob or pressing a button on the art is as
+> easy as on today's widgets.
+
+> ⚠️ ASSUMPTION: Existing behaviour is unchanged: the drag handle, id label, pot drag and value
+> readout, button press and release, toggle position cycling, encoder scroll, the running /
+> stopped dimming, and the emulator IPC messages.
+
+> ⚠️ ASSUMPTION: Live states use the art's own fixed colours (hardware depiction, FR-THM-4), and
+> only the tile frame and accent underline follow the theme. The RGB LED shows the live colour
+> from the emulator inside the art's lens.
+
+### Risks
+
+- **R11 — Two copies of the art drifting apart.** If the live widgets were separate SVGs, a
+  palette icon edit would leave the Controls Editor stale. Mitigation: the palette and the
+  Controls Editor read the same `DEVICE_ICONS` entries; a unit test checks that every control
+  kind's art has the hooks its widget needs.
+- **R12 — Regression of drag and press interactions.** The pot's `ns-resize` drag, the button's
+  press-and-release and the toggle cycling are wired to today's elements. Mitigation: the
+  interaction code keeps its handlers and only the elements they attach to change; a manual
+  pass in all four themes covers each kind.

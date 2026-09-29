@@ -185,3 +185,95 @@ state item, plus one ⚡ Flash item. Both are hidden outside Daisy projects.
   existing `buildHardware` / `flash` paths, with cancellable progress.
 - AC: with no board detected, Flash shows a warning with the BOOT + RESET instructions and a
   *Retry*, and does not start a hardware build.
+
+## Extension views follow the IDE theme — `FR-THM-*` (intake 2026-09-29)
+
+Source: `01_input-ideas.md`, 2026-09-29. Milestone: **M68**. Layout reference (to be built as the
+milestone's first task): `docs/mockups/v22-themes.html`. Covers the five webviews: Scope, OLED
+and MIDI panels (editor area), and the Controls Editor and Wiring Editor (sidebar). The Daisy
+view (FR-TRN-4) is a native TreeView and already follows the theme.
+
+**Decisions recorded 2026-09-29:** all five views; all four theme kinds (light, dark,
+high-contrast dark, high-contrast light); colours are split by meaning (UI chrome and data
+colours follow the theme, hardware depictions keep fixed colours in a themed frame); traces and
+indicators use VS Code's colour tokens while device accents keep their own identity palette with
+light and dark variants; theme switches apply live; verification = guard test + contrast test +
+a manual pass in four themes.
+
+**FR-THM-1 — UI chrome follows the theme.** Backgrounds, text, secondary text, borders, inputs,
+buttons, dropdowns, popovers, tooltips and focus outlines in all five views use the active
+theme's colours (`--vscode-*` variables). Editor-area panels use the editor background; sidebar
+views use the sidebar background.
+- AC: in Light+, Dark+, High Contrast Dark and High Contrast Light, no view shows a dark-only
+  surface, and all text is readable against its background.
+- AC: in high-contrast themes, interactive elements and popovers show the theme's contrast
+  border, and focus is visible.
+
+**FR-THM-2 — Data colours follow the theme.** The scope and spectrum traces (input / output),
+grid and axis labels, the running / stopped indicator, and the MIDI monitor and keyboard
+highlights take their colours from VS Code theme tokens (`charts.*`, `charts.lines`,
+`charts.foreground`, and the theme's error / success colours).
+- AC: the input and output traces are distinguishable from each other and from the grid in all
+  four theme kinds.
+
+**FR-THM-3 — Device accent colours per theme.** Each registry device's accent colour becomes a
+pair: a dark-theme and a light-theme variant. Views pick the variant for the active theme kind;
+high-contrast kinds reuse the matching variant and add a contrast border. This applies wherever
+an accent appears: palette tiles, placed pins and bus brackets, popover dots, and Controls
+Editor controls.
+- AC: a unit test checks every variant for WCAG 3:1 contrast against the default editor
+  background of Light+ (`#ffffff`, light variant) and Dark+ (`#1e1e1e`, dark variant).
+- AC: a new registry device can't be added without both variants (type-checked).
+
+**FR-THM-4 — Hardware depictions keep their colours, in a themed frame.** The Daisy board
+drawing, the illustrated device icons and the OLED glass are not re-coloured. Each sits in a
+frame (border / surround) that uses the theme's colours, so it reads on light and high-contrast
+backgrounds.
+- AC: the board, icons and OLED pixels look identical in every theme; only their frame changes.
+
+**FR-THM-5 — Live theme switching.** Changing the colour theme while views are open repaints
+every view in the new theme without reopening or reloading. This includes canvas-drawn content
+(scope, spectrum, Controls Editor canvas), even when the emulator is stopped.
+- AC: switching Dark+ → Light+ with a stopped scope visible repaints its grid, background and
+  last traces in Light+ colours.
+
+**FR-THM-6 — No hardcoded colours creep back.** A unit test fails on any hex or `rgb()` / `hsl()`
+colour literal in webview code outside an explicit allow-list (the accent palette, board art,
+device icons, OLED glass).
+- AC: the test fails when a literal is added to a non-allow-listed file, and names the file and
+  line.
+
+## Controls Editor devices in the wiring-palette style — `FR-CWS-*` (intake 2026-09-29)
+
+Source: `01_input-ideas.md`, 2026-09-29. Milestone: **M69** (v22). Layout reference (to be built as
+the milestone's first task): `docs/mockups/v22-control-widgets.html`. Follows M66 (palette icons)
+and M68 (theme layer).
+
+**Decisions recorded 2026-09-29:** the six control kinds with a Controls Editor card (pot, button,
+LED, toggle, encoder, RGB LED) get the palette's illustrated look as *live* widgets; OLED, SD
+card, MIDI TRS and MIDI USB are excluded (no card). The palette and the Controls Editor share one
+set of art. The card keeps its drag handle, id label and running / stopped dimming.
+
+**FR-CWS-1 — Shared device art with hooks.** Each control kind's illustrated icon in
+`device-icons.ts` exposes named hooks on its moving parts, so the Controls Editor animates the same
+art the palette draws.
+- AC: the palette looks identical before and after the change.
+- AC: a unit test checks that every control kind's art carries the hooks its widget needs.
+
+**FR-CWS-2 — Live illustrated widgets.** Each Controls Editor card shows its device's art at a
+usable size as the interactive widget:
+- pot — pointer rotates as the value is dragged; the numeric value stays visible;
+- button — cap looks pressed while held;
+- toggle — lever moves to the current position; the position number stays visible;
+- encoder — pointer rotates with the position; the position number stays visible;
+- LED — lens glows when lit;
+- RGB LED — lens shows the live colour from the emulator.
+- AC: every existing interaction and IPC message works as before (drag, press / release, toggle
+  cycling, encoder scroll, LED and RGB LED state).
+- AC: when the emulator is stopped the widgets are dimmed and inert, as today.
+
+**FR-CWS-3 — Palette-style card frame.** Each card uses the palette tile look: the themed frame
+and the device's accent underline (`--ds-accent-<id>`), with the art on its fixed plate
+(FR-THM-4).
+- AC: the frame follows all four theme kinds; the art looks identical in every theme.
+- AC: no hardcoded colour is added outside the allow-listed art (FR-THM-6).

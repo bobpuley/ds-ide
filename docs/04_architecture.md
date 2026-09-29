@@ -173,3 +173,58 @@ Dark variant is the existing colour; the light variant is darkened to clear WCAG
 Message contracts, the Daisy view (native TreeView), device icon and board artwork, OLED frame
 rendering (`oled-frame.ts`), and CSP / nonce handling (the theme block is inline CSS under the
 existing style-src policy).
+
+## Controls Editor devices in the wiring-palette style (`FR-CWS-*`, M69)
+
+No new process, dependency or storage. The Controls Editor cards stop drawing their own widgets
+and render the palette's illustrated art instead, animated in place. Message contracts and the
+emulator IPC are untouched.
+
+### Principle: one set of art, hooks for the moving parts
+
+`DEVICE_ICONS` (`src/wiring/device-icons.ts`) stays the only place the art lives. The six control
+kinds gain `data-part` hooks on their moving parts; the palette ignores them (its look does not
+change) and the Controls Editor drives them. Live state is applied as CSS custom properties or
+attributes on the widget root (pointer angle, lit, pressed, toggle position, RGB colour), so the
+update code never rebuilds the SVG.
+
+| Kind | Hooks | Live state |
+|---|---|---|
+| pot | `pointer` | angle from the value (same −135°…+135° sweep as the arc knob) |
+| button | `cap` | pressed |
+| toggle | `lever` | position |
+| encoder | `pointer` | angle from the wrapped position |
+| led | `lens`, `glow` | lit |
+| rgbled | `lens` | live colour (`color(srgb …)`, as today) |
+
+### Confirmed state visuals (2026-09-29, `docs/mockups/v22-control-widgets.html`)
+
+Card: 132 px wide tile in the palette frame (themed border, `--ds-surface-raised`, accent underline),
+drag handle with the id on top, the art at 72 px on its fixed plate, a numeric readout and a small
+caption below. Stopped emulator: widget at 35 % opacity and inert.
+
+| Kind | Moving part | Mapping |
+|---|---|---|
+| pot | `pointer`, origin (24, 26) | rotate −135° + value × 270°; readout shows the 0–1 value |
+| encoder | `pointer`, origin (24, 24) | rotate position × 11.25° (32 visual detents); readout shows the position |
+| button | `cap` | moves down 2 px while pressed |
+| toggle | `lever` | moves down 5 px per position (0, 1, 2); readout shows the position |
+| led | `lens`, `glow` | lens opacity 0.35 → 1, glow opacity 0.05 → 0.6 when lit |
+| rgbled | `lens` | overlay filled with the live `color(srgb r g b)`, hidden while off |
+
+### Components
+
+| Component | Change |
+|---|---|
+| `src/wiring/device-icons.ts` | control-kind art gains `data-part` hooks; exports `deviceIconSvg(id, accent, { live: true })` returning the art without the palette's fixed size, for the card. Palette output unchanged. |
+| `src/webview/controls/device-widget.ts` *(new, pure)* | `widgetHtml(kind, state)` and the state → attribute / style mapping for each kind (angle, lit, pressed, position, colour). Unit-tested without a DOM. |
+| `src/webview/controls/convention-canvas.ts` | builds each card body with `widgetHtml`; keeps its existing handlers (pot drag, button press, toggle click, encoder scroll) and attaches them to the widget root. |
+| `src/webview/controls/knob-svg.ts` | removed; the pot and encoder use the shared art. |
+| `src/sidebar/controls-editor-panel.ts` | card CSS becomes the palette tile look (themed frame, `--ds-accent-<id>` underline, art on its fixed plate); the M68 widget-outline rules for `.btn-ce`, `.tgl-ce`, `.vled-dot` and `.vrgb-dot` are removed. |
+| `src/test/unit/wiring/device-icons.test.ts`, `src/test/unit/webview/device-widget.test.ts` *(new)* | hook presence per control kind; state mapping per kind. |
+
+### Unchanged
+
+Palette appearance, the Wiring Editor, the theme layer (`themeCss`, `--ds-*`), the allow-list of the
+hardcoded-colour guard (the art stays in `device-icons.ts`), `controllers.yaml` layout
+persistence, and the OLED / SD card / MIDI panels.
