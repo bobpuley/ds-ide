@@ -54,7 +54,7 @@ standalone mockup before any view changes.
 
 ---
 
-### [ ] feat: OLED and MIDI panels follow the theme (FR-THM-4)
+### [x] feat: OLED and MIDI panels follow the theme (FR-THM-4)
 
 **Affected files:** `src/webview/oled-panel.ts`, `src/webview/midi-panel.ts`, `src/test/unit/webview/midi-monitor.test.ts`
 

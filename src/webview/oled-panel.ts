@@ -5,6 +5,7 @@ import { IpcMessage } from '../emulator/ipc-client';
 import { getString } from '../ipc/narrow';
 import { OledWebviewMessage } from './messages';
 import { hasKnownCommand } from './message-guard';
+import { themeCss } from './theme/theme-css';
 
 // FR-EXT-33: see controls-editor-panel.ts's identical comment.
 const OLED_WEBVIEW_COMMANDS = new Set<OledWebviewMessage['command']>(['webviewReady']);
@@ -122,7 +123,7 @@ export class OledPanel {
   }
 }
 
-function buildHtml(nonce: string, scriptUri: string): string {
+export function buildHtml(nonce: string, scriptUri: string): string {
   return /* html */`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -131,14 +132,19 @@ function buildHtml(nonce: string, scriptUri: string): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Daisy OLED</title>
   <style>
+${themeCss({ surface: 'editor' })}
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #1e1e1e; color: #d4d4d4; font-family: monospace; font-size: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 12px; }
-    #oled { background: #000; border: 1px solid #555; image-rendering: pixelated; }
-    #oled-foot { color: #9cdcfe; font-size: 11px; }
+    body { background: var(--ds-surface); color: var(--ds-text); font-family: monospace; font-size: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; gap: 12px; }
+    /* FR-THM-4: the glass keeps its fixed colours; only the frame follows the theme. */
+    #oled-frame { padding: 10px; background: var(--ds-surface-raised); border: 1px solid var(--ds-border); }
+    #oled { display: block; background: black; image-rendering: pixelated; }
+    #oled-foot { color: var(--ds-text-muted); font-size: 11px; }
   </style>
 </head>
 <body>
-  <canvas id="oled" width="128" height="64" style="width:512px;height:256px;"></canvas>
+  <div id="oled-frame" class="ds-hc">
+    <canvas id="oled" width="128" height="64" style="width:512px;height:256px;"></canvas>
+  </div>
   <div id="oled-foot">SSD1306 · 128×64 · —</div>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>

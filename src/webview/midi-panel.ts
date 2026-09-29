@@ -6,6 +6,7 @@ import { getNumber } from '../ipc/narrow';
 import { noteToBytes, programChangeToBytes, controlChangeToBytes } from './midi-monitor';
 import { MidiWebviewMessage } from './messages';
 import { hasKnownCommand, assertNever } from './message-guard';
+import { themeCss } from './theme/theme-css';
 
 // FR-EXT-33: see controls-editor-panel.ts's identical comment.
 const MIDI_WEBVIEW_COMMANDS = new Set<MidiWebviewMessage['command']>([
@@ -150,7 +151,7 @@ export class MidiPanel {
   }
 }
 
-function buildHtml(nonce: string, scriptUri: string): string {
+export function buildHtml(nonce: string, scriptUri: string): string {
   return /* html */`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -159,26 +160,27 @@ function buildHtml(nonce: string, scriptUri: string): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Daisy MIDI</title>
   <style>
+${themeCss({ surface: 'editor' })}
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #1e1e1e; color: #d4d4d4; font-family: monospace; font-size: 12px; display: flex; flex-direction: column; align-items: stretch; height: 100vh; gap: 8px; padding: 12px; }
+    body { background: var(--ds-surface); color: var(--ds-text); font-family: monospace; font-size: 12px; display: flex; flex-direction: column; align-items: stretch; height: 100vh; gap: 8px; padding: 12px; }
     #keyboard { display: flex; height: 96px; gap: 2px; flex-shrink: 0; }
-    .key { flex: 1; background: #3c3c3c; border: 1px solid #555; border-radius: 0 0 4px 4px; cursor: pointer; user-select: none; }
-    .key:active, .key.pressed { background: #4ec9b0; }
+    .key { flex: 1; background: var(--ds-surface-raised); border: 1px solid var(--ds-border); border-radius: 0 0 4px 4px; cursor: pointer; user-select: none; }
+    .key:active, .key.pressed { background: var(--ds-trace-in); }
     /* FR-MIDI-1: Program Change / Control Change sender — stacked below the
        keyboard, above the monitor (docs/mockups/m48-io-monitors.html Variant A). */
-    #sender { flex-shrink: 0; border: 1px solid #3c3c3c; border-radius: 4px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+    #sender { flex-shrink: 0; border: 1px solid var(--ds-border); border-radius: 4px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
     .sender-row { display: flex; align-items: center; gap: 6px; }
-    .sender-row label { width: 50px; color: #9a9a9a; font-size: 10px; }
-    .sender-row select, .sender-row input { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; padding: 3px 5px; font-family: monospace; font-size: 11px; width: 64px; }
-    .sender-row button { background: #0e639c; border: 1px solid #1177bb; color: #fff; padding: 3px 10px; border-radius: 2px; cursor: pointer; font-family: monospace; font-size: 10px; margin-left: auto; }
-    .sender-row button:hover { background: #1177bb; }
-    #monitor { flex: 1; overflow-y: auto; border: 1px solid #3c3c3c; padding: 6px; font-size: 11px; }
+    .sender-row label { width: 50px; color: var(--ds-text-muted); font-size: 10px; }
+    .sender-row select, .sender-row input { background: var(--ds-input-bg); border: 1px solid var(--ds-border); color: var(--ds-input-fg); padding: 3px 5px; font-family: monospace; font-size: 11px; width: 64px; }
+    .sender-row button { background: var(--ds-button-bg); border: 1px solid var(--ds-border); color: var(--ds-button-fg); padding: 3px 10px; border-radius: 2px; cursor: pointer; font-family: monospace; font-size: 10px; margin-left: auto; }
+    .sender-row button:hover { background: var(--ds-button-hover-bg); }
+    #monitor { flex: 1; overflow-y: auto; border: 1px solid var(--ds-border); padding: 6px; font-size: 11px; }
     .monitor-row { white-space: pre; }
-    .monitor-row.dir-rx { color: #4ec9b0; }
-    .monitor-row.dir-tx { color: #569cd6; }
-    #monitor-legend { flex-shrink: 0; display: flex; gap: 14px; font-size: 10px; color: #9a9a9a; }
+    .monitor-row.dir-rx { color: var(--ds-trace-in); }
+    .monitor-row.dir-tx { color: var(--ds-trace-out); }
+    #monitor-legend { flex-shrink: 0; display: flex; gap: 14px; font-size: 10px; color: var(--ds-text-muted); }
     #monitor-legend .sw { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
-    #monitor-legend .sw.rx { background: #4ec9b0; } #monitor-legend .sw.tx { background: #569cd6; }
+    #monitor-legend .sw.rx { background: var(--ds-trace-in); } #monitor-legend .sw.tx { background: var(--ds-trace-out); }
   </style>
 </head>
 <body>
