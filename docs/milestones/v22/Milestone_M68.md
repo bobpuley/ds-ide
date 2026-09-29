@@ -90,7 +90,7 @@ standalone mockup before any view changes.
 
 ---
 
-### [ ] chore: guard against hardcoded colours (FR-THM-6)
+### [x] chore: guard against hardcoded colours (FR-THM-6)
 
 **Affected files:** `src/test/unit/webview/no-hardcoded-colours.test.ts`
 
