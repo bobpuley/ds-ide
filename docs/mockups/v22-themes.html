@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>v22 / M68 — theme mockup (FR-THM-1..5)</title>
+<!--
+  Standalone mockup. Switch the theme kind with the buttons at the top; the token values below are
+  the real VS Code defaults for each kind. Views use only --ds-* (the proposed shared layer);
+  --ds-* aliases the --vscode-* tokens exactly as docs/04_architecture.md's token map says.
+-->
+<style>
+  /* ---- the four theme kinds: VS Code default token values ---- */
+  body.vscode-dark {
+    --vscode-editor-background:#1e1e1e; --vscode-sideBar-background:#252526; --vscode-editorWidget-background:#252526;
+    --vscode-foreground:#cccccc; --vscode-descriptionForeground:#9d9d9d; --vscode-panel-border:#80808059;
+    --vscode-focusBorder:#007fd4; --vscode-contrastBorder:transparent;
+    --vscode-input-background:#3c3c3c; --vscode-input-foreground:#cccccc;
+    --vscode-button-background:#0e639c; --vscode-button-foreground:#ffffff;
+    --vscode-charts-blue:#3794ff; --vscode-charts-orange:#d18616; --vscode-charts-lines:#cccccc80; --vscode-charts-foreground:#cccccc;
+    --vscode-testing-iconPassed:#73c991; --vscode-errorForeground:#f48771;
+  }
+  body.vscode-light {
+    --vscode-editor-background:#ffffff; --vscode-sideBar-background:#f3f3f3; --vscode-editorWidget-background:#f3f3f3;
+    --vscode-foreground:#616161; --vscode-descriptionForeground:#717171; --vscode-panel-border:#80808059;
+    --vscode-focusBorder:#0090f1; --vscode-contrastBorder:transparent;
+    --vscode-input-background:#ffffff; --vscode-input-foreground:#616161;
+    --vscode-button-background:#007acc; --vscode-button-foreground:#ffffff;
+    --vscode-charts-blue:#1a85ff; --vscode-charts-orange:#d18616; --vscode-charts-lines:#61616180; --vscode-charts-foreground:#616161;
+    --vscode-testing-iconPassed:#388a34; --vscode-errorForeground:#a1260d;
+  }
+  body.vscode-high-contrast {
+    --vscode-editor-background:#000000; --vscode-sideBar-background:#000000; --vscode-editorWidget-background:#0c141f;
+    --vscode-foreground:#ffffff; --vscode-descriptionForeground:#ffffffb3; --vscode-panel-border:#6fc3df;
+    --vscode-focusBorder:#f38518; --vscode-contrastBorder:#6fc3df;
+    --vscode-input-background:#000000; --vscode-input-foreground:#ffffff;
+    --vscode-button-background:#000000; --vscode-button-foreground:#ffffff;
+    --vscode-charts-blue:#3794ff; --vscode-charts-orange:#d18616; --vscode-charts-lines:#ffffff80; --vscode-charts-foreground:#ffffff;
+    --vscode-testing-iconPassed:#73c991; --vscode-errorForeground:#f48771;
+  }
+  body.vscode-high-contrast-light {
+    --vscode-editor-background:#ffffff; --vscode-sideBar-background:#ffffff; --vscode-editorWidget-background:#ffffff;
+    --vscode-foreground:#292929; --vscode-descriptionForeground:#292929; --vscode-panel-border:#0f4a85;
+    --vscode-focusBorder:#006bbd; --vscode-contrastBorder:#0f4a85;
+    --vscode-input-background:#ffffff; --vscode-input-foreground:#292929;
+    --vscode-button-background:#ffffff; --vscode-button-foreground:#292929;
+    --vscode-charts-blue:#1a85ff; --vscode-charts-orange:#d18616; --vscode-charts-lines:#29292980; --vscode-charts-foreground:#292929;
+    --vscode-testing-iconPassed:#007100; --vscode-errorForeground:#b5200d;
+  }
+
+  /* ---- proposed shared layer: --ds-* → --vscode-* ---- */
+  .surface-editor { --ds-surface: var(--vscode-editor-background); }
+  .surface-sidebar { --ds-surface: var(--vscode-sideBar-background); }
+  body {
+    --ds-surface-raised: var(--vscode-editorWidget-background);
+    --ds-text: var(--vscode-foreground); --ds-text-muted: var(--vscode-descriptionForeground);
+    --ds-border: var(--vscode-panel-border); --ds-focus: var(--vscode-focusBorder);
+    --ds-contrast-border: var(--vscode-contrastBorder);
+    --ds-input-bg: var(--vscode-input-background); --ds-input-fg: var(--vscode-input-foreground);
+    --ds-button-bg: var(--vscode-button-background); --ds-button-fg: var(--vscode-button-foreground);
+    --ds-trace-in: var(--vscode-charts-blue); --ds-trace-out: var(--vscode-charts-orange);
+    --ds-grid: var(--vscode-charts-lines); --ds-axis: var(--vscode-charts-foreground);
+    --ds-ok: var(--vscode-testing-iconPassed); --ds-error: var(--vscode-errorForeground);
+  }
+  /* accents: per-kind variant; HC kinds reuse the matching variant */
+  body.vscode-dark, body.vscode-high-contrast {
+    --ds-accent-pot:#4ec9b0; --ds-accent-button:#569cd6; --ds-accent-led:#f04a4a; --ds-accent-toggle:#c586c0;
+    --ds-accent-rgbled:#ce9178; --ds-accent-encoder:#dcdcaa; --ds-accent-sdcard:#f4c430; --ds-accent-oled:#4fc1ff;
+    --ds-accent-midiTrs:#c586c0; --ds-accent-midiUsb:#569cd6;
+  }
+  body.vscode-light, body.vscode-high-contrast-light {
+    --ds-accent-pot:#007a66; --ds-accent-button:#1f6fb5; --ds-accent-led:#d32f2f; --ds-accent-toggle:#9c3f96;
+    --ds-accent-rgbled:#a8552e; --ds-accent-encoder:#7d7a00; --ds-accent-sdcard:#8a6d00; --ds-accent-oled:#0072b1;
+    --ds-accent-midiTrs:#9c3f96; --ds-accent-midiUsb:#1f6fb5;
+  }
+  /* HC: contrast border on interactive elements, popovers and hardware frames; visible focus */
+  body.vscode-high-contrast .hc, body.vscode-high-contrast-light .hc { border:1px solid var(--ds-contrast-border) !important; }
+
+  * { box-sizing:border-box; }
+  body { margin:0; font:13px system-ui,sans-serif; color:var(--ds-text); background:#888; padding-top:44px; }
+  #bar { position:fixed; top:0; left:0; right:0; height:44px; background:#333; color:#eee; display:flex; gap:8px; align-items:center; padding:0 12px; z-index:9; font-size:12px; }
+  #bar button { background:#555; color:#fff; border:1px solid #777; padding:5px 10px; cursor:pointer; }
+  #bar button.on { background:#0e639c; border-color:#4fc1ff; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:12px; }
+  .view { background:var(--ds-surface); border:1px solid var(--ds-border); }
+  .view > h3 { margin:0; padding:6px 10px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--ds-text-muted); border-bottom:1px solid var(--ds-border); }
+  .pad { padding:10px; }
+  .muted { color:var(--ds-text-muted); }
+  .sw { display:inline-block; width:12px; height:12px; vertical-align:-2px; margin-right:4px; }
+
+  /* Scope */
+  .scope-wrap { background:var(--ds-surface); border:1px solid var(--ds-border); }
+  .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; }
+  .btn { background:var(--ds-button-bg); color:var(--ds-button-fg); border:1px solid transparent; padding:4px 10px; }
+  .field { background:var(--ds-input-bg); color:var(--ds-input-fg); border:1px solid var(--ds-border); padding:3px 6px; }
+  .focus { outline:2px solid var(--ds-focus); outline-offset:1px; }
+
+  /* OLED */
+  .oled-frame { display:inline-block; padding:10px; background:var(--ds-surface-raised); border:1px solid var(--ds-border); }
+  .oled-glass { background:#000; padding:6px; border:2px solid #222; }
+  .oled-glass canvas { display:block; image-rendering:pixelated; }
+
+  /* MIDI */
+  .keys { display:flex; height:70px; }
+  .key { width:22px; border:1px solid var(--ds-border); background:var(--ds-surface-raised); }
+  .key.on { background:var(--ds-trace-in); }
+  .mon { font:11px ui-monospace,monospace; line-height:1.5; background:var(--ds-input-bg); border:1px solid var(--ds-border); padding:6px; }
+  .mon .ok { color:var(--ds-ok); } .mon .err { color:var(--ds-error); }
+
+  /* Controls Editor */
+  .ctrl-card { display:inline-block; width:92px; margin:4px; padding:8px 4px; text-align:center; background:var(--ds-surface-raised); border:1px solid var(--ds-border); border-top:3px solid var(--accent); }
+  .knob { width:34px; height:34px; border-radius:50%; margin:0 auto 4px; border:3px solid var(--accent); position:relative; }
+  .knob::after { content:""; position:absolute; left:50%; top:2px; width:2px; height:10px; background:var(--accent); }
+
+  /* Wiring Editor */
+  .chips { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+  .chip { border:1px solid var(--ds-border); border-left:3px solid var(--accent); background:var(--ds-surface-raised); padding:6px; }
+  .chip .ico { height:34px; background:#2a2a35; margin-bottom:4px; display:flex; align-items:center; justify-content:center; } /* device art: fixed colours, themed frame */
+  .board-frame { border:2px solid var(--ds-border); padding:8px; background:var(--ds-surface-raised); }
+  .board { background:#1b2a4a; height:110px; position:relative; border:1px solid #0a1428; } /* board art: fixed */
+  .pin { position:absolute; width:12px; height:12px; border-radius:50%; border:2px solid var(--accent); background:color-mix(in srgb,var(--accent) 25%,#000); }
+  .bracket { position:absolute; border:2px solid var(--accent); border-right:none; width:8px; }
+  .popover { background:var(--ds-surface-raised); border:1px solid var(--ds-border); padding:8px; width:210px; box-shadow:0 2px 8px #0006; margin-top:8px; }
+  .popover h4 { margin:0 0 6px; font-size:12px; }
+  .hatch { background:repeating-linear-gradient(45deg,#d18616 0 4px,transparent 4px 8px); opacity:.85; } /* amber conflict hatch */
+  .contrast { font:11px ui-monospace,monospace; }
+  table.acc { border-collapse:collapse; width:100%; }
+  table.acc td { padding:3px 6px; border-bottom:1px solid var(--ds-border); }
+</style>
+</head>
+<body class="vscode-dark">
+<div id="bar">
+  <strong>Theme kind:</strong>
+  <button data-k="vscode-light">Light+</button>
+  <button data-k="vscode-dark" class="on">Dark+</button>
+  <button data-k="vscode-high-contrast">High Contrast Dark</button>
+  <button data-k="vscode-high-contrast-light">High Contrast Light</button>
+  <span style="margin-left:auto">canvases repaint from computed --ds-* on every switch (FR-THM-5)</span>
+</div>
+
+<div class="grid">
+
+  <!-- SCOPE (editor surface) -->
+  <div class="view surface-editor">
+    <h3>Scope panel · editor surface · FR-THM-2</h3>
+    <div class="pad">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <span class="dot" style="background:var(--ds-ok)"></span>Running
+        <span class="dot" style="background:var(--ds-error);margin-left:12px"></span><span class="muted">Stopped</span>
+        <select class="field hc" style="margin-left:auto"><option>48 kHz</option></select>
+        <button class="btn hc">Pause</button>
+      </div>
+      <div class="scope-wrap hc"><canvas id="scope" width="520" height="150" style="width:100%;display:block"></canvas></div>
+      <div style="margin-top:6px"><span class="sw" style="background:var(--ds-trace-in)"></span>input
+        <span class="sw" style="background:var(--ds-trace-out);margin-left:10px"></span>output</div>
+    </div>
+  </div>
+
+  <!-- OLED + MIDI (editor surface) -->
+  <div class="view surface-editor">
+    <h3>OLED + MIDI panels · editor surface · FR-THM-2 / FR-THM-4</h3>
+    <div class="pad">
+      <div class="oled-frame hc"><div class="oled-glass"><canvas id="oled" width="128" height="64" style="width:256px;height:128px"></canvas></div></div>
+      <div style="margin-top:10px" class="keys" id="keys"></div>
+      <div class="mon" style="margin-top:8px"><span class="ok">NoteOn  ch1 60 vel 100</span><br><span class="ok">NoteOn  ch1 64 vel 90</span><br>CC      ch1 #1  val 42<br><span class="err">Parse error: running status</span></div>
+    </div>
+  </div>
+
+  <!-- CONTROLS EDITOR (sidebar surface) -->
+  <div class="view surface-sidebar">
+    <h3>Controls Editor · sidebar surface · FR-THM-1 / FR-THM-3</h3>
+    <div class="pad" id="controls"></div>
+  </div>
+
+  <!-- WIRING EDITOR (sidebar surface) -->
+  <div class="view surface-sidebar">
+    <h3>Wiring Editor · sidebar surface · FR-THM-3 / FR-THM-4</h3>
+    <div class="pad">
+      <div class="chips" id="chips"></div>
+      <div class="board-frame hc" style="margin-top:10px">
+        <div class="board" id="board">
+          <div class="pin" style="--accent:var(--ds-accent-pot);left:24px;top:14px"></div>
+          <div class="pin" style="--accent:var(--ds-accent-pot);left:24px;top:38px"></div>
+          <div class="bracket" style="--accent:var(--ds-accent-oled);left:60px;top:12px;height:40px"></div>
+          <div class="pin" style="--accent:var(--ds-accent-oled);left:76px;top:14px"></div>
+          <div class="pin" style="--accent:var(--ds-accent-oled);left:76px;top:38px"></div>
+          <div class="pin hatch" style="--accent:#d18616;left:120px;top:14px" title="conflict"></div>
+          <div style="position:absolute;right:6px;bottom:6px;width:30px;height:12px;background:#9aa;border:1px solid #fff" title="micro-USB"></div>
+        </div>
+      </div>
+      <div class="popover hc">
+        <h4><span class="dot" style="background:var(--ds-accent-pot)"></span>Pot · D15</h4>
+        <div style="display:flex;gap:6px"><input class="field focus" value="cutoff" style="width:100px"><button class="btn hc">Apply</button></div>
+        <div class="muted" style="margin-top:6px">pin D15 · ADC 0</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACCENTS -->
+  <div class="view surface-editor" style="grid-column:1/3">
+    <h3>Device accents · dark and light variant on their theme background · WCAG 3:1 check</h3>
+    <div class="pad"><table class="acc" id="acc"></table></div>
+  </div>
+</div>
+
+<script>
+const ACC = { // id: [dark, light] — proposed
+  pot:['#4ec9b0','#007a66'], button:['#569cd6','#1f6fb5'], led:['#f04a4a','#d32f2f'], toggle:['#c586c0','#9c3f96'],
+  rgbled:['#ce9178','#a8552e'], encoder:['#dcdcaa','#7d7a00'], sdcard:['#f4c430','#8a6d00'], oled:['#4fc1ff','#0072b1'],
+  midiTrs:['#c586c0','#9c3f96'], midiUsb:['#569cd6','#1f6fb5'] };
+const lum = h => { const c=[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255).map(v=>v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4)); return .2126*c[0]+.7152*c[1]+.0722*c[2]; };
+const ratio = (a,b) => { const [x,y]=[lum(a),lum(b)].sort((p,q)=>q-p); return (x+.05)/(y+.05); };
+
+document.getElementById('acc').innerHTML = '<tr class="muted"><td>device</td><td>dark on #1e1e1e</td><td>light on #ffffff</td></tr>' +
+  Object.entries(ACC).map(([id,[d,l]]) => `<tr><td>${id}</td>
+    <td style="background:#1e1e1e;color:${d}"><span class="sw" style="background:${d}"></span>${d} <span class="contrast">${ratio(d,'#1e1e1e').toFixed(2)}:1</span></td>
+    <td style="background:#fff;color:${l}"><span class="sw" style="background:${l}"></span>${l} <span class="contrast">${ratio(l,'#ffffff').toFixed(2)}:1</span></td></tr>`).join('');
+document.getElementById('chips').innerHTML = ['pot','button','led','toggle','oled','midiUsb'].map(id =>
+  `<div class="chip hc" style="--accent:var(--ds-accent-${id})"><div class="ico"><span class="sw" style="width:22px;height:22px;background:var(--accent);border:2px solid #4a4a5a"></span></div><b>${id}</b></div>`).join('');
+document.getElementById('controls').innerHTML = ['pot','button','led','toggle','encoder','rgbled'].map(id =>
+  `<div class="ctrl-card hc" style="--accent:var(--ds-accent-${id})"><div class="knob"></div>${id}</div>`).join('');
+document.getElementById('keys').innerHTML = Array.from({length:14},(_,i)=>`<div class="key${[3,7].includes(i)?' on':''} hc"></div>`).join('');
+
+/* canvases: read --ds-* once per theme change (readThemeColor), never per frame */
+const css = n => getComputedStyle(document.body).getPropertyValue(n).trim();
+function paint() {
+  const surface = getComputedStyle(document.querySelector('.surface-editor')).getPropertyValue('--ds-surface').trim();
+  const c = document.getElementById('scope'), g = c.getContext('2d');
+  g.fillStyle = surface; g.fillRect(0,0,c.width,c.height);
+  g.strokeStyle = css('--ds-grid'); g.lineWidth = 1; g.globalAlpha = .5;
+  for (let x=0;x<=c.width;x+=52){g.beginPath();g.moveTo(x,0);g.lineTo(x,c.height);g.stroke();}
+  for (let y=0;y<=c.height;y+=30){g.beginPath();g.moveTo(0,y);g.lineTo(c.width,y);g.stroke();}
+  g.globalAlpha = 1; g.fillStyle = css('--ds-axis'); g.font = '10px sans-serif'; g.fillText('+1',4,10); g.fillText('0',4,c.height/2-3); g.fillText('-1',4,c.height-4);
+  for (const [col,ph,amp] of [[css('--ds-trace-in'),0,45],[css('--ds-trace-out'),.9,30]]) {
+    g.strokeStyle = col; g.lineWidth = 2; g.beginPath();
+    for (let x=0;x<=c.width;x++){const y=c.height/2 - amp*Math.sin(x/28+ph); x?g.lineTo(x,y):g.moveTo(x,y);} g.stroke();
+  }
+  // OLED: fixed pixels regardless of theme
+  const o = document.getElementById('oled').getContext('2d');
+  o.fillStyle = '#000'; o.fillRect(0,0,128,64); o.fillStyle = '#fff';
+  for (let x=0;x<128;x++){ const y=32+Math.round(18*Math.sin(x/9)); o.fillRect(x,y,1,1); }
+  o.fillRect(4,4,40,1); o.fillRect(4,8,24,1);
+}
+document.querySelectorAll('#bar button').forEach(b => b.onclick = () => {
+  document.body.className = b.dataset.k;
+  document.querySelectorAll('#bar button').forEach(x => x.classList.toggle('on', x === b));
+  paint();
+});
+paint();
+</script>
+</body>
+</html>

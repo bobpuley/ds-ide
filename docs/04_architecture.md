@@ -108,3 +108,66 @@ save while running  ─► reducer: stale ─► "restart to apply" (view row + 
 The F5 debug hand-off (`daisy-debug` attach, `FilteringLldbDapAdapter`), `DeployCoordinator`,
 `EmulatorManager`, the build diagnostics path into Problems, the `buildHardware` / `flash`
 command implementations, and all existing keybindings.
+
+## Extension views follow the IDE theme (`FR-THM-*`, M68)
+
+No new process, dependency or storage. VS Code already injects the active theme into every
+webview as `--vscode-*` CSS variables and a `<body>` class for the theme kind (`vscode-light`,
+`vscode-dark`, `vscode-high-contrast`, `vscode-high-contrast-light`), and updates both live when
+the theme changes. The change routes all five webviews through one shared theme layer instead of
+their inline Dark+ hex values.
+
+### Principle: views name meanings, the theme layer maps them to tokens
+
+Views use only semantic `--ds-*` variables (`--ds-surface`, `--ds-text-muted`, `--ds-trace-in`,
+`--ds-accent-pot`, …). One module maps each to a VS Code token (UI chrome, data colours) or, for
+device accents, to a per-theme-kind value. Choosing which token means "input trace" happens once,
+not once per view (decision 2026-09-29).
+
+### Components
+
+| Component | Change |
+|---|---|
+| `src/webview/theme/theme-css.ts` *(new, pure)* | `themeCss({ surface: 'editor' \| 'sidebar' })` → one CSS block every view includes: the `--ds-*` → `--vscode-*` aliases (surface = editor background or sidebar background), the per-kind accent variables generated from `REGISTRY` (`body.vscode-light` / `body.vscode-dark`, with HC kinds reusing the matching variant), and the high-contrast rules (contrast border on interactive elements, popovers and hardware frames; visible focus). |
+| `src/webview/theme/theme-runtime.ts` *(new, webview bundle)* | `readThemeColor(name)` — reads a `--ds-*` value from computed style (for canvases); `onThemeChange(cb)` — a `MutationObserver` on `<body>`'s class list that fires when the theme kind or theme changes. Canvases cache their colours and refresh them only here, not per frame. |
+| `src/devices/registry.ts` | `DeviceDescriptor.accentColor: string` → `accent: { dark: string; light: string }`. Every existing use reads `var(--ds-accent-<id>)` instead of the literal. |
+| `src/webview/scope-panel.ts`, `scope-webview.ts`, `oled-panel.ts`, `midi-panel.ts` | inline CSS → `themeCss({ surface: 'editor' })` + `--ds-*`; canvases draw with `readThemeColor()` and repaint on `onThemeChange()`. OLED pixels / glass stay fixed; the frame is themed. |
+| `src/sidebar/controls-editor-panel.ts`, `src/webview/controls/convention-canvas.ts` | same, with `surface: 'sidebar'`; the canvas repaints on theme change. |
+| `src/wiring/wiring-panel.ts`, `wiring-webview.ts`, `device-popover.ts` | same, with `surface: 'sidebar'`. The board drawing keeps its fixed colours inside a themed frame. |
+| `src/wiring/device-icons.ts` | unchanged art (fixed colours, allow-listed); only the tile frame is themed. |
+| `src/test/unit/webview/no-hardcoded-colours.test.ts` *(new)* | the FR-THM-6 guard: scans webview sources for hex / `rgb()` / `hsl()` literals outside the allow-list (`theme-css.ts` accent block, `registry.ts` accents, board art in `wiring-panel.ts`, `device-icons.ts`, OLED glass). |
+
+### Token map (confirmed 2026-09-29 via `docs/mockups/v22-themes.html`)
+
+| `--ds-*` | VS Code token |
+|---|---|
+| `surface` | `editor.background` (panels) / `sideBar.background` (sidebar views) |
+| `surface-raised` | `editorWidget.background` |
+| `text` / `text-muted` | `foreground` / `descriptionForeground` |
+| `border` / `focus` / `contrast-border` | `panel.border` / `focusBorder` / `contrastBorder` |
+| `input-*`, `button-*`, `dropdown-*` | `input.*`, `button.*`, `dropdown.*` |
+| `trace-in` / `trace-out` | `charts.blue` / `charts.orange` |
+| `grid` / `axis` | `charts.lines` / `charts.foreground` |
+| `ok` / `error` | `testing.iconPassed` / `errorForeground` |
+
+### Device accent variants (confirmed 2026-09-29)
+
+Dark variant is the existing colour; the light variant is darkened to clear WCAG 3:1 on `#ffffff`
+(all ≥ 4.5:1). High-contrast dark reuses `dark`, high-contrast light reuses `light`.
+
+| device | dark | light |
+|---|---|---|
+| pot | `#4ec9b0` | `#007a66` |
+| button, midiUsb | `#569cd6` | `#1f6fb5` |
+| led | `#f04a4a` | `#d32f2f` |
+| toggle, midiTrs | `#c586c0` | `#9c3f96` |
+| rgbled | `#ce9178` | `#a8552e` |
+| encoder | `#dcdcaa` | `#7d7a00` |
+| sdcard | `#f4c430` | `#8a6d00` |
+| oled | `#4fc1ff` | `#0072b1` |
+
+### Unchanged
+
+Message contracts, the Daisy view (native TreeView), device icon and board artwork, OLED frame
+rendering (`oled-frame.ts`), and CSP / nonce handling (the theme block is inline CSS under the
+existing style-src policy).
