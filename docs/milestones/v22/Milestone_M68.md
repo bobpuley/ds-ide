@@ -1,7 +1,7 @@
 # M68 — Extension Views Follow the IDE Theme
 
 **Version:** 0.20.3
-**Status:** planned
+**Status:** released
 **Source:** feature intake session, 2026-09-29 (01_input-ideas.md; layout per docs/mockups/v22-themes.html, built as this milestone's first task)
 
 ## Goal

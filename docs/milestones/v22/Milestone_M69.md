@@ -1,7 +1,7 @@
 # M69 — Controls Editor Devices in the Wiring-Palette Style
 
 **Version:** 0.20.4
-**Status:** planned
+**Status:** released
 **Source:** feature intake session, 2026-09-29 (01_input-ideas.md; layout per docs/mockups/v22-control-widgets.html, built as this milestone's first task)
 
 ## Goal

@@ -192,7 +192,7 @@ Full registry in [`docs/v21/05_dev-plan.md`](v21/05_dev-plan.md).
 | M66  | Unified Device Model (Drag & Drop)     | **released** | 0.20.1  | [Milestone_M66.md](milestones/v22/Milestone_M66.md)    |
 | M67  | Stateful Transport on Native Surfaces  | **released** | 0.20.2  | [Milestone_M67.md](milestones/v22/Milestone_M67.md)    |
 | M68  | Extension Views Follow the IDE Theme   | **released** | 0.20.3  | [Milestone_M68.md](milestones/v22/Milestone_M68.md)    |
-| M69  | Controls Editor Devices in the Wiring-Palette Style | **in progress**  | 0.20.4 | [Milestone_M69.md](milestones/v22/Milestone_M69.md) |
+| M69  | Controls Editor Devices in the Wiring-Palette Style | **released** | 0.20.4 | [Milestone_M69.md](milestones/v22/Milestone_M69.md) |
 
 Source: feature intake 2026-09-28 — `design_plan.md` §5 (device model only; §5.5 transport parked),
 layout per `docs/mockups/v22-unified-device-model.html`. M66 depends on M65 (`pinRequires`,
