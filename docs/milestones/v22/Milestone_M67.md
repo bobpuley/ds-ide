@@ -1,7 +1,7 @@
 # M67 — Stateful Transport on Native Surfaces
 
 **Version:** 0.20.2
-**Status:** planned
+**Status:** released
 **Source:** feature intake session, 2026-09-28 (design_plan.md §5.5; mockup docs/mockups/v22-transport-actions.html)
 
 ## Goal
