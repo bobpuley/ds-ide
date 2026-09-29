@@ -29,7 +29,7 @@ standalone mockup before any view changes.
 
 ---
 
-### [ ] feat: shared theme layer and per-theme accent colours (FR-THM-3)
+### [x] feat: shared theme layer and per-theme accent colours (FR-THM-3)
 
 **Affected files:** `src/webview/theme/theme-css.ts`, `src/webview/theme/theme-runtime.ts`, `src/devices/registry.ts`, `src/test/unit/webview/theme-css.test.ts`, `src/test/unit/webview/theme-runtime.test.ts`, `src/test/unit/devices/registry.test.ts`
 

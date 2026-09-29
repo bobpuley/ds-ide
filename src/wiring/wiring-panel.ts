@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { PIN_DEFS } from '../devices/pin-table.gen';
 import type { PinDef } from '../devices/pin-table.gen';
-import { REGISTRY, wiredControlIds } from '../devices/registry';
+import { REGISTRY, wiredControlIds, accentVar } from '../devices/registry';
 import { resolveBusFootprint } from '../devices/attachment';
 import { peripheralIds } from './peripheral-state';
 import { candidateBusesFor } from './conflict-remedy';
@@ -50,7 +50,7 @@ function pinDeviceCssRules(): string {
   return wiredControlIds()
     .map(id => {
       const d = REGISTRY[id]!;
-      return `    .pin-${id}    circle { fill: ${d.pinFill}; stroke: ${d.accentColor}; stroke-width: 2; }`;
+      return `    .pin-${id}    circle { fill: ${d.pinFill}; stroke: ${accentVar(id)}; stroke-width: 2; }`;
     })
     .join('\n');
 }
@@ -83,8 +83,8 @@ function paletteChipHtml(id: string): string {
   const badge = d.attachmentKind === 'bus' || d.attachmentKind === 'connector'
     ? '<span class="badge">✓</span>'
     : '';
-  return `        <div class="device-chip" data-device="${escapeHtml(id)}" style="--accent: ${escapeHtml(d.accentColor)}" data-tip="${label} — ${req}">`
-    + `${deviceIconSvg(id, d.accentColor)}<div class="name">${label}</div><div class="meta">${req}</div>${badge}</div><!-- /chip -->`;
+  return `        <div class="device-chip" data-device="${escapeHtml(id)}" style="--accent: ${escapeHtml(accentVar(id))}" data-tip="${label} — ${req}">`
+    + `${deviceIconSvg(id, accentVar(id))}<div class="name">${label}</div><div class="meta">${req}</div>${badge}</div><!-- /chip -->`;
 }
 
 // FR-UDM-5: one palette for all devices, generated from REGISTRY and grouped

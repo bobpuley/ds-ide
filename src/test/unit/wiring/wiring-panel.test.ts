@@ -290,8 +290,8 @@ describe('device palette (FR-UDM-5)', () => {
   });
 
   it('colours each chip with its device accent', () => {
-    expect(html).toContain(`data-device="pot" style="--accent: ${REGISTRY['pot']!.accentColor}"`);
-    expect(html).toContain(`data-device="oled" style="--accent: ${REGISTRY['oled']!.accentColor}"`);
+    expect(html).toContain(`data-device="pot" style="--accent: var(--ds-accent-pot)"`);
+    expect(html).toContain(`data-device="oled" style="--accent: var(--ds-accent-oled)"`);
   });
 
   it('carries a hover tip naming the device, for the collapsed rail', () => {
@@ -337,10 +337,10 @@ describe('device palette (FR-UDM-5)', () => {
   });
 
   it('a device added to the registry appears with no Wiring Editor edit', () => {
-    REGISTRY['servo'] = { ...REGISTRY['button']!, id: 'servo', label: 'Servo', accentColor: '#123456' };
+    REGISTRY['servo'] = { ...REGISTRY['button']!, id: 'servo', label: 'Servo', accent: { dark: '#123456', light: '#654321' } };
     try {
       const withServo = buildHtml([], [], TEST_NONCE, SCRIPT);
-      expect(withServo).toContain('data-device="servo" style="--accent: #123456"');
+      expect(withServo).toContain('data-device="servo" style="--accent: var(--ds-accent-servo)"');
     } finally {
       delete REGISTRY['servo'];
     }

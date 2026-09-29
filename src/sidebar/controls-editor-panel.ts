@@ -4,7 +4,7 @@ import { IpcMessage } from '../emulator/ipc-client';
 import { getBoolean, getNumber } from '../ipc/narrow';
 import { ControllerConfig, parseControllerConfig, serializeControllerConfig } from '../controllers/controller-config';
 import { ControlsConfig } from '../webview/scope-panel';
-import { REGISTRY, wiredControlIds } from '../devices/registry';
+import { REGISTRY, wiredControlIds, accentVar } from '../devices/registry';
 import { TOGGLE_POSITIONS } from '../devices/codegen/toggle';
 import { ENCODER_POSITION_MODULUS } from '../devices/codegen/encoder';
 import { SdEntry } from '../webview/sd-viewer';
@@ -250,7 +250,7 @@ function statusPayload(msg: IpcMessage): Record<string, unknown> {
 // added in the Wiring Editor.)
 function ctrlCardCssRules(): string {
   return wiredControlIds()
-    .map(id => `    .ctrl-card[data-kind="${id}"] { border-top: 3px solid ${REGISTRY[id]!.accentColor}; }`)
+    .map(id => `    .ctrl-card[data-kind="${id}"] { border-top: 3px solid ${accentVar(REGISTRY[id]!.id)}; }`)
     .join('\n');
 }
 

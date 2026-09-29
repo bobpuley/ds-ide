@@ -3,7 +3,7 @@ import type { WiringHostMessage, WiringWebviewMessage } from './messages';
 import type { PinDef, WiredPin, PeripheralDisplayState } from '../wiring/wiring-panel';
 import { computePinDisplayStates } from '../wiring/wired-pin-state';
 import { validateId } from '../wiring/id-validation';
-import { REGISTRY, wiredControlIds } from '../devices/registry';
+import { REGISTRY, wiredControlIds, accentVar } from '../devices/registry';
 import { computeBusBrackets } from '../wiring/bus-bracket';
 import { computePinOverlayStates } from '../wiring/pin-overlay-state';
 import {
@@ -489,7 +489,7 @@ function onDragMove(e: PointerEvent): void {
     drag.chip?.classList.add('dragging');
     document.body.classList.add('drag-active');
     const d = REGISTRY[drag.deviceId];
-    ghost.style.setProperty('--accent', d?.accentColor ?? '#4ec9b0');
+    ghost.style.setProperty('--accent', d ? accentVar(d.id) : 'var(--ds-text-muted)');
     // The label carries the device's palette icon (cloned from its chip).
     const lbl = ghost.querySelector('.lbl')!;
     const text = document.createElement('span');
@@ -590,7 +590,7 @@ paletteCol.querySelectorAll<HTMLElement>('.device-chip').forEach(chip => {
 function paintDrag(): void {
   const d = drag?.started ? drag : null;
   svg.classList.toggle('dragging', !!d);
-  if (d) svg.style.setProperty('--accent', REGISTRY[d.deviceId]?.accentColor ?? '#4ec9b0');
+  if (d) svg.style.setProperty('--accent', accentVar(d.deviceId));
   const states = pinDragStates(d ? [...d.targets.values()] : []);
   const preview = d?.hover ? previewSlots(d.deviceId, d.hover) : new Map<number, string>();
 
