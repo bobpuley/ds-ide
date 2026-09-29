@@ -72,6 +72,18 @@ describe('DaisyRunConfigurationProvider', () => {
       expect(result).toMatchObject({ ...BASE_CONFIG, noDebug: true });
     });
 
+    it.each([[{}], [{ noDebug: true }]])('with no launch.json (%j), fills in the ds-ide launch config so a session can start', async (bare) => {
+      const provider = new DaisyRunConfigurationProvider(vi.fn(() => Promise.resolve(true)), makeWorkspaceState());
+      const result = await provider.resolveDebugConfiguration(undefined, { ...bare } as vscode.DebugConfiguration);
+      expect(result).toMatchObject({ ...BASE_CONFIG, ...bare });
+    });
+
+    it('keeps a launch.json entry\'s own name and fields', async () => {
+      const provider = new DaisyRunConfigurationProvider(vi.fn(() => Promise.resolve(true)), makeWorkspaceState());
+      const result = await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG, name: 'Mine', extra: 1 });
+      expect(result).toMatchObject({ type: 'ds-ide', request: 'launch', name: 'Mine', extra: 1 });
+    });
+
     it.each([[{}], [{ noDebug: true }]])('returns undefined (no session) when build+deploy fails %j', async (extra) => {
       const provider = new DaisyRunConfigurationProvider(vi.fn(() => Promise.resolve(false)), makeWorkspaceState());
       const result = await provider.resolveDebugConfiguration(undefined, { ...BASE_CONFIG, ...extra });

@@ -45,9 +45,11 @@ export class DaisyRunConfigurationProvider implements vscode.DebugConfigurationP
     // FR-TRN-1/2: both Ctrl+F5 and F5 start a live ds-ide session
     // (RunSessionAdapter) that lasts as long as the emulator does. For F5,
     // the adapter attaches daisy-debug as its child session.
+    // With no launch.json, F5 / Ctrl+F5 arrive with an (almost) empty config
+    // — at most { noDebug } — and a session can't start without a type.
     const launchId = crypto.randomUUID();
     this.freshLaunchIds.add(launchId);
-    return { ...config, [LAUNCH_ID_KEY]: launchId };
+    return { ...DS_IDE_LAUNCH_CONFIG, ...config, [LAUNCH_ID_KEY]: launchId };
   }
 
   consumeLaunch(config: Record<string, unknown>): boolean {
