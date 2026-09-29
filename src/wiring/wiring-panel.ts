@@ -7,6 +7,8 @@ import { peripheralIds } from './peripheral-state';
 import { candidateBusesFor } from './conflict-remedy';
 import { escapeHtml } from '../webview/html-safe';
 import { deviceIconSvg } from './device-icons';
+import { BOARD_ART_CSS } from './board-art';
+import { themeCss } from '../webview/theme/theme-css';
 import type { DeviceType } from '../devices/registry';
 import type { PeripheralDisplayState } from './peripheral-state';
 import { safeJson } from '../webview/html-safe';
@@ -120,40 +122,45 @@ export function buildHtml(
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Daisy Seed Wiring</title>
   <style>
+${themeCss({ surface: 'sidebar' })}
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #1e1e1e; color: #d4d4d4; font-family: monospace; font-size: 12px;
+    body { background: var(--ds-surface); color: var(--ds-text); font-family: monospace; font-size: 12px;
            display: flex; flex-direction: column; height: 100vh; }
-    h1 { padding: 8px 14px; font-size: 13px; color: #9cdcfe; background: #252526;
-         border-bottom: 1px solid #3c3c3c; flex-shrink: 0; }
-    #hint { padding: 4px 14px 6px; font-size: 11px; color: #6a6a6a; background: #252526;
-            border-bottom: 1px solid #3c3c3c; flex-shrink: 0; }
+    h1 { padding: 8px 14px; font-size: 13px; color: var(--ds-text); background: var(--ds-surface-raised);
+         border-bottom: 1px solid var(--ds-border); flex-shrink: 0; }
+    #hint { padding: 4px 14px 6px; font-size: 11px; color: var(--ds-text-muted); background: var(--ds-surface-raised);
+            border-bottom: 1px solid var(--ds-border); flex-shrink: 0; }
     #main { flex: 1; display: flex; min-height: 0; }
-    #svg-wrap { flex: 1; overflow: auto; padding: 16px; display: flex; justify-content: center; }
+    #svg-wrap { flex: 1; overflow: auto; padding: 16px; display: flex; justify-content: center; align-items: flex-start; }
+    /* FR-THM-4: the board drawing keeps its colours; its frame follows the theme. */
+    #board-frame { max-width: 592px; width: 100%; padding: 12px; background: var(--ds-surface-raised); border: 1px solid var(--ds-border); }
     /* Device palette (FR-UDM-5) — icon tiles per docs/mockups/v22-unified-device-model_alt1.html;
        collapsible to a rail of small, still-draggable icons */
-    #palette-col { width: 176px; flex-shrink: 0; overflow: auto; padding: 8px; border-right: 1px solid #3c3c3c; background: #1b1b1b; }
+    #palette-col { width: 176px; flex-shrink: 0; overflow: auto; padding: 8px; border-right: 1px solid var(--ds-border); background: var(--ds-surface); }
     #palette-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
-    .pal-title { font-size: 11px; color: #9cdcfe; }
-    #palette-toggle { margin-left: auto; background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; width: 20px; height: 20px;
+    .pal-title { font-size: 11px; color: var(--ds-text-muted); }
+    #palette-toggle { margin-left: auto; background: var(--ds-input-bg); border: 1px solid var(--ds-border); color: var(--ds-input-fg); width: 20px; height: 20px;
                       border-radius: 2px; cursor: pointer; font-family: monospace; font-size: 10px; line-height: 1; }
-    #palette-toggle:hover { background: #4a4a4a; }
-    .pal-grp { font-size: 9px; color: #6a6a6a; margin: 10px 0 6px; letter-spacing: 1px; text-transform: uppercase; }
+    #palette-toggle:hover { background: var(--ds-hover-bg); }
+    .pal-grp { font-size: 9px; color: var(--ds-text-muted); margin: 10px 0 6px; letter-spacing: 1px; text-transform: uppercase; }
     .pal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-    .pal-sep { display: none; border-top: 1px solid #3c3c3c; margin: 8px 2px; }
+    .pal-sep { display: none; border-top: 1px solid var(--ds-border); margin: 8px 2px; }
     .device-chip { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px;
-                   padding: 8px 4px 7px; border-radius: 8px; border: 1px solid transparent; background: rgba(255,255,255,.03);
+                   padding: 8px 4px 7px; border-radius: 8px; border: 1px solid var(--ds-border); background: var(--ds-surface-raised);
                    cursor: grab; user-select: none; touch-action: none;
                    transition: background .15s, border-color .15s, transform .15s, box-shadow .15s; }
     .device-chip::after { content: ''; position: absolute; left: 22%; right: 22%; bottom: 2px; height: 2px; border-radius: 2px;
                           background: var(--accent); opacity: .75; }
-    .device-chip:hover { background: #2a2d2e; border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.35); }
+    .hatch-a { fill: var(--ds-warning-bg); }
+    .hatch-b { fill: var(--ds-warning-fg); fill-opacity: .45; }
+    .device-chip:hover { background: var(--ds-hover-bg); border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 12px var(--ds-shadow); }
     .device-chip:active { transform: translateY(0); }
     .device-chip.dragging { opacity: .35; }
-    .device-chip svg.icon { width: 40px; height: 40px; filter: drop-shadow(0 2px 4px rgba(0,0,0,.3)); pointer-events: none; }
-    .device-chip .name { font-size: 9px; color: #a0a0b0; letter-spacing: 1px; text-transform: uppercase; white-space: nowrap; }
-    .device-chip:hover .name { color: #e0e0e0; }
-    .device-chip .meta { font-size: 8px; color: #6a6a6a; text-align: center; line-height: 1.2; }
-    .device-chip .badge { display: none; position: absolute; top: 3px; right: 5px; font-size: 10px; color: #4ec9b0; }
+    .device-chip svg.icon { width: 40px; height: 40px; filter: drop-shadow(0 2px 4px var(--ds-shadow)); pointer-events: none; }
+    .device-chip .name { font-size: 9px; color: var(--ds-text-muted); letter-spacing: 1px; text-transform: uppercase; white-space: nowrap; }
+    .device-chip:hover .name { color: var(--ds-text); }
+    .device-chip .meta { font-size: 8px; color: var(--ds-text-muted); text-align: center; line-height: 1.2; }
+    .device-chip .badge { display: none; position: absolute; top: 3px; right: 5px; font-size: 10px; color: var(--ds-ok); }
     .device-chip.placed { opacity: .5; }
     .device-chip.placed .badge { display: block; }
     #palette-col.collapsed { width: 44px; padding: 8px 4px; }
@@ -173,60 +180,59 @@ export function buildHtml(
     /* Pin dots — free pins are grey and inert (FR-UDM-10); only a placed
        device's pins react to the pointer (click: popover, drag: move). */
     .pin-dot:not(.pin-unassigned) { cursor: pointer; }
-    .pin-dot:not(.pin-unassigned):hover circle { stroke: #4ec9b0; stroke-width: 2; }
-    .pin-unassigned circle { fill: #3c3c3c; stroke: #555; stroke-width: 1; }
+    .pin-dot:not(.pin-unassigned):hover circle { stroke: var(--ds-focus); stroke-width: 2; }
+    .pin-unassigned circle { fill: var(--ds-input-bg); stroke: var(--ds-border); stroke-width: 1; }
 ${pinDeviceCssRules()}
-    .pin-power  circle { fill: #2a2a2a; stroke: #444; stroke-width: 1; }
+    .pin-power  circle { fill: var(--ds-surface); stroke: var(--ds-border); stroke-width: 1; }
+    .conn { stroke: var(--ds-border); stroke-width: 1; }
+    .conn-fixed { stroke-opacity: .5; }
     /* A bus peripheral's occupied pins (FR-DEV-11/12). */
-    .pin-bus circle { fill: #4a3a1a; stroke: #f4c430; stroke-width: 2; }
+    .pin-bus circle { fill: var(--ds-warning-bg); stroke: var(--ds-warning-fg); stroke-width: 2; }
     /* Bus bracket and tooltip (FR-DEV-12) */
     .bus-grp { cursor: pointer; }
-    .bus-bracket { stroke: #f4c430; stroke-width: 1.5; fill: none; }
+    .bus-bracket { stroke: var(--ds-warning-fg); stroke-width: 1.5; fill: none; }
     .bus-grp:hover .bus-bracket { stroke-width: 2.5; }
-    .bus-bracket-label { font-size: 9px; fill: #f4c430; font-family: monospace; }
+    .bus-bracket-label { font-size: 9px; fill: var(--ds-warning-fg); font-family: monospace; }
     .bracket-hit { fill: transparent; }
-    #tooltip { position: fixed; display: none; background: #1e1e1e; border: 1px solid #666;
-               border-radius: 3px; padding: 4px 8px; font-size: 11px; color: #d4d4d4;
+    #tooltip { position: fixed; display: none; background: var(--ds-surface-raised); border: 1px solid var(--ds-border);
+               border-radius: 3px; padding: 4px 8px; font-size: 11px; color: var(--ds-text);
                pointer-events: none; z-index: 400; white-space: nowrap; font-family: monospace; }
     /* One popover for every placed device (FR-UDM-3) */
-    #device-popover { position: fixed; display: none; width: 260px; background: #252526; border: 1px solid #555;
-                      border-radius: 4px; z-index: 300; box-shadow: 0 4px 16px rgba(0,0,0,.6); font-family: monospace; }
-    #device-popover .dp-hdr { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid #3c3c3c; }
+    #device-popover { position: fixed; display: none; width: 260px; background: var(--ds-surface-raised); border: 1px solid var(--ds-border);
+                      border-radius: 4px; z-index: 300; box-shadow: 0 4px 16px var(--ds-shadow); font-family: monospace; }
+    #device-popover .dp-hdr { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--ds-border); }
     #device-popover .dp-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-    #device-popover .dp-title { font-size: 12px; color: #9cdcfe; }
-    #device-popover .dp-sub { font-size: 9px; color: #6a6a6a; margin-left: auto; }
+    #device-popover .dp-title { font-size: 12px; color: var(--ds-text); }
+    #device-popover .dp-sub { font-size: 9px; color: var(--ds-text-muted); margin-left: auto; }
     #device-popover .dp-body { padding: 8px 12px; font-size: 10px; line-height: 2; }
     #device-popover .dp-row { display: flex; justify-content: space-between; gap: 8px; }
-    #device-popover .dp-key { color: #6a6a6a; }
-    #device-popover .dp-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px 10px; border-top: 1px solid #3c3c3c; }
-    #device-popover button { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; padding: 5px 9px; border-radius: 2px;
+    #device-popover .dp-key { color: var(--ds-text-muted); }
+    #device-popover .dp-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px 10px; border-top: 1px solid var(--ds-border); }
+    #device-popover button { background: var(--ds-input-bg); border: 1px solid var(--ds-border); color: var(--ds-input-fg); padding: 5px 9px; border-radius: 2px;
                              cursor: pointer; font-family: monospace; font-size: 11px; }
-    #device-popover button:hover { background: #4a4a4a; }
-    #device-popover button.dp-primary { background: #0e639c; border-color: #1177bb; color: #fff; flex-basis: 100%; }
+    #device-popover button:hover { background: var(--ds-hover-bg); }
+    #device-popover button.dp-primary { background: var(--ds-button-bg); border-color: var(--ds-button-bg); color: var(--ds-button-fg); flex-basis: 100%; }
     #device-popover button:disabled { opacity: .4; cursor: default; }
     /* Placement popover: Add / Replace / Move beside Cancel, equal width (FR-UDM-7). */
     #device-popover .dp-pair button { flex: 1 1 0; }
-    #device-popover input[type=text] { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; font-family: monospace;
+    #device-popover input[type=text] { background: var(--ds-input-bg); border: 1px solid var(--ds-border); color: var(--ds-input-fg); font-family: monospace;
                                        font-size: 11px; padding: 3px 6px; border-radius: 2px; width: 150px; }
-    #device-popover .dp-conflict { background: #3a2a10; border: 1px solid #f4c430; color: #f4c430; padding: 6px 8px;
+    #device-popover .dp-conflict { background: var(--ds-warning-bg); border: 1px solid var(--ds-warning-border); color: var(--ds-warning-fg); padding: 6px 8px;
                                    border-radius: 3px; margin: 6px 0; font-size: 9.5px; line-height: 1.5; }
-    #device-popover .dp-error { font-size: 10px; color: #f48771; min-height: 14px; line-height: 1.4; }
-    #device-popover button.dp-danger { background: #5a1a1a; border-color: #c94040; color: #f48771; }
+    #device-popover .dp-error { font-size: 10px; color: var(--ds-error); min-height: 14px; line-height: 1.4; }
+    #device-popover button.dp-danger { background: var(--ds-input-bg); border-color: var(--ds-error); color: var(--ds-error); }
     /* Labels */
-    .pin-label { font-size: 10px; fill: #d4d4d4; font-family: monospace; }
-    .a-label   { font-size: 8px;  fill: #4ec9b0; font-family: monospace; }
-    .pin-power-label { fill: #555; }
-    .assigned-id { font-size: 9px; fill: #9cdcfe; font-family: monospace; }
+    .pin-label { font-size: 10px; fill: var(--ds-text); font-family: monospace; }
+    .a-label   { font-size: 8px;  fill: var(--ds-accent-pot); font-family: monospace; }
+    .pin-power-label { fill: var(--ds-text-muted); }
+    .assigned-id { font-size: 9px; fill: var(--ds-text); font-family: monospace; }
     /* Board body */
-    .board-body { fill: #252526; stroke: #555; stroke-width: 1; }
-    .board-label { font-size: 11px; fill: #6a6a6a; font-family: monospace; text-anchor: middle; }
+${BOARD_ART_CSS}
     /* USB port indicator */
-    .usb-port  { fill: #3a3a3a; stroke: #777; stroke-width: 1; }
-    .usb-inner { fill: #252526; stroke: #555; stroke-width: 1; }
     /* FR-DEV-17: highlighted when a connector-attached peripheral (midiUsb's
        INTERNAL mode) is enabled — the zero-pin equivalent of a bus
        peripheral's pin highlight, since there's no pin to mark instead. */
-    #usb-port-group.active .usb-port { stroke: #569cd6; stroke-width: 2; }
+    #usb-port-group.active .usb-port { stroke: var(--ds-accent-midiUsb); stroke-width: 2; }
     /* FR-UDM-3: clicking it opens that peripheral's device popover. */
     #usb-port-group.active { cursor: pointer; }
     /* Drag-time board states (FR-UDM-6): free targets pulse in the dragged
@@ -236,27 +242,29 @@ ${pinDeviceCssRules()}
     svg.dragging .bus-grp { display: none; }
     svg.dragging .ctx-ineligible { opacity: .18; }
     .ctx-free circle { stroke: var(--accent) !important; stroke-width: 2.5 !important; animation: dragPulse 1.3s ease-in-out infinite; }
-    .ctx-occ circle { fill: url(#hatch) !important; stroke: #f4c430 !important; stroke-width: 2 !important; }
-    .warn-mark { display: none; font-size: 9px; fill: #f4c430; pointer-events: none; }
+    .ctx-occ circle { fill: url(#hatch) !important; stroke: var(--ds-warning-fg) !important; stroke-width: 2 !important; }
+    .warn-mark { display: none; font-size: 9px; fill: var(--ds-warning-fg); pointer-events: none; }
     .ctx-occ .warn-mark { display: block; }
     .ctx-preview circle { stroke: var(--accent) !important; stroke-width: 3.5 !important; filter: drop-shadow(0 0 5px var(--accent)); animation: none; }
-    .slot-no { display: none; font-size: 8px; fill: #fff; font-weight: bold; pointer-events: none; }
+    .slot-no { display: none; font-size: 8px; fill: white; font-weight: bold; pointer-events: none; }
     .ctx-preview .slot-no { display: block; }
     .drop-lane { fill: var(--accent); fill-opacity: .06; stroke: var(--accent); stroke-width: 1.2; stroke-dasharray: 4 3; }
-    .drop-lane.occ { stroke: #f4c430; fill: #f4c430; }
+    .drop-lane.occ { stroke: var(--ds-warning-fg); fill: var(--ds-warning-fg); }
     .drop-lane.hot { fill-opacity: .18; stroke-width: 2; stroke-dasharray: none; }
     .drop-lane-lbl { font-size: 9px; fill: var(--accent); font-family: monospace; }
-    .drop-lane-lbl.occ { fill: #f4c430; }
+    .drop-lane-lbl.occ { fill: var(--ds-warning-fg); }
     #usb-port-group.ctx-free .usb-port { stroke: var(--accent); stroke-width: 2.5; animation: dragPulse 1.3s infinite; }
-    #usb-port-group.ctx-occ .usb-port { stroke: #f4c430; stroke-width: 2.5; }
+    #usb-port-group.ctx-occ .usb-port { stroke: var(--ds-warning-fg); stroke-width: 2.5; }
     #usb-port-group.ctx-preview .usb-port { stroke: var(--accent); stroke-width: 3.5; filter: drop-shadow(0 0 5px var(--accent)); }
     @keyframes dragPulse { 0%,100% { stroke-opacity: 1; } 50% { stroke-opacity: .35; } }
     body.drag-active, body.drag-active * { cursor: grabbing !important; }
-    #ghost { position: fixed; pointer-events: none; z-index: 500; display: none; background: #252526;
+    #ghost { position: fixed; pointer-events: none; z-index: 500; display: none; background: var(--ds-surface-raised);
              border: 1px solid var(--accent); border-left: 4px solid var(--accent); border-radius: 3px;
-             padding: 5px 8px; font-size: 11px; box-shadow: 0 6px 18px rgba(0,0,0,.6); white-space: nowrap; }
-    #ghost .tgt { font-size: 9px; color: #9a9a9a; margin-top: 2px; }
-    #ghost.ok .tgt { color: #4ec9b0; } #ghost.warn .tgt { color: #f4c430; } #ghost.no .tgt { color: #f48771; }
+             padding: 5px 8px; font-size: 11px; box-shadow: 0 6px 18px var(--ds-shadow); white-space: nowrap; }
+    #ghost .tgt { font-size: 9px; color: var(--ds-text-muted); margin-top: 2px; }
+    #ghost.ok .tgt { color: var(--ds-ok); }
+    #ghost.warn .tgt { color: var(--ds-warning-fg); }
+    #ghost.no .tgt { color: var(--ds-error); }
   </style>
 </head>
 <body>
@@ -265,10 +273,11 @@ ${pinDeviceCssRules()}
   <div id="main">
 ${devicePaletteHtml()}
   <div id="svg-wrap">
+    <div id="board-frame" class="ds-hc">
     <svg id="pinout" viewBox="0 0 560 600" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-          <rect width="4" height="4" fill="#4a3a1a"/><rect width="2" height="4" fill="#6a4a10"/>
+          <rect class="hatch-a" width="4" height="4"/><rect class="hatch-b" width="2" height="4"/>
         </pattern>
       </defs>
       <!-- Board body -->
@@ -288,6 +297,7 @@ ${devicePaletteHtml()}
       <g id="lanes"></g>
       <!-- Pins generated by JS -->
     </svg>
+    </div>
   </div>
   </div>
 
@@ -296,7 +306,7 @@ ${devicePaletteHtml()}
   <!-- Bus bracket tooltip (FR-DEV-12) -->
   <div id="tooltip"></div>
   <!-- One popover for every placed device (FR-UDM-3) — filled by JS -->
-  <div id="device-popover"></div>
+  <div id="device-popover" class="ds-hc"></div>
 
   <script id="pin-defs" type="application/json" nonce="${nonce}">${safeJson(PIN_DEFS)}</script>
   <script id="init-data" type="application/json" nonce="${nonce}">${safeJson(wiredPins)}</script>

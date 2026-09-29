@@ -94,8 +94,8 @@ PIN_DEFS.forEach(def => {
   line.setAttribute('y1', String(cy));
   line.setAttribute('x2', def.side === 'L' ? String(BOARD_L) : String(R_CX - 8));
   line.setAttribute('y2', String(cy));
-  line.setAttribute('stroke', isAssignable ? '#555' : '#333');
-  line.setAttribute('stroke-width', '1');
+  line.classList.add('conn');
+  if (!isAssignable) line.classList.add('conn-fixed');
   svg.appendChild(line);
 
   // Pin group

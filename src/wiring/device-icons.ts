@@ -22,6 +22,8 @@ export const DEVICE_ICONS: Record<string, string> = {
 /** The palette icon for `id`, or an accent-coloured dot when it has none. */
 export function deviceIconSvg(id: string, accentColor: string): string {
   const body = DEVICE_ICONS[id]
-    ?? `<circle cx="24" cy="24" r="12" fill="${escapeHtml(accentColor)}" stroke="#4a4a5a" stroke-width="2"/>`;
-  return `<svg class="icon" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${body}</svg>`;
+    ?? `<circle cx="24" cy="24" r="12" style="fill:${escapeHtml(accentColor)}" stroke="#4a4a5a" stroke-width="2"/>`;
+  // The art is drawn for a dark ground; a fixed plate keeps it identical on
+  // light and high-contrast themes (FR-THM-4) — only the chip frame is themed.
+  return `<svg class="icon" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect class="icon-plate" width="48" height="48" rx="8" fill="#1e1e2a"/>${body}</svg>`;
 }

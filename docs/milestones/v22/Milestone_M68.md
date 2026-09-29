@@ -78,7 +78,7 @@ standalone mockup before any view changes.
 
 ---
 
-### [ ] feat: Wiring Editor follows the theme (FR-THM-4)
+### [x] feat: Wiring Editor follows the theme (FR-THM-4)
 
 **Affected files:** `src/wiring/wiring-panel.ts`, `src/webview/wiring-webview.ts`, `src/wiring/device-popover.ts`, `src/wiring/device-icons.ts`, `src/test/unit/sidebar/wiring-editor-panel.test.ts`
 

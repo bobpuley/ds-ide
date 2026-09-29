@@ -162,7 +162,8 @@ describe('adding a registry entry surfaces it everywhere (FR-DEV-2)', () => {
     const html = buildWiringHtml([], [], 'test-nonce', 'vscode-resource://x.js');
     expect(html).toContain('.pin-fakekind');
     expect(html).toContain('var(--ds-accent-fakekind)');
-    expect(html).not.toContain('#abc123');
+    expect(html).toContain('--ds-accent-fakekind: #abc123;');
+    expect(html).toContain('--ds-accent-fakekind: #123abc;');
     expect(html).toContain('#111222');
     expect(html).toContain('data-device="fakekind"');
     expect(html).toContain('Fakekind');
