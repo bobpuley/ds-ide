@@ -41,15 +41,15 @@ standalone mockup before any code changes.
 
 ---
 
-### [ ] feat: Controls Editor cards render live illustrated widgets (FR-CWS-2)
+### [x] feat: Controls Editor cards render live illustrated widgets (FR-CWS-2)
 
-**Affected files:** `src/webview/controls/device-widget.ts`, `src/webview/controls/convention-canvas.ts`, `src/webview/controls/knob-svg.ts`, `src/webview/controls-webview.ts`, `src/test/unit/webview/device-widget.test.ts`, `src/test/unit/webview/knob-svg.test.ts`
+**Affected files:** `src/webview/controls/device-widget.ts`, `src/webview/controls/convention-canvas.ts`, `src/webview/controls/knob-svg.ts`, `src/webview/knob-math.ts`, `src/webview/controls-webview.ts`, `src/sidebar/controls-editor-panel.ts`, `src/test/unit/webview/device-widget.test.ts`, `src/test/unit/webview/knob-svg.test.ts`, `src/test/unit/webview/knob-math.test.ts`
 
 **DoD:**
 - `widgetHtml(kind, state)` and the state mapping (pot and encoder angle, lit, pressed, toggle position, RGB colour) are pure and unit-tested for each of the six kinds
 - each card shows its device's art as the widget: pot pointer follows the drag with the value shown, button cap looks pressed while held, toggle lever follows the position, encoder pointer follows the position, LED lens glows when lit, RGB LED lens shows the live colour
 - pot drag, button press / release, toggle cycling, encoder scroll and the LED / RGB LED IPC handling behave as before; stopped emulator dims and disables the widgets as before
-- `knob-svg.ts` and its test are removed
+- `knob-svg.ts` and the arc-knob geometry it alone used (`knob-math.ts`), with their tests, are removed
 - `npm test` green; manual check of each kind in the four theme kinds
 
 ---

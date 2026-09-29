@@ -309,17 +309,24 @@ ${ctrlCardCssRules()}
     .ctrl-body { padding: 6px 8px 8px; display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
     .body-disabled { opacity: 0.35; pointer-events: none; }
     .knob-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: ns-resize; user-select: none; padding: 2px 4px; }
-    .knob-svg { display: block; }
-    .knob-value { color: var(--ds-text); font-size: 10px; font-family: monospace; min-width: 36px; text-align: center; }
-    .btn-ce { background: var(--ds-input-bg); border: 2px solid var(--ds-accent-button); border-radius: 6px; padding: 7px; cursor: pointer; box-shadow: 0 3px 0 var(--ds-accent-button); transition: box-shadow 0.06s, transform 0.06s, background 0.06s; flex-shrink: 0; user-select: none; }
-    .btn-ce[aria-pressed="true"] { box-shadow: none; transform: translateY(3px); background: var(--ds-accent-button); border-color: var(--ds-accent-button); }
-    .tgl-ce { background: var(--ds-input-bg); border: 1px solid var(--ds-accent-toggle); border-radius: 4px; padding: 5px 10px; cursor: pointer; color: var(--ds-text); font-family: monospace; font-size: 12px; flex-shrink: 0; user-select: none; }
-    .tgl-ce:hover { background: var(--ds-hover-bg); }
-    .vled-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--ds-input-bg); border: 2px solid var(--ds-accent-led); box-shadow: none; display: inline-block; }
-    .vled-dot.vled-lit { background: var(--ds-accent-led); border-color: var(--ds-accent-led); box-shadow: 0 0 6px 1px var(--ds-accent-led); }
-    .vrgb-dot { width: 14px; height: 14px; border-radius: 50%; background: black; border: 1px solid var(--ds-text-muted); display: inline-block; }
-    .enc-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: ns-resize; user-select: none; padding: 2px 4px; }
-    .enc-value { color: var(--ds-text); font-size: 10px; font-family: monospace; min-width: 24px; text-align: center; }
+    /* Live illustrated widgets (FR-CWS-2): the art is the palette's; state arrives as
+       CSS variables on the widget root and moves the art's data-part hooks. */
+    svg.icon-live { width: 72px; height: 72px; display: block; }
+    .btn-ce, .tgl-ce { background: none; border: none; padding: 0; margin: 0; color: var(--ds-text); font-family: monospace; cursor: pointer; flex-shrink: 0; user-select: none; }
+    .btn-ce:focus-visible, .tgl-ce:focus-visible { outline: 1px solid var(--ds-focus); outline-offset: 2px; }
+    .knob-wrap, .enc-wrap, .tgl-ce { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+    .knob-wrap, .enc-wrap { cursor: ns-resize; user-select: none; padding: 2px 4px; }
+    .knob-value, .enc-value, .tgl-pos { color: var(--ds-text); font-size: 10px; font-family: monospace; min-width: 36px; text-align: center; }
+    .vled-dot, .vrgb-dot { display: inline-block; }
+    .knob-wrap [data-part="pointer"] { transform-box: view-box; transform-origin: 24px 26px; transform: rotate(calc(-135deg + var(--v, 0) * 270deg)); }
+    .enc-wrap [data-part="pointer"] { transform-box: view-box; transform-origin: 24px 24px; transform: rotate(calc(var(--e, 0) * 11.25deg)); }
+    .btn-ce[aria-pressed="true"] [data-part="cap"] { transform: translateY(2px); }
+    .tgl-ce [data-part="lever"] { transform: translateY(calc(var(--p, 0) * 5px)); }
+    .vled-dot [data-part="lens"] { opacity: 0.35; }
+    .vled-dot [data-part="glow"] { opacity: 0.05; }
+    .vled-dot.vled-lit [data-part="lens"] { opacity: 1; }
+    .vled-dot.vled-lit [data-part="glow"] { opacity: 0.6; }
+    .vrgb-dot [data-part="lens"] { fill: var(--c, black); fill-opacity: 1; opacity: var(--co, 0); }
     .section-label { color: var(--ds-text-muted); align-self: center; }
     /* SD card content viewer (FR-SD-1) — inline accordion, mirrors the
        Wiring Editor's #peripherals section (.section-hdr/.periph rows). */

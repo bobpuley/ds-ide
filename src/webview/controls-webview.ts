@@ -16,6 +16,7 @@ import { createYamlEditorCanvas } from './controls/yaml-editor-canvas';
 import { wireSaveButton } from './controls/save';
 import { createSdCardPanel } from './controls/sd-card-panel';
 import { createOledStrip } from './controls/oled-strip';
+import { rgbState, applyVars } from './controls/device-widget';
 
 interface VsCodeApiForControls {
   postMessage(msg: ControlsWebviewMessage): void;
@@ -83,12 +84,9 @@ function applyLed(gpioPin: number, lit: boolean): void {
 
 // ── RGB LED state from emulator (FR-DEV-8) ────────────────────────────────
 function applyRgbLed(gpioPin: number, r: number, g: number, b: number): void {
-  // Emulator-driven LED colour, not a theme colour; `color(srgb …)` takes the
-  // 0..1 channels directly.
-  const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
-  const color = 'color(srgb ' + clamp01(r) + ' ' + clamp01(g) + ' ' + clamp01(b) + ')';
+  const { vars } = rgbState(r, g, b);
   document.querySelectorAll('.vrgb-dot[data-pin="' + gpioPin + '"]').forEach(dot => {
-    (dot as HTMLElement).style.backgroundColor = color;
+    applyVars(dot as HTMLElement, vars);
   });
 }
 
