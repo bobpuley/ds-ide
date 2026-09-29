@@ -28,7 +28,7 @@ standalone mockup before any code changes.
 
 ---
 
-### [ ] feat: shared device art exposes hooks for its moving parts (FR-CWS-1)
+### [x] feat: shared device art exposes hooks for its moving parts (FR-CWS-1)
 
 **Affected files:** `src/wiring/device-icons.ts`, `src/test/unit/wiring/device-icons.test.ts`
 
