@@ -5,6 +5,21 @@ Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a
 
 ---
 
+## 0.20.2 — 2026-09-29
+
+**M67 — Stateful Transport on Native Surfaces** *(FR-TRN-1–FR-TRN-7 — DoD green)*
+
+- **FR-TRN-1** — Ctrl+F5 ("Run Without Debugging") is now a real `ds-ide` session. `resolveDebugConfiguration` builds, deploys and returns the config, and the new inline `RunSessionAdapter` (`src/debug/run-session-adapter.ts`) keeps the session alive while the emulator runs. VS Code's toolbar gives Restart / Stop, and ■ / ⇧F5 stop the emulator. Session and emulator are tied together by PID, so neither outlives the other on a user stop, a crash, a window reload or a second launch. `EmulatorManager` gains `stop()` and an `exit` event (`{ pid, crashed }`). This works without a `launch.json`: the default `ds-ide` config is filled in. All granular commands and keybindings are unchanged.
+- **FR-TRN-2** — ↻ Restart / ⇧⌘F5 rebuilds and redeploys in the same mode. VS Code relaunches a session with its already-resolved config, so each resolved config carries a one-time `__dsIdeLaunchId`, and a relaunch with a consumed id makes the adapter rebuild + redeploy itself (a Stop mid-rebuild cancels it). F5 now keeps the `ds-ide` session live too and attaches `daisy-debug` as its child (`lifecycleManagedByParent`), so the debug toolbar's ↻ / ■ reach it. `DsIdeTerminatingAdapter` is removed. Stopping a debug session kills the emulator with SIGKILL, so lldb no longer pauses it in the shim. Decision recorded in the milestone file (user-approved 2026-09-29).
+- **FR-TRN-3** — An editor-title ▶ on the project's effect source (`editor/title/run`): *Run Daisy Effect* (⌃F5), *Debug Daisy Effect* (F5), and *Build & Flash to Daisy Seed* in the dropdown. It is gated by the new `ds-ide.isEffectSource` context key. `buildForHardware` now reports success, so Build & Flash stops after a failed build.
+- **FR-TRN-4** — A native **Daisy** `TreeView` in the Run and Debug container (`ds-ide.daisyView`) has Emulator (state + audio detail), Source changed (*restart to apply*) and Board rows, drawn with `ThemeIcon` / `ThemeColor` only. Its title actions switch with the `ds-ide.transportPhase` context key (Run / Debug, Stop, or Cancel), plus ⚡ Build & Flash, Refresh, Show Emulator Output, and Build for Hardware in the overflow menu. Build / deploy / hardware work shows progress on the view as well as in the notification. There is one pure `TransportState` reducer (`src/transport/transport-state.ts`), and `TransportController` (`src/transport/transport-controller.ts`) feeds it from deploy steps, debug sessions, lldb pause/resume, saves and emulator exits.
+- **FR-TRN-5** — The status bar is two items rendered from the transport state (`src/transport/status-items.ts`). The first is `Daisy: <state>`: red with Problems on click after a failed build, amber with the Emulator output after a crash, otherwise it reveals the Daisy view, and it says *restart to apply* when the source is stale. The second is ⚡ Flash (*no board* when none is detected). Each has its own id and name, both are hidden outside Daisy projects, and all 7 direct `statusBar.text` writes in `extension.ts` are gone.
+- **FR-TRN-6** — A failed build on the run, debug or restart path shows one notification, "Build failed with N problems. Nothing was deployed.", with *Show Problems*. The generic build toast is suppressed there, but the non-portable-symbol hint is kept. A crash (process exit or unexpected IPC disconnect) shows one notification with *Show Output* / *Debug*.
+- **FR-TRN-7** — On-demand board detection (`src/hardware/board-detect.ts`) parses `dfu-util -l` and runs when the Daisy view becomes visible, on Refresh, and before flashing. There is no polling. *Build & Flash* asks for a modal confirmation naming the project and board, then builds and flashes with cancellable progress. With no board it shows a BOOT + RESET warning with *Retry*, and no hardware build starts.
+- **chore** — `package.json`'s `version` is bumped to `0.20.2`. The vscode test mock gains tree-view / theme types, and `showErrorMessage` now returns a Thenable like the real API.
+
+---
+
 ## 0.20.1 — 2026-09-28
 
 **M66 — Unified Device Model (Drag & Drop)** *(FR-UDM-5–FR-UDM-10 — DoD green)*
