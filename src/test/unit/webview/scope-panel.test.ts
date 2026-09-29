@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'events';
 import * as vscode from 'vscode';
 import { ScopePanel, SINE_DEFAULTS, AUDIO_SOURCE_DEFAULTS } from '../../../webview/scope-panel';
+import { themeCss } from '../../../webview/theme/theme-css';
 import { EmulatorManager } from '../../../emulator/manager';
 
 function makeManager() {
@@ -224,6 +225,19 @@ describe('ScopePanel', () => {
     expect(created.webview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ command: 'status', running: true }),
     );
+  });
+
+  it('themes its chrome with the shared editor-surface layer and no colour literals (FR-THM-1)', () => {
+    panel.show();
+    const created = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    const html = created.webview.html;
+    expect(html).toContain('--ds-surface: var(--vscode-editor-background)');
+    expect(html).toContain('background: var(--ds-surface)');
+    // The shared theme block legitimately holds the accent palette; strip it
+    // and require the panel's own CSS/markup to be literal-free.
+    const own = html.replace(themeCss({ surface: 'editor' }), '');
+    expect(own).not.toMatch(/(?<![&\w])#[0-9a-fA-F]{3,8}\b/);
+    expect(own).not.toMatch(/\brgba?\(|\bhsla?\(/);
   });
 
   it('includes fidelity caveat notice in webview HTML (T4.5)', () => {
@@ -510,7 +524,7 @@ describe('ScopePanel', () => {
   it('webview HTML body CSS includes a visible border on all sides (T16-2)', () => {
     panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toMatch(/body\s*\{[^}]*\bborder\b[^}]*1px solid #3c3c3c/);
+    expect(webview.html).toMatch(/body\s*\{[^}]*\bborder\b[^}]*1px solid var\(--ds-border\)/);
   });
 
   it('does not forward spectrum message if panel is not open', () => {

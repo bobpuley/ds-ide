@@ -28,6 +28,8 @@ const TOKEN_MAP: ReadonlyArray<readonly [string, string]> = [
   ['input-fg', '--vscode-input-foreground'],
   ['button-bg', '--vscode-button-background'],
   ['button-fg', '--vscode-button-foreground'],
+  ['button-hover-bg', '--vscode-button-hoverBackground'],
+  ['hover-bg', '--vscode-toolbar-hoverBackground'],
   ['dropdown-bg', '--vscode-dropdown-background'],
   ['dropdown-fg', '--vscode-dropdown-foreground'],
   ['trace-in', '--vscode-charts-blue'],

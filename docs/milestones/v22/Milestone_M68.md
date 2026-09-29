@@ -42,7 +42,7 @@ standalone mockup before any view changes.
 
 ---
 
-### [ ] feat: Scope panel follows the theme, with live repaint (FR-THM-5)
+### [x] feat: Scope panel follows the theme, with live repaint (FR-THM-5)
 
 **Affected files:** `src/webview/scope-panel.ts`, `src/webview/scope-webview.ts`, `src/test/unit/webview/scope-panel.test.ts`
 

@@ -6,6 +6,7 @@ import { startAudio, stopAudio } from '../commands/transport';
 import { getBoolean, getNumber } from '../ipc/narrow';
 import { ScopeWebviewMessage } from './messages';
 import { hasKnownCommand, assertNever } from './message-guard';
+import { themeCss } from './theme/theme-css';
 
 // FR-EXT-33: see controls-editor-panel.ts's identical comment — the
 // switch's `default: assertNever(...)` is the actual drift-detector; this
@@ -360,61 +361,62 @@ function buildHtml(nonce: string, scriptUri: string, sine: SineParams, source: A
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Daisy Scope</title>
   <style>
+${themeCss({ surface: 'editor' })}
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #1e1e1e; color: #d4d4d4; font-family: monospace; font-size: 12px; display: flex; flex-direction: column; height: 100vh; border: 1px solid #3c3c3c; }
-    header { padding: 6px 12px; background: #252526; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #3c3c3c; flex-wrap: wrap; flex-shrink: 0; }
-    #fidelity-caveat { font-size: 10px; color: #6a6a6a; cursor: default; margin-left: auto; }
+    body { background: var(--ds-surface); color: var(--ds-text); font-family: monospace; font-size: 12px; display: flex; flex-direction: column; height: 100vh; border: 1px solid var(--ds-border); }
+    header { padding: 6px 12px; background: var(--ds-surface-raised); display: flex; align-items: center; gap: 16px; border-bottom: 1px solid var(--ds-border); flex-wrap: wrap; flex-shrink: 0; }
+    #fidelity-caveat { font-size: 10px; color: var(--ds-text-muted); cursor: default; margin-left: auto; }
     #status-text { flex: 1; }
     .legend { display: flex; gap: 12px; }
     .legend span { display: flex; align-items: center; gap: 4px; }
     .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-    .dot-in  { background: #4ec9b0; }
-    .dot-out { background: #ce9178; }
+    .dot-in  { background: var(--ds-trace-in); }
+    .dot-out { background: var(--ds-trace-out); }
     #vol-group { display: flex; align-items: center; gap: 6px; }
-    #vol-label { color: #9cdcfe; font-size: 11px; }
-    #output-vol { width: 80px; cursor: pointer; accent-color: #4ec9b0; }
-    #vol-val { min-width: 30px; color: #b5cea8; font-size: 11px; }
-    #events { padding: 3px 12px; min-height: 22px; background: #252526; border-bottom: 1px solid #3c3c3c; font-size: 11px; color: #f48771; flex-shrink: 0; }
+    #vol-label { color: var(--ds-text-muted); font-size: 11px; }
+    #output-vol { width: 80px; cursor: pointer; accent-color: var(--ds-trace-in); }
+    #vol-val { min-width: 30px; color: var(--ds-text); font-size: 11px; }
+    #events { padding: 3px 12px; min-height: 22px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); font-size: 11px; color: var(--ds-error); flex-shrink: 0; }
     canvas { display: block; width: 100%; }
     #scope { flex: 1; min-height: 0; }
-    #spectrum { height: 140px; border-top: 1px solid #3c3c3c; background: #1a1a1a; flex-shrink: 0; }
-    #emulator-section { background: #252526; border-top: 1px solid #3c3c3c; flex-shrink: 0; }
+    #spectrum { height: 140px; border-top: 1px solid var(--ds-border); background: var(--ds-surface); flex-shrink: 0; }
+    #emulator-section { background: var(--ds-surface-raised); border-top: 1px solid var(--ds-border); flex-shrink: 0; }
     #emulator-bar { padding: 6px 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .emu-label { color: #9cdcfe; }
-    #audio-source-select { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 2px 6px; font-family: monospace; cursor: pointer; border-radius: 2px; }
-    .emu-sep { color: #3c3c3c; user-select: none; }
-    .emu-rec-sep { color: #555; user-select: none; border-left: 1px solid #555; height: 14px; margin: 0 4px; }
+    .emu-label { color: var(--ds-text-muted); }
+    #audio-source-select { background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-border); padding: 2px 6px; font-family: monospace; cursor: pointer; border-radius: 2px; }
+    .emu-sep { color: var(--ds-border); user-select: none; }
+    .emu-rec-sep { color: var(--ds-border); user-select: none; border-left: 1px solid var(--ds-border); height: 14px; margin: 0 4px; }
     .emu-group { display: inline-flex; align-items: center; gap: 6px; }
     .emu-hidden { display: none !important; }
     .emu-field { display: inline-flex; align-items: center; gap: 4px; }
-    .emu-field input[type="number"] { width: 64px; background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 2px 4px; font-family: monospace; }
+    .emu-field input[type="number"] { width: 64px; background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-border); padding: 2px 4px; font-family: monospace; }
     .emu-field input[type="range"] { width: 90px; cursor: pointer; }
-    .emu-field select { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 2px 4px; font-family: monospace; cursor: pointer; }
-    .emu-btn { background: #0e639c; color: #fff; border: none; padding: 3px 8px; font-family: monospace; cursor: pointer; border-radius: 2px; }
-    .emu-btn:hover { background: #1177bb; }
-    .latency-text { color: #b5cea8; }
-    .wav-name { color: #b5cea8; font-style: italic; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .rec-label { color: #9cdcfe; }
-    .rec-btn { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 3px 10px; font-family: monospace; font-size: 12px; cursor: pointer; border-radius: 2px; }
-    .rec-btn:hover { background: #4a4a4a; }
+    .emu-field select { background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-border); padding: 2px 4px; font-family: monospace; cursor: pointer; }
+    .emu-btn { background: var(--ds-button-bg); color: var(--ds-button-fg); border: 1px solid transparent; padding: 3px 8px; font-family: monospace; cursor: pointer; border-radius: 2px; }
+    .emu-btn:hover { background: var(--ds-button-hover-bg); }
+    .latency-text { color: var(--ds-text); }
+    .wav-name { color: var(--ds-text); font-style: italic; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rec-label { color: var(--ds-text-muted); }
+    .rec-btn { background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-border); padding: 3px 10px; font-family: monospace; font-size: 12px; cursor: pointer; border-radius: 2px; }
+    .rec-btn:hover { background: var(--ds-hover-bg); }
     .rec-btn:disabled { opacity: 0.4; cursor: default; }
-    #rec-start-btn { border-color: #c94040; color: #f48771; }
-    #rec-start-btn:hover:not(:disabled) { background: #5a1a1a; }
-    #rec-start-btn.recording { background: #c94040; color: #fff; border-color: #ff6060; animation: blink 1s step-end infinite; }
+    #rec-start-btn { border-color: var(--ds-error); color: var(--ds-error); }
+    #rec-start-btn:hover:not(:disabled) { background: var(--ds-hover-bg); }
+    #rec-start-btn.recording { background: var(--ds-error); color: var(--ds-surface); border-color: var(--ds-error); animation: blink 1s step-end infinite; }
     @keyframes blink { 50% { opacity: 0.5; } }
-    #replay-start-btn { border-color: #4ec9b0; color: #4ec9b0; }
-    #replay-start-btn:hover:not(:disabled) { background: #1a3a35; }
-    #replay-start-btn.replaying { background: #1e5a4a; color: #fff; }
-    .rec-filename { color: #b5cea8; font-style: italic; font-size: 11px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .audio-btn { background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 3px 8px; font-family: monospace; font-size: 13px; cursor: pointer; border-radius: 2px; }
+    #replay-start-btn { border-color: var(--ds-ok); color: var(--ds-ok); }
+    #replay-start-btn:hover:not(:disabled) { background: var(--ds-hover-bg); }
+    #replay-start-btn.replaying { background: var(--ds-ok); color: var(--ds-surface); }
+    .rec-filename { color: var(--ds-text); font-style: italic; font-size: 11px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .audio-btn { background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-border); padding: 3px 8px; font-family: monospace; font-size: 13px; cursor: pointer; border-radius: 2px; }
     .audio-btn:disabled { opacity: 0.35; cursor: default; }
-    #btn-audio-start { border-color: #4a7a4a; color: #4ec9b0; }
-    #btn-audio-start:not(:disabled):hover { background: #1a3a1a; }
-    #btn-audio-stop  { border-color: #7a3a3a; color: #f48771; }
-    #btn-audio-stop:not(:disabled):hover  { background: #3a1a1a; }
-    #getting-started { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #6a6a6a; padding: 32px; text-align: center; }
+    #btn-audio-start { border-color: var(--ds-ok); color: var(--ds-ok); }
+    #btn-audio-start:not(:disabled):hover { background: var(--ds-hover-bg); }
+    #btn-audio-stop  { border-color: var(--ds-error); color: var(--ds-error); }
+    #btn-audio-stop:not(:disabled):hover  { background: var(--ds-hover-bg); }
+    #getting-started { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--ds-text-muted); padding: 32px; text-align: center; }
     #getting-started ol { text-align: left; padding-left: 20px; line-height: 2; }
-    #getting-started code { background: #3c3c3c; padding: 1px 4px; border-radius: 2px; color: #9cdcfe; }
+    #getting-started code { background: var(--ds-input-bg); padding: 1px 4px; border-radius: 2px; color: var(--ds-text); }
   </style>
 </head>
 <body>
