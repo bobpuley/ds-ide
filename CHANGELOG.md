@@ -3,6 +3,17 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.22.0 — 2026-09-30
+
+**Scope instrument — analysis** *(FR-SCI-9 to FR-SCI-13, M71)*
+
+- **FR-SCI-9** — Edge trigger: Free / rising / falling on In or Out L, with a level marker on the amplitude axis that can be dragged. A periodic wave is drawn from the same phase every frame and stands still. The plot starts at the latest crossing that leaves a full window, so it shows current data. When nothing crosses the level it shows "no trigger — waiting…" and keeps the last triggered frame.
+- **FR-SCI-10** — 1× Single arms the trigger and freezes the display on the next triggered capture; pressing it again resumes and re-arms, Freeze / Space cancels it. Best effort: a short transient between two scope snapshots can be missed until emulator-side capture (M72).
+- **FR-SCI-11** — The spectrum has Lin / Log frequency and Relative / Absolute dBFS, with labelled Hz and dB axes (Log and Absolute by default). Absolute mode no longer renormalises to the running peak, and corrects the Hann window gain so a full-scale sine reads 0 dBFS.
+- **FR-SCI-12** — Two icon buttons at the end of the toolbar: Snapshot saves a PNG of the scope and spectrum, and CSV saves the visible samples (time in ms, one column per visible channel), both through a save dialog. The host validates the payload (PNG signature, size limits).
+- **FR-SCI-13** — The events strip is backed by a timestamped log of up to 200 events (CLIP, DENORMAL, xruns, other emulator events); repeats within a second fold into one entry with a count. Click "history" to expand it; it survives a stop.
+- **Toolbar polish** (from manual testing) — Freeze / 1× Single use the same compact style as the segmented controls, and Freeze reads "Resume" while frozen. FROZEN is drawn on the plot next to the gain label instead of as a badge in the toolbar.
+
 ## 0.21.0 — 2026-09-30
 
 **Scope instrument — display** *(FR-SCI-1 to FR-SCI-8, M70)*
