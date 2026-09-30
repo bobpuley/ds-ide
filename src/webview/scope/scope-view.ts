@@ -33,12 +33,68 @@ export function timeTicks(msPerDiv: number): { div: number; label: string }[] {
   return ticks;
 }
 
-/** Amplitude-axis ticks, full scale ±1.0. */
-export function amplitudeTicks(): { value: number; label: string }[] {
-  return [1, 0.5, 0, -0.5, -1].map(value => ({
-    value,
-    label: value === 0 ? '0' : (value > 0 ? '+' : '-') + Math.abs(value).toFixed(1),
-  }));
+export const GAIN_STEPS = [1, 2, 4] as const;
+export type GainMode = 'auto' | (typeof GAIN_STEPS)[number];
+export type AmpUnit = 'lin' | 'db';
+
+const AUTO_FILL = 0.9;
+const MAX_AUTO_GAIN = 64;
+/** The dB scale spans this many dB below full scale. */
+const DB_FLOOR = -60;
+/** Positions are clamped to this, so an overdriven trace stays near the plot. */
+const MAX_POSITION = 1.5;
+
+/** Gain that fits `peak` into 90% of the plot; never below x1, capped at x64. */
+export function autoGain(peak: number): number {
+  if (!(peak > 0)) return 1;
+  return Math.min(MAX_AUTO_GAIN, Math.max(1, AUTO_FILL / peak));
+}
+
+export function peakAbs(samples: readonly number[], start: number, count: number): number {
+  let peak = 0;
+  for (let i = start; i < start + count; i++) peak = Math.max(peak, Math.abs(samples[i] ?? 0));
+  return peak;
+}
+
+/**
+ * Vertical position of a sample as a fraction of the half-height: 0 is the
+ * centre, +1 the top edge, -1 the bottom edge. Linear scales by the gain; dBFS
+ * maps level in dB (after gain) onto the half-height over a 60 dB range.
+ */
+export function samplePosition(sample: number, gain: number, unit: AmpUnit): number {
+  const pos = unit === 'lin' ? sample * gain : dbPosition(Math.abs(sample * gain)) * Math.sign(sample);
+  return Math.max(-MAX_POSITION, Math.min(MAX_POSITION, pos));
+}
+
+function dbPosition(magnitude: number): number {
+  if (magnitude <= 0) return 0;
+  const db = Math.max(DB_FLOOR, 20 * Math.log10(magnitude));
+  return (db - DB_FLOOR) / -DB_FLOOR;
+}
+
+const DB_TICKS = [0, -6, -20, -40];
+
+/**
+ * Amplitude-axis ticks. `pos` is a fraction of the half-height (see samplePosition).
+ * Labels show the signal level each line represents at the current gain.
+ */
+export function amplitudeTicks(gain: number, unit: AmpUnit): { pos: number; label: string }[] {
+  if (unit === 'db') {
+    const gainDb = 20 * Math.log10(gain);
+    const ticks: { pos: number; label: string }[] = [];
+    for (const d of DB_TICKS) ticks.push({ pos: (d - DB_FLOOR) / -DB_FLOOR, label: `${Math.round(d - gainDb)} dB` });
+    for (const d of DB_TICKS) ticks.push({ pos: -(d - DB_FLOOR) / -DB_FLOOR, label: '' });
+    ticks.push({ pos: 0, label: '' });
+    return ticks;
+  }
+  return [1, 0.5, 0, -0.5, -1].map(pos => ({ pos, label: linearLabel(pos / gain) }));
+}
+
+function linearLabel(v: number): string {
+  if (v === 0) return '0';
+  const sign = v > 0 ? '+' : '-';
+  const a = Math.abs(v);
+  return sign + (Number.isInteger(a * 10) ? a.toFixed(1) : a.toFixed(a < 0.1 ? 3 : 2));
 }
 
 function formatNumber(v: number): string {

@@ -638,6 +638,16 @@ describe('ScopePanel', () => {
     expect(webview.html).toContain('id="rate-note"');
   });
 
+  // FR-SCI-5 — gain and amplitude scale
+  it('webview HTML has gain and amplitude-scale controls with x1 and Linear active (FR-SCI-5)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    for (const g of ['1', '2', '4', 'auto']) expect(webview.html).toContain(`data-gain="${g}"`);
+    expect(webview.html).toMatch(/class="seg-btn active" data-gain="1"/);
+    expect(webview.html).toMatch(/class="seg-btn active" data-unit="lin"/);
+    expect(webview.html).toContain('data-unit="db"');
+  });
+
   // FR-SCOPE-1 — Audio Settings always visible (no collapsible)
   it('webview HTML includes emulator-section with no Controls Editor tab (FR-SCOPE-1)', () => {
     panel.show();

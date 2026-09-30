@@ -8,7 +8,7 @@ import { loadScopeColors } from './scope-colors';
 import { ScopeCapture } from './scope/scope-capture';
 import {
   DEFAULT_TIME_BASE_MS, DIVISIONS, windowSamples, pointsPerDivision, isLowResolution,
-  visibleRange, timeTicks, amplitudeTicks,
+  visibleRange, timeTicks, amplitudeTicks, autoGain, peakAbs, samplePosition, type GainMode, type AmpUnit,
 } from './scope/scope-view';
 
 const vscode = acquireVsCodeApi();
@@ -87,6 +87,8 @@ function resize(): void {
 // Plot margins leave room for the axis labels (FR-SCI-4).
 const PLOT_LEFT = 44, PLOT_RIGHT = 8, PLOT_TOP = 8, PLOT_BOTTOM = 18;
 let msPerDiv = DEFAULT_TIME_BASE_MS;
+let gainMode: GainMode = 1;
+let ampUnit: AmpUnit = 'lin';
 
 function updateRateNote(): void {
   const rate = capture.effectiveRate;
@@ -111,11 +113,20 @@ function draw(): void {
   // Amplitude axis: a grid line and a label per tick.
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
-  for (const t of amplitudeTicks()) {
-    const y = PLOT_TOP + ph * (0.5 - t.value / 2);
+  const win = windowSamples(msPerDiv, capture.effectiveRate);
+  // Until the rate is known (no status yet), fall back to the newest snapshot as before.
+  const inBuf = win > 0 ? capture.channel('in') : lastIn;
+  const outBuf = win > 0 ? capture.channel('l') : lastOut;
+  const span = win > 0 ? win : lastIn.length;
+  const range = visibleRange(inBuf.length, span);
+  const gain = gainMode === 'auto'
+    ? autoGain(Math.max(peakAbs(inBuf, range.start, range.count), peakAbs(outBuf, range.start, range.count)))
+    : gainMode;
+  for (const t of amplitudeTicks(gain, ampUnit)) {
+    const y = PLOT_TOP + ph * (0.5 - t.pos / 2);
     ctx.strokeStyle = colors.grid;
     ctx.beginPath(); ctx.moveTo(PLOT_LEFT, y + 0.5); ctx.lineTo(PLOT_LEFT + pw, y + 0.5); ctx.stroke();
-    ctx.fillText(t.label, PLOT_LEFT - 4, y);
+    if (t.label) ctx.fillText(t.label, PLOT_LEFT - 4, y);
   }
   // Time axis: ten divisions, labelled in ms every second one.
   ctx.strokeStyle = colors.grid;
@@ -131,20 +142,19 @@ function draw(): void {
   ctx.textAlign = 'right';
   ctx.fillText('ms', W - 2, PLOT_TOP + ph + 4);
 
-  const win = windowSamples(msPerDiv, capture.effectiveRate);
-  // Until the rate is known (no status yet), fall back to the newest snapshot as before.
-  const total = win > 0 ? capture.length : lastIn.length;
-  const span = win > 0 ? win : lastIn.length;
-  const { start, count } = visibleRange(total, span);
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'top';
+  ctx.fillText(`×${gain >= 10 ? gain.toFixed(0) : gain.toFixed(1).replace(/\.0$/, '')}${gainMode === 'auto' ? ' auto' : ''}`, W - PLOT_RIGHT - 4, PLOT_TOP + 3);
+  const { start, count } = range;
   ctx.save();
   ctx.beginPath(); ctx.rect(PLOT_LEFT, PLOT_TOP, pw, ph); ctx.clip();
-  drawWave(win > 0 ? capture.channel('in') : lastIn, start, count, span, colors.traceIn, pw, ph);
-  drawWave(win > 0 ? capture.channel('l') : lastOut, start, count, span, colors.traceOut, pw, ph);
+  drawWave(inBuf, start, count, span, gain, colors.traceIn, pw, ph);
+  drawWave(outBuf, start, count, span, gain, colors.traceOut, pw, ph);
   ctx.restore();
 }
 
 function drawWave(
-  pts: readonly number[], start: number, count: number, span: number, color: string, pw: number, ph: number,
+  pts: readonly number[], start: number, count: number, span: number, gain: number, color: string, pw: number, ph: number,
 ): void {
   if (count < 2 || span < 2) return;
   ctx.strokeStyle = color;
@@ -152,7 +162,7 @@ function drawWave(
   ctx.beginPath();
   for (let i = 0; i < count; i++) {
     const x = PLOT_LEFT + (i / (span - 1)) * pw;
-    const y = PLOT_TOP + ph * (0.5 - (pts[start + i] ?? 0) / 2);
+    const y = PLOT_TOP + ph * (0.5 - samplePosition(pts[start + i] ?? 0, gain, ampUnit) / 2);
     if (i === 0) ctx.moveTo(x, y);
     else         ctx.lineTo(x, y);
   }
@@ -281,6 +291,19 @@ timeBaseEl?.addEventListener('change', () => {
   updateRateNote();
   flushScopeDraw();
 });
+function wireSegment(id: string, attr: string, onPick: (value: string) => void): void {
+  const seg = document.getElementById(id);
+  seg?.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('.seg-btn');
+    const value = btn?.dataset[attr];
+    if (!btn || value === undefined) return;
+    seg.querySelectorAll('.seg-btn').forEach(b => b.classList.toggle('active', b === btn));
+    onPick(value);
+    flushScopeDraw();
+  });
+}
+wireSegment('gain-seg', 'gain', v => { gainMode = v === 'auto' ? 'auto' : (Number(v) as GainMode); });
+wireSegment('unit-seg', 'unit', v => { ampUnit = v === 'db' ? 'db' : 'lin'; });
 window.addEventListener('resize', resize);
 // Repaint in the new theme even when nothing is streaming (stopped scope, FR-THM-5).
 onThemeChange(() => {

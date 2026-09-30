@@ -63,7 +63,7 @@ derive the decimation step reliably from the block size.
 
 ---
 
-### [ ] feat: gain and dBFS amplitude scale (FR-SCI-5)
+### [x] feat: gain and dBFS amplitude scale (FR-SCI-5)
 
 **Affected files:** `src/webview/scope/scope-view.ts`, `src/webview/scope-webview.ts`, `src/webview/scope-panel.ts`, `src/test/unit/webview/scope-view.test.ts`
 
