@@ -90,8 +90,22 @@ log of `CLIP`, `DENORMAL` and xrun events, with the latest event shown in the st
 - AC: an event is visible in the log after the strip moves on.
 - AC: the log holds at least the last 200 events and drops the oldest.
 
-**FR-SCI-14 — Emulator-side capture (M72, planned).** The emulator keeps a full-rate ring,
-triggers in C++ without adding work to the real-time callback, and returns a triggered window on
-request, so single-shot catches transients and fine time bases show full-rate detail.
-- AC: to be defined when M72 is planned.
+**FR-SCI-14 — Emulator-side capture (M72).** The emulator keeps a full-rate ring of In / Out L /
+Out R on its non-real-time drain thread, scans it for a trigger, and returns one triggered window
+per request, so single-shot catches transients and fine time bases show full-rate detail. The
+real-time callback is unchanged (FR-RTS-*). The webview requests a capture only for 1× Single and
+for time bases flagged low-resolution (FR-SCI-4); the live scope otherwise stays on the decimated
+stream (decision 2026-09-30).
+- AC (FR-SCI-14a): a full-rate ring retains the last ≥ 16384 frames per channel and returns a
+  window of N frames around the first qualifying edge (source In / Out L, rising / falling, level),
+  with the trigger index; a window that cannot yet be completed is not returned; a rate / block
+  change clears the ring.
+- AC (FR-SCI-14b): a `scopeCapture` request on a running emulator yields one `scope_capture`
+  message whose samples are full-rate (not decimated); a cancel request yields none; a new request
+  replaces a pending one.
+- AC (FR-SCI-14c): the `scope_capture` message narrows to `in`, `out`, `out_r`, `rate`, `trigger`
+  and is forwarded to the Scope webview; a malformed one is dropped.
+- AC (FR-SCI-14d): arming 1× Single sends a capture request and freezes the display on the
+  returned window at its trigger point; at a low-resolution time base with an edge trigger the
+  plot is drawn from full-rate windows.
 
