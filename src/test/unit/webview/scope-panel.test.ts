@@ -626,6 +626,18 @@ describe('ScopePanel', () => {
     expect(webview.html).toContain('value="wav"');
   });
 
+  // FR-SCI-4 — time-base selector
+  it('webview HTML has a time-base selector defaulting to 2 ms/div (FR-SCI-4)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="timebase"');
+    for (const ms of ['0.5', '1', '2', '5', '10']) {
+      expect(webview.html).toContain(`<option value="${ms}"`);
+    }
+    expect(webview.html).toMatch(/<option value="2" selected>/);
+    expect(webview.html).toContain('id="rate-note"');
+  });
+
   // FR-SCOPE-1 — Audio Settings always visible (no collapsible)
   it('webview HTML includes emulator-section with no Controls Editor tab (FR-SCOPE-1)', () => {
     panel.show();

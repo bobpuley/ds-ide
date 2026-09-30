@@ -6,6 +6,10 @@ import { createRafCoalescer } from './raf-coalesce';
 import { readThemeColor, onThemeChange } from './theme/theme-runtime';
 import { loadScopeColors } from './scope-colors';
 import { ScopeCapture } from './scope/scope-capture';
+import {
+  DEFAULT_TIME_BASE_MS, DIVISIONS, windowSamples, pointsPerDivision, isLowResolution,
+  visibleRange, timeTicks, amplitudeTicks,
+} from './scope/scope-view';
 
 const vscode = acquireVsCodeApi();
 const canvas = el<HTMLCanvasElement>('scope');
@@ -27,6 +31,9 @@ const wavNameEl = el<HTMLElement>('wav-name');
 const wavLoopEl = el<HTMLInputElement>('wav-loop');
 const outputVolEl = el<HTMLInputElement>('output-vol');
 const volValEl = el<HTMLElement>('vol-val');
+const scopeControlsEl = el<HTMLElement>('scope-controls');
+const timeBaseEl = el<HTMLSelectElement>('timebase');
+const rateNoteEl = el<HTMLElement>('rate-note');
 
 // Canvas colours come from the theme (FR-THM-2): read once here and again only
 // when the theme changes (FR-THM-5), never per frame.
@@ -62,6 +69,7 @@ function updateStatusEl(): void {
 function showScope(): void {
   if (!hasStatus) return;
   canvas.style.display = 'block';
+  scopeControlsEl.style.display = 'flex';
   specCanvas.style.display = 'block';
   gettingStarted.style.display = 'none';
   resize();
@@ -76,31 +84,75 @@ function resize(): void {
   drawSpectrum();
 }
 
+// Plot margins leave room for the axis labels (FR-SCI-4).
+const PLOT_LEFT = 44, PLOT_RIGHT = 8, PLOT_TOP = 8, PLOT_BOTTOM = 18;
+let msPerDiv = DEFAULT_TIME_BASE_MS;
+
+function updateRateNote(): void {
+  const rate = capture.effectiveRate;
+  if (rate <= 0) { rateNoteEl.textContent = ''; rateNoteEl.classList.remove('low-res'); return; }
+  const low = isLowResolution(msPerDiv, rate);
+  const ppd = Math.round(pointsPerDivision(msPerDiv, rate));
+  rateNoteEl.textContent = `effective rate ${(rate / 1000).toFixed(rate % 1000 ? 1 : 0)} kHz` +
+    (low ? ` — low resolution (${ppd} points/div)` : '');
+  rateNoteEl.classList.toggle('low-res', low);
+}
+
 function draw(): void {
   const W = canvas.width, H = canvas.height;
+  const pw = W - PLOT_LEFT - PLOT_RIGHT, ph = H - PLOT_TOP - PLOT_BOTTOM;
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = colors.background;
   ctx.fillRect(0, 0, W, H);
-  ctx.strokeStyle = colors.grid;
+  if (pw <= 0 || ph <= 0) return;
   ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2);
-  ctx.moveTo(0, H / 4); ctx.lineTo(W, H / 4);
-  ctx.moveTo(0, 3 * H / 4); ctx.lineTo(W, 3 * H / 4);
-  ctx.stroke();
-  drawWave(lastIn,  colors.traceIn);
-  drawWave(lastOut, colors.traceOut);
+  ctx.font = '10px monospace';
+  ctx.fillStyle = colors.axis;
+  // Amplitude axis: a grid line and a label per tick.
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for (const t of amplitudeTicks()) {
+    const y = PLOT_TOP + ph * (0.5 - t.value / 2);
+    ctx.strokeStyle = colors.grid;
+    ctx.beginPath(); ctx.moveTo(PLOT_LEFT, y + 0.5); ctx.lineTo(PLOT_LEFT + pw, y + 0.5); ctx.stroke();
+    ctx.fillText(t.label, PLOT_LEFT - 4, y);
+  }
+  // Time axis: ten divisions, labelled in ms every second one.
+  ctx.strokeStyle = colors.grid;
+  for (let d = 0; d <= DIVISIONS; d++) {
+    const x = PLOT_LEFT + (pw * d) / DIVISIONS;
+    ctx.beginPath(); ctx.moveTo(x + 0.5, PLOT_TOP); ctx.lineTo(x + 0.5, PLOT_TOP + ph); ctx.stroke();
+  }
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  for (const t of timeTicks(msPerDiv)) {
+    ctx.fillText(t.label, PLOT_LEFT + (pw * t.div) / DIVISIONS, PLOT_TOP + ph + 4);
+  }
+  ctx.textAlign = 'right';
+  ctx.fillText('ms', W - 2, PLOT_TOP + ph + 4);
+
+  const win = windowSamples(msPerDiv, capture.effectiveRate);
+  // Until the rate is known (no status yet), fall back to the newest snapshot as before.
+  const total = win > 0 ? capture.length : lastIn.length;
+  const span = win > 0 ? win : lastIn.length;
+  const { start, count } = visibleRange(total, span);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(PLOT_LEFT, PLOT_TOP, pw, ph); ctx.clip();
+  drawWave(win > 0 ? capture.channel('in') : lastIn, start, count, span, colors.traceIn, pw, ph);
+  drawWave(win > 0 ? capture.channel('l') : lastOut, start, count, span, colors.traceOut, pw, ph);
+  ctx.restore();
 }
 
-function drawWave(pts: number[], color: string): void {
-  if (!pts || pts.length < 2) return;
-  const W = canvas.width, H = canvas.height;
+function drawWave(
+  pts: readonly number[], start: number, count: number, span: number, color: string, pw: number, ph: number,
+): void {
+  if (count < 2 || span < 2) return;
   ctx.strokeStyle = color;
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  for (let i = 0; i < pts.length; i++) {
-    const x = (i / (pts.length - 1)) * W;
-    const y = H / 2 - pts[i]! * (H / 2 * 0.9);
+  for (let i = 0; i < count; i++) {
+    const x = PLOT_LEFT + (i / (span - 1)) * pw;
+    const y = PLOT_TOP + ph * (0.5 - (pts[start + i] ?? 0) / 2);
     if (i === 0) ctx.moveTo(x, y);
     else         ctx.lineTo(x, y);
   }
@@ -224,6 +276,11 @@ outputVolEl?.addEventListener('input', () => {
   vscode.postMessage({ command: 'outputVolume', volume: vol });
 });
 
+timeBaseEl?.addEventListener('change', () => {
+  msPerDiv = parseFloat(timeBaseEl.value) || DEFAULT_TIME_BASE_MS;
+  updateRateNote();
+  flushScopeDraw();
+});
 window.addEventListener('resize', resize);
 // Repaint in the new theme even when nothing is streaming (stopped scope, FR-THM-5).
 onThemeChange(() => {
@@ -255,6 +312,7 @@ window.addEventListener('message', (e: MessageEvent<unknown>) => {
     lastIn  = msg.in  || [];
     lastOut = msg.out || [];
     capture.push({ in: lastIn, out: lastOut, outR: msg.out_r, step: msg.step });
+    updateRateNote();
     flushScopeDraw();
   } else if (msg.command === 'status') {
     hasStatus = true;
@@ -265,6 +323,7 @@ window.addEventListener('message', (e: MessageEvent<unknown>) => {
     // A rate / block-size change or a stop leaves stale-rate samples in the ring.
     capture.setConfig(lastStatusSampleRate, lastStatusBlockSize);
     if (!msg.running) capture.clear();
+    updateRateNote();
     updateStatusEl();
     if (btnAudioStart) btnAudioStart.disabled = !!msg.running;
     if (btnAudioStop)  btnAudioStop.disabled  = !msg.running;

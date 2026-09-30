@@ -7,6 +7,7 @@ import { getBoolean, getNumber } from '../ipc/narrow';
 import { ScopeWebviewMessage } from './messages';
 import { hasKnownCommand, assertNever } from './message-guard';
 import { themeCss } from './theme/theme-css';
+import { TIME_BASES_MS, DEFAULT_TIME_BASE_MS } from './scope/scope-view';
 
 // FR-EXT-33: see controls-editor-panel.ts's identical comment — the
 // switch's `default: assertNever(...)` is the actual drift-detector; this
@@ -358,6 +359,9 @@ function escHtml(s: string): string {
 
 function buildHtml(nonce: string, scriptUri: string, sine: SineParams, source: AudioSource): string {
   const audioSourceHtml = buildEmulatorBarHtml(source, sine);
+  const timeBaseOptions = TIME_BASES_MS.map(ms =>
+    `<option value="${ms}"${ms === DEFAULT_TIME_BASE_MS ? ' selected' : ''}>${ms} ms/div</option>`,
+  ).join('');
   return /* html */`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -382,6 +386,9 @@ ${themeCss({ surface: 'editor' })}
     #output-vol { width: 80px; cursor: pointer; accent-color: var(--ds-trace-in); }
     #vol-val { min-width: 30px; color: var(--ds-text); font-size: 11px; }
     #events { padding: 3px 12px; min-height: 22px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); font-size: 11px; color: var(--ds-error); flex-shrink: 0; }
+    #scope-controls { display: flex; align-items: center; gap: 12px; padding: 4px 12px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); flex-shrink: 0; }
+    #rate-note { font-size: 11px; color: var(--ds-text-muted); }
+    #rate-note.low-res { color: var(--ds-warning-fg); }
     canvas { display: block; width: 100%; }
     #scope { flex: 1; min-height: 0; }
     #spectrum { height: 140px; border-top: 1px solid var(--ds-border); background: var(--ds-surface); flex-shrink: 0; }
@@ -441,6 +448,10 @@ ${themeCss({ surface: 'editor' })}
     <span id="fidelity-caveat" title="Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget">&#x2139; Approx. Seed</span>
   </header>
   <div id="events"></div>
+  <div id="scope-controls" style="display:none">
+    <label class="emu-field">Time <select id="timebase">${timeBaseOptions}</select></label>
+    <span id="rate-note"></span>
+  </div>
   <canvas id="scope" style="display:none"></canvas>
   <canvas id="spectrum" style="display:none"></canvas>
   <div id="getting-started">

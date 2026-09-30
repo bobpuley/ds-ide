@@ -52,7 +52,7 @@ derive the decimation step reliably from the block size.
 
 ---
 
-### [ ] feat: labelled axes and time base (FR-SCI-4)
+### [x] feat: labelled axes and time base (FR-SCI-4)
 
 **Affected files:** `src/webview/scope/scope-view.ts`, `src/webview/scope-webview.ts`, `src/webview/scope-panel.ts`, `src/test/unit/webview/scope-view.test.ts`
 
