@@ -3,6 +3,17 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.20.5 — 2026-09-30
+
+**Emulator shutdown and record / replay fixes** *(FR-EMU-1, FR-EMU-11)*
+
+- **FR-EMU-11** — Stopping the emulator no longer aborts with `libc++abi: terminating due to uncaught exception of type std::system_error: mutex lock failed: Invalid argument`. The shutdown watcher ended with `std::exit(0)`, whose static destructors destroyed the global emulator state's mutexes while the effect thread was still locking them (for example, an effect polling MIDI). It now flushes stdio and ends with `std::_Exit(0)` after the joins and telemetry flush. A regression test (`test_shutdown_flush.py`, fixture `shutdown_stress.cpp`) stops a busy effect 30 times with audio running.
+- **FR-EMU-1** — Replay is no longer cancelled by a config change. With a real audio output device, the config a client sends just before `replayStart` restarted the simulated loop, which cancelled the replay and let the sine generator take over. Replay is now cancelled only when leaving simulated mode or shutting down.
+- **FR-EMU-1** — `.dsrec` version 2: each `AUDIO_BLOCK` record carries its own frame count. Version 1 assumed every block was the header's block size, which is wrong whenever the audio device delivers a different or varying callback size, so replay decoded a misaligned stream. `SessionPlayer` now replays one continuous frame stream, independent of recorded and requested block sizes, with all-or-nothing pops so a slow reader can't insert silence. Version 1 files still play.
+- `test_recording.py` (record, replay, compare levels) passes again on machines with an audio device: replay within 0.01% of live.
+
+---
+
 ## 0.20.4 — 2026-09-29
 
 **M69 — Controls Editor Devices in the Wiring-Palette Style** *(FR-CWS-1–FR-CWS-3 — DoD green)*
