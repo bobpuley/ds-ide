@@ -135,6 +135,19 @@ describe('ScopePanel', () => {
     );
   });
 
+  it('forwards out_r and step on scope messages to the webview (FR-SCI-2)', () => {
+    panel.show();
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { postMessage: ReturnType<typeof vi.fn> };
+    };
+    (manager as unknown as EventEmitter).emit('message', {
+      type: 'scope', in: [0.1], out: [0.3], out_r: [0.5], step: 4,
+    });
+    expect(created.webview.postMessage).toHaveBeenCalledWith(
+      { command: 'scope', in: [0.1], out: [0.3], out_r: [0.5], step: 4 },
+    );
+  });
+
   it('forwards status messages from manager to webview', () => {
     panel.show();
     const created = webviewMock.mock.results[0]?.value as {

@@ -26,6 +26,20 @@ describe('parseIpcMessage (FR-IPC-2)', () => {
       .toEqual({ type: 'scope', in: [0.1, 0.2], out: [0.3, 0.4] });
   });
 
+  it('forwards optional out_r and step on a scope message (FR-SCI-2)', () => {
+    expect(parseIpcMessage({ type: 'scope', in: [0.1], out: [0.3], out_r: [0.5], step: 4 }))
+      .toEqual({ type: 'scope', in: [0.1], out: [0.3], out_r: [0.5], step: 4 });
+  });
+
+  it('drops a malformed out_r or step without rejecting the scope message (FR-SCI-2)', () => {
+    expect(parseIpcMessage({ type: 'scope', in: [0.1], out: [0.3], out_r: ['x'], step: 'fast' }))
+      .toEqual({ type: 'scope', in: [0.1], out: [0.3] });
+    expect(parseIpcMessage({ type: 'scope', in: [0.1], out: [0.3], step: 0 }))
+      .toEqual({ type: 'scope', in: [0.1], out: [0.3] });
+    expect(parseIpcMessage({ type: 'scope', in: [0.1], out: [0.3], step: 2.5 }))
+      .toEqual({ type: 'scope', in: [0.1], out: [0.3] });
+  });
+
   it('rejects a scope message with non-numeric sample arrays', () => {
     expect(parseIpcMessage({ type: 'scope', in: ['x'], out: [0.4] })).toBeUndefined();
   });

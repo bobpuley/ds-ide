@@ -227,7 +227,12 @@ export class ScopePanel {
   }
 
   private postScope(msg: IpcMessage): void {
-    this.panel?.webview.postMessage({ command: 'scope', in: msg['in'], out: msg['out'] });
+    // out_r / step were validated by the IPC narrower (FR-SCI-2); absent on older emulators.
+    this.panel?.webview.postMessage({
+      command: 'scope', in: msg['in'], out: msg['out'],
+      ...(msg['out_r'] !== undefined && { out_r: msg['out_r'] }),
+      ...(msg['step'] !== undefined && { step: msg['step'] }),
+    });
   }
 
   // Only whitelisted, type-checked fields are forwarded — msg originates from

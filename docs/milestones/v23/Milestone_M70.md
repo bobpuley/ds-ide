@@ -26,7 +26,7 @@ The layout is a UI decision, so it is evaluated in the standalone mockup before 
 
 ---
 
-### [ ] feat: carry out_r and decimation step in the scope message (FR-SCI-2)
+### [x] feat: carry out_r and decimation step in the scope message (FR-SCI-2)
 
 The emulator already serialises `out_r`, but the `scope` narrower drops it, and the webview cannot
 derive the decimation step reliably from the block size.
