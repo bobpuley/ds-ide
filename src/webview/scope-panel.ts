@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { EmulatorManager } from '../emulator/manager';
 import { IpcMessage } from '../emulator/ipc-client';
 import { startAudio, stopAudio } from '../commands/transport';
-import { getBoolean, getNumber } from '../ipc/narrow';
+import { getBoolean, getNumber, narrowScopeCaptureRequest } from '../ipc/narrow';
 import { ScopeWebviewMessage } from './messages';
 import { hasKnownCommand, assertNever } from './message-guard';
 import { themeCss } from './theme/theme-css';
@@ -16,6 +16,7 @@ import { TIME_BASES_MS, DEFAULT_TIME_BASE_MS, TRACES } from './scope/scope-view'
 const SCOPE_WEBVIEW_COMMANDS = new Set<ScopeWebviewMessage['command']>([
   'webviewReady', 'sine', 'audioSource', 'pickWav', 'startAudio', 'stopAudio',
   'recordStart', 'recordStop', 'replayStart', 'outputVolume', 'saveSnapshot', 'exportCsv',
+  'scopeCapture',
 ]);
 
 export interface ControlsPlacement {
@@ -90,6 +91,7 @@ export class ScopePanel {
 
   private readonly _onManagerMessage = (msg: IpcMessage): void => {
     if (msg['type'] === 'scope') this.postScope(msg);
+    if (msg['type'] === 'scope_capture') this.postScopeCapture(msg);
     if (msg['type'] === 'status') { this.lastStatusMsg = msg; this.postStatus(msg); }
     if (msg['type'] === 'event') this.postEvent(msg);
     if (msg['type'] === 'xrun') this.postXrun(msg);
@@ -211,6 +213,11 @@ export class ScopePanel {
           if (typeof msg.csv === 'string') void saveScopeFile('csv', msg.csv);
           break;
         }
+        case 'scopeCapture': {
+          const req = narrowScopeCaptureRequest(msg);
+          if (req) this.manager.sendScopeCapture(req);
+          break;
+        }
         default:
           assertNever(msg, 'ScopePanel');
       }
@@ -242,6 +249,14 @@ export class ScopePanel {
       command: 'scope', in: msg['in'], out: msg['out'],
       ...(msg['out_r'] !== undefined && { out_r: msg['out_r'] }),
       ...(msg['step'] !== undefined && { step: msg['step'] }),
+    });
+  }
+
+  // Fields were validated by the IPC narrower (FR-SCI-14c).
+  private postScopeCapture(msg: IpcMessage): void {
+    this.panel?.webview.postMessage({
+      command: 'scopeCapture', in: msg['in'], out: msg['out'], out_r: msg['out_r'],
+      rate: msg['rate'], trigger: msg['trigger'],
     });
   }
 

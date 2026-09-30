@@ -12,6 +12,7 @@ import type { SdEntry } from './sd-viewer';
 
 export type ScopeHostMessage =
   | { command: 'scope'; in: number[]; out: number[]; out_r?: number[]; step?: number }
+  | { command: 'scopeCapture'; in: number[]; out: number[]; out_r: number[]; rate: number; trigger: number }
   | { command: 'status'; running: boolean; sampleRate?: number; blockSize?: number }
   | { command: 'wavSelected'; name: string }
   | { command: 'event'; kind: string }
@@ -35,7 +36,9 @@ export type ScopeWebviewMessage =
   | { command: 'outputVolume'; volume: number }
   // FR-SCI-12: snapshot (base64 PNG) and sample export (CSV text), saved by the extension host.
   | { command: 'saveSnapshot'; pngBase64: string }
-  | { command: 'exportCsv'; csv: string };
+  | { command: 'exportCsv'; csv: string }
+  // FR-SCI-14c: arm / cancel one emulator-side full-rate capture.
+  | { command: 'scopeCapture'; action?: string; source?: string; edge?: string; level?: number };
 
 // ── OLED viewer panel (FR-DEV-15) ────────────────────────────────────────
 

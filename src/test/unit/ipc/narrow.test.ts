@@ -40,6 +40,23 @@ describe('parseIpcMessage (FR-IPC-2)', () => {
       .toEqual({ type: 'scope', in: [0.1], out: [0.3] });
   });
 
+  it('narrows a scope_capture message (FR-SCI-14c)', () => {
+    const msg = { type: 'scope_capture', in: [0, 1], out: [0, 2], out_r: [0, 3], rate: 48000, trigger: 1 };
+    expect(parseIpcMessage({ ...msg, extra: 'dropped' })).toEqual(msg);
+  });
+
+  it('rejects a malformed scope_capture message (FR-SCI-14c)', () => {
+    const ok = { type: 'scope_capture', in: [0, 1], out: [0, 2], out_r: [0, 3], rate: 48000, trigger: 1 };
+    expect(parseIpcMessage({ ...ok, in: ['x'] })).toBeUndefined();
+    expect(parseIpcMessage({ ...ok, out: undefined })).toBeUndefined();
+    expect(parseIpcMessage({ ...ok, out_r: undefined })).toBeUndefined();
+    expect(parseIpcMessage({ ...ok, rate: 0 })).toBeUndefined();
+    expect(parseIpcMessage({ ...ok, rate: 'fast' })).toBeUndefined();
+    expect(parseIpcMessage({ ...ok, trigger: 2 })).toBeUndefined();   // outside the window
+    expect(parseIpcMessage({ ...ok, trigger: 0.5 })).toBeUndefined();
+    expect(parseIpcMessage({ ...ok, out: [1] })).toBeUndefined();     // channel length mismatch
+  });
+
   it('rejects a scope message with non-numeric sample arrays', () => {
     expect(parseIpcMessage({ type: 'scope', in: ['x'], out: [0.4] })).toBeUndefined();
   });

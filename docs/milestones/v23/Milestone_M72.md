@@ -36,7 +36,7 @@ for 1× Single and for low-resolution time bases; the live scope stays on the de
 
 ---
 
-### [ ] feat: host narrowing and forwarding of scope_capture (FR-SCI-14c)
+### [x] feat: host narrowing and forwarding of scope_capture (FR-SCI-14c)
 
 **Affected files:** `src/ipc/narrow.ts`, `src/emulator/manager.ts`, `src/webview/messages.ts`, `src/test/unit/ipc/narrow.test.ts`
 
