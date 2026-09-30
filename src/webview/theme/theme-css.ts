@@ -34,6 +34,7 @@ const TOKEN_MAP: ReadonlyArray<readonly [string, string]> = [
   ['dropdown-fg', '--vscode-dropdown-foreground'],
   ['trace-in', '--vscode-charts-blue'],
   ['trace-out', '--vscode-charts-orange'],
+  ['trace-out-r', '--vscode-charts-purple'],
   ['grid', '--vscode-charts-lines'],
   ['axis', '--vscode-charts-foreground'],
   ['warning-bg', '--vscode-inputValidation-warningBackground'],

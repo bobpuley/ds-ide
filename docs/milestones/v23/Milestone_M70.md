@@ -74,7 +74,7 @@ derive the decimation step reliably from the block size.
 
 ---
 
-### [ ] feat: stereo traces with a toggling legend (FR-SCI-6)
+### [x] feat: stereo traces with a toggling legend (FR-SCI-6)
 
 **Affected files:** `src/webview/scope-webview.ts`, `src/webview/scope-panel.ts`, `src/webview/scope-colors.ts`, `src/webview/theme/theme-css.ts`, `src/test/unit/webview/scope-colors.test.ts`
 

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   TIME_BASES_MS, DEFAULT_TIME_BASE_MS, DIVISIONS,
   windowSamples, pointsPerDivision, isLowResolution, visibleRange, timeTicks, amplitudeTicks,
-  GAIN_STEPS, autoGain, peakAbs, samplePosition,
+  GAIN_STEPS, autoGain, peakAbs, samplePosition, TRACES,
 } from '../../../webview/scope/scope-view';
 
 describe('time base (FR-SCI-4)', () => {
@@ -120,5 +120,18 @@ describe('amplitude mapping (FR-SCI-5)', () => {
     expect(ticks.filter(t => t.label).map(t => t.pos)).toEqual([1, 54 / 60, 40 / 60, 20 / 60]);
     // x4 is +12 dB of display gain, so the top line represents -12 dBFS of signal
     expect(amplitudeTicks(4, 'db').filter(t => t.label)[0]?.label).toBe('-12 dB');
+  });
+});
+
+describe('traces (FR-SCI-6)', () => {
+  it('has In, Out L and Out R, each with its own theme colour token', () => {
+    expect(TRACES.map(t => t.id)).toEqual(['in', 'l', 'r']);
+    expect(TRACES.map(t => t.cssVar)).toEqual(['--ds-trace-in', '--ds-trace-out', '--ds-trace-out-r']);
+  });
+
+  it('gives each trace a different line pattern, so colour is not the only cue', () => {
+    const patterns = TRACES.map(t => t.dash.join(','));
+    expect(new Set(patterns).size).toBe(3);
+    expect(TRACES[0]?.dash).toEqual([]);   // In is solid
   });
 });

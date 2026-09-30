@@ -33,6 +33,7 @@ describe('themeCss (FR-THM-1, FR-THM-3)', () => {
       '--ds-contrast-border: var(--vscode-contrastBorder)',
       '--ds-trace-in: var(--vscode-charts-blue)',
       '--ds-trace-out: var(--vscode-charts-orange)',
+      '--ds-trace-out-r: var(--vscode-charts-purple)',
       '--ds-grid: var(--vscode-charts-lines)',
       '--ds-axis: var(--vscode-charts-foreground)',
       '--ds-ok: var(--vscode-testing-iconPassed)',

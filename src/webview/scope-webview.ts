@@ -8,7 +8,8 @@ import { loadScopeColors } from './scope-colors';
 import { ScopeCapture } from './scope/scope-capture';
 import {
   DEFAULT_TIME_BASE_MS, DIVISIONS, windowSamples, pointsPerDivision, isLowResolution,
-  visibleRange, timeTicks, amplitudeTicks, autoGain, peakAbs, samplePosition, type GainMode, type AmpUnit,
+  visibleRange, timeTicks, amplitudeTicks, autoGain, peakAbs, samplePosition, TRACES,
+  type GainMode, type AmpUnit,
 } from './scope/scope-view';
 
 const vscode = acquireVsCodeApi();
@@ -89,6 +90,7 @@ const PLOT_LEFT = 44, PLOT_RIGHT = 8, PLOT_TOP = 8, PLOT_BOTTOM = 18;
 let msPerDiv = DEFAULT_TIME_BASE_MS;
 let gainMode: GainMode = 1;
 let ampUnit: AmpUnit = 'lin';
+const traceVisible: Record<'in' | 'l' | 'r', boolean> = { in: true, l: true, r: true };
 
 function updateRateNote(): void {
   const rate = capture.effectiveRate;
@@ -115,12 +117,16 @@ function draw(): void {
   ctx.textBaseline = 'middle';
   const win = windowSamples(msPerDiv, capture.effectiveRate);
   // Until the rate is known (no status yet), fall back to the newest snapshot as before.
-  const inBuf = win > 0 ? capture.channel('in') : lastIn;
-  const outBuf = win > 0 ? capture.channel('l') : lastOut;
+  const buffers: Record<'in' | 'l' | 'r', readonly number[]> = {
+    in: win > 0 ? capture.channel('in') : lastIn,
+    l: win > 0 ? capture.channel('l') : lastOut,
+    r: win > 0 ? capture.channel('r') : [],
+  };
   const span = win > 0 ? win : lastIn.length;
-  const range = visibleRange(inBuf.length, span);
+  const range = visibleRange(buffers.in.length, span);
+  const shown = TRACES.filter(t => traceVisible[t.id]);
   const gain = gainMode === 'auto'
-    ? autoGain(Math.max(peakAbs(inBuf, range.start, range.count), peakAbs(outBuf, range.start, range.count)))
+    ? autoGain(Math.max(0, ...shown.map(t => peakAbs(buffers[t.id], range.start, range.count))))
     : gainMode;
   for (const t of amplitudeTicks(gain, ampUnit)) {
     const y = PLOT_TOP + ph * (0.5 - t.pos / 2);
@@ -148,16 +154,19 @@ function draw(): void {
   const { start, count } = range;
   ctx.save();
   ctx.beginPath(); ctx.rect(PLOT_LEFT, PLOT_TOP, pw, ph); ctx.clip();
-  drawWave(inBuf, start, count, span, gain, colors.traceIn, pw, ph);
-  drawWave(outBuf, start, count, span, gain, colors.traceOut, pw, ph);
+  for (const t of shown) {
+    const color = t.id === 'in' ? colors.traceIn : t.id === 'l' ? colors.traceOut : colors.traceOutR;
+    drawWave(buffers[t.id], start, count, span, gain, color, t.dash, pw, ph);
+  }
   ctx.restore();
 }
 
 function drawWave(
-  pts: readonly number[], start: number, count: number, span: number, gain: number, color: string, pw: number, ph: number,
+  pts: readonly number[], start: number, count: number, span: number, gain: number, color: string, dash: number[], pw: number, ph: number,
 ): void {
   if (count < 2 || span < 2) return;
   ctx.strokeStyle = color;
+  ctx.setLineDash(dash);
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   for (let i = 0; i < count; i++) {
@@ -167,6 +176,7 @@ function drawWave(
     else         ctx.lineTo(x, y);
   }
   ctx.stroke();
+  ctx.setLineDash([]);
 }
 
 function drawSpectrum(): void {
@@ -303,6 +313,15 @@ function wireSegment(id: string, attr: string, onPick: (value: string) => void):
   });
 }
 wireSegment('gain-seg', 'gain', v => { gainMode = v === 'auto' ? 'auto' : (Number(v) as GainMode); });
+document.querySelectorAll<HTMLElement>('.legend-item').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const id = btn.dataset['trace'];
+    if (id !== 'in' && id !== 'l' && id !== 'r') return;
+    traceVisible[id] = !traceVisible[id];
+    btn.setAttribute('aria-pressed', String(traceVisible[id]));
+    flushScopeDraw();
+  });
+});
 wireSegment('unit-seg', 'unit', v => { ampUnit = v === 'db' ? 'db' : 'lin'; });
 window.addEventListener('resize', resize);
 // Repaint in the new theme even when nothing is streaming (stopped scope, FR-THM-5).

@@ -648,6 +648,15 @@ describe('ScopePanel', () => {
     expect(webview.html).toContain('data-unit="db"');
   });
 
+  // FR-SCI-6 — stereo traces with a toggling legend
+  it('webview HTML has a legend that toggles In, Out L and Out R (FR-SCI-6)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    for (const id of ['in', 'l', 'r']) expect(webview.html).toContain(`data-trace="${id}"`);
+    expect(webview.html).toContain('stroke-dasharray="7 4"');
+    expect(webview.html).toContain('var(--ds-trace-out-r)');
+  });
+
   // FR-SCOPE-1 — Audio Settings always visible (no collapsible)
   it('webview HTML includes emulator-section with no Controls Editor tab (FR-SCOPE-1)', () => {
     panel.show();

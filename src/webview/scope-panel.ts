@@ -7,7 +7,7 @@ import { getBoolean, getNumber } from '../ipc/narrow';
 import { ScopeWebviewMessage } from './messages';
 import { hasKnownCommand, assertNever } from './message-guard';
 import { themeCss } from './theme/theme-css';
-import { TIME_BASES_MS, DEFAULT_TIME_BASE_MS } from './scope/scope-view';
+import { TIME_BASES_MS, DEFAULT_TIME_BASE_MS, TRACES } from './scope/scope-view';
 
 // FR-EXT-33: see controls-editor-panel.ts's identical comment — the
 // switch's `default: assertNever(...)` is the actual drift-detector; this
@@ -359,6 +359,11 @@ function escHtml(s: string): string {
 
 function buildHtml(nonce: string, scriptUri: string, sine: SineParams, source: AudioSource): string {
   const audioSourceHtml = buildEmulatorBarHtml(source, sine);
+  const legendItems = TRACES.map(t =>
+    `<button type="button" class="legend-item" data-trace="${t.id}" aria-pressed="true" title="Show / hide ${t.label}">` +
+    `<svg width="26" height="8" aria-hidden="true"><line x1="0" y1="4" x2="26" y2="4" stroke="var(${t.cssVar})" stroke-width="2"` +
+    `${t.dash.length ? ` stroke-dasharray="${t.dash.join(' ')}"` : ''}/></svg>${t.label}</button>`,
+  ).join('');
   const timeBaseOptions = TIME_BASES_MS.map(ms =>
     `<option value="${ms}"${ms === DEFAULT_TIME_BASE_MS ? ' selected' : ''}>${ms} ms/div</option>`,
   ).join('');
@@ -377,10 +382,9 @@ ${themeCss({ surface: 'editor' })}
     #fidelity-caveat { font-size: 10px; color: var(--ds-text-muted); cursor: default; margin-left: auto; }
     #status-text { flex: 1; }
     .legend { display: flex; gap: 12px; }
-    .legend span { display: flex; align-items: center; gap: 4px; }
-    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-    .dot-in  { background: var(--ds-trace-in); }
-    .dot-out { background: var(--ds-trace-out); }
+    .legend-item { display: flex; align-items: center; gap: 5px; background: none; border: none; color: var(--ds-text); font-family: monospace; font-size: 12px; cursor: pointer; padding: 1px 2px; }
+    .legend-item[aria-pressed="false"] { opacity: 0.4; text-decoration: line-through; }
+    .legend-item:focus-visible { outline: 1px solid var(--ds-focus); }
     #vol-group { display: flex; align-items: center; gap: 6px; }
     #vol-label { color: var(--ds-text-muted); font-size: 11px; }
     #output-vol { width: 80px; cursor: pointer; accent-color: var(--ds-trace-in); }
@@ -440,10 +444,7 @@ ${themeCss({ surface: 'editor' })}
 <body>
   <header>
     <span id="status-text">Deploy to start…</span>
-    <span class="legend">
-      <span><span class="dot dot-in"></span>In</span>
-      <span><span class="dot dot-out"></span>Out</span>
-    </span>
+    <span class="legend">${legendItems}</span>
     <span id="vol-group">
       <label id="vol-label" for="output-vol">Vol</label>
       <input type="range" id="output-vol" min="0" max="1" step="0.01" value="1"/>

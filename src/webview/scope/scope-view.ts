@@ -33,6 +33,21 @@ export function timeTicks(msPerDiv: number): { div: number; label: string }[] {
   return ticks;
 }
 
+export interface TraceDef {
+  id: 'in' | 'l' | 'r';
+  label: string;
+  cssVar: string;
+  /** Canvas / SVG line-dash pattern; differs per trace so colour is not the only cue. */
+  dash: number[];
+}
+
+/** The scope's traces: input, left output, right output (FR-SCI-6). */
+export const TRACES: readonly TraceDef[] = [
+  { id: 'in', label: 'In', cssVar: '--ds-trace-in', dash: [] },
+  { id: 'l', label: 'Out L', cssVar: '--ds-trace-out', dash: [7, 4] },
+  { id: 'r', label: 'Out R', cssVar: '--ds-trace-out-r', dash: [1.5, 3.5] },
+];
+
 export const GAIN_STEPS = [1, 2, 4] as const;
 export type GainMode = 'auto' | (typeof GAIN_STEPS)[number];
 export type AmpUnit = 'lin' | 'db';
