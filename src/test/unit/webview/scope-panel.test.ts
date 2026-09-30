@@ -692,11 +692,11 @@ describe('ScopePanel', () => {
   });
 
   // FR-SCI-10 — best-effort single-shot
-  it('webview HTML has a 1x Single button whose tooltip says it is best effort (FR-SCI-10)', () => {
+  it('webview HTML has a 1x Single button whose tooltip explains the full-rate capture and the best-effort free-run case (FR-SCI-10, FR-SCI-14d)', () => {
     panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('id="single-btn"');
-    expect(webview.html).toMatch(/id="single-btn"[^>]*title="[^"]*best effort/i);
+    expect(webview.html).toMatch(/id="single-btn"[^>]*title="[^"]*full rate[^"]*best effort/i);
   });
 
   // FR-SCI-11 — spectrum scaling

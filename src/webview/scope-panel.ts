@@ -526,7 +526,7 @@ ${themeCss({ surface: 'editor' })}
   <div id="scope-controls" style="display:none">
     <label class="emu-field">Time <select id="timebase">${timeBaseOptions}</select></label>
     <button type="button" id="freeze-btn" class="ctl-btn" title="Freeze the display (Space)" aria-pressed="false">Freeze</button>
-    <button type="button" id="single-btn" class="ctl-btn" title="Arm a single capture: freezes on the next trigger. Best effort — a short transient between two scope snapshots can be missed." aria-pressed="false">1× Single</button>
+    <button type="button" id="single-btn" class="ctl-btn" title="Arm a single capture: freezes on the next trigger. With a Rising / Falling trigger the emulator captures the window at full rate, so short transients are caught; in Free-run it is best effort." aria-pressed="false">1× Single</button>
     <span class="emu-field">Gain
       <span class="seg" id="gain-seg">
         <button type="button" class="seg-btn active" data-gain="1">×1</button><button type="button" class="seg-btn" data-gain="2">×2</button><button type="button" class="seg-btn" data-gain="4">×4</button><button type="button" class="seg-btn" data-gain="auto">Auto</button>

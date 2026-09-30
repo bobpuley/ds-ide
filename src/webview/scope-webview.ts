@@ -16,6 +16,9 @@ import {
   triggerStart, pressSingle, onTrigger, type TriggerMode, type TriggerSource, type SingleShotState,
 } from './scope/scope-trigger';
 import {
+  planCapture, wantsEmulatorCapture, type CaptureParams,
+} from './scope/scope-capture-source';
+import {
   DEFAULT_TIME_BASE_MS, DIVISIONS, windowSamples, pointsPerDivision, isLowResolution,
   visibleRange, timeTicks, amplitudeTicks, autoGain, peakAbs, samplePosition, TRACES, cursorIndex, formatReadout, positionToSample,
   type GainMode, type AmpUnit,
@@ -126,14 +129,28 @@ let lastGain = 1;
 const traceVisible: Record<'in' | 'l' | 'r', boolean> = { in: true, l: true, r: true };
 
 type Buffers = Record<'in' | 'l' | 'r', readonly number[]>;
-interface Frame { buffers: Buffers; rate: number }
+// `triggerIndex` marks a window returned by the emulator's full-rate capture (FR-SCI-14d):
+// the plot starts there instead of searching for a crossing.
+interface Frame { buffers: Buffers; rate: number; triggerIndex?: number }
 // FR-SCI-7: while frozen the display draws this copy; the capture ring keeps
 // collecting underneath, so Resume shows current data.
 let frozenFrame: Frame | null = null;
 let cursorX: number | null = null;
 
+// FR-SCI-14d: the newest full-rate window from the emulator, and the request awaiting a reply.
+let fullRateFrame: Frame | null = null;
+let armedCapture: CaptureParams | null = null;
+let lastArmMs = 0;
+
+function lowResolutionNow(): boolean {
+  const rate = capture.effectiveRate;
+  return rate > 0 && isLowResolution(msPerDiv, rate);
+}
+
 function currentFrame(): Frame {
   if (frozenFrame) return frozenFrame;
+  // A time base too fine for the decimated stream draws full-rate windows instead.
+  if (fullRateFrame && trigMode !== 'free' && lowResolutionNow()) return fullRateFrame;
   const rate = capture.effectiveRate;
   // Until the rate is known (no status yet), fall back to the newest snapshot as before.
   return rate > 0
@@ -189,6 +206,27 @@ eventsToggle?.addEventListener('click', () => {
   renderEventLog();
 });
 
+// FR-SCI-14d: ask the emulator for a full-rate triggered window when 1× Single is armed or the
+// time base is too fine for the stream; cancel it when that no longer holds.
+function syncCapture(): void {
+  if (trigMode === 'free') return void cancelCapture();
+  const params: CaptureParams = { source: trigSource, edge: trigMode, level: trigLevel };
+  const cmd = planCapture({
+    wants: wantsEmulatorCapture({ trigMode, singleArmed: singleState === 'armed', lowRes: lowResolutionNow() }),
+    params, armed: armedCapture, nowMs: Date.now(), lastArmMs,
+  });
+  if (!cmd) return;
+  vscode.postMessage({ command: 'scopeCapture', ...cmd });
+  if (cmd.action === 'arm') { armedCapture = params; lastArmMs = Date.now(); }
+  else armedCapture = null;
+}
+
+function cancelCapture(): void {
+  if (!armedCapture) return;
+  vscode.postMessage({ command: 'scopeCapture', action: 'cancel' });
+  armedCapture = null;
+}
+
 function renderSingle(): void {
   singleBtn.setAttribute('aria-pressed', String(singleState === 'armed'));
   singleBtn.textContent = singleState === 'armed' ? '⏳ Armed…' : '1× Single';
@@ -197,6 +235,8 @@ function renderSingle(): void {
 // Called on each new snapshot: an armed single-shot freezes on the first triggered capture.
 function checkSingleShot(): void {
   if (singleState !== 'armed' || frozenFrame) return;
+  // With an edge trigger the emulator's full-rate capture answers instead (FR-SCI-14d).
+  if (trigMode !== 'free') return;
   const frame = currentFrame();
   const span = windowSamples(msPerDiv, frame.rate) || lastIn.length;
   if (!triggerStart(frame.buffers[trigSource], span, trigMode, trigLevel)) return;
@@ -205,13 +245,14 @@ function checkSingleShot(): void {
   setFrozen(true);
 }
 
-function setFrozen(freeze: boolean): void {
+function setFrozen(freeze: boolean, frame?: Frame): void {
   frozenFrame = null;
   if (freeze) {
-    const live = currentFrame();
+    const live = frame ?? currentFrame();
     frozenFrame = {
       buffers: { in: live.buffers.in.slice(), l: live.buffers.l.slice(), r: live.buffers.r.slice() },
       rate: live.rate,
+      ...(live.triggerIndex !== undefined && { triggerIndex: live.triggerIndex }),
     };
   }
   freezeBtn.setAttribute('aria-pressed', String(freeze));
@@ -274,7 +315,10 @@ function draw(): void {
   const span = win > 0 ? win : lastIn.length;
   let range = visibleRange(buffers.in.length, span);
   let noTrigger = false;
-  if (trigMode !== 'free') {
+  if (trigMode !== 'free' && frame.triggerIndex !== undefined) {
+    // Already triggered by the emulator at full rate (FR-SCI-14d).
+    range = { start: frame.triggerIndex, count: Math.min(span, buffers.in.length - frame.triggerIndex) };
+  } else if (trigMode !== 'free') {
     const trig = triggerStart(buffers[trigSource], span, trigMode, trigLevel);
     if (trig) {
       range = { start: trig.start, count: Math.min(span, buffers.in.length - trig.start) };
@@ -590,6 +634,7 @@ singleBtn?.addEventListener('click', () => {
   if (singleState === 'held') setFrozen(false);   // resume, then re-arm below
   singleState = pressSingle(singleState);
   renderSingle();
+  syncCapture();
   flushScopeDraw();
 });
 window.addEventListener('keydown', (e) => {
@@ -650,7 +695,7 @@ const flushSpectrumDraw = createRafCoalescer<void>(() => drawSpectrum(), (cb) =>
 
 const SCOPE_HOST_COMMANDS = new Set<ScopeHostMessage['command']>([
   'scope', 'status', 'wavSelected', 'event', 'xrun', 'latency', 'led',
-  'spectrum', 'recordingState', 'replayDone',
+  'spectrum', 'recordingState', 'replayDone', 'scopeCapture',
 ]);
 
 window.addEventListener('message', (e: MessageEvent<unknown>) => {
@@ -666,7 +711,21 @@ window.addEventListener('message', (e: MessageEvent<unknown>) => {
     meters.update('r', msg.out_r || []);
     renderMeters();
     checkSingleShot();
+    syncCapture();
     flushScopeDraw();
+  } else if (msg.command === 'scopeCapture') {
+    // FR-SCI-14d: a full-rate window triggered in the emulator.
+    armedCapture = null;
+    fullRateFrame = {
+      buffers: { in: msg.in, l: msg.out, r: msg.out_r }, rate: msg.rate, triggerIndex: msg.trigger,
+    };
+    if (singleState === 'armed' && !frozenFrame) {
+      singleState = onTrigger(singleState);
+      renderSingle();
+      setFrozen(true, fullRateFrame);
+    } else {
+      flushScopeDraw();
+    }
   } else if (msg.command === 'status') {
     hasStatus = true;
     showScope();
@@ -675,7 +734,9 @@ window.addEventListener('message', (e: MessageEvent<unknown>) => {
     lastStatusBlockSize  = msg.blockSize  || lastStatusBlockSize;
     // A rate / block-size change or a stop leaves stale-rate samples in the ring.
     capture.setConfig(lastStatusSampleRate, lastStatusBlockSize);
-    if (!msg.running) { capture.clear(); heldWindow = null; }
+    // The emulator drops its pending arm on a config change or stop — forget ours so it is re-sent.
+    armedCapture = null;
+    if (!msg.running) { capture.clear(); heldWindow = null; fullRateFrame = null; }
     updateRateNote();
     updateStatusEl();
     if (btnAudioStart) btnAudioStart.disabled = !!msg.running;

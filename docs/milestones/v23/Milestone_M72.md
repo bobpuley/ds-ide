@@ -47,7 +47,7 @@ for 1× Single and for low-resolution time bases; the live scope stays on the de
 
 ---
 
-### [ ] feat: webview single-shot and fine time base use emulator capture (FR-SCI-14d)
+### [x] feat: webview single-shot and fine time base use emulator capture (FR-SCI-14d)
 
 **Affected files:** `src/webview/scope/scope-capture-source.ts`, `src/webview/scope-webview.ts`, `src/webview/scope-panel.ts`, `src/test/unit/webview/scope-capture-source.test.ts`, `tests/human-driven/showcase.js`
 
