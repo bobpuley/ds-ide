@@ -14,7 +14,7 @@ for 1× Single and for low-resolution time bases; the live scope stays on the de
 
 ## Sprint Tasks
 
-### [ ] feat: full-rate capture ring with trigger scan (FR-SCI-14a)
+### [x] feat: full-rate capture ring with trigger scan (FR-SCI-14a)
 
 **Affected files:** `emulator/runtime/scope_capture.h`, `tests/scope-capture/test_scope_capture.cpp`, `tests/scope-capture/run_tests.sh`
 
