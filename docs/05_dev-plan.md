@@ -199,7 +199,7 @@ Full registry in [`docs/v22/05_dev-plan.md`](v22/05_dev-plan.md).
 | ID   | Name                                   | Status          | Version | File                                                   |
 |------|----------------------------------------|-----------------|---------|--------------------------------------------------------|
 | M70  | Scope Instrument — Display             | **released**    | 0.21.0  | [Milestone_M70.md](milestones/v23/Milestone_M70.md)    |
-| M71  | Scope Instrument — Analysis            | **planned**     | 0.22.0  | [Milestone_M71.md](milestones/v23/Milestone_M71.md)    |
+| M71  | Scope Instrument — Analysis            | **in progress** | 0.22.0  | [Milestone_M71.md](milestones/v23/Milestone_M71.md)    |
 | M72  | Scope Instrument — Emulator Capture    | **planned**     | 0.23.0  | [Milestone_M72.md](milestones/v23/Milestone_M72.md)    |
 
 Source: feature intake 2026-09-30 — `design_plan.md` P0-4 / §6.B-8 / §6.B-10, layout per
