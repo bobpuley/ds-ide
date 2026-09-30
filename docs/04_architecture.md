@@ -65,8 +65,9 @@ config-generation change.
 "edge":"rise"|"fall","level":<-1..1>}` or `{"action":"cancel"}`. `dispatch()` stores the request
 in a mutex-guarded slot that the drain thread polls (non-RT; never on the audio thread). Reply:
 `{"type":"scope_capture","in":[…],"out":[…],"out_r":[…],"rate":<Hz>,"trigger":<index>}`, sent once
-per armed request; the emulator disarms after replying. The window is bounded so the message stays
-under the IPC `MAX_MSG`. `narrow.ts` gains a `scope_capture` narrower; `ScopeMsg`-style
+per armed request; the emulator disarms after replying. The window is a fixed 4096 frames and is sent
+through `drain_send()` (the drain thread's direct socket path), so it is not bound by the SPSC
+queue's `MAX_MSG`. `narrow.ts` gains a `scope_capture` narrower; `ScopeMsg`-style
 `ScopeCaptureMsg` goes to the webview. Emulator and extension ship together, so no old-emulator
 fallback is provided.
 

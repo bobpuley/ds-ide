@@ -202,6 +202,28 @@ static void build_scope_json(const std::vector<float>& in_pts,
     s += num;
 }
 
+// FR-SCI-14b: one full-rate triggered window. Sent via drain_send() (not the SPSC
+// queue), so it is not bound by MAX_MSG. Non-RT drain thread only.
+static void build_scope_capture_json(const ScopeCapture::Window& w, float rate, std::string& s) {
+    char num[32];
+    auto append = [&](const std::vector<float>& v) {
+        for (size_t i = 0; i < v.size(); ++i) {
+            if (i) s += ',';
+            std::snprintf(num, sizeof(num), "%.6g", v[i]);
+            s += num;
+        }
+    };
+    s.clear();
+    s += "{\"type\":\"scope_capture\",\"in\":[";
+    append(w.in);
+    s += "],\"out\":[";
+    append(w.out);
+    s += "],\"out_r\":[";
+    append(w.out_r);
+    std::snprintf(num, sizeof(num), "],\"rate\":%.6g,\"trigger\":%zu}", rate, w.trigger);
+    s += num;
+}
+
 // Scan output for NaN/Inf, denormals, and clipping (FR-RU-4). Sends at most
 // one IPC event per kind per call. Returns immediately once all three have fired.
 static void scan_output_and_notify(const std::vector<float>& out_buf, size_t n) {
@@ -844,6 +866,11 @@ void run_audio_engine() {
         ScopeState scope;
         FftState fft;
         ScopeBlockQueue::Slot popped_block;
+        // FR-SCI-14b: full-rate ring + trigger scan, fed the same blocks as scope/fft.
+        ScopeCapture capture;
+        ScopeCapture::Window capture_window;
+        std::string capture_json;
+        capture_json.reserve(ScopeCapture::kWindowFrames * 3 * 16 + 256);
         int last_seen_mode = g_state.audio_mode.load();
         uint64_t last_seen_cfg_gen = g_state.config_generation.load();
 
@@ -856,6 +883,15 @@ void run_audio_engine() {
                 last_seen_cfg_gen = cur_cfg_gen;
                 scope.reset();
                 fft.reset();
+                capture.clear();
+            }
+            {
+                ScopeCaptureMailbox::Action act;
+                ScopeCapture::Request req;
+                if (g_state.scope_capture_mailbox.take(act, req)) {
+                    if (act == ScopeCaptureMailbox::Action::Arm) capture.arm(req);
+                    else capture.cancel();
+                }
             }
             if (scope_queue.pop(popped_block)) {
                 // FR-EMU-7/FR-EMU-10: discard backlog produced under a
@@ -874,6 +910,11 @@ void run_audio_engine() {
                     }
                     emit_spectrum_if_ready(fft, popped_block.in_buf, popped_block.out_buf,
                                            popped_block.frames, popped_block.sample_rate);
+                    if (capture.push(popped_block.in_buf.data(), popped_block.out_buf.data(),
+                                     popped_block.frames, capture_window)) {
+                        build_scope_capture_json(capture_window, popped_block.sample_rate, capture_json);
+                        drain_send(capture_json);
+                    }
                 }
                 did_work = true;
             }

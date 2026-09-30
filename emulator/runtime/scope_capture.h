@@ -8,7 +8,9 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <atomic>
 #include <cstdint>
+#include <mutex>
 #include <vector>
 
 class ScopeCapture {
@@ -115,4 +117,35 @@ private:
     Request  req_{};
     bool     armed_{false};
     bool     fired_{false};
+};
+
+// Hand-off of the latest capture command from the IPC-dispatch thread to the
+// drain thread (FR-SCI-14b). The last post wins; take() is cheap when idle
+// (one relaxed-acquire atomic load), so the drain loop can poll it every pass.
+class ScopeCaptureMailbox {
+public:
+    enum class Action { None, Arm, Cancel };
+
+    void post(Action a, const ScopeCapture::Request& r = {}) {
+        std::lock_guard<std::mutex> lk(mutex_);
+        action_ = a;
+        req_    = r;
+        pending_.store(true, std::memory_order_release);
+    }
+
+    // Returns false when nothing is pending.
+    bool take(Action& a, ScopeCapture::Request& r) {
+        if (!pending_.load(std::memory_order_acquire)) return false;
+        std::lock_guard<std::mutex> lk(mutex_);
+        a = action_;
+        r = req_;
+        pending_.store(false, std::memory_order_relaxed);
+        return true;
+    }
+
+private:
+    std::mutex mutex_;
+    Action action_{Action::None};
+    ScopeCapture::Request req_{};
+    std::atomic<bool> pending_{false};
 };

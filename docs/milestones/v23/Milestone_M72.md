@@ -25,7 +25,7 @@ for 1× Single and for low-resolution time bases; the live scope stays on the de
 
 ---
 
-### [ ] feat: drain-thread integration and IPC request/reply (FR-SCI-14b)
+### [x] feat: drain-thread integration and IPC request/reply (FR-SCI-14b)
 
 **Affected files:** `emulator/runtime/audio_engine.cpp`, `emulator/runtime/ipc_server.cpp`, `emulator/runtime/emulator_state.h`, `tests/runtime/test_scope_capture.py`, `tests/runtime/build_and_test.sh`
 
