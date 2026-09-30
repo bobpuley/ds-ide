@@ -3,6 +3,16 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.23.0 — 2026-09-30
+
+**Scope instrument — emulator capture** *(FR-SCI-14, M72)*
+
+- **FR-SCI-14a** — `ScopeCapture` (`emulator/runtime/scope_capture.h`): a full-rate ring (16384 frames per channel) with an edge-trigger scan on In or Out L, returning a 4096-frame window with the trigger at frame 1024. Unit-tested standalone under ASan/UBSan.
+- **FR-SCI-14b** — The emulator's non-real-time drain thread feeds the ring and answers a `scopeCapture` arm/cancel request with one `scope_capture` message; the real-time callback is unchanged.
+- **FR-SCI-14c** — The host validates and forwards `scope_capture` to the Scope webview, and validates the webview's arm/cancel request before sending it to the emulator.
+- **FR-SCI-14d** — With a Rising / Falling trigger, 1× Single now captures the window at full rate and freezes on its trigger point, so short transients are caught; a time base too fine for the decimated stream draws full-rate windows (about 5 requests per second). Free-run single-shot stays best effort.
+- Scope toolbar: the snapshot and CSV buttons are grouped, the 1× Single label no longer changes while armed, and Freeze / 1× Single are disabled — and reset — while audio is stopped.
+
 ## 0.22.0 — 2026-09-30
 
 **Scope instrument — analysis** *(FR-SCI-9 to FR-SCI-13, M71)*

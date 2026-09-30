@@ -1,7 +1,7 @@
 # M72 — Scope Instrument — Emulator Capture
 
 **Version:** 0.23.0
-**Status:** in progress
+**Status:** released
 **Source:** feature intake session, 2026-09-30 (01_input-ideas.md; design_plan.md P0-4; follow-up to M70–M71)
 
 ## Goal
