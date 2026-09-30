@@ -7,7 +7,9 @@ import { readThemeColor, onThemeChange } from './theme/theme-runtime';
 import { loadScopeColors } from './scope-colors';
 import { ScopeCapture, type ScopeChannel } from './scope/scope-capture';
 import { Meters, formatDb, meterPosition } from './scope/scope-meters';
-import { triggerStart, type TriggerMode, type TriggerSource } from './scope/scope-trigger';
+import {
+  triggerStart, pressSingle, onTrigger, type TriggerMode, type TriggerSource, type SingleShotState,
+} from './scope/scope-trigger';
 import {
   DEFAULT_TIME_BASE_MS, DIVISIONS, windowSamples, pointsPerDivision, isLowResolution,
   visibleRange, timeTicks, amplitudeTicks, autoGain, peakAbs, samplePosition, TRACES, cursorIndex, formatReadout, positionToSample,
@@ -40,6 +42,7 @@ const rateNoteEl = el<HTMLElement>('rate-note');
 const freezeBtn = el<HTMLButtonElement>('freeze-btn');
 const frozenBadge = el<HTMLElement>('frozen-badge');
 const readoutEl = el<HTMLElement>('cursor-readout');
+const singleBtn = el<HTMLButtonElement>('single-btn');
 const scopeMainEl = el<HTMLElement>('scope-main');
 const headroomEl = el<HTMLElement>('meter-headroom');
 const meterResetBtn = el<HTMLButtonElement>('meters-reset');
@@ -107,6 +110,8 @@ let trigLevel = 0;
 // The last triggered window, drawn while nothing crosses the level ("no trigger").
 let heldWindow: Buffers | null = null;
 let draggingTrigger = false;
+// FR-SCI-10: best-effort single-shot — it only sees what the scope snapshots contain.
+let singleState: SingleShotState = 'idle';
 let lastGain = 1;
 const traceVisible: Record<'in' | 'l' | 'r', boolean> = { in: true, l: true, r: true };
 
@@ -124,6 +129,22 @@ function currentFrame(): Frame {
   return rate > 0
     ? { buffers: { in: capture.channel('in'), l: capture.channel('l'), r: capture.channel('r') }, rate }
     : { buffers: { in: lastIn, l: lastOut, r: [] }, rate: 0 };
+}
+
+function renderSingle(): void {
+  singleBtn.setAttribute('aria-pressed', String(singleState === 'armed'));
+  singleBtn.textContent = singleState === 'armed' ? '⏳ Armed…' : '1× Single';
+}
+
+// Called on each new snapshot: an armed single-shot freezes on the first triggered capture.
+function checkSingleShot(): void {
+  if (singleState !== 'armed' || frozenFrame) return;
+  const frame = currentFrame();
+  const span = windowSamples(msPerDiv, frame.rate) || lastIn.length;
+  if (!triggerStart(frame.buffers[trigSource], span, trigMode, trigLevel)) return;
+  singleState = onTrigger(singleState);
+  renderSingle();
+  setFrozen(true);
 }
 
 function setFrozen(freeze: boolean): void {
@@ -468,11 +489,23 @@ document.querySelectorAll<HTMLElement>('.clip-chip').forEach(chip => {
   });
 });
 meterResetBtn?.addEventListener('click', () => { meters.resetPeaks(); renderMeters(); });
-freezeBtn?.addEventListener('click', () => setFrozen(frozenFrame === null));
+freezeBtn?.addEventListener('click', () => {
+  singleState = 'idle';
+  renderSingle();
+  setFrozen(frozenFrame === null);
+});
+singleBtn?.addEventListener('click', () => {
+  if (singleState === 'held') setFrozen(false);   // resume, then re-arm below
+  singleState = pressSingle(singleState);
+  renderSingle();
+  flushScopeDraw();
+});
 window.addEventListener('keydown', (e) => {
   const tag = (e.target as HTMLElement | null)?.tagName;
   if (e.code !== 'Space' || tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
   e.preventDefault();
+  singleState = 'idle';
+  renderSingle();
   setFrozen(frozenFrame === null);
 });
 function canvasY(e: MouseEvent): number {
@@ -540,6 +573,7 @@ window.addEventListener('message', (e: MessageEvent<unknown>) => {
     meters.update('l', lastOut);
     meters.update('r', msg.out_r || []);
     renderMeters();
+    checkSingleShot();
     flushScopeDraw();
   } else if (msg.command === 'status') {
     hasStatus = true;

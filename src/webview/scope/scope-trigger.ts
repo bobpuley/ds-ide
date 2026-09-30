@@ -6,6 +6,18 @@
 export type TriggerMode = 'free' | 'rise' | 'fall';
 export type TriggerSource = 'in' | 'l';
 
+export type SingleShotState = 'idle' | 'armed' | 'held';
+
+/** Button press (FR-SCI-10): arm from idle, cancel while armed, resume and re-arm while held. */
+export function pressSingle(state: SingleShotState): SingleShotState {
+  return state === 'armed' ? 'idle' : 'armed';
+}
+
+/** A triggered capture holds the display, but only when armed. */
+export function onTrigger(state: SingleShotState): SingleShotState {
+  return state === 'armed' ? 'held' : state;
+}
+
 export interface TriggerResult {
   /** Index in the capture where the plot starts. */
   start: number;

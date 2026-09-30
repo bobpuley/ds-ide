@@ -400,6 +400,7 @@ ${themeCss({ surface: 'editor' })}
     #events { padding: 3px 12px; min-height: 22px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); font-size: 11px; color: var(--ds-error); flex-shrink: 0; }
     #scope-controls { display: flex; align-items: center; gap: 12px; padding: 4px 12px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); flex-shrink: 0; }
     #freeze-btn[aria-pressed="true"] { background: var(--ds-button-bg); color: var(--ds-button-fg); }
+    #single-btn[aria-pressed="true"] { background: var(--ds-button-bg); color: var(--ds-button-fg); border-color: var(--ds-warning-border); }
     #frozen-badge { color: var(--ds-warning-fg); font-weight: bold; border: 1px solid var(--ds-warning-border); padding: 0 6px; border-radius: 2px; }
     #cursor-readout { margin-left: auto; font-size: 11px; color: var(--ds-text); white-space: pre; }
     #scope { cursor: crosshair; }
@@ -487,6 +488,7 @@ ${themeCss({ surface: 'editor' })}
   <div id="scope-controls" style="display:none">
     <label class="emu-field">Time <select id="timebase">${timeBaseOptions}</select></label>
     <button type="button" id="freeze-btn" class="emu-btn" title="Freeze the display (Space)" aria-pressed="false">&#9208; Freeze</button>
+    <button type="button" id="single-btn" class="emu-btn" title="Arm a single capture: freezes on the next trigger. Best effort — a short transient between two scope snapshots can be missed." aria-pressed="false">1× Single</button>
     <span id="frozen-badge" style="display:none">FROZEN</span>
     <span class="emu-field">Gain
       <span class="seg" id="gain-seg">

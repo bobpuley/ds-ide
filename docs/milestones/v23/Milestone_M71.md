@@ -25,7 +25,7 @@ and CSV export, and a timestamped event history.
 
 ---
 
-### [ ] feat: best-effort single-shot (FR-SCI-10)
+### [x] feat: best-effort single-shot (FR-SCI-10)
 
 **Affected files:** `src/webview/scope-webview.ts`, `src/webview/scope-panel.ts`, `src/test/unit/webview/scope-panel.test.ts`
 

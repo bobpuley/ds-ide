@@ -688,6 +688,14 @@ describe('ScopePanel', () => {
     expect(webview.html).toMatch(/class="seg-btn active" data-trigsrc="in"/);
   });
 
+  // FR-SCI-10 — best-effort single-shot
+  it('webview HTML has a 1x Single button whose tooltip says it is best effort (FR-SCI-10)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="single-btn"');
+    expect(webview.html).toMatch(/id="single-btn"[^>]*title="[^"]*best effort/i);
+  });
+
   // FR-SCOPE-1 — Audio Settings always visible (no collapsible)
   it('webview HTML includes emulator-section with no Controls Editor tab (FR-SCOPE-1)', () => {
     panel.show();

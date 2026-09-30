@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { triggerStart } from '../../../webview/scope/scope-trigger';
+import { triggerStart, pressSingle, onTrigger } from '../../../webview/scope/scope-trigger';
 
 // One period of a square-ish ramp: -1, -0.5, 0, 0.5, 1, 0.5, 0, -0.5 (8 samples)
 const period = [-1, -0.5, 0, 0.5, 1, 0.5, 0, -0.5];
@@ -66,5 +66,22 @@ describe('triggerStart (FR-SCI-9)', () => {
 
   it('returns null for an empty capture in an edge mode', () => {
     expect(triggerStart([], 10, 'rise', 0)).toBeNull();
+  });
+});
+
+describe('single-shot state (FR-SCI-10)', () => {
+  it('pressing arms from idle and cancels while armed', () => {
+    expect(pressSingle('idle')).toBe('armed');
+    expect(pressSingle('armed')).toBe('idle');
+  });
+
+  it('pressing while held resumes the display and arms again', () => {
+    expect(pressSingle('held')).toBe('armed');
+  });
+
+  it('a trigger holds the display only while armed', () => {
+    expect(onTrigger('armed')).toBe('held');
+    expect(onTrigger('idle')).toBe('idle');
+    expect(onTrigger('held')).toBe('held');
   });
 });
