@@ -512,8 +512,6 @@ ${themeCss({ surface: 'editor' })}
     <label class="emu-field">Time <select id="timebase">${timeBaseOptions}</select></label>
     <button type="button" id="freeze-btn" class="ctl-btn" title="Freeze the display (Space)" aria-pressed="false">Freeze</button>
     <button type="button" id="single-btn" class="ctl-btn" title="Arm a single capture: freezes on the next trigger. Best effort — a short transient between two scope snapshots can be missed." aria-pressed="false">1× Single</button>
-    <button type="button" id="snapshot-btn" class="ctl-btn ctl-icon" title="Save a PNG of the scope and spectrum" aria-label="Save snapshot (PNG)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="4.5" width="13" height="9" rx="1.5"/><circle cx="8" cy="9" r="2.5"/><path d="M5.5 4.5l1-2h3l1 2"/></svg></button>
-    <button type="button" id="export-btn" class="ctl-btn ctl-icon" title="Save the visible samples as CSV" aria-label="Export visible samples (CSV)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v8M4.5 7L8 10.5 11.5 7M2.5 13.5h11"/></svg></button>
     <span class="emu-field">Gain
       <span class="seg" id="gain-seg">
         <button type="button" class="seg-btn active" data-gain="1">×1</button><button type="button" class="seg-btn" data-gain="2">×2</button><button type="button" class="seg-btn" data-gain="4">×4</button><button type="button" class="seg-btn" data-gain="auto">Auto</button>
@@ -529,6 +527,8 @@ ${themeCss({ surface: 'editor' })}
       <span class="seg" id="trigsrc-seg" title="Trigger source">
         <button type="button" class="seg-btn active" data-trigsrc="in">In</button><button type="button" class="seg-btn" data-trigsrc="l">L</button>
       </span></span>
+    <button type="button" id="snapshot-btn" class="ctl-btn ctl-icon" title="Save a PNG of the scope and spectrum" aria-label="Save snapshot (PNG)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="4.5" width="13" height="9" rx="1.5"/><circle cx="8" cy="9" r="2.5"/><path d="M5.5 4.5l1-2h3l1 2"/></svg></button>
+    <button type="button" id="export-btn" class="ctl-btn ctl-icon" title="Save the visible samples as CSV" aria-label="Export visible samples (CSV)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v8M4.5 7L8 10.5 11.5 7M2.5 13.5h11"/></svg></button>
     <span id="rate-note"></span>
     <span id="cursor-readout"></span>
   </div>

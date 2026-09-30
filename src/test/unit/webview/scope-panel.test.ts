@@ -714,6 +714,12 @@ describe('ScopePanel', () => {
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('id="snapshot-btn"');
     expect(webview.html).toContain('id="export-btn"');
+    // not controls like the rest: they are the last two buttons of the bar
+    const at = (id: string): number => webview.html.indexOf(`id="${id}"`);
+    for (const id of ['freeze-btn', 'single-btn', 'gain-seg', 'unit-seg', 'trig-seg', 'trigsrc-seg']) {
+      expect(at('snapshot-btn')).toBeGreaterThan(at(id));
+    }
+    expect(at('export-btn')).toBeGreaterThan(at('snapshot-btn'));
     // icon-only buttons: an SVG icon, an accessible name, and no label text
     expect(webview.html).toMatch(/id="snapshot-btn"[^>]*aria-label="Save snapshot[^"]*"[^>]*><svg/);
     expect(webview.html).toMatch(/id="export-btn"[^>]*aria-label="Export[^"]*"[^>]*><svg/);
