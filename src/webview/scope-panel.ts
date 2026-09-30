@@ -415,9 +415,11 @@ ${themeCss({ surface: 'editor' })}
     .event-time { color: var(--ds-text-muted); width: 64px; flex-shrink: 0; }
     .event-kind { color: var(--ds-error); min-width: 80px; }
     #scope-controls { display: flex; align-items: center; gap: 12px; padding: 4px 12px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); flex-shrink: 0; }
-    #freeze-btn[aria-pressed="true"] { background: var(--ds-button-bg); color: var(--ds-button-fg); }
-    #single-btn[aria-pressed="true"] { background: var(--ds-button-bg); color: var(--ds-button-fg); border-color: var(--ds-warning-border); }
-    #frozen-badge { color: var(--ds-warning-fg); font-weight: bold; border: 1px solid var(--ds-warning-border); padding: 0 6px; border-radius: 2px; }
+    .ctl-btn { display: inline-flex; align-items: center; background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-border); padding: 2px 8px; font-family: monospace; font-size: inherit; cursor: pointer; border-radius: 2px; }
+    .ctl-btn:hover { background: var(--ds-hover-bg); }
+    .ctl-btn[aria-pressed="true"] { background: var(--ds-button-bg); color: var(--ds-button-fg); border-color: var(--ds-focus); }
+    .ctl-icon { padding: 2px 5px; }
+    .ctl-icon svg { width: 14px; height: 14px; display: block; }
     #cursor-readout { margin-left: auto; font-size: 11px; color: var(--ds-text); white-space: pre; }
     #scope { cursor: crosshair; }
     .seg { display: inline-flex; }
@@ -508,11 +510,10 @@ ${themeCss({ surface: 'editor' })}
   <div id="event-log" style="display:none"></div>
   <div id="scope-controls" style="display:none">
     <label class="emu-field">Time <select id="timebase">${timeBaseOptions}</select></label>
-    <button type="button" id="freeze-btn" class="emu-btn" title="Freeze the display (Space)" aria-pressed="false">&#9208; Freeze</button>
-    <button type="button" id="single-btn" class="emu-btn" title="Arm a single capture: freezes on the next trigger. Best effort — a short transient between two scope snapshots can be missed." aria-pressed="false">1× Single</button>
-    <button type="button" id="snapshot-btn" class="emu-btn" title="Save a PNG of the scope and spectrum">&#128247; Snapshot</button>
-    <button type="button" id="export-btn" class="emu-btn" title="Save the visible samples as CSV">&#10515; CSV</button>
-    <span id="frozen-badge" style="display:none">FROZEN</span>
+    <button type="button" id="freeze-btn" class="ctl-btn" title="Freeze the display (Space)" aria-pressed="false">Freeze</button>
+    <button type="button" id="single-btn" class="ctl-btn" title="Arm a single capture: freezes on the next trigger. Best effort — a short transient between two scope snapshots can be missed." aria-pressed="false">1× Single</button>
+    <button type="button" id="snapshot-btn" class="ctl-btn ctl-icon" title="Save a PNG of the scope and spectrum" aria-label="Save snapshot (PNG)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="4.5" width="13" height="9" rx="1.5"/><circle cx="8" cy="9" r="2.5"/><path d="M5.5 4.5l1-2h3l1 2"/></svg></button>
+    <button type="button" id="export-btn" class="ctl-btn ctl-icon" title="Save the visible samples as CSV" aria-label="Export visible samples (CSV)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v8M4.5 7L8 10.5 11.5 7M2.5 13.5h11"/></svg></button>
     <span class="emu-field">Gain
       <span class="seg" id="gain-seg">
         <button type="button" class="seg-btn active" data-gain="1">×1</button><button type="button" class="seg-btn" data-gain="2">×2</button><button type="button" class="seg-btn" data-gain="4">×4</button><button type="button" class="seg-btn" data-gain="auto">Auto</button>
@@ -548,7 +549,7 @@ ${themeCss({ surface: 'editor' })}
     <div id="meters">
       <h3>Levels</h3>${meterRows}
       <div class="meter-nums">headroom<br><span id="meter-headroom">—</span> dB</div>
-      <button type="button" id="meters-reset" class="emu-btn">Reset peaks</button>
+      <button type="button" id="meters-reset" class="ctl-btn">Reset peaks</button>
     </div>
   </div>
   <div id="getting-started">

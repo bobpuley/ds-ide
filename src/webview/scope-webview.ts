@@ -45,7 +45,6 @@ const scopeControlsEl = el<HTMLElement>('scope-controls');
 const timeBaseEl = el<HTMLSelectElement>('timebase');
 const rateNoteEl = el<HTMLElement>('rate-note');
 const freezeBtn = el<HTMLButtonElement>('freeze-btn');
-const frozenBadge = el<HTMLElement>('frozen-badge');
 const readoutEl = el<HTMLElement>('cursor-readout');
 const singleBtn = el<HTMLButtonElement>('single-btn');
 const snapshotBtn = el<HTMLButtonElement>('snapshot-btn');
@@ -216,7 +215,6 @@ function setFrozen(freeze: boolean): void {
     };
   }
   freezeBtn.setAttribute('aria-pressed', String(freeze));
-  frozenBadge.style.display = freeze ? 'inline' : 'none';
   flushScopeDraw();
 }
 
@@ -317,7 +315,13 @@ function draw(): void {
 
   ctx.textAlign = 'right';
   ctx.textBaseline = 'top';
-  ctx.fillText(`×${gain >= 10 ? gain.toFixed(0) : gain.toFixed(1).replace(/\.0$/, '')}${gainMode === 'auto' ? ' auto' : ''}`, W - PLOT_RIGHT - 4, PLOT_TOP + 3);
+  const gainLabel = `×${gain >= 10 ? gain.toFixed(0) : gain.toFixed(1).replace(/\.0$/, '')}${gainMode === 'auto' ? ' auto' : ''}`;
+  ctx.fillText(gainLabel, W - PLOT_RIGHT - 4, PLOT_TOP + 3);
+  if (frozenFrame) {
+    // FR-SCI-7: FROZEN sits in the same corner, to the left of the gain label.
+    ctx.fillStyle = colors.trigger;
+    ctx.fillText('FROZEN', W - PLOT_RIGHT - 4 - ctx.measureText(gainLabel).width - 12, PLOT_TOP + 3);
+  }
   const { start, count } = range;
   ctx.save();
   ctx.beginPath(); ctx.rect(PLOT_LEFT, PLOT_TOP, pw, ph); ctx.clip();

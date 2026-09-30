@@ -662,7 +662,9 @@ describe('ScopePanel', () => {
     panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('id="freeze-btn"');
-    expect(webview.html).toContain('id="frozen-badge"');
+    // FROZEN is drawn on the plot, in the gain label's corner — not as an HTML badge.
+    expect(webview.html).not.toContain('frozen-badge');
+    expect(webview.html).not.toContain('>FROZEN<');
     expect(webview.html).toContain('id="cursor-readout"');
   });
 
@@ -712,6 +714,9 @@ describe('ScopePanel', () => {
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('id="snapshot-btn"');
     expect(webview.html).toContain('id="export-btn"');
+    // icon-only buttons: an SVG icon, an accessible name, and no label text
+    expect(webview.html).toMatch(/id="snapshot-btn"[^>]*aria-label="Save snapshot[^"]*"[^>]*><svg/);
+    expect(webview.html).toMatch(/id="export-btn"[^>]*aria-label="Export[^"]*"[^>]*><svg/);
   });
 
   it('saves a CSV sent by the webview through a save dialog (FR-SCI-12)', async () => {
