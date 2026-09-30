@@ -196,11 +196,11 @@ Full registry in [`docs/v22/05_dev-plan.md`](v22/05_dev-plan.md).
 
 ### v23 (0.21.0–0.23.0) — planned
 
-| ID   | Name                                   | Status      | Version | File                                                   |
-|------|----------------------------------------|-------------|---------|--------------------------------------------------------|
-| M70  | Scope Instrument — Display             | **planned** | 0.21.0  | [Milestone_M70.md](milestones/v23/Milestone_M70.md)    |
-| M71  | Scope Instrument — Analysis            | **planned** | 0.22.0  | [Milestone_M71.md](milestones/v23/Milestone_M71.md)    |
-| M72  | Scope Instrument — Emulator Capture    | **planned** | 0.23.0  | [Milestone_M72.md](milestones/v23/Milestone_M72.md)    |
+| ID   | Name                                   | Status          | Version | File                                                   |
+|------|----------------------------------------|-----------------|---------|--------------------------------------------------------|
+| M70  | Scope Instrument — Display             | **in progress** | 0.21.0  | [Milestone_M70.md](milestones/v23/Milestone_M70.md)    |
+| M71  | Scope Instrument — Analysis            | **planned**     | 0.22.0  | [Milestone_M71.md](milestones/v23/Milestone_M71.md)    |
+| M72  | Scope Instrument — Emulator Capture    | **planned**     | 0.23.0  | [Milestone_M72.md](milestones/v23/Milestone_M72.md)    |
 
 Source: feature intake 2026-09-30 — `design_plan.md` P0-4 / §6.B-8 / §6.B-10, layout per
 `docs/mockups/v22-scope-instrument.html` (confirmed as M70's first task). M70 and M71 are

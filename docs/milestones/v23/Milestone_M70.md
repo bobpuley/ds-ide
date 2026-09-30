@@ -1,7 +1,7 @@
 # M70 — Scope Instrument — Display
 
 **Version:** 0.21.0
-**Status:** planned
+**Status:** in progress
 **Source:** feature intake session, 2026-09-30 (01_input-ideas.md; design_plan.md P0-4, §6.B-8, §6.B-10; layout per docs/mockups/v22-scope-instrument.html)
 
 ## Goal
@@ -14,7 +14,7 @@ and per-channel meters with a latching clip indicator, all on the existing scope
 
 ## Sprint Tasks
 
-### [ ] docs: confirm the scope instrument layout in the mockup (FR-SCI-1)
+### [x] docs: confirm the scope instrument layout in the mockup (FR-SCI-1)
 
 The layout is a UI decision, so it is evaluated in the standalone mockup before any view changes.
 
