@@ -68,7 +68,7 @@
 > **v22 complete** — M65–M69 released (0.20.0–0.20.4), all ACs green.
 > Archived: [`docs/v22/`](v22/).
 
-*v23 in planning — M70 (scope display) released; M71 (scope analysis) planned; M72 (emulator-side capture) planned, design deferred; see registry below.*
+*v23 in planning — M70 (scope display) and M71 (scope analysis) released; M72 (emulator-side capture) planned, design deferred; see registry below.*
 
 ---
 
@@ -199,7 +199,7 @@ Full registry in [`docs/v22/05_dev-plan.md`](v22/05_dev-plan.md).
 | ID   | Name                                   | Status          | Version | File                                                   |
 |------|----------------------------------------|-----------------|---------|--------------------------------------------------------|
 | M70  | Scope Instrument — Display             | **released**    | 0.21.0  | [Milestone_M70.md](milestones/v23/Milestone_M70.md)    |
-| M71  | Scope Instrument — Analysis            | **in progress** | 0.22.0  | [Milestone_M71.md](milestones/v23/Milestone_M71.md)    |
+| M71  | Scope Instrument — Analysis            | **released**    | 0.22.0  | [Milestone_M71.md](milestones/v23/Milestone_M71.md)    |
 | M72  | Scope Instrument — Emulator Capture    | **planned**     | 0.23.0  | [Milestone_M72.md](milestones/v23/Milestone_M72.md)    |
 
 Source: feature intake 2026-09-30 — `design_plan.md` P0-4 / §6.B-8 / §6.B-10, layout per
