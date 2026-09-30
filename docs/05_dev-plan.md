@@ -68,7 +68,7 @@
 > **v22 complete** — M65–M69 released (0.20.0–0.20.4), all ACs green.
 > Archived: [`docs/v22/`](v22/).
 
-*v23 milestones not yet planned.*
+*v23 in planning — M70 (scope display) and M71 (scope analysis) planned; M72 (emulator-side capture) planned, design deferred; see registry below.*
 
 ---
 
@@ -194,6 +194,16 @@ Full registry in [`docs/v21/05_dev-plan.md`](v21/05_dev-plan.md).
 M65 Unified Device Model (Foundation) · M66 Unified Device Model (Drag & Drop) · M67 Stateful Transport on Native Surfaces · M68 Extension Views Follow the IDE Theme · M69 Controls Editor Devices in the Wiring-Palette Style.
 Full registry in [`docs/v22/05_dev-plan.md`](v22/05_dev-plan.md).
 
-### v23 — planned
+### v23 (0.21.0–0.23.0) — planned
 
-*(no milestones yet)*
+| ID   | Name                                   | Status      | Version | File                                                   |
+|------|----------------------------------------|-------------|---------|--------------------------------------------------------|
+| M70  | Scope Instrument — Display             | **planned** | 0.21.0  | [Milestone_M70.md](milestones/v23/Milestone_M70.md)    |
+| M71  | Scope Instrument — Analysis            | **planned** | 0.22.0  | [Milestone_M71.md](milestones/v23/Milestone_M71.md)    |
+| M72  | Scope Instrument — Emulator Capture    | **planned** | 0.23.0  | [Milestone_M72.md](milestones/v23/Milestone_M72.md)    |
+
+Source: feature intake 2026-09-30 — `design_plan.md` P0-4 / §6.B-8 / §6.B-10, layout per
+`docs/mockups/v22-scope-instrument.html` (confirmed as M70's first task). M70 and M71 are
+webview-only on the existing scope stream (plus `out_r` and `step` in the scope message); M71
+depends on M70's capture ring and view modules. M72 adds emulator-side full-rate capture and a
+true single-shot and depends on M71.

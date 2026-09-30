@@ -68,4 +68,6 @@
 > **v22 complete** — archived to `docs/v22/` on 2026-09-30. Full v22 ideas archived in
 > [`docs/v22/01_input-ideas.md`](v22/01_input-ideas.md).
 
-*v23 planning not yet started. Use `/doc-creator-driver:intake` or `/doc-creator-driver:start` to begin.*
+## Intake 2026-09-30 — Scope as an instrument
+
+- **Scope instrument** (feature; source `design_plan.md` P0-4 + §6.B-8 metering + §6.B-10 right channel; layout mockup `docs/mockups/v22-scope-instrument.html`): turn the Daisy Scope from a picture of a waveform into a measuring instrument — time/amplitude axes with units, gain (×1/×2/×4/Auto), trigger (free/rising/falling + level marker), freeze / single-shot with cursor read-out, right output channel, peak/RMS/latching-clip meters, spectrum with Lin/Log frequency and Relative/Absolute dBFS, snapshot (PNG) and export (CSV), and a click-to-expand timestamped event history.
