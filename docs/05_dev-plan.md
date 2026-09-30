@@ -1,4 +1,6 @@
-# 05 — Development Plan (v22)
+> **v22 complete** — archived to `docs/v22/` on 2026-09-30. This file now seeds v23 planning.
+
+# 05 — Development Plan (v23)
 
 > **v1 complete** — M0–M7 released (0.1.0–0.1.7), all ACs green.
 > Archived: [`docs/v1/`](v1/).
@@ -62,8 +64,11 @@
 >
 > **v21 complete** — M62–M64 released (0.19.0–0.19.2), all ACs green.
 > Archived: [`docs/v21/`](v21/).
+>
+> **v22 complete** — M65–M69 released (0.20.0–0.20.4), all ACs green.
+> Archived: [`docs/v22/`](v22/).
 
-*v22 in planning — M65–M66 (unified device model) and M67 (stateful transport) released; M68 (theme support) planned; see registry below.*
+*v23 milestones not yet planned.*
 
 ---
 
@@ -184,21 +189,11 @@ Full registry in [`docs/v20/05_dev-plan.md`](v20/05_dev-plan.md).
 M62 MIDI Monitor IPC Schema Fix · M63 Manual Test Tracker · M64 Functional/E2E Test Layer (Foundation).
 Full registry in [`docs/v21/05_dev-plan.md`](v21/05_dev-plan.md).
 
-### v22 (0.20.0–0.20.4) — planned
+### v22 (0.20.0–0.20.4) — archived in `docs/v22/`
 
-| ID   | Name                                   | Status       | Version | File                                                   |
-|------|----------------------------------------|--------------|---------|--------------------------------------------------------|
-| M65  | Unified Device Model (Foundation)      | **released** | 0.20.0  | [Milestone_M65.md](milestones/v22/Milestone_M65.md)    |
-| M66  | Unified Device Model (Drag & Drop)     | **released** | 0.20.1  | [Milestone_M66.md](milestones/v22/Milestone_M66.md)    |
-| M67  | Stateful Transport on Native Surfaces  | **released** | 0.20.2  | [Milestone_M67.md](milestones/v22/Milestone_M67.md)    |
-| M68  | Extension Views Follow the IDE Theme   | **released** | 0.20.3  | [Milestone_M68.md](milestones/v22/Milestone_M68.md)    |
-| M69  | Controls Editor Devices in the Wiring-Palette Style | **released** | 0.20.4 | [Milestone_M69.md](milestones/v22/Milestone_M69.md) |
+M65 Unified Device Model (Foundation) · M66 Unified Device Model (Drag & Drop) · M67 Stateful Transport on Native Surfaces · M68 Extension Views Follow the IDE Theme · M69 Controls Editor Devices in the Wiring-Palette Style.
+Full registry in [`docs/v22/05_dev-plan.md`](v22/05_dev-plan.md).
 
-Source: feature intake 2026-09-28 — `design_plan.md` §5 (device model only; §5.5 transport parked),
-layout per `docs/mockups/v22-unified-device-model.html`. M66 depends on M65 (`pinRequires`,
-unified popover). M67 comes from a second 2026-09-28 intake (`design_plan.md` §5.5, layout per
-`docs/mockups/v22-transport-actions.html`) and is independent of M65/M66. M68 comes from the
-2026-09-29 theme intake (layout per `docs/mockups/v22-themes.html`, built as its first task); it
-reads M66's palette and device accents, so it follows M65/M66. M69 comes from the 2026-09-29
-widget-style intake (layout per `docs/mockups/v22-control-widgets.html`, built as its first task);
-it reuses M66's palette art and M68's theme layer, so it follows both.
+### v23 — planned
+
+*(no milestones yet)*
