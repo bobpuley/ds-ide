@@ -93,7 +93,7 @@ def test_record_replay(exe: str) -> None:
         with open(rec_path, "rb") as f:
             header = f.read(16)
         assert header[:6] == b"DSREC\x00", f"bad magic: {header[:6]!r}"
-        assert header[6] == 0x01, f"unexpected version: {header[6]}"
+        assert header[6] == 0x02, f"unexpected version: {header[6]}"
 
         # ── Phase 2: replay ──────────────────────────────────────────────────
         with run_emulator(exe, SOCKET) as client:

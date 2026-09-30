@@ -604,8 +604,17 @@ static void run_simulated(float sample_rate,
         });
     }
 
-    // Cancel any in-progress replay when switching away from simulated mode.
-    if (g_state.replay_active.load()) {
+    // Cancel any in-progress replay when switching away from simulated mode
+    // (or shutting down). A config change also lands here — run_simulated()
+    // simply restarts with the new parameters — and must NOT cancel replay: a
+    // client that sends `config` and then `replayStart` back-to-back has
+    // already activated replay by the time this loop notices the config
+    // change, so cancelling here silently dropped the replay and left the
+    // sine generator running instead (only with a real output device; the
+    // headless fallback loop above returns before reaching this point).
+    const bool left_simulated = g_state.shutdown.load()
+        || static_cast<AudioMode>(g_state.audio_mode.load()) != AudioMode::Simulated;
+    if (left_simulated && g_state.replay_active.load()) {
         g_state.replay_active.store(false);
         std::lock_guard<std::mutex> lk(g_state.player_mutex);
         g_state.player.close();

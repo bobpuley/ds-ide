@@ -783,7 +783,7 @@ static void test_session_recorder_drain_thread() {
     CHECK(!rec.active(), "active() false after stop");
     CHECK(!rec.hasWriteError(), "hasWriteError() stays false for a normal successful recording");
 
-    // Inspect the file: header (16 bytes) + BLOCKS × (1-byte type + FRAMES*2*4 data bytes).
+    // Inspect the file: header (16 bytes) + BLOCKS × (1-byte type + 4-byte frame count + FRAMES*2*4 data bytes).
     int rfd = ::open(tmp, O_RDONLY);
     CHECK(rfd >= 0, "output file exists and is readable");
     if (rfd >= 0) {
@@ -795,7 +795,8 @@ static void test_session_recorder_drain_thread() {
         ::close(rfd);
 
         CHECK(dsrec_has_header(content), "file begins with DSREC header");
-        size_t expected_audio_bytes = BLOCKS * (1 + FRAMES * 2 * sizeof(float));
+        // v2 record: type byte + uint32 frame count + FRAMES*2 floats.
+        size_t expected_audio_bytes = BLOCKS * (1 + 4 + FRAMES * 2 * sizeof(float));
         // header(16) + audio_blocks + END(1)
         size_t expected_total = 16 + expected_audio_bytes + 1;
         CHECK(content.size() == expected_total, "file size matches header + blocks + END");
@@ -1248,6 +1249,151 @@ static void test_session_player_replay_deterministic() {
     ::unlink(tmp);
 }
 
+// ---- .dsrec v2: each audio record carries its own frame count ---------------
+//
+// CoreAudio delivers a hardware-dependent (and varying) number of frames per
+// callback, unlike the configured effect block_size. v1 recorded those blocks
+// but told the player to read block_size frames each, so replay decoded a
+// misaligned stream and came out at the wrong level.
+
+static std::vector<uint8_t> read_whole_file(const char* path) {
+    std::vector<uint8_t> content;
+    int rfd = ::open(path, O_RDONLY);
+    if (rfd < 0) return content;
+    uint8_t chunk[4096];
+    ssize_t n;
+    while ((n = ::read(rfd, chunk, sizeof(chunk))) > 0)
+        content.insert(content.end(), chunk, chunk + n);
+    ::close(rfd);
+    return content;
+}
+
+// A stereo block of `frames` frames whose left/right samples are a running
+// counter starting at `start` (so a misaligned decode is unmistakable).
+static std::vector<float> ramp_block(size_t frames, float start) {
+    std::vector<float> b(frames * 2);
+    for (size_t i = 0; i < frames; ++i) { b[2 * i] = start + static_cast<float>(i); b[2 * i + 1] = -(start + static_cast<float>(i)); }
+    return b;
+}
+
+static void test_session_recorder_writes_frame_count_per_block() {
+    std::printf("--- .dsrec v2: recorder stores each block's own frame count ---\n");
+    char tmp[] = "/tmp/test_rec_v2_XXXXXX";
+    int fd = ::mkstemp(tmp);
+    if (fd < 0) { std::printf("  SKIP  mkstemp failed\n"); return; }
+    ::close(fd);
+
+    SessionRecorder rec;
+    CHECK(rec.start(std::string(tmp), 48000, 48), "start() succeeds");
+    const size_t sizes[] = {5, 9, 3};
+    float start = 0.f;
+    for (size_t f : sizes) { auto b = ramp_block(f, start); rec.enqueueBlock(b.data(), f); start += static_cast<float>(f); }
+    rec.stop();
+
+    auto c = read_whole_file(tmp);
+    CHECK(c.size() >= 17 && c[6] == 0x02, "header version is 2");
+    size_t pos = 16;
+    bool layout_ok = true;
+    for (size_t f : sizes) {
+        if (pos + 5 > c.size() || c[pos] != kRecTypeAudioBlock) { layout_ok = false; break; }
+        uint32_t n = c[pos + 1] | (c[pos + 2] << 8) | (c[pos + 3] << 16) | (static_cast<uint32_t>(c[pos + 4]) << 24);
+        if (n != f) layout_ok = false;
+        pos += 1 + 4 + f * 2 * sizeof(float);
+    }
+    CHECK(layout_ok, "each AUDIO_BLOCK record is prefixed with its frame count");
+    CHECK(pos + 1 == c.size() && c.back() == kRecTypeEnd, "file ends with the END marker right after the last block");
+    ::unlink(tmp);
+}
+
+// Pops the whole file back with a fixed request size and returns the stereo
+// samples (left channel) in order, plus every event with the index of the
+// first popped frame it arrived with.
+struct ReplayCapture { std::vector<float> left; std::vector<std::pair<size_t, ReplayEvent>> events; };
+
+static ReplayCapture replay_all(const char* path, size_t request) {
+    ReplayCapture cap;
+    SessionPlayer player;
+    uint32_t sr = 0, bs = 0;
+    if (!player.open(std::string(path), sr, bs)) return cap;
+    std::vector<float> buf(request * 2);
+    ReplayEvent events[SessionPlayer::kMaxEventsPerSlot];
+    size_t n_events = 0;
+    int guard = 0;
+    while (!player.done() && guard++ < 400000) {
+        if (!player.popBlock(buf.data(), request, events, SessionPlayer::kMaxEventsPerSlot, n_events)) continue;
+        for (size_t e = 0; e < n_events; ++e) cap.events.push_back({cap.left.size(), events[e]});
+        for (size_t i = 0; i < request; ++i) cap.left.push_back(buf[2 * i]);
+    }
+    player.close();
+    return cap;
+}
+
+static void test_record_replay_roundtrip_variable_block_sizes() {
+    std::printf("--- .dsrec v2: replay is the recorded sample stream whatever the block sizes ---\n");
+    char tmp[] = "/tmp/test_rec_rt_XXXXXX";
+    int fd = ::mkstemp(tmp);
+    if (fd < 0) { std::printf("  SKIP  mkstemp failed\n"); return; }
+    ::close(fd);
+
+    // Recorded block sizes vary and differ from the header's block_size (48).
+    const size_t sizes[] = {7, 13, 5, 11, 9};
+    size_t total = 0;
+    SessionRecorder rec;
+    rec.start(std::string(tmp), 48000, 48);
+    float start = 1.f;
+    for (size_t f : sizes) { auto b = ramp_block(f, start); rec.enqueueBlock(b.data(), f); start += static_cast<float>(f); total += f; }
+    rec.stop();
+
+    for (size_t request : {size_t(4), size_t(16), size_t(48)}) {
+        auto cap = replay_all(tmp, request);
+        bool exact = cap.left.size() >= total;
+        for (size_t i = 0; exact && i < total; ++i)
+            if (std::fabs(cap.left[i] - (1.f + static_cast<float>(i))) > 1e-6f) exact = false;
+        bool tail_silent = true;
+        for (size_t i = total; i < cap.left.size(); ++i) if (cap.left[i] != 0.f) tail_silent = false;
+        char msg[160];
+        std::snprintf(msg, sizeof msg, "requesting %zu frames per pop replays all %zu recorded frames in order", request, total);
+        CHECK(exact, msg);
+        CHECK(tail_silent, "anything after the last recorded frame is silence");
+        CHECK(cap.left.size() < total + request, "replay stops within one request of the end of the recording");
+    }
+    ::unlink(tmp);
+}
+
+static void test_session_player_events_fire_with_their_block_start() {
+    std::printf("--- .dsrec v2: an event fires on the pop that first consumes the block it precedes ---\n");
+    std::vector<uint8_t> file = make_dsrec_header(48000, 48);
+    file[6] = 0x02;
+    auto add_block = [&](size_t frames, float start) {
+        file.push_back(kRecTypeAudioBlock);
+        push_u32(file, static_cast<uint32_t>(frames));
+        for (float v : ramp_block(frames, start)) push_float(file, v);
+    };
+    add_block(6, 0.f);
+    file.push_back(kRecTypePotEvent); file.push_back(2); push_float(file, 0.25f);
+    add_block(6, 6.f);
+    file.push_back(kRecTypeEnd);
+
+    char tmp[] = "/tmp/test_rec_ev_XXXXXX";
+    int fd = ::mkstemp(tmp);
+    if (fd < 0) { std::printf("  SKIP  mkstemp failed\n"); return; }
+    ::write(fd, file.data(), file.size());
+    ::close(fd);
+
+    auto cap = replay_all(tmp, 4);   // pops: frames 0-3, 4-7 (crosses into block 2), 8-11
+    CHECK(cap.events.size() == 1, "exactly one event is delivered");
+    if (cap.events.size() == 1) {
+        CHECK(cap.events[0].first == 4, "delivered with the pop that first reads block 2 (frame 4..7 pop)");
+        CHECK(cap.events[0].second.type == kRecTypePotEvent && cap.events[0].second.channel_or_pin == 2 &&
+              std::fabs(cap.events[0].second.value - 0.25f) < 1e-6f, "event payload round-trips");
+    }
+    bool ramp_ok = cap.left.size() >= 12;
+    for (size_t i = 0; ramp_ok && i < 12; ++i) if (std::fabs(cap.left[i] - static_cast<float>(i)) > 1e-6f) ramp_ok = false;
+    CHECK(ramp_ok, "samples continue seamlessly across the block boundary");
+    ::unlink(tmp);
+}
+
+
 static void test_session_player_popblock_rt_safe_timing() {
     std::printf("--- FR-RTS-3: SessionPlayer popBlock does not block on I/O ---\n");
 
@@ -1612,6 +1758,9 @@ int main() {
     test_session_player_popblock_basic();
     test_session_player_short_block_zero_fill();
     test_session_player_replay_deterministic();
+    test_session_recorder_writes_frame_count_per_block();
+    test_record_replay_roundtrip_variable_block_sizes();
+    test_session_player_events_fire_with_their_block_start();
     test_session_player_popblock_rt_safe_timing();
     test_midi_usb_send_message_enqueues_midi_tx();
     test_midi_usb_send_message_handles_short_program_change();

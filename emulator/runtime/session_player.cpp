@@ -31,7 +31,14 @@ void SessionPlayer::countBlocks(long data_start_offset) {
     while (::read(fd_, &type, 1) == 1) {
         if (type == kRecTypeAudioBlock) {
             ++total_blocks_;
-            if (::lseek(fd_, static_cast<off_t>(block_size_ * 2 * sizeof(float)), SEEK_CUR) < 0)
+            uint32_t frames = block_size_;
+            if (version_ >= kRecMagicVersion) {
+                uint8_t c[4];
+                if (::read(fd_, c, 4) != 4) break;
+                frames = static_cast<uint32_t>(c[0]) | (static_cast<uint32_t>(c[1]) << 8)
+                       | (static_cast<uint32_t>(c[2]) << 16) | (static_cast<uint32_t>(c[3]) << 24);
+            }
+            if (::lseek(fd_, static_cast<off_t>(static_cast<size_t>(frames) * 2 * sizeof(float)), SEEK_CUR) < 0)
                 break;
         } else if (type == kRecTypePotEvent) {
             if (::lseek(fd_, 5, SEEK_CUR) < 0) break;
@@ -59,7 +66,10 @@ bool SessionPlayer::open(const std::string& path,
     if (std::memcmp(header, "DSREC", 5) != 0 || header[5] != '\0') {
         ::close(fd_); fd_ = -1; return false;
     }
-    if (header[6] != kRecMagicVersion) { ::close(fd_); fd_ = -1; return false; }
+    if (header[6] != kRecMagicVersion && header[6] != kRecVersionLegacy) {
+        ::close(fd_); fd_ = -1; return false;
+    }
+    version_ = header[6];
 
     out_sample_rate = static_cast<uint32_t>(header[8])
                     | (static_cast<uint32_t>(header[9])  << 8)
@@ -81,12 +91,18 @@ bool SessionPlayer::open(const std::string& path,
     countBlocks(data_start);
     if (::lseek(fd_, data_start, SEEK_SET) < 0) { ::close(fd_); fd_ = -1; return false; }  // AC-47
 
-    // Pre-allocate the ring so the reader thread never resizes it, and the RT
-    // thread's popBlock() never touches anything but fixed-capacity slots.
-    ring_.assign(kRingSlots, DecodedSlot{});
-    for (auto& slot : ring_) slot.audio.assign(kMaxFramesPerSlot * 2, 0.f);
-    ring_write_.store(0, std::memory_order_relaxed);
-    ring_read_.store(0, std::memory_order_relaxed);
+    // Pre-allocate every ring so neither thread ever resizes one, and the RT
+    // thread's popBlock() touches nothing but fixed-capacity storage.
+    stream_.assign(kStreamFrames * 2, 0.f);
+    events_.assign(kMarkerSlots, PositionedEvent{});
+    block_ends_.assign(kMarkerSlots, 0);
+    stream_w_.store(0, std::memory_order_relaxed);
+    stream_r_.store(0, std::memory_order_relaxed);
+    events_w_.store(0, std::memory_order_relaxed);
+    events_r_.store(0, std::memory_order_relaxed);
+    block_ends_w_.store(0, std::memory_order_relaxed);
+    block_ends_r_.store(0, std::memory_order_relaxed);
+    reader_done_.store(false, std::memory_order_relaxed);
 
     done_.store(false, std::memory_order_release);
     reader_stop_.store(false, std::memory_order_relaxed);
@@ -95,7 +111,7 @@ bool SessionPlayer::open(const std::string& path,
     return true;
 }
 
-bool SessionPlayer::readNextBlockBlocking(float* buf, std::vector<ReplayEvent>& events_out) {
+bool SessionPlayer::readNextBlockBlocking(float* buf, size_t& frames_out, std::vector<ReplayEvent>& events_out) {
     events_out.clear();
     uint8_t type;
 
@@ -117,8 +133,18 @@ bool SessionPlayer::readNextBlockBlocking(float* buf, std::vector<ReplayEvent>& 
             events_out.push_back({ kRecTypeButtonEvent, payload[0], 0.f, payload[1] });
 
         } else if (type == kRecTypeAudioBlock) {
-            if (!readBytes(buf, static_cast<size_t>(block_size_) * 2 * sizeof(float)))
+            size_t frames = block_size_;
+            if (version_ >= kRecMagicVersion) {
+                uint8_t c[4];
+                if (!readBytes(c, 4)) return false;
+                frames = static_cast<size_t>(c[0]) | (static_cast<size_t>(c[1]) << 8)
+                       | (static_cast<size_t>(c[2]) << 16) | (static_cast<size_t>(c[3]) << 24);
+                // A corrupt count must not overrun the slot (or stall on a huge read).
+                if (frames == 0 || frames > kMaxFramesPerSlot) return false;
+            }
+            if (!readBytes(buf, frames * 2 * sizeof(float)))
                 return false;
+            frames_out = frames;
             return true;
 
         } else {
@@ -131,35 +157,70 @@ bool SessionPlayer::readNextBlockBlocking(float* buf, std::vector<ReplayEvent>& 
 void SessionPlayer::readerLoop() {
     // Reused across iterations — heap allocation here is fine (reader thread,
     // never the RT thread).
+    std::vector<float>       tmp(kMaxFramesPerSlot * 2);
     std::vector<ReplayEvent> events;
+    uint64_t                 pos = 0;  // frames published so far
+
+    auto waitForRoom = [this](auto&& has_room) {
+        while (!reader_stop_.load(std::memory_order_relaxed)) {
+            if (has_room()) return true;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return false;
+    };
 
     while (!reader_stop_.load(std::memory_order_relaxed)) {
-        size_t w    = ring_write_.load(std::memory_order_relaxed);
-        size_t next = (w + 1) % kRingSlots;
-        if (next == ring_read_.load(std::memory_order_acquire)) {
-            // Ring full — the RT thread hasn't caught up yet.
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            continue;
+        size_t frames = 0;
+        if (!readNextBlockBlocking(tmp.data(), frames, events)) break;  // EOF / error
+
+        // Events queued before this record fire when its first frame is read.
+        size_t ne = std::min(events.size(), kMaxEventsPerSlot);
+        for (size_t i = 0; i < ne; ++i) {
+            if (!waitForRoom([&] {
+                    return (events_w_.load(std::memory_order_relaxed) + 1) % kMarkerSlots
+                           != events_r_.load(std::memory_order_acquire);
+                })) goto finished;
+            size_t w = events_w_.load(std::memory_order_relaxed);
+            events_[w] = PositionedEvent{ pos, events[i] };
+            events_w_.store((w + 1) % kMarkerSlots, std::memory_order_release);
         }
 
-        DecodedSlot& slot = ring_[w];
-        bool ok = readNextBlockBlocking(slot.audio.data(), events);
-        if (!ok) {
-            slot.eof      = true;
-            slot.frames   = 0;
-            slot.n_events = 0;
-            ring_write_.store(next, std::memory_order_release);
-            return;  // end of file / error — no more slots to produce
+        // Record boundary (for blocksRead()).
+        if (!waitForRoom([&] {
+                return (block_ends_w_.load(std::memory_order_relaxed) + 1) % kMarkerSlots
+                       != block_ends_r_.load(std::memory_order_acquire);
+            })) goto finished;
+        {
+            size_t w = block_ends_w_.load(std::memory_order_relaxed);
+            block_ends_[w] = pos + frames;
+            block_ends_w_.store((w + 1) % kMarkerSlots, std::memory_order_release);
         }
 
-        slot.eof    = false;
-        slot.frames = block_size_;
-        size_t ne   = std::min(events.size(), kMaxEventsPerSlot);
-        for (size_t i = 0; i < ne; ++i) slot.events[i] = events[i];
-        slot.n_events = ne;
-
-        ring_write_.store(next, std::memory_order_release);
+        // Audio, copied in as ring space frees up.
+        for (size_t off = 0; off < frames;) {
+            uint64_t w = stream_w_.load(std::memory_order_relaxed);
+            uint64_t r = stream_r_.load(std::memory_order_acquire);
+            size_t free_frames = kStreamFrames - static_cast<size_t>(w - r);
+            if (free_frames == 0) {
+                if (!waitForRoom([&] {
+                        return stream_w_.load(std::memory_order_relaxed)
+                               - stream_r_.load(std::memory_order_acquire) < kStreamFrames;
+                    })) goto finished;
+                continue;
+            }
+            size_t n     = std::min(free_frames, frames - off);
+            size_t start = static_cast<size_t>(w % kStreamFrames);
+            size_t first = std::min(n, kStreamFrames - start);
+            std::memcpy(stream_.data() + start * 2, tmp.data() + off * 2, first * 2 * sizeof(float));
+            if (n > first)
+                std::memcpy(stream_.data(), tmp.data() + (off + first) * 2, (n - first) * 2 * sizeof(float));
+            stream_w_.store(w + n, std::memory_order_release);
+            off += n;
+        }
+        pos += frames;
     }
+finished:
+    reader_done_.store(true, std::memory_order_release);
 }
 
 bool SessionPlayer::popBlock(float* buf, size_t frames,
@@ -167,32 +228,59 @@ bool SessionPlayer::popBlock(float* buf, size_t frames,
     n_events = 0;
     if (done_.load(std::memory_order_acquire)) return false;
 
-    size_t r = ring_read_.load(std::memory_order_relaxed);
-    size_t w = ring_write_.load(std::memory_order_acquire);
-    if (r == w) return false;  // reader hasn't produced the next block yet — transient
+    const uint64_t r = stream_r_.load(std::memory_order_relaxed);
+    uint64_t       w = stream_w_.load(std::memory_order_acquire);
+    size_t         avail = static_cast<size_t>(w - r);
 
-    DecodedSlot& slot = ring_[r];
-    if (slot.eof) {
-        ring_read_.store((r + 1) % kRingSlots, std::memory_order_release);
-        done_.store(true, std::memory_order_release);
-        return false;
+    if (avail < frames) {
+        if (!reader_done_.load(std::memory_order_acquire)) {
+            // The reader hasn't produced enough yet. Serve a request that fits
+            // the ring all-or-nothing (transient — nothing consumed, so a
+            // starved pop can never punch silence into the stream); only an
+            // oversized request, which the ring can never hold, is served
+            // with whatever is there.
+            if (frames <= kStreamFrames || avail == 0) return false;
+        } else {
+            // Reader finished: pick up anything it published before flagging done.
+            w     = stream_w_.load(std::memory_order_acquire);
+            avail = static_cast<size_t>(w - r);
+            if (avail == 0) {
+                done_.store(true, std::memory_order_release);
+                return false;
+            }
+        }
     }
 
-    size_t to_copy = std::min(frames, slot.frames);
-    std::memcpy(buf, slot.audio.data(), to_copy * 2 * sizeof(float));
-    // FR-EMU-1: zero-fill the unread tail when the recorded block is shorter
-    // than the requested frame count, so stale samples from whatever the
-    // caller's buffer previously held never leak into replay output.
-    if (to_copy < frames) {
-        std::memset(buf + to_copy * 2, 0, (frames - to_copy) * 2 * sizeof(float));
+    const size_t n     = std::min(avail, frames);
+    const size_t start = static_cast<size_t>(r % kStreamFrames);
+    const size_t first = std::min(n, kStreamFrames - start);
+    std::memcpy(buf, stream_.data() + start * 2, first * 2 * sizeof(float));
+    if (n > first)
+        std::memcpy(buf + first * 2, stream_.data(), (n - first) * 2 * sizeof(float));
+    // FR-EMU-1: zero-fill the unread tail when the recording ends mid-request,
+    // so stale samples from whatever the caller's buffer previously held never
+    // leak into replay output.
+    if (n < frames)
+        std::memset(buf + n * 2, 0, (frames - n) * 2 * sizeof(float));
+    stream_r_.store(r + n, std::memory_order_release);
+
+    // Events that precede a record this pop just started reading.
+    size_t er = events_r_.load(std::memory_order_relaxed);
+    const size_t ew = events_w_.load(std::memory_order_acquire);
+    while (er != ew && n_events < max_events && events_[er].pos < r + n) {
+        events_out[n_events++] = events_[er].ev;
+        er = (er + 1) % kMarkerSlots;
     }
+    events_r_.store(er, std::memory_order_release);
 
-    size_t ne = std::min(slot.n_events, max_events);
-    for (size_t i = 0; i < ne; ++i) events_out[i] = slot.events[i];
-    n_events = ne;
-
-    blocks_read_.fetch_add(1, std::memory_order_relaxed);
-    ring_read_.store((r + 1) % kRingSlots, std::memory_order_release);
+    // Records now fully consumed.
+    size_t br = block_ends_r_.load(std::memory_order_relaxed);
+    const size_t bw = block_ends_w_.load(std::memory_order_acquire);
+    while (br != bw && block_ends_[br] <= r + n) {
+        blocks_read_.fetch_add(1, std::memory_order_relaxed);
+        br = (br + 1) % kMarkerSlots;
+    }
+    block_ends_r_.store(br, std::memory_order_release);
     return true;
 }
 

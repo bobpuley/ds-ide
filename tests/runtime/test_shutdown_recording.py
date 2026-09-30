@@ -76,7 +76,7 @@ def test_recording_survives_sigterm(exe: str) -> None:
             f"no audio blocks appear to have been recorded before SIGTERM"
         )
         assert content[:6] == b"DSREC\x00", f"bad magic: {content[:6]!r}"
-        assert content[6] == 0x01, f"unexpected version: {content[6]}"
+        assert content[6] == 0x02, f"unexpected version: {content[6]}"
         assert content[-1] == 0xFF, (
             f"file does not end with the END marker (last byte=0x{content[-1]:02x}) — "
             f"recording was not finalized cleanly on SIGTERM (FR-EMU-8 regression)"

@@ -194,7 +194,14 @@ void SessionRecorder::drainLoop() {
 
         size_t frames = frames_in_slot_[r];
         uint8_t type = kRecTypeAudioBlock;
+        const uint8_t count[4] = {
+            static_cast<uint8_t>(frames & 0xFF),
+            static_cast<uint8_t>((frames >> 8) & 0xFF),
+            static_cast<uint8_t>((frames >> 16) & 0xFF),
+            static_cast<uint8_t>((frames >> 24) & 0xFF),
+        };
         bool ok = writeBytes(&type, 1)
+               && writeBytes(count, sizeof(count))
                && writeBytes(audio_slots_[r].data(), frames * 2 * sizeof(float));
         if (!ok) { write_error_.store(true, std::memory_order_release); break; }
         audio_read_idx_.store((r + 1) % kAudioSlotCount, std::memory_order_release);

@@ -13,14 +13,22 @@ namespace daisy_emu {
 //
 // Header (16 bytes):
 //   [0..5]   magic:       "DSREC\0"  (6 bytes)
-//   [6]      version:     0x01
+//   [6]      version:     0x02 (0x01 files are still read; see below)
 //   [7]      reserved:    0x00
 //   [8..11]  sample_rate: uint32 LE
-//   [12..15] block_size:  uint32 LE
+//   [12..15] block_size:  uint32 LE   (the effect's configured block size —
+//                                      informational; audio records carry
+//                                      their own frame count in v2)
 //
 // Records (variable-length, repeat until EOF):
 //   [0]      type: uint8
-//     0x01  AUDIO_BLOCK   payload: float32[block_size*2] (stereo interleaved input, LE)
+//     0x01  AUDIO_BLOCK   v2 payload: uint32 LE frames + float32[frames*2]
+//                         (stereo interleaved input, LE)
+//                         v1 payload: float32[block_size*2] — every block was
+//                         assumed to be exactly block_size frames, which is
+//                         wrong whenever the audio device delivers a different
+//                         (or varying) callback size, so replay of such a
+//                         recording was misaligned. v2 fixes that.
 //     0x02  POT_EVENT     payload: uint8 channel + float32 value LE         (5 bytes)
 //     0x03  BUTTON_EVENT  payload: uint8 gpio_pin + uint8 pressed (0|1)     (2 bytes)
 //     0xFF  END           payload: none (marks clean end-of-file)
@@ -28,7 +36,8 @@ namespace daisy_emu {
 // Events that occur between block N and block N+1 are stored immediately
 // before the block N+1 record, so replay fires them before processing that block.
 
-static constexpr uint8_t kRecMagicVersion = 0x01;
+static constexpr uint8_t kRecMagicVersion  = 0x02;  // version this build writes
+static constexpr uint8_t kRecVersionLegacy = 0x01;  // still accepted by SessionPlayer
 static constexpr uint8_t kRecTypeAudioBlock  = 0x01;
 static constexpr uint8_t kRecTypePotEvent    = 0x02;
 static constexpr uint8_t kRecTypeButtonEvent = 0x03;
