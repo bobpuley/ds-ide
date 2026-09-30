@@ -41,7 +41,7 @@ derive the decimation step reliably from the block size.
 
 ---
 
-### [ ] feat: webview capture ring (FR-SCI-3)
+### [x] feat: webview capture ring (FR-SCI-3)
 
 **Affected files:** `src/webview/scope/scope-capture.ts`, `src/webview/scope-webview.ts`, `src/test/unit/webview/scope-capture.test.ts`
 

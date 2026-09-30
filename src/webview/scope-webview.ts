@@ -5,6 +5,7 @@ import { el } from './dom-lookup';
 import { createRafCoalescer } from './raf-coalesce';
 import { readThemeColor, onThemeChange } from './theme/theme-runtime';
 import { loadScopeColors } from './scope-colors';
+import { ScopeCapture } from './scope/scope-capture';
 
 const vscode = acquireVsCodeApi();
 const canvas = el<HTMLCanvasElement>('scope');
@@ -32,6 +33,8 @@ const volValEl = el<HTMLElement>('vol-val');
 let colors = loadScopeColors(n => readThemeColor(n));
 
 let lastIn: number[] = [], lastOut: number[] = [];
+// FR-SCI-3: stitched history of the snapshots; the axes / time-base tasks draw from it.
+const capture = new ScopeCapture();
 let lastSpecIn: number[] = [], lastSpecOut: number[] = [], lastBinHz = 0;
 const activeEvents = new Set<string>();
 let hasStatus = false;
@@ -251,6 +254,7 @@ window.addEventListener('message', (e: MessageEvent<unknown>) => {
   if (msg.command === 'scope') {
     lastIn  = msg.in  || [];
     lastOut = msg.out || [];
+    capture.push({ in: lastIn, out: lastOut, outR: msg.out_r, step: msg.step });
     flushScopeDraw();
   } else if (msg.command === 'status') {
     hasStatus = true;
@@ -258,6 +262,9 @@ window.addEventListener('message', (e: MessageEvent<unknown>) => {
     lastStatusRunning   = !!msg.running;
     lastStatusSampleRate = msg.sampleRate || lastStatusSampleRate;
     lastStatusBlockSize  = msg.blockSize  || lastStatusBlockSize;
+    // A rate / block-size change or a stop leaves stale-rate samples in the ring.
+    capture.setConfig(lastStatusSampleRate, lastStatusBlockSize);
+    if (!msg.running) capture.clear();
     updateStatusEl();
     if (btnAudioStart) btnAudioStart.disabled = !!msg.running;
     if (btnAudioStop)  btnAudioStop.disabled  = !msg.running;
