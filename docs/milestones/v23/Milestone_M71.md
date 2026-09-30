@@ -35,7 +35,7 @@ and CSV export, and a timestamped event history.
 
 ---
 
-### [ ] feat: spectrum frequency and level scaling (FR-SCI-11)
+### [x] feat: spectrum frequency and level scaling (FR-SCI-11)
 
 **Affected files:** `src/webview/scope/scope-spectrum-scale.ts`, `src/webview/scope-webview.ts`, `src/webview/scope-panel.ts`, `src/test/unit/webview/scope-spectrum-scale.test.ts`
 

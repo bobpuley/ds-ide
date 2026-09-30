@@ -410,6 +410,7 @@ ${themeCss({ surface: 'editor' })}
     .seg-btn:last-child { border-radius: 0 2px 2px 0; }
     .seg-btn:hover { background: var(--ds-hover-bg); }
     .seg-btn.active { background: var(--ds-button-bg); color: var(--ds-button-fg); border-color: var(--ds-focus); }
+    #spectrum-controls { display: flex; align-items: center; gap: 8px; padding: 3px 12px; background: var(--ds-surface-raised); border-top: 1px solid var(--ds-border); flex-shrink: 0; }
     #rate-note { font-size: 11px; color: var(--ds-text-muted); }
     #rate-note.low-res { color: var(--ds-warning-fg); }
     #scope-main { flex: 1; min-height: 0; }
@@ -511,6 +512,15 @@ ${themeCss({ surface: 'editor' })}
   <div id="scope-main" style="display:none">
     <div id="plots">
       <canvas id="scope" style="display:none"></canvas>
+      <div id="spectrum-controls">
+        <span class="emu-label">Spectrum</span>
+        <span class="seg" id="fscale-seg">
+          <button type="button" class="seg-btn" data-fscale="lin">Lin Hz</button><button type="button" class="seg-btn active" data-fscale="log">Log Hz</button>
+        </span>
+        <span class="seg" id="lmode-seg">
+          <button type="button" class="seg-btn" data-lmode="rel">Relative</button><button type="button" class="seg-btn active" data-lmode="abs">Absolute dBFS</button>
+        </span>
+      </div>
       <canvas id="spectrum" style="display:none"></canvas>
     </div>
     <div id="meters">

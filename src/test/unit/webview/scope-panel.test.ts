@@ -696,6 +696,16 @@ describe('ScopePanel', () => {
     expect(webview.html).toMatch(/id="single-btn"[^>]*title="[^"]*best effort/i);
   });
 
+  // FR-SCI-11 — spectrum scaling
+  it('webview HTML has Lin/Log frequency and Relative/Absolute level toggles, Log + Absolute by default (FR-SCI-11)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    for (const f of ['lin', 'log']) expect(webview.html).toContain(`data-fscale="${f}"`);
+    for (const m of ['rel', 'abs']) expect(webview.html).toContain(`data-lmode="${m}"`);
+    expect(webview.html).toMatch(/class="seg-btn active" data-fscale="log"/);
+    expect(webview.html).toMatch(/class="seg-btn active" data-lmode="abs"/);
+  });
+
   // FR-SCOPE-1 — Audio Settings always visible (no collapsible)
   it('webview HTML includes emulator-section with no Controls Editor tab (FR-SCOPE-1)', () => {
     panel.show();

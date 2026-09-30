@@ -8,6 +8,9 @@ import { loadScopeColors } from './scope-colors';
 import { ScopeCapture, type ScopeChannel } from './scope/scope-capture';
 import { Meters, formatDb, meterPosition } from './scope/scope-meters';
 import {
+  freqPosition, freqTicks, levelToDb, dbRange, dbPosition, dbTicks, type FreqScale, type LevelMode,
+} from './scope/scope-spectrum-scale';
+import {
   triggerStart, pressSingle, onTrigger, type TriggerMode, type TriggerSource, type SingleShotState,
 } from './scope/scope-trigger';
 import {
@@ -330,74 +333,75 @@ function drawWave(
   ctx.setLineDash([]);
 }
 
+// FR-SCI-11: frequency axis (Lin / Log) and level axis (Relative / Absolute dBFS).
+let freqScale: FreqScale = 'log';
+let levelMode: LevelMode = 'abs';
+
 function drawSpectrum(): void {
   const W = specCanvas.width, H = specCanvas.height;
   specCtx.clearRect(0, 0, W, H);
   specCtx.fillStyle = colors.background;
   specCtx.fillRect(0, 0, W, H);
-  if (!lastSpecIn || lastSpecIn.length < 2) return;
+  if (!lastSpecIn || lastSpecIn.length < 2 || lastBinHz <= 0) return;
   const N = lastSpecIn.length;
   const maxFreq = Math.min(20000, lastBinHz * N);
-  const maxBin  = lastBinHz > 0 ? Math.min(N, Math.ceil(maxFreq / lastBinHz)) : N;
-  const peak = Math.max(
-    lastSpecIn.slice(0, maxBin).reduce((a, v) => Math.max(a, v), 1e-9),
-    lastSpecOut.slice(0, maxBin).reduce((a, v) => Math.max(a, v), 1e-9),
-  );
+  const maxBin = Math.min(N, Math.ceil(maxFreq / lastBinHz));
+  // Relative mode is scaled to the running peak; absolute mode ignores it.
+  let peak = 1e-9;
+  if (levelMode === 'rel') {
+    for (let i = 0; i < maxBin; i++) peak = Math.max(peak, lastSpecIn[i] ?? 0, lastSpecOut[i] ?? 0);
+  }
   const LEFT = 36, BOTTOM = 16, TOP = 4;
-  const plotW = W - LEFT;
+  const plotW = W - LEFT - 6;
   const plotH = H - BOTTOM - TOP;
-  const ampToY = (amp: number): number => TOP + plotH * (1 - amp / peak);
+  const range = dbRange(levelMode);
+  const xOf = (hz: number): number => LEFT + freqPosition(hz, freqScale, maxFreq) * plotW;
+  const yOfDb = (db: number): number => TOP + dbPosition(db, range) * plotH;
+
+  specCtx.lineWidth = 1;
   specCtx.font = '9px monospace';
   specCtx.textAlign = 'right';
-  let lastDbLabelY = -Infinity;
-  for (let db = 0; db >= -60; db -= 20) {
-    const y = ampToY(Math.pow(10, db / 20) * peak);
+  specCtx.textBaseline = 'middle';
+  for (const db of dbTicks(range)) {
+    const y = yOfDb(db);
     specCtx.strokeStyle = colors.grid;
-    specCtx.lineWidth = 1;
-    specCtx.beginPath();
-    specCtx.moveTo(LEFT, y); specCtx.lineTo(W, y);
-    specCtx.stroke();
-    if (y - lastDbLabelY >= 11) {
-      specCtx.fillStyle = colors.axis;
-      specCtx.fillText(db + 'dB', LEFT - 4, y + 4);
-      lastDbLabelY = y;
-    }
+    specCtx.beginPath(); specCtx.moveTo(LEFT, y + 0.5); specCtx.lineTo(LEFT + plotW, y + 0.5); specCtx.stroke();
+    specCtx.fillStyle = colors.axis;
+    specCtx.fillText(String(db), LEFT - 4, y);
   }
   specCtx.textAlign = 'left';
-  specCtx.strokeStyle = colors.grid;
-  specCtx.lineWidth = 1;
-  specCtx.beginPath();
-  specCtx.moveTo(LEFT, TOP + plotH); specCtx.lineTo(W, TOP + plotH);
-  specCtx.stroke();
-  function drawSpecLine(fft: number[], color: string): void {
+  specCtx.textBaseline = 'top';
+  specCtx.fillStyle = colors.axis;
+  specCtx.fillText(levelMode === 'abs' ? 'dBFS' : 'dB rel. peak', 2, 1);
+  specCtx.textAlign = 'center';
+  for (const t of freqTicks(freqScale, maxFreq)) {
+    const x = xOf(t.hz);
+    specCtx.strokeStyle = colors.grid;
+    specCtx.beginPath(); specCtx.moveTo(x + 0.5, TOP); specCtx.lineTo(x + 0.5, TOP + plotH); specCtx.stroke();
+    specCtx.fillStyle = colors.axis;
+    specCtx.fillText(t.label, x, TOP + plotH + 3);
+  }
+  specCtx.textAlign = 'right';
+  specCtx.fillText('Hz', W - 2, TOP + plotH + 3);
+
+  const drawSpecLine = (fft: readonly number[], color: string, dash: number[]): void => {
     specCtx.strokeStyle = color;
+    specCtx.setLineDash(dash);
     specCtx.lineWidth = 1.5;
     specCtx.beginPath();
-    for (let i = 0; i < maxBin; i++) {
-      const x = LEFT + (i / (maxBin - 1)) * plotW;
-      const y = ampToY(fft[i]!);
-      if (i === 0) specCtx.moveTo(x, y);
-      else         specCtx.lineTo(x, y);
+    let started = false;
+    for (let i = 1; i < maxBin; i++) {   // bin 0 is DC (0 Hz): off the log axis
+      const hz = i * lastBinHz;
+      if (freqScale === 'log' && hz < 20) continue;
+      const x = xOf(hz);
+      const y = yOfDb(levelToDb(fft[i] ?? 0, levelMode, peak));
+      if (!started) { specCtx.moveTo(x, y); started = true; } else specCtx.lineTo(x, y);
     }
     specCtx.stroke();
-  }
-  drawSpecLine(lastSpecIn,  colors.traceIn);
-  drawSpecLine(lastSpecOut, colors.traceOut);
-  if (lastBinHz > 0) {
-    specCtx.fillStyle = colors.axis;
-    specCtx.font = '10px monospace';
-    specCtx.textAlign = 'left';
-    const freqLabels = [1000, 2000, 5000, 10000, 20000];
-    let lastLabelRight = LEFT - 4;
-    for (const f of freqLabels) {
-      if (f > maxFreq) break;
-      const x = LEFT + (f / maxFreq) * plotW;
-      const text = f >= 1000 ? (f / 1000) + 'k' : String(f);
-      if (x < lastLabelRight + 4) continue;
-      specCtx.fillText(text, x + 2, H - 4);
-      lastLabelRight = x + 2 + specCtx.measureText(text).width;
-    }
-  }
+    specCtx.setLineDash([]);
+  };
+  drawSpecLine(lastSpecIn, colors.traceIn, []);
+  drawSpecLine(lastSpecOut, colors.traceOut, [7, 4]);
 }
 
 function sendSine(): void {
@@ -469,6 +473,8 @@ wireSegment('trig-seg', 'trig', v => {
   heldWindow = null;
 });
 wireSegment('trigsrc-seg', 'trigsrc', v => { trigSource = v === 'l' ? 'l' : 'in'; heldWindow = null; });
+wireSegment('fscale-seg', 'fscale', v => { freqScale = v === 'lin' ? 'lin' : 'log'; flushSpectrumDraw(); });
+wireSegment('lmode-seg', 'lmode', v => { levelMode = v === 'rel' ? 'rel' : 'abs'; flushSpectrumDraw(); });
 wireSegment('gain-seg', 'gain', v => { gainMode = v === 'auto' ? 'auto' : (Number(v) as GainMode); });
 document.querySelectorAll<HTMLElement>('.legend-item').forEach(btn => {
   btn.addEventListener('click', () => {
