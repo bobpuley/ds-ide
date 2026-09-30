@@ -706,6 +706,41 @@ describe('ScopePanel', () => {
     expect(webview.html).toMatch(/class="seg-btn active" data-lmode="abs"/);
   });
 
+  // FR-SCI-12 — snapshot and export
+  it('webview HTML has snapshot and export buttons (FR-SCI-12)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="snapshot-btn"');
+    expect(webview.html).toContain('id="export-btn"');
+  });
+
+  it('saves a CSV sent by the webview through a save dialog (FR-SCI-12)', async () => {
+    const showSave = vi.mocked(vscode.window.showSaveDialog);
+    showSave.mockResolvedValue(undefined);
+    panel.show();
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'exportCsv', csv: 'time_ms,In\n' });
+    await Promise.resolve();
+    expect(showSave).toHaveBeenCalledWith(expect.objectContaining({ filters: { 'CSV file': ['csv'] } }));
+  });
+
+  it('ignores an export message whose payload is not a string (FR-SCI-12)', async () => {
+    const showSave = vi.mocked(vscode.window.showSaveDialog);
+    showSave.mockClear();
+    panel.show();
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'exportCsv', csv: 42 });
+    handler({ command: 'saveSnapshot', pngBase64: { evil: true } });
+    await Promise.resolve();
+    expect(showSave).not.toHaveBeenCalled();
+  });
+
   // FR-SCOPE-1 — Audio Settings always visible (no collapsible)
   it('webview HTML includes emulator-section with no Controls Editor tab (FR-SCOPE-1)', () => {
     panel.show();

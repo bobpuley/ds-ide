@@ -45,7 +45,7 @@ and CSV export, and a timestamped event history.
 
 ---
 
-### [ ] feat: snapshot PNG and CSV export (FR-SCI-12)
+### [x] feat: snapshot PNG and CSV export (FR-SCI-12)
 
 **Affected files:** `src/webview/scope/scope-export.ts`, `src/webview/scope-webview.ts`, `src/webview/scope-panel.ts`, `src/webview/messages.ts`, `src/test/unit/webview/scope-export.test.ts`
 

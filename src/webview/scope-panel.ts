@@ -7,6 +7,7 @@ import { getBoolean, getNumber } from '../ipc/narrow';
 import { ScopeWebviewMessage } from './messages';
 import { hasKnownCommand, assertNever } from './message-guard';
 import { themeCss } from './theme/theme-css';
+import { saveScopeFile } from './scope/scope-save';
 import { TIME_BASES_MS, DEFAULT_TIME_BASE_MS, TRACES } from './scope/scope-view';
 
 // FR-EXT-33: see controls-editor-panel.ts's identical comment — the
@@ -14,7 +15,7 @@ import { TIME_BASES_MS, DEFAULT_TIME_BASE_MS, TRACES } from './scope/scope-view'
 // Set only drives the runtime hasKnownCommand narrow.
 const SCOPE_WEBVIEW_COMMANDS = new Set<ScopeWebviewMessage['command']>([
   'webviewReady', 'sine', 'audioSource', 'pickWav', 'startAudio', 'stopAudio',
-  'recordStart', 'recordStop', 'replayStart', 'outputVolume',
+  'recordStart', 'recordStop', 'replayStart', 'outputVolume', 'saveSnapshot', 'exportCsv',
 ]);
 
 export interface ControlsPlacement {
@@ -200,6 +201,14 @@ export class ScopePanel {
             this.manager.sendOutputVolume(vol);
             this.onOutputVolume?.(vol);
           }
+          break;
+        }
+        case 'saveSnapshot': {
+          if (typeof msg.pngBase64 === 'string') void saveScopeFile('png', msg.pngBase64);
+          break;
+        }
+        case 'exportCsv': {
+          if (typeof msg.csv === 'string') void saveScopeFile('csv', msg.csv);
           break;
         }
         default:
@@ -490,6 +499,8 @@ ${themeCss({ surface: 'editor' })}
     <label class="emu-field">Time <select id="timebase">${timeBaseOptions}</select></label>
     <button type="button" id="freeze-btn" class="emu-btn" title="Freeze the display (Space)" aria-pressed="false">&#9208; Freeze</button>
     <button type="button" id="single-btn" class="emu-btn" title="Arm a single capture: freezes on the next trigger. Best effort — a short transient between two scope snapshots can be missed." aria-pressed="false">1× Single</button>
+    <button type="button" id="snapshot-btn" class="emu-btn" title="Save a PNG of the scope and spectrum">&#128247; Snapshot</button>
+    <button type="button" id="export-btn" class="emu-btn" title="Save the visible samples as CSV">&#10515; CSV</button>
     <span id="frozen-badge" style="display:none">FROZEN</span>
     <span class="emu-field">Gain
       <span class="seg" id="gain-seg">

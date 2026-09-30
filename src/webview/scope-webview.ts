@@ -7,6 +7,7 @@ import { readThemeColor, onThemeChange } from './theme/theme-runtime';
 import { loadScopeColors } from './scope-colors';
 import { ScopeCapture, type ScopeChannel } from './scope/scope-capture';
 import { Meters, formatDb, meterPosition } from './scope/scope-meters';
+import { buildCsv } from './scope/scope-export';
 import {
   freqPosition, freqTicks, levelToDb, dbRange, dbPosition, dbTicks, type FreqScale, type LevelMode,
 } from './scope/scope-spectrum-scale';
@@ -46,6 +47,8 @@ const freezeBtn = el<HTMLButtonElement>('freeze-btn');
 const frozenBadge = el<HTMLElement>('frozen-badge');
 const readoutEl = el<HTMLElement>('cursor-readout');
 const singleBtn = el<HTMLButtonElement>('single-btn');
+const snapshotBtn = el<HTMLButtonElement>('snapshot-btn');
+const exportBtn = el<HTMLButtonElement>('export-btn');
 const scopeMainEl = el<HTMLElement>('scope-main');
 const headroomEl = el<HTMLElement>('meter-headroom');
 const meterResetBtn = el<HTMLButtonElement>('meters-reset');
@@ -113,6 +116,8 @@ let trigLevel = 0;
 // The last triggered window, drawn while nothing crosses the level ("no trigger").
 let heldWindow: Buffers | null = null;
 let draggingTrigger = false;
+// FR-SCI-12: what the last redraw showed, so export saves exactly the visible samples.
+let lastDrawn: { buffers: Buffers; range: { start: number; count: number }; shown: readonly (typeof TRACES)[number][]; rate: number } | null = null;
 // FR-SCI-10: best-effort single-shot — it only sees what the scope snapshots contain.
 let singleState: SingleShotState = 'idle';
 let lastGain = 1;
@@ -238,6 +243,7 @@ function draw(): void {
     ? autoGain(Math.max(0, ...shown.map(t => peakAbs(buffers[t.id], range.start, range.count))))
     : gainMode;
   lastGain = gain;
+  lastDrawn = { buffers, range, shown, rate: frame.rate };
   for (const t of amplitudeTicks(gain, ampUnit)) {
     const y = PLOT_TOP + ph * (0.5 - t.pos / 2);
     ctx.strokeStyle = colors.grid;
@@ -495,6 +501,30 @@ document.querySelectorAll<HTMLElement>('.clip-chip').forEach(chip => {
   });
 });
 meterResetBtn?.addEventListener('click', () => { meters.resetPeaks(); renderMeters(); });
+function exportVisibleCsv(): void {
+  if (!lastDrawn) return;
+  const { buffers, range, shown, rate } = lastDrawn;
+  const channels = shown
+    .map(t => ({ label: t.label, samples: buffers[t.id].slice(range.start, range.start + range.count) }))
+    .filter(c => c.samples.length > 0);
+  vscode.postMessage({ command: 'exportCsv', csv: buildCsv(rate, channels) });
+}
+
+function saveSnapshot(): void {
+  const out = document.createElement('canvas');
+  out.width = Math.max(canvas.width, specCanvas.width);
+  out.height = canvas.height + specCanvas.height;
+  const octx = out.getContext('2d');
+  if (!octx) return;
+  octx.fillStyle = colors.background;
+  octx.fillRect(0, 0, out.width, out.height);
+  octx.drawImage(canvas, 0, 0);
+  octx.drawImage(specCanvas, 0, canvas.height);
+  const url = out.toDataURL('image/png');
+  vscode.postMessage({ command: 'saveSnapshot', pngBase64: url.slice(url.indexOf(',') + 1) });
+}
+exportBtn?.addEventListener('click', exportVisibleCsv);
+snapshotBtn?.addEventListener('click', saveSnapshot);
 freezeBtn?.addEventListener('click', () => {
   singleState = 'idle';
   renderSingle();
