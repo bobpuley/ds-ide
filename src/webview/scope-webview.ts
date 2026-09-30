@@ -5,7 +5,8 @@ import { el } from './dom-lookup';
 import { createRafCoalescer } from './raf-coalesce';
 import { readThemeColor, onThemeChange } from './theme/theme-runtime';
 import { loadScopeColors } from './scope-colors';
-import { ScopeCapture } from './scope/scope-capture';
+import { ScopeCapture, type ScopeChannel } from './scope/scope-capture';
+import { Meters, formatDb, meterPosition } from './scope/scope-meters';
 import {
   DEFAULT_TIME_BASE_MS, DIVISIONS, windowSamples, pointsPerDivision, isLowResolution,
   visibleRange, timeTicks, amplitudeTicks, autoGain, peakAbs, samplePosition, TRACES, cursorIndex, formatReadout,
@@ -38,6 +39,9 @@ const rateNoteEl = el<HTMLElement>('rate-note');
 const freezeBtn = el<HTMLButtonElement>('freeze-btn');
 const frozenBadge = el<HTMLElement>('frozen-badge');
 const readoutEl = el<HTMLElement>('cursor-readout');
+const scopeMainEl = el<HTMLElement>('scope-main');
+const headroomEl = el<HTMLElement>('meter-headroom');
+const meterResetBtn = el<HTMLButtonElement>('meters-reset');
 
 // Canvas colours come from the theme (FR-THM-2): read once here and again only
 // when the theme changes (FR-THM-5), never per frame.
@@ -74,6 +78,7 @@ function showScope(): void {
   if (!hasStatus) return;
   canvas.style.display = 'block';
   scopeControlsEl.style.display = 'flex';
+  scopeMainEl.style.display = 'flex';
   specCanvas.style.display = 'block';
   gettingStarted.style.display = 'none';
   resize();
@@ -123,6 +128,32 @@ function setFrozen(freeze: boolean): void {
   freezeBtn.setAttribute('aria-pressed', String(freeze));
   frozenBadge.style.display = freeze ? 'inline' : 'none';
   flushScopeDraw();
+}
+
+// FR-SCI-8: levels of the latest snapshot, with peak hold and latching clip.
+const meters = new Meters();
+
+function renderMeters(): void {
+  for (const ch of ['in', 'l', 'r'] as const) {
+    const row = document.querySelector<HTMLElement>(`[data-meter="${ch}"]`);
+    if (!row) continue;
+    const s = meters.state(ch);
+    const setLeft = (sel: string, db: number): void => {
+      const node = row.querySelector<HTMLElement>(sel);
+      if (node) node.style.left = `${meterPosition(db) * 100}%`;
+    };
+    const rms = row.querySelector<HTMLElement>('.meter-rms');
+    if (rms) rms.style.width = `${meterPosition(s.rmsDb) * 100}%`;
+    setLeft('.meter-peak', s.peakDb);
+    setLeft('.meter-hold', s.holdDb);
+    const pk = row.querySelector('.meter-pk');
+    if (pk) pk.textContent = formatDb(s.peakDb);
+    const rmsVal = row.querySelector('.meter-rms-val');
+    if (rmsVal) rmsVal.textContent = formatDb(s.rmsDb);
+    row.querySelector('.clip-chip')?.classList.toggle('hit', s.clipped);
+  }
+  const headroom = meters.headroomDb();
+  headroomEl.textContent = headroom === null ? '—' : headroom.toFixed(1);
 }
 
 function updateRateNote(): void {
@@ -371,6 +402,15 @@ document.querySelectorAll<HTMLElement>('.legend-item').forEach(btn => {
   });
 });
 wireSegment('unit-seg', 'unit', v => { ampUnit = v === 'db' ? 'db' : 'lin'; });
+document.querySelectorAll<HTMLElement>('.clip-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    const id = chip.dataset['clip'];
+    if (id !== 'in' && id !== 'l' && id !== 'r') return;
+    meters.clearClip(id as ScopeChannel);
+    renderMeters();
+  });
+});
+meterResetBtn?.addEventListener('click', () => { meters.resetPeaks(); renderMeters(); });
 freezeBtn?.addEventListener('click', () => setFrozen(frozenFrame === null));
 window.addEventListener('keydown', (e) => {
   const tag = (e.target as HTMLElement | null)?.tagName;
@@ -415,6 +455,10 @@ window.addEventListener('message', (e: MessageEvent<unknown>) => {
     lastOut = msg.out || [];
     capture.push({ in: lastIn, out: lastOut, outR: msg.out_r, step: msg.step });
     updateRateNote();
+    meters.update('in', lastIn);
+    meters.update('l', lastOut);
+    meters.update('r', msg.out_r || []);
+    renderMeters();
     flushScopeDraw();
   } else if (msg.command === 'status') {
     hasStatus = true;

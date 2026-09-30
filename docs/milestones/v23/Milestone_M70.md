@@ -95,7 +95,7 @@ derive the decimation step reliably from the block size.
 
 ---
 
-### [ ] feat: per-channel meters with latching clip (FR-SCI-8)
+### [x] feat: per-channel meters with latching clip (FR-SCI-8)
 
 **Affected files:** `src/webview/scope/scope-meters.ts`, `src/webview/scope-webview.ts`, `src/webview/scope-panel.ts`, `src/test/unit/webview/scope-meters.test.ts`
 

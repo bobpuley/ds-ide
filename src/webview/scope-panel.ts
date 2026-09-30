@@ -364,6 +364,14 @@ function buildHtml(nonce: string, scriptUri: string, sine: SineParams, source: A
     `<svg width="26" height="8" aria-hidden="true"><line x1="0" y1="4" x2="26" y2="4" stroke="var(${t.cssVar})" stroke-width="2"` +
     `${t.dash.length ? ` stroke-dasharray="${t.dash.join(' ')}"` : ''}/></svg>${t.label}</button>`,
   ).join('');
+  const meterRows = TRACES.map(t => `
+      <div class="meter" data-meter="${t.id}">
+        <div class="meter-name"><svg width="14" height="8" aria-hidden="true"><line x1="0" y1="4" x2="14" y2="4" stroke="var(${t.cssVar})" stroke-width="2"${t.dash.length ? ` stroke-dasharray="${t.dash.join(' ')}"` : ''}/></svg>${t.label}
+          <button type="button" class="clip-chip" data-clip="${t.id}" title="Latched clip — click to clear">CLIP</button></div>
+        <div class="meter-bar"><div class="meter-rms"></div><div class="meter-peak"></div><div class="meter-hold"></div></div>
+        <div class="meter-scale"><span>−60</span><span>−20</span><span>0</span></div>
+        <div class="meter-nums">pk <span class="meter-pk">−∞</span> dB<br>rms <span class="meter-rms-val">−∞</span> dB</div>
+      </div>`).join('');
   const timeBaseOptions = TIME_BASES_MS.map(ms =>
     `<option value="${ms}"${ms === DEFAULT_TIME_BASE_MS ? ' selected' : ''}>${ms} ms/div</option>`,
   ).join('');
@@ -403,6 +411,23 @@ ${themeCss({ surface: 'editor' })}
     .seg-btn.active { background: var(--ds-button-bg); color: var(--ds-button-fg); border-color: var(--ds-focus); }
     #rate-note { font-size: 11px; color: var(--ds-text-muted); }
     #rate-note.low-res { color: var(--ds-warning-fg); }
+    #scope-main { flex: 1; min-height: 0; }
+    #plots { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    #meters { width: 132px; flex-shrink: 0; padding: 8px 10px; background: var(--ds-surface-raised); border-left: 1px solid var(--ds-border); overflow-y: auto; }
+    #meters h3 { font-size: 10px; font-weight: normal; text-transform: uppercase; color: var(--ds-text-muted); margin-bottom: 8px; }
+    .meter { margin-bottom: 12px; }
+    .meter-name { display: flex; align-items: center; gap: 5px; margin-bottom: 3px; }
+    .clip-chip { margin-left: auto; font-family: monospace; font-size: 9px; height: 15px; padding: 0 4px; background: none; color: var(--ds-text-muted); border: 1px solid var(--ds-border); border-radius: 2px; cursor: pointer; }
+    .clip-chip.hit { background: var(--ds-error); color: var(--ds-surface); border-color: var(--ds-error); font-weight: bold; }
+    .meter-bar { position: relative; height: 9px; background: var(--ds-grid); border: 1px solid var(--ds-border); }
+    .meter-rms { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--ds-ok); opacity: 0.75; }
+    .meter-peak, .meter-hold { position: absolute; top: -1px; bottom: -1px; width: 2px; left: 0; }
+    .meter-peak { background: var(--ds-text); }
+    .meter-hold { background: var(--ds-warning-fg); }
+    .meter-scale { display: flex; justify-content: space-between; font-size: 8px; color: var(--ds-text-muted); margin-top: 1px; }
+    .meter-nums { font-size: 10px; color: var(--ds-text-muted); margin-top: 2px; line-height: 1.35; }
+    .meter-nums span { color: var(--ds-text); }
+    #meters-reset { margin-top: 8px; width: 100%; }
     canvas { display: block; width: 100%; }
     #scope { flex: 1; min-height: 0; }
     #spectrum { height: 140px; border-top: 1px solid var(--ds-border); background: var(--ds-surface); flex-shrink: 0; }
@@ -474,8 +499,17 @@ ${themeCss({ surface: 'editor' })}
     <span id="rate-note"></span>
     <span id="cursor-readout"></span>
   </div>
-  <canvas id="scope" style="display:none"></canvas>
-  <canvas id="spectrum" style="display:none"></canvas>
+  <div id="scope-main" style="display:none">
+    <div id="plots">
+      <canvas id="scope" style="display:none"></canvas>
+      <canvas id="spectrum" style="display:none"></canvas>
+    </div>
+    <div id="meters">
+      <h3>Levels</h3>${meterRows}
+      <div class="meter-nums">headroom<br><span id="meter-headroom">—</span> dB</div>
+      <button type="button" id="meters-reset" class="emu-btn">Reset peaks</button>
+    </div>
+  </div>
   <div id="getting-started">
     <div>Open a libDaisy project, then:</div>
     <ol>

@@ -666,6 +666,18 @@ describe('ScopePanel', () => {
     expect(webview.html).toContain('id="cursor-readout"');
   });
 
+  // FR-SCI-8 — meters column
+  it('webview HTML has a meter per channel, a headroom value and a Reset peaks button (FR-SCI-8)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    for (const id of ['in', 'l', 'r']) {
+      expect(webview.html).toContain(`data-meter="${id}"`);
+      expect(webview.html).toContain(`data-clip="${id}"`);
+    }
+    expect(webview.html).toContain('id="meter-headroom"');
+    expect(webview.html).toContain('id="meters-reset"');
+  });
+
   // FR-SCOPE-1 — Audio Settings always visible (no collapsible)
   it('webview HTML includes emulator-section with no Controls Editor tab (FR-SCOPE-1)', () => {
     panel.show();
