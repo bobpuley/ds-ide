@@ -7,6 +7,7 @@ import { getBoolean, getNumber } from '../ipc/narrow';
 import { ScopeWebviewMessage } from './messages';
 import { hasKnownCommand, assertNever } from './message-guard';
 import { themeCss } from './theme/theme-css';
+import { saveScopeFile } from './scope/scope-save';
 import { TIME_BASES_MS, DEFAULT_TIME_BASE_MS, TRACES } from './scope/scope-view';
 
 // FR-EXT-33: see controls-editor-panel.ts's identical comment — the
@@ -14,7 +15,7 @@ import { TIME_BASES_MS, DEFAULT_TIME_BASE_MS, TRACES } from './scope/scope-view'
 // Set only drives the runtime hasKnownCommand narrow.
 const SCOPE_WEBVIEW_COMMANDS = new Set<ScopeWebviewMessage['command']>([
   'webviewReady', 'sine', 'audioSource', 'pickWav', 'startAudio', 'stopAudio',
-  'recordStart', 'recordStop', 'replayStart', 'outputVolume',
+  'recordStart', 'recordStop', 'replayStart', 'outputVolume', 'saveSnapshot', 'exportCsv',
 ]);
 
 export interface ControlsPlacement {
@@ -200,6 +201,14 @@ export class ScopePanel {
             this.manager.sendOutputVolume(vol);
             this.onOutputVolume?.(vol);
           }
+          break;
+        }
+        case 'saveSnapshot': {
+          if (typeof msg.pngBase64 === 'string') void saveScopeFile('png', msg.pngBase64);
+          break;
+        }
+        case 'exportCsv': {
+          if (typeof msg.csv === 'string') void saveScopeFile('csv', msg.csv);
           break;
         }
         default:
@@ -397,10 +406,20 @@ ${themeCss({ surface: 'editor' })}
     #vol-label { color: var(--ds-text-muted); font-size: 11px; }
     #output-vol { width: 80px; cursor: pointer; accent-color: var(--ds-trace-in); }
     #vol-val { min-width: 30px; color: var(--ds-text); font-size: 11px; }
-    #events { padding: 3px 12px; min-height: 22px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); font-size: 11px; color: var(--ds-error); flex-shrink: 0; }
+    #events-bar { display: flex; align-items: center; gap: 12px; padding: 3px 12px; min-height: 22px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); font-size: 11px; flex-shrink: 0; }
+    #events { flex: 1; color: var(--ds-error); }
+    #events-toggle { background: none; border: none; color: var(--ds-text-muted); font-family: monospace; font-size: 11px; cursor: pointer; }
+    #events-toggle:hover { color: var(--ds-text); }
+    #event-log { max-height: 120px; overflow-y: auto; background: var(--ds-surface); border-bottom: 1px solid var(--ds-border); font-size: 11px; flex-shrink: 0; }
+    .event-row { display: flex; gap: 12px; padding: 2px 12px; }
+    .event-time { color: var(--ds-text-muted); width: 64px; flex-shrink: 0; }
+    .event-kind { color: var(--ds-error); min-width: 80px; }
     #scope-controls { display: flex; align-items: center; gap: 12px; padding: 4px 12px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); flex-shrink: 0; }
-    #freeze-btn[aria-pressed="true"] { background: var(--ds-button-bg); color: var(--ds-button-fg); }
-    #frozen-badge { color: var(--ds-warning-fg); font-weight: bold; border: 1px solid var(--ds-warning-border); padding: 0 6px; border-radius: 2px; }
+    .ctl-btn { display: inline-flex; align-items: center; background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-border); padding: 2px 8px; font-family: monospace; font-size: inherit; cursor: pointer; border-radius: 2px; }
+    .ctl-btn:hover { background: var(--ds-hover-bg); }
+    .ctl-btn[aria-pressed="true"] { background: var(--ds-button-bg); color: var(--ds-button-fg); border-color: var(--ds-focus); }
+    .ctl-icon { padding: 2px 5px; }
+    .ctl-icon svg { width: 14px; height: 14px; display: block; }
     #cursor-readout { margin-left: auto; font-size: 11px; color: var(--ds-text); white-space: pre; }
     #scope { cursor: crosshair; }
     .seg { display: inline-flex; }
@@ -409,6 +428,7 @@ ${themeCss({ surface: 'editor' })}
     .seg-btn:last-child { border-radius: 0 2px 2px 0; }
     .seg-btn:hover { background: var(--ds-hover-bg); }
     .seg-btn.active { background: var(--ds-button-bg); color: var(--ds-button-fg); border-color: var(--ds-focus); }
+    #spectrum-controls { display: flex; align-items: center; gap: 8px; padding: 3px 12px; background: var(--ds-surface-raised); border-top: 1px solid var(--ds-border); flex-shrink: 0; }
     #rate-note { font-size: 11px; color: var(--ds-text-muted); }
     #rate-note.low-res { color: var(--ds-warning-fg); }
     #scope-main { flex: 1; min-height: 0; }
@@ -483,11 +503,15 @@ ${themeCss({ surface: 'editor' })}
     <button class="audio-btn" id="btn-audio-stop"  title="Stop Audio"  disabled>&#9632;</button>
     <span id="fidelity-caveat" title="Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget">&#x2139; Approx. Seed</span>
   </header>
-  <div id="events"></div>
+  <div id="events-bar">
+    <span id="events"></span>
+    <button type="button" id="events-toggle" title="Show the event history">▸ history (0)</button>
+  </div>
+  <div id="event-log" style="display:none"></div>
   <div id="scope-controls" style="display:none">
     <label class="emu-field">Time <select id="timebase">${timeBaseOptions}</select></label>
-    <button type="button" id="freeze-btn" class="emu-btn" title="Freeze the display (Space)" aria-pressed="false">&#9208; Freeze</button>
-    <span id="frozen-badge" style="display:none">FROZEN</span>
+    <button type="button" id="freeze-btn" class="ctl-btn" title="Freeze the display (Space)" aria-pressed="false">Freeze</button>
+    <button type="button" id="single-btn" class="ctl-btn" title="Arm a single capture: freezes on the next trigger. Best effort — a short transient between two scope snapshots can be missed." aria-pressed="false">1× Single</button>
     <span class="emu-field">Gain
       <span class="seg" id="gain-seg">
         <button type="button" class="seg-btn active" data-gain="1">×1</button><button type="button" class="seg-btn" data-gain="2">×2</button><button type="button" class="seg-btn" data-gain="4">×4</button><button type="button" class="seg-btn" data-gain="auto">Auto</button>
@@ -496,18 +520,36 @@ ${themeCss({ surface: 'editor' })}
       <span class="seg" id="unit-seg">
         <button type="button" class="seg-btn active" data-unit="lin">Linear</button><button type="button" class="seg-btn" data-unit="db">dBFS</button>
       </span></span>
+    <span class="emu-field">Trigger
+      <span class="seg" id="trig-seg">
+        <button type="button" class="seg-btn active" data-trig="free">Free</button><button type="button" class="seg-btn" data-trig="rise" title="Rising edge">↗</button><button type="button" class="seg-btn" data-trig="fall" title="Falling edge">↘</button>
+      </span>
+      <span class="seg" id="trigsrc-seg" title="Trigger source">
+        <button type="button" class="seg-btn active" data-trigsrc="in">In</button><button type="button" class="seg-btn" data-trigsrc="l">L</button>
+      </span></span>
+    <button type="button" id="snapshot-btn" class="ctl-btn ctl-icon" title="Save a PNG of the scope and spectrum" aria-label="Save snapshot (PNG)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="4.5" width="13" height="9" rx="1.5"/><circle cx="8" cy="9" r="2.5"/><path d="M5.5 4.5l1-2h3l1 2"/></svg></button>
+    <button type="button" id="export-btn" class="ctl-btn ctl-icon" title="Save the visible samples as CSV" aria-label="Export visible samples (CSV)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v8M4.5 7L8 10.5 11.5 7M2.5 13.5h11"/></svg></button>
     <span id="rate-note"></span>
     <span id="cursor-readout"></span>
   </div>
   <div id="scope-main" style="display:none">
     <div id="plots">
       <canvas id="scope" style="display:none"></canvas>
+      <div id="spectrum-controls">
+        <span class="emu-label">Spectrum</span>
+        <span class="seg" id="fscale-seg">
+          <button type="button" class="seg-btn" data-fscale="lin">Lin Hz</button><button type="button" class="seg-btn active" data-fscale="log">Log Hz</button>
+        </span>
+        <span class="seg" id="lmode-seg">
+          <button type="button" class="seg-btn" data-lmode="rel">Relative</button><button type="button" class="seg-btn active" data-lmode="abs">Absolute dBFS</button>
+        </span>
+      </div>
       <canvas id="spectrum" style="display:none"></canvas>
     </div>
     <div id="meters">
       <h3>Levels</h3>${meterRows}
       <div class="meter-nums">headroom<br><span id="meter-headroom">—</span> dB</div>
-      <button type="button" id="meters-reset" class="emu-btn">Reset peaks</button>
+      <button type="button" id="meters-reset" class="ctl-btn">Reset peaks</button>
     </div>
   </div>
   <div id="getting-started">

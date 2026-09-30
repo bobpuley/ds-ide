@@ -1,7 +1,7 @@
 # M71 — Scope Instrument — Analysis
 
 **Version:** 0.22.0
-**Status:** planned
+**Status:** in progress
 **Source:** feature intake session, 2026-09-30 (01_input-ideas.md; design_plan.md P0-4; layout per docs/mockups/v22-scope-instrument.html)
 
 ## Goal
@@ -14,7 +14,7 @@ and CSV export, and a timestamped event history.
 
 ## Sprint Tasks
 
-### [ ] feat: edge trigger with a draggable level marker (FR-SCI-9)
+### [x] feat: edge trigger with a draggable level marker (FR-SCI-9)
 
 **Affected files:** `src/webview/scope/scope-trigger.ts`, `src/webview/scope-webview.ts`, `src/webview/scope-panel.ts`, `src/test/unit/webview/scope-trigger.test.ts`
 
@@ -25,7 +25,7 @@ and CSV export, and a timestamped event history.
 
 ---
 
-### [ ] feat: best-effort single-shot (FR-SCI-10)
+### [x] feat: best-effort single-shot (FR-SCI-10)
 
 **Affected files:** `src/webview/scope-webview.ts`, `src/webview/scope-panel.ts`, `src/test/unit/webview/scope-panel.test.ts`
 
@@ -35,7 +35,7 @@ and CSV export, and a timestamped event history.
 
 ---
 
-### [ ] feat: spectrum frequency and level scaling (FR-SCI-11)
+### [x] feat: spectrum frequency and level scaling (FR-SCI-11)
 
 **Affected files:** `src/webview/scope/scope-spectrum-scale.ts`, `src/webview/scope-webview.ts`, `src/webview/scope-panel.ts`, `src/test/unit/webview/scope-spectrum-scale.test.ts`
 
@@ -45,7 +45,7 @@ and CSV export, and a timestamped event history.
 
 ---
 
-### [ ] feat: snapshot PNG and CSV export (FR-SCI-12)
+### [x] feat: snapshot PNG and CSV export (FR-SCI-12)
 
 **Affected files:** `src/webview/scope/scope-export.ts`, `src/webview/scope-webview.ts`, `src/webview/scope-panel.ts`, `src/webview/messages.ts`, `src/test/unit/webview/scope-export.test.ts`
 
@@ -55,7 +55,7 @@ and CSV export, and a timestamped event history.
 
 ---
 
-### [ ] feat: timestamped event history (FR-SCI-13)
+### [x] feat: timestamped event history (FR-SCI-13)
 
 **Affected files:** `src/webview/scope/scope-events.ts`, `src/webview/scope-webview.ts`, `src/webview/scope-panel.ts`, `src/test/unit/webview/scope-events.test.ts`
 

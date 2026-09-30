@@ -3,7 +3,7 @@ import {
   TIME_BASES_MS, DEFAULT_TIME_BASE_MS, DIVISIONS,
   windowSamples, pointsPerDivision, isLowResolution, visibleRange, timeTicks, amplitudeTicks,
   GAIN_STEPS, autoGain, peakAbs, samplePosition, TRACES,
-  cursorIndex, formatReadout,
+  cursorIndex, formatReadout, positionToSample,
 } from '../../../webview/scope/scope-view';
 
 describe('time base (FR-SCI-4)', () => {
@@ -162,5 +162,22 @@ describe('cursor (FR-SCI-7)', () => {
 
   it('formats a readout with no visible channels as time only', () => {
     expect(formatReadout(0, [])).toBe('t 0.00 ms');
+  });
+});
+
+describe('positionToSample (FR-SCI-9)', () => {
+  it('inverts samplePosition in linear mode', () => {
+    for (const g of [1, 2, 4]) {
+      expect(positionToSample(samplePosition(0.2, g, 'lin'), g, 'lin')).toBeCloseTo(0.2, 6);
+    }
+  });
+  it('inverts samplePosition in dBFS mode, keeping the sign', () => {
+    for (const s of [0.5, -0.5, 0.05, -0.9]) {
+      expect(positionToSample(samplePosition(s, 2, 'db'), 2, 'db')).toBeCloseTo(s, 6);
+    }
+  });
+  it('maps the centre line to zero in both modes', () => {
+    expect(positionToSample(0, 1, 'lin')).toBe(0);
+    expect(positionToSample(0, 1, 'db')).toBe(0);
   });
 });

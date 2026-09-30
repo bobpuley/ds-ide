@@ -32,7 +32,10 @@ export type ScopeWebviewMessage =
   | { command: 'recordStart' }
   | { command: 'recordStop' }
   | { command: 'replayStart' }
-  | { command: 'outputVolume'; volume: number };
+  | { command: 'outputVolume'; volume: number }
+  // FR-SCI-12: snapshot (base64 PNG) and sample export (CSV text), saved by the extension host.
+  | { command: 'saveSnapshot'; pngBase64: string }
+  | { command: 'exportCsv'; csv: string };
 
 // ── OLED viewer panel (FR-DEV-15) ────────────────────────────────────────
 

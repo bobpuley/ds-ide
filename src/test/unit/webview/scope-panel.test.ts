@@ -662,7 +662,9 @@ describe('ScopePanel', () => {
     panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('id="freeze-btn"');
-    expect(webview.html).toContain('id="frozen-badge"');
+    // FROZEN is drawn on the plot, in the gain label's corner — not as an HTML badge.
+    expect(webview.html).not.toContain('frozen-badge');
+    expect(webview.html).not.toContain('>FROZEN<');
     expect(webview.html).toContain('id="cursor-readout"');
   });
 
@@ -676,6 +678,87 @@ describe('ScopePanel', () => {
     }
     expect(webview.html).toContain('id="meter-headroom"');
     expect(webview.html).toContain('id="meters-reset"');
+  });
+
+  // FR-SCI-9 — trigger controls
+  it('webview HTML has trigger mode and source controls, defaulting to Free on In (FR-SCI-9)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    for (const m of ['free', 'rise', 'fall']) expect(webview.html).toContain(`data-trig="${m}"`);
+    for (const s of ['in', 'l']) expect(webview.html).toContain(`data-trigsrc="${s}"`);
+    expect(webview.html).toMatch(/class="seg-btn active" data-trig="free"/);
+    expect(webview.html).toMatch(/class="seg-btn active" data-trigsrc="in"/);
+  });
+
+  // FR-SCI-10 — best-effort single-shot
+  it('webview HTML has a 1x Single button whose tooltip says it is best effort (FR-SCI-10)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="single-btn"');
+    expect(webview.html).toMatch(/id="single-btn"[^>]*title="[^"]*best effort/i);
+  });
+
+  // FR-SCI-11 — spectrum scaling
+  it('webview HTML has Lin/Log frequency and Relative/Absolute level toggles, Log + Absolute by default (FR-SCI-11)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    for (const f of ['lin', 'log']) expect(webview.html).toContain(`data-fscale="${f}"`);
+    for (const m of ['rel', 'abs']) expect(webview.html).toContain(`data-lmode="${m}"`);
+    expect(webview.html).toMatch(/class="seg-btn active" data-fscale="log"/);
+    expect(webview.html).toMatch(/class="seg-btn active" data-lmode="abs"/);
+  });
+
+  // FR-SCI-12 — snapshot and export
+  it('webview HTML has snapshot and export buttons (FR-SCI-12)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="snapshot-btn"');
+    expect(webview.html).toContain('id="export-btn"');
+    // not controls like the rest: they are the last two buttons of the bar
+    const at = (id: string): number => webview.html.indexOf(`id="${id}"`);
+    for (const id of ['freeze-btn', 'single-btn', 'gain-seg', 'unit-seg', 'trig-seg', 'trigsrc-seg']) {
+      expect(at('snapshot-btn')).toBeGreaterThan(at(id));
+    }
+    expect(at('export-btn')).toBeGreaterThan(at('snapshot-btn'));
+    // icon-only buttons: an SVG icon, an accessible name, and no label text
+    expect(webview.html).toMatch(/id="snapshot-btn"[^>]*aria-label="Save snapshot[^"]*"[^>]*><svg/);
+    expect(webview.html).toMatch(/id="export-btn"[^>]*aria-label="Export[^"]*"[^>]*><svg/);
+  });
+
+  it('saves a CSV sent by the webview through a save dialog (FR-SCI-12)', async () => {
+    const showSave = vi.mocked(vscode.window.showSaveDialog);
+    showSave.mockResolvedValue(undefined);
+    panel.show();
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'exportCsv', csv: 'time_ms,In\n' });
+    await Promise.resolve();
+    expect(showSave).toHaveBeenCalledWith(expect.objectContaining({ filters: { 'CSV file': ['csv'] } }));
+  });
+
+  it('ignores an export message whose payload is not a string (FR-SCI-12)', async () => {
+    const showSave = vi.mocked(vscode.window.showSaveDialog);
+    showSave.mockClear();
+    panel.show();
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'exportCsv', csv: 42 });
+    handler({ command: 'saveSnapshot', pngBase64: { evil: true } });
+    await Promise.resolve();
+    expect(showSave).not.toHaveBeenCalled();
+  });
+
+  // FR-SCI-13 — event history
+  it('webview HTML has an events strip with a history toggle and a log (FR-SCI-13)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="events"');
+    expect(webview.html).toContain('id="events-toggle"');
+    expect(webview.html).toContain('id="event-log"');
   });
 
   // FR-SCOPE-1 — Audio Settings always visible (no collapsible)

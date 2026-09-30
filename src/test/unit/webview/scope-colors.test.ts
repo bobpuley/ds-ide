@@ -11,6 +11,7 @@ describe('loadScopeColors (FR-THM-2)', () => {
       traceIn: '<--ds-trace-in>',
       traceOut: '<--ds-trace-out>',
       traceOutR: '<--ds-trace-out-r>',
+      trigger: '<--ds-warning-fg>',
       running: '<--ds-ok>',
       stopped: '<--ds-error>',
     });
@@ -19,6 +20,6 @@ describe('loadScopeColors (FR-THM-2)', () => {
   it('reads every token exactly once per load', () => {
     const read = vi.fn(() => '#000');
     loadScopeColors(read);
-    expect(read).toHaveBeenCalledTimes(8);
+    expect(read).toHaveBeenCalledTimes(9);
   });
 });

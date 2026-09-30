@@ -7,9 +7,17 @@ import { readThemeColor, onThemeChange } from './theme/theme-runtime';
 import { loadScopeColors } from './scope-colors';
 import { ScopeCapture, type ScopeChannel } from './scope/scope-capture';
 import { Meters, formatDb, meterPosition } from './scope/scope-meters';
+import { buildCsv } from './scope/scope-export';
+import { EventLog, formatClock } from './scope/scope-events';
+import {
+  freqPosition, freqTicks, levelToDb, dbRange, dbPosition, dbTicks, type FreqScale, type LevelMode,
+} from './scope/scope-spectrum-scale';
+import {
+  triggerStart, pressSingle, onTrigger, type TriggerMode, type TriggerSource, type SingleShotState,
+} from './scope/scope-trigger';
 import {
   DEFAULT_TIME_BASE_MS, DIVISIONS, windowSamples, pointsPerDivision, isLowResolution,
-  visibleRange, timeTicks, amplitudeTicks, autoGain, peakAbs, samplePosition, TRACES, cursorIndex, formatReadout,
+  visibleRange, timeTicks, amplitudeTicks, autoGain, peakAbs, samplePosition, TRACES, cursorIndex, formatReadout, positionToSample,
   type GainMode, type AmpUnit,
 } from './scope/scope-view';
 
@@ -37,8 +45,12 @@ const scopeControlsEl = el<HTMLElement>('scope-controls');
 const timeBaseEl = el<HTMLSelectElement>('timebase');
 const rateNoteEl = el<HTMLElement>('rate-note');
 const freezeBtn = el<HTMLButtonElement>('freeze-btn');
-const frozenBadge = el<HTMLElement>('frozen-badge');
 const readoutEl = el<HTMLElement>('cursor-readout');
+const singleBtn = el<HTMLButtonElement>('single-btn');
+const snapshotBtn = el<HTMLButtonElement>('snapshot-btn');
+const exportBtn = el<HTMLButtonElement>('export-btn');
+const eventsToggle = el<HTMLButtonElement>('events-toggle');
+const eventLogEl = el<HTMLElement>('event-log');
 const scopeMainEl = el<HTMLElement>('scope-main');
 const headroomEl = el<HTMLElement>('meter-headroom');
 const meterResetBtn = el<HTMLButtonElement>('meters-reset');
@@ -98,6 +110,19 @@ const PLOT_LEFT = 44, PLOT_RIGHT = 8, PLOT_TOP = 8, PLOT_BOTTOM = 18;
 let msPerDiv = DEFAULT_TIME_BASE_MS;
 let gainMode: GainMode = 1;
 let ampUnit: AmpUnit = 'lin';
+// FR-SCI-9: edge trigger. The level is a sample value, drawn as a marker on the
+// amplitude axis that can be dragged.
+let trigMode: TriggerMode = 'free';
+let trigSource: TriggerSource = 'in';
+let trigLevel = 0;
+// The last triggered window, drawn while nothing crosses the level ("no trigger").
+let heldWindow: Buffers | null = null;
+let draggingTrigger = false;
+// FR-SCI-12: what the last redraw showed, so export saves exactly the visible samples.
+let lastDrawn: { buffers: Buffers; range: { start: number; count: number }; shown: readonly (typeof TRACES)[number][]; rate: number } | null = null;
+// FR-SCI-10: best-effort single-shot — it only sees what the scope snapshots contain.
+let singleState: SingleShotState = 'idle';
+let lastGain = 1;
 const traceVisible: Record<'in' | 'l' | 'r', boolean> = { in: true, l: true, r: true };
 
 type Buffers = Record<'in' | 'l' | 'r', readonly number[]>;
@@ -116,6 +141,70 @@ function currentFrame(): Frame {
     : { buffers: { in: lastIn, l: lastOut, r: [] }, rate: 0 };
 }
 
+// FR-SCI-13: timestamped history behind the strip. It survives a stop, so "did it clip
+// while I wasn't looking?" can be answered; the strip itself clears on stop as before.
+const eventLog = new EventLog();
+
+function renderEventLog(): void {
+  const open = eventLogEl.style.display !== 'none';
+  eventsToggle.textContent = `${open ? '▾' : '▸'} history (${eventLog.size})`;
+  eventsToggle.setAttribute('aria-expanded', String(open));
+  if (!open) return;
+  // Built via DOM APIs, never innerHTML — kinds and details originate from the emulator (FR-IPC-2).
+  eventLogEl.textContent = '';
+  if (eventLog.size === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'event-row';
+    empty.textContent = 'no events';
+    eventLogEl.appendChild(empty);
+    return;
+  }
+  for (const e of eventLog.entries()) {
+    const row = document.createElement('div');
+    row.className = 'event-row';
+    const time = document.createElement('span');
+    time.className = 'event-time';
+    time.textContent = formatClock(e.time);
+    const kind = document.createElement('span');
+    kind.className = 'event-kind';
+    kind.textContent = e.kind + (e.count > 1 ? ` ×${e.count}` : '');
+    row.append(time, kind);
+    if (e.detail) {
+      const detail = document.createElement('span');
+      detail.textContent = e.detail;
+      row.appendChild(detail);
+    }
+    eventLogEl.appendChild(row);
+  }
+}
+
+function logEvent(kind: string, detail?: string): void {
+  eventLog.add(kind, Date.now(), detail);
+  renderEventLog();
+}
+
+renderEventLog();   // initial label and aria-expanded (kept out of the static HTML)
+eventsToggle?.addEventListener('click', () => {
+  eventLogEl.style.display = eventLogEl.style.display === 'none' ? 'block' : 'none';
+  renderEventLog();
+});
+
+function renderSingle(): void {
+  singleBtn.setAttribute('aria-pressed', String(singleState === 'armed'));
+  singleBtn.textContent = singleState === 'armed' ? '⏳ Armed…' : '1× Single';
+}
+
+// Called on each new snapshot: an armed single-shot freezes on the first triggered capture.
+function checkSingleShot(): void {
+  if (singleState !== 'armed' || frozenFrame) return;
+  const frame = currentFrame();
+  const span = windowSamples(msPerDiv, frame.rate) || lastIn.length;
+  if (!triggerStart(frame.buffers[trigSource], span, trigMode, trigLevel)) return;
+  singleState = onTrigger(singleState);
+  renderSingle();
+  setFrozen(true);
+}
+
 function setFrozen(freeze: boolean): void {
   frozenFrame = null;
   if (freeze) {
@@ -126,7 +215,7 @@ function setFrozen(freeze: boolean): void {
     };
   }
   freezeBtn.setAttribute('aria-pressed', String(freeze));
-  frozenBadge.style.display = freeze ? 'inline' : 'none';
+  freezeBtn.textContent = freeze ? 'Resume' : 'Freeze';
   flushScopeDraw();
 }
 
@@ -180,14 +269,31 @@ function draw(): void {
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
   const frame = currentFrame();
-  const buffers = frame.buffers;
+  let buffers = frame.buffers;
   const win = windowSamples(msPerDiv, frame.rate);
   const span = win > 0 ? win : lastIn.length;
-  const range = visibleRange(buffers.in.length, span);
+  let range = visibleRange(buffers.in.length, span);
+  let noTrigger = false;
+  if (trigMode !== 'free') {
+    const trig = triggerStart(buffers[trigSource], span, trigMode, trigLevel);
+    if (trig) {
+      range = { start: trig.start, count: Math.min(span, buffers.in.length - trig.start) };
+      heldWindow = {
+        in: buffers.in.slice(range.start, range.start + range.count),
+        l: buffers.l.slice(range.start, range.start + range.count),
+        r: buffers.r.slice(range.start, range.start + range.count),
+      };
+    } else {
+      noTrigger = true;
+      if (heldWindow) { buffers = heldWindow; range = { start: 0, count: heldWindow.in.length }; }
+    }
+  }
   const shown = TRACES.filter(t => traceVisible[t.id]);
   const gain = gainMode === 'auto'
     ? autoGain(Math.max(0, ...shown.map(t => peakAbs(buffers[t.id], range.start, range.count))))
     : gainMode;
+  lastGain = gain;
+  lastDrawn = { buffers, range, shown, rate: frame.rate };
   for (const t of amplitudeTicks(gain, ampUnit)) {
     const y = PLOT_TOP + ph * (0.5 - t.pos / 2);
     ctx.strokeStyle = colors.grid;
@@ -210,7 +316,13 @@ function draw(): void {
 
   ctx.textAlign = 'right';
   ctx.textBaseline = 'top';
-  ctx.fillText(`×${gain >= 10 ? gain.toFixed(0) : gain.toFixed(1).replace(/\.0$/, '')}${gainMode === 'auto' ? ' auto' : ''}`, W - PLOT_RIGHT - 4, PLOT_TOP + 3);
+  const gainLabel = `×${gain >= 10 ? gain.toFixed(0) : gain.toFixed(1).replace(/\.0$/, '')}${gainMode === 'auto' ? ' auto' : ''}`;
+  ctx.fillText(gainLabel, W - PLOT_RIGHT - 4, PLOT_TOP + 3);
+  if (frozenFrame) {
+    // FR-SCI-7: FROZEN sits in the same corner, to the left of the gain label.
+    ctx.fillStyle = colors.trigger;
+    ctx.fillText('FROZEN', W - PLOT_RIGHT - 4 - ctx.measureText(gainLabel).width - 12, PLOT_TOP + 3);
+  }
   const { start, count } = range;
   ctx.save();
   ctx.beginPath(); ctx.rect(PLOT_LEFT, PLOT_TOP, pw, ph); ctx.clip();
@@ -219,7 +331,32 @@ function draw(): void {
     drawWave(buffers[t.id], start, count, span, gain, color, t.dash, pw, ph);
   }
   ctx.restore();
+  if (trigMode !== 'free') drawTriggerMarker(pw, ph, noTrigger);
   drawCursor(frame, shown.map(t => t), range, span, pw, ph);
+}
+
+// FR-SCI-9: dotted level line across the plot and a pointer on the amplitude axis.
+function triggerY(ph: number): number {
+  return PLOT_TOP + ph * (0.5 - samplePosition(trigLevel, lastGain, ampUnit) / 2);
+}
+
+function drawTriggerMarker(pw: number, ph: number, noTrigger: boolean): void {
+  const y = Math.max(PLOT_TOP, Math.min(PLOT_TOP + ph, triggerY(ph)));
+  ctx.strokeStyle = colors.trigger;
+  ctx.fillStyle = colors.trigger;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([2, 4]);
+  ctx.beginPath(); ctx.moveTo(PLOT_LEFT, y + 0.5); ctx.lineTo(PLOT_LEFT + pw, y + 0.5); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(PLOT_LEFT - 12, y - 5); ctx.lineTo(PLOT_LEFT - 2, y); ctx.lineTo(PLOT_LEFT - 12, y + 5);
+  ctx.closePath(); ctx.fill();
+  if (noTrigger) {
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('no trigger — waiting…', PLOT_LEFT + 8, PLOT_TOP + 6);
+  }
 }
 
 // FR-SCI-7: a vertical cursor with the time and each visible channel's value under it.
@@ -258,74 +395,75 @@ function drawWave(
   ctx.setLineDash([]);
 }
 
+// FR-SCI-11: frequency axis (Lin / Log) and level axis (Relative / Absolute dBFS).
+let freqScale: FreqScale = 'log';
+let levelMode: LevelMode = 'abs';
+
 function drawSpectrum(): void {
   const W = specCanvas.width, H = specCanvas.height;
   specCtx.clearRect(0, 0, W, H);
   specCtx.fillStyle = colors.background;
   specCtx.fillRect(0, 0, W, H);
-  if (!lastSpecIn || lastSpecIn.length < 2) return;
+  if (!lastSpecIn || lastSpecIn.length < 2 || lastBinHz <= 0) return;
   const N = lastSpecIn.length;
   const maxFreq = Math.min(20000, lastBinHz * N);
-  const maxBin  = lastBinHz > 0 ? Math.min(N, Math.ceil(maxFreq / lastBinHz)) : N;
-  const peak = Math.max(
-    lastSpecIn.slice(0, maxBin).reduce((a, v) => Math.max(a, v), 1e-9),
-    lastSpecOut.slice(0, maxBin).reduce((a, v) => Math.max(a, v), 1e-9),
-  );
+  const maxBin = Math.min(N, Math.ceil(maxFreq / lastBinHz));
+  // Relative mode is scaled to the running peak; absolute mode ignores it.
+  let peak = 1e-9;
+  if (levelMode === 'rel') {
+    for (let i = 0; i < maxBin; i++) peak = Math.max(peak, lastSpecIn[i] ?? 0, lastSpecOut[i] ?? 0);
+  }
   const LEFT = 36, BOTTOM = 16, TOP = 4;
-  const plotW = W - LEFT;
+  const plotW = W - LEFT - 6;
   const plotH = H - BOTTOM - TOP;
-  const ampToY = (amp: number): number => TOP + plotH * (1 - amp / peak);
+  const range = dbRange(levelMode);
+  const xOf = (hz: number): number => LEFT + freqPosition(hz, freqScale, maxFreq) * plotW;
+  const yOfDb = (db: number): number => TOP + dbPosition(db, range) * plotH;
+
+  specCtx.lineWidth = 1;
   specCtx.font = '9px monospace';
   specCtx.textAlign = 'right';
-  let lastDbLabelY = -Infinity;
-  for (let db = 0; db >= -60; db -= 20) {
-    const y = ampToY(Math.pow(10, db / 20) * peak);
+  specCtx.textBaseline = 'middle';
+  for (const db of dbTicks(range)) {
+    const y = yOfDb(db);
     specCtx.strokeStyle = colors.grid;
-    specCtx.lineWidth = 1;
-    specCtx.beginPath();
-    specCtx.moveTo(LEFT, y); specCtx.lineTo(W, y);
-    specCtx.stroke();
-    if (y - lastDbLabelY >= 11) {
-      specCtx.fillStyle = colors.axis;
-      specCtx.fillText(db + 'dB', LEFT - 4, y + 4);
-      lastDbLabelY = y;
-    }
+    specCtx.beginPath(); specCtx.moveTo(LEFT, y + 0.5); specCtx.lineTo(LEFT + plotW, y + 0.5); specCtx.stroke();
+    specCtx.fillStyle = colors.axis;
+    specCtx.fillText(String(db), LEFT - 4, y);
   }
   specCtx.textAlign = 'left';
-  specCtx.strokeStyle = colors.grid;
-  specCtx.lineWidth = 1;
-  specCtx.beginPath();
-  specCtx.moveTo(LEFT, TOP + plotH); specCtx.lineTo(W, TOP + plotH);
-  specCtx.stroke();
-  function drawSpecLine(fft: number[], color: string): void {
+  specCtx.textBaseline = 'top';
+  specCtx.fillStyle = colors.axis;
+  specCtx.fillText(levelMode === 'abs' ? 'dBFS' : 'dB rel. peak', 2, 1);
+  specCtx.textAlign = 'center';
+  for (const t of freqTicks(freqScale, maxFreq)) {
+    const x = xOf(t.hz);
+    specCtx.strokeStyle = colors.grid;
+    specCtx.beginPath(); specCtx.moveTo(x + 0.5, TOP); specCtx.lineTo(x + 0.5, TOP + plotH); specCtx.stroke();
+    specCtx.fillStyle = colors.axis;
+    specCtx.fillText(t.label, x, TOP + plotH + 3);
+  }
+  specCtx.textAlign = 'right';
+  specCtx.fillText('Hz', W - 2, TOP + plotH + 3);
+
+  const drawSpecLine = (fft: readonly number[], color: string, dash: number[]): void => {
     specCtx.strokeStyle = color;
+    specCtx.setLineDash(dash);
     specCtx.lineWidth = 1.5;
     specCtx.beginPath();
-    for (let i = 0; i < maxBin; i++) {
-      const x = LEFT + (i / (maxBin - 1)) * plotW;
-      const y = ampToY(fft[i]!);
-      if (i === 0) specCtx.moveTo(x, y);
-      else         specCtx.lineTo(x, y);
+    let started = false;
+    for (let i = 1; i < maxBin; i++) {   // bin 0 is DC (0 Hz): off the log axis
+      const hz = i * lastBinHz;
+      if (freqScale === 'log' && hz < 20) continue;
+      const x = xOf(hz);
+      const y = yOfDb(levelToDb(fft[i] ?? 0, levelMode, peak));
+      if (!started) { specCtx.moveTo(x, y); started = true; } else specCtx.lineTo(x, y);
     }
     specCtx.stroke();
-  }
-  drawSpecLine(lastSpecIn,  colors.traceIn);
-  drawSpecLine(lastSpecOut, colors.traceOut);
-  if (lastBinHz > 0) {
-    specCtx.fillStyle = colors.axis;
-    specCtx.font = '10px monospace';
-    specCtx.textAlign = 'left';
-    const freqLabels = [1000, 2000, 5000, 10000, 20000];
-    let lastLabelRight = LEFT - 4;
-    for (const f of freqLabels) {
-      if (f > maxFreq) break;
-      const x = LEFT + (f / maxFreq) * plotW;
-      const text = f >= 1000 ? (f / 1000) + 'k' : String(f);
-      if (x < lastLabelRight + 4) continue;
-      specCtx.fillText(text, x + 2, H - 4);
-      lastLabelRight = x + 2 + specCtx.measureText(text).width;
-    }
-  }
+    specCtx.setLineDash([]);
+  };
+  drawSpecLine(lastSpecIn, colors.traceIn, []);
+  drawSpecLine(lastSpecOut, colors.traceOut, [7, 4]);
 }
 
 function sendSine(): void {
@@ -377,6 +515,7 @@ outputVolEl?.addEventListener('input', () => {
 
 timeBaseEl?.addEventListener('change', () => {
   msPerDiv = parseFloat(timeBaseEl.value) || DEFAULT_TIME_BASE_MS;
+  heldWindow = null;
   updateRateNote();
   flushScopeDraw();
 });
@@ -391,6 +530,13 @@ function wireSegment(id: string, attr: string, onPick: (value: string) => void):
     flushScopeDraw();
   });
 }
+wireSegment('trig-seg', 'trig', v => {
+  trigMode = v === 'rise' || v === 'fall' ? v : 'free';
+  heldWindow = null;
+});
+wireSegment('trigsrc-seg', 'trigsrc', v => { trigSource = v === 'l' ? 'l' : 'in'; heldWindow = null; });
+wireSegment('fscale-seg', 'fscale', v => { freqScale = v === 'lin' ? 'lin' : 'log'; flushSpectrumDraw(); });
+wireSegment('lmode-seg', 'lmode', v => { levelMode = v === 'rel' ? 'rel' : 'abs'; flushSpectrumDraw(); });
 wireSegment('gain-seg', 'gain', v => { gainMode = v === 'auto' ? 'auto' : (Number(v) as GainMode); });
 document.querySelectorAll<HTMLElement>('.legend-item').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -411,17 +557,77 @@ document.querySelectorAll<HTMLElement>('.clip-chip').forEach(chip => {
   });
 });
 meterResetBtn?.addEventListener('click', () => { meters.resetPeaks(); renderMeters(); });
-freezeBtn?.addEventListener('click', () => setFrozen(frozenFrame === null));
+function exportVisibleCsv(): void {
+  if (!lastDrawn) return;
+  const { buffers, range, shown, rate } = lastDrawn;
+  const channels = shown
+    .map(t => ({ label: t.label, samples: buffers[t.id].slice(range.start, range.start + range.count) }))
+    .filter(c => c.samples.length > 0);
+  vscode.postMessage({ command: 'exportCsv', csv: buildCsv(rate, channels) });
+}
+
+function saveSnapshot(): void {
+  const out = document.createElement('canvas');
+  out.width = Math.max(canvas.width, specCanvas.width);
+  out.height = canvas.height + specCanvas.height;
+  const octx = out.getContext('2d');
+  if (!octx) return;
+  octx.fillStyle = colors.background;
+  octx.fillRect(0, 0, out.width, out.height);
+  octx.drawImage(canvas, 0, 0);
+  octx.drawImage(specCanvas, 0, canvas.height);
+  const url = out.toDataURL('image/png');
+  vscode.postMessage({ command: 'saveSnapshot', pngBase64: url.slice(url.indexOf(',') + 1) });
+}
+exportBtn?.addEventListener('click', exportVisibleCsv);
+snapshotBtn?.addEventListener('click', saveSnapshot);
+freezeBtn?.addEventListener('click', () => {
+  singleState = 'idle';
+  renderSingle();
+  setFrozen(frozenFrame === null);
+});
+singleBtn?.addEventListener('click', () => {
+  if (singleState === 'held') setFrozen(false);   // resume, then re-arm below
+  singleState = pressSingle(singleState);
+  renderSingle();
+  flushScopeDraw();
+});
 window.addEventListener('keydown', (e) => {
   const tag = (e.target as HTMLElement | null)?.tagName;
   if (e.code !== 'Space' || tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
   e.preventDefault();
+  singleState = 'idle';
+  renderSingle();
   setFrozen(frozenFrame === null);
 });
+function canvasY(e: MouseEvent): number {
+  return e.clientY - canvas.getBoundingClientRect().top;
+}
+function onTriggerMarker(e: MouseEvent): boolean {
+  if (trigMode === 'free') return false;
+  const ph = canvas.height - PLOT_TOP - PLOT_BOTTOM;
+  const x = e.clientX - canvas.getBoundingClientRect().left;
+  return x < PLOT_LEFT && Math.abs(canvasY(e) - triggerY(ph)) <= 9;
+}
+function dragTrigger(e: MouseEvent): void {
+  const ph = canvas.height - PLOT_TOP - PLOT_BOTTOM;
+  const pos = Math.max(-1, Math.min(1, (0.5 - (canvasY(e) - PLOT_TOP) / ph) * 2));
+  trigLevel = Math.max(-1, Math.min(1, positionToSample(pos, lastGain, ampUnit)));
+  flushScopeDraw();
+}
+canvas.addEventListener('mousedown', (e) => {
+  if (!onTriggerMarker(e)) return;
+  draggingTrigger = true;
+  e.preventDefault();
+});
+window.addEventListener('mouseup', () => { draggingTrigger = false; });
 canvas.addEventListener('mousemove', (e) => {
+  if (draggingTrigger) { dragTrigger(e); return; }
+  canvas.style.cursor = onTriggerMarker(e) ? 'ns-resize' : 'crosshair';
   cursorX = e.clientX - canvas.getBoundingClientRect().left;
   flushScopeDraw();
 });
+window.addEventListener('mousemove', (e) => { if (draggingTrigger) dragTrigger(e); });
 canvas.addEventListener('mouseleave', () => { cursorX = null; flushScopeDraw(); });
 window.addEventListener('resize', resize);
 // Repaint in the new theme even when nothing is streaming (stopped scope, FR-THM-5).
@@ -459,6 +665,7 @@ window.addEventListener('message', (e: MessageEvent<unknown>) => {
     meters.update('l', lastOut);
     meters.update('r', msg.out_r || []);
     renderMeters();
+    checkSingleShot();
     flushScopeDraw();
   } else if (msg.command === 'status') {
     hasStatus = true;
@@ -468,7 +675,7 @@ window.addEventListener('message', (e: MessageEvent<unknown>) => {
     lastStatusBlockSize  = msg.blockSize  || lastStatusBlockSize;
     // A rate / block-size change or a stop leaves stale-rate samples in the ring.
     capture.setConfig(lastStatusSampleRate, lastStatusBlockSize);
-    if (!msg.running) capture.clear();
+    if (!msg.running) { capture.clear(); heldWindow = null; }
     updateRateNote();
     updateStatusEl();
     if (btnAudioStart) btnAudioStart.disabled = !!msg.running;
@@ -494,10 +701,13 @@ window.addEventListener('message', (e: MessageEvent<unknown>) => {
     }
     if (typeof msg.kind === 'string') {
       activeEvents.add(msg.kind.toUpperCase());
+      logEvent(msg.kind.toUpperCase());
       eventsEl.textContent = [...activeEvents].map(k => '⚠ ' + k).join('  ');
     }
   } else if (msg.command === 'xrun') {
-    xrunCount = msg.count || 0;
+    const count = msg.count || 0;
+    if (count > xrunCount) logEvent('XRUN', `total ${count}`);
+    xrunCount = count;
     updateStatusEl();
   } else if (msg.command === 'latency') {
     const ms = msg.estimatedMs;
