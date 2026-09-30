@@ -14,7 +14,7 @@ and CSV export, and a timestamped event history.
 
 ## Sprint Tasks
 
-### [ ] feat: edge trigger with a draggable level marker (FR-SCI-9)
+### [x] feat: edge trigger with a draggable level marker (FR-SCI-9)
 
 **Affected files:** `src/webview/scope/scope-trigger.ts`, `src/webview/scope-webview.ts`, `src/webview/scope-panel.ts`, `src/test/unit/webview/scope-trigger.test.ts`
 

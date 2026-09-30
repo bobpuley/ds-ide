@@ -7,9 +7,10 @@ import { readThemeColor, onThemeChange } from './theme/theme-runtime';
 import { loadScopeColors } from './scope-colors';
 import { ScopeCapture, type ScopeChannel } from './scope/scope-capture';
 import { Meters, formatDb, meterPosition } from './scope/scope-meters';
+import { triggerStart, type TriggerMode, type TriggerSource } from './scope/scope-trigger';
 import {
   DEFAULT_TIME_BASE_MS, DIVISIONS, windowSamples, pointsPerDivision, isLowResolution,
-  visibleRange, timeTicks, amplitudeTicks, autoGain, peakAbs, samplePosition, TRACES, cursorIndex, formatReadout,
+  visibleRange, timeTicks, amplitudeTicks, autoGain, peakAbs, samplePosition, TRACES, cursorIndex, formatReadout, positionToSample,
   type GainMode, type AmpUnit,
 } from './scope/scope-view';
 
@@ -98,6 +99,15 @@ const PLOT_LEFT = 44, PLOT_RIGHT = 8, PLOT_TOP = 8, PLOT_BOTTOM = 18;
 let msPerDiv = DEFAULT_TIME_BASE_MS;
 let gainMode: GainMode = 1;
 let ampUnit: AmpUnit = 'lin';
+// FR-SCI-9: edge trigger. The level is a sample value, drawn as a marker on the
+// amplitude axis that can be dragged.
+let trigMode: TriggerMode = 'free';
+let trigSource: TriggerSource = 'in';
+let trigLevel = 0;
+// The last triggered window, drawn while nothing crosses the level ("no trigger").
+let heldWindow: Buffers | null = null;
+let draggingTrigger = false;
+let lastGain = 1;
 const traceVisible: Record<'in' | 'l' | 'r', boolean> = { in: true, l: true, r: true };
 
 type Buffers = Record<'in' | 'l' | 'r', readonly number[]>;
@@ -180,14 +190,30 @@ function draw(): void {
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
   const frame = currentFrame();
-  const buffers = frame.buffers;
+  let buffers = frame.buffers;
   const win = windowSamples(msPerDiv, frame.rate);
   const span = win > 0 ? win : lastIn.length;
-  const range = visibleRange(buffers.in.length, span);
+  let range = visibleRange(buffers.in.length, span);
+  let noTrigger = false;
+  if (trigMode !== 'free') {
+    const trig = triggerStart(buffers[trigSource], span, trigMode, trigLevel);
+    if (trig) {
+      range = { start: trig.start, count: Math.min(span, buffers.in.length - trig.start) };
+      heldWindow = {
+        in: buffers.in.slice(range.start, range.start + range.count),
+        l: buffers.l.slice(range.start, range.start + range.count),
+        r: buffers.r.slice(range.start, range.start + range.count),
+      };
+    } else {
+      noTrigger = true;
+      if (heldWindow) { buffers = heldWindow; range = { start: 0, count: heldWindow.in.length }; }
+    }
+  }
   const shown = TRACES.filter(t => traceVisible[t.id]);
   const gain = gainMode === 'auto'
     ? autoGain(Math.max(0, ...shown.map(t => peakAbs(buffers[t.id], range.start, range.count))))
     : gainMode;
+  lastGain = gain;
   for (const t of amplitudeTicks(gain, ampUnit)) {
     const y = PLOT_TOP + ph * (0.5 - t.pos / 2);
     ctx.strokeStyle = colors.grid;
@@ -219,7 +245,32 @@ function draw(): void {
     drawWave(buffers[t.id], start, count, span, gain, color, t.dash, pw, ph);
   }
   ctx.restore();
+  if (trigMode !== 'free') drawTriggerMarker(pw, ph, noTrigger);
   drawCursor(frame, shown.map(t => t), range, span, pw, ph);
+}
+
+// FR-SCI-9: dotted level line across the plot and a pointer on the amplitude axis.
+function triggerY(ph: number): number {
+  return PLOT_TOP + ph * (0.5 - samplePosition(trigLevel, lastGain, ampUnit) / 2);
+}
+
+function drawTriggerMarker(pw: number, ph: number, noTrigger: boolean): void {
+  const y = Math.max(PLOT_TOP, Math.min(PLOT_TOP + ph, triggerY(ph)));
+  ctx.strokeStyle = colors.trigger;
+  ctx.fillStyle = colors.trigger;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([2, 4]);
+  ctx.beginPath(); ctx.moveTo(PLOT_LEFT, y + 0.5); ctx.lineTo(PLOT_LEFT + pw, y + 0.5); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(PLOT_LEFT - 12, y - 5); ctx.lineTo(PLOT_LEFT - 2, y); ctx.lineTo(PLOT_LEFT - 12, y + 5);
+  ctx.closePath(); ctx.fill();
+  if (noTrigger) {
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('no trigger — waiting…', PLOT_LEFT + 8, PLOT_TOP + 6);
+  }
 }
 
 // FR-SCI-7: a vertical cursor with the time and each visible channel's value under it.
@@ -377,6 +428,7 @@ outputVolEl?.addEventListener('input', () => {
 
 timeBaseEl?.addEventListener('change', () => {
   msPerDiv = parseFloat(timeBaseEl.value) || DEFAULT_TIME_BASE_MS;
+  heldWindow = null;
   updateRateNote();
   flushScopeDraw();
 });
@@ -391,6 +443,11 @@ function wireSegment(id: string, attr: string, onPick: (value: string) => void):
     flushScopeDraw();
   });
 }
+wireSegment('trig-seg', 'trig', v => {
+  trigMode = v === 'rise' || v === 'fall' ? v : 'free';
+  heldWindow = null;
+});
+wireSegment('trigsrc-seg', 'trigsrc', v => { trigSource = v === 'l' ? 'l' : 'in'; heldWindow = null; });
 wireSegment('gain-seg', 'gain', v => { gainMode = v === 'auto' ? 'auto' : (Number(v) as GainMode); });
 document.querySelectorAll<HTMLElement>('.legend-item').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -418,10 +475,34 @@ window.addEventListener('keydown', (e) => {
   e.preventDefault();
   setFrozen(frozenFrame === null);
 });
+function canvasY(e: MouseEvent): number {
+  return e.clientY - canvas.getBoundingClientRect().top;
+}
+function onTriggerMarker(e: MouseEvent): boolean {
+  if (trigMode === 'free') return false;
+  const ph = canvas.height - PLOT_TOP - PLOT_BOTTOM;
+  const x = e.clientX - canvas.getBoundingClientRect().left;
+  return x < PLOT_LEFT && Math.abs(canvasY(e) - triggerY(ph)) <= 9;
+}
+function dragTrigger(e: MouseEvent): void {
+  const ph = canvas.height - PLOT_TOP - PLOT_BOTTOM;
+  const pos = Math.max(-1, Math.min(1, (0.5 - (canvasY(e) - PLOT_TOP) / ph) * 2));
+  trigLevel = Math.max(-1, Math.min(1, positionToSample(pos, lastGain, ampUnit)));
+  flushScopeDraw();
+}
+canvas.addEventListener('mousedown', (e) => {
+  if (!onTriggerMarker(e)) return;
+  draggingTrigger = true;
+  e.preventDefault();
+});
+window.addEventListener('mouseup', () => { draggingTrigger = false; });
 canvas.addEventListener('mousemove', (e) => {
+  if (draggingTrigger) { dragTrigger(e); return; }
+  canvas.style.cursor = onTriggerMarker(e) ? 'ns-resize' : 'crosshair';
   cursorX = e.clientX - canvas.getBoundingClientRect().left;
   flushScopeDraw();
 });
+window.addEventListener('mousemove', (e) => { if (draggingTrigger) dragTrigger(e); });
 canvas.addEventListener('mouseleave', () => { cursorX = null; flushScopeDraw(); });
 window.addEventListener('resize', resize);
 // Repaint in the new theme even when nothing is streaming (stopped scope, FR-THM-5).
@@ -468,7 +549,7 @@ window.addEventListener('message', (e: MessageEvent<unknown>) => {
     lastStatusBlockSize  = msg.blockSize  || lastStatusBlockSize;
     // A rate / block-size change or a stop leaves stale-rate samples in the ring.
     capture.setConfig(lastStatusSampleRate, lastStatusBlockSize);
-    if (!msg.running) capture.clear();
+    if (!msg.running) { capture.clear(); heldWindow = null; }
     updateRateNote();
     updateStatusEl();
     if (btnAudioStart) btnAudioStart.disabled = !!msg.running;

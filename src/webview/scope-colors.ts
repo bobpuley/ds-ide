@@ -9,6 +9,7 @@ export interface ScopeColors {
   traceIn: string;
   traceOut: string;
   traceOutR: string;
+  trigger: string;
   running: string;
   stopped: string;
 }
@@ -21,6 +22,7 @@ export function loadScopeColors(read: (name: string) => string): ScopeColors {
     traceIn: read('--ds-trace-in'),
     traceOut: read('--ds-trace-out'),
     traceOutR: read('--ds-trace-out-r'),
+    trigger: read('--ds-warning-fg'),
     running: read('--ds-ok'),
     stopped: read('--ds-error'),
   };

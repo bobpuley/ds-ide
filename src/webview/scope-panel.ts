@@ -496,6 +496,13 @@ ${themeCss({ surface: 'editor' })}
       <span class="seg" id="unit-seg">
         <button type="button" class="seg-btn active" data-unit="lin">Linear</button><button type="button" class="seg-btn" data-unit="db">dBFS</button>
       </span></span>
+    <span class="emu-field">Trigger
+      <span class="seg" id="trig-seg">
+        <button type="button" class="seg-btn active" data-trig="free">Free</button><button type="button" class="seg-btn" data-trig="rise" title="Rising edge">↗</button><button type="button" class="seg-btn" data-trig="fall" title="Falling edge">↘</button>
+      </span>
+      <span class="seg" id="trigsrc-seg" title="Trigger source">
+        <button type="button" class="seg-btn active" data-trigsrc="in">In</button><button type="button" class="seg-btn" data-trigsrc="l">L</button>
+      </span></span>
     <span id="rate-note"></span>
     <span id="cursor-readout"></span>
   </div>

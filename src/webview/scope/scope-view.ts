@@ -87,6 +87,14 @@ function dbPosition(magnitude: number): number {
   return (db - DB_FLOOR) / -DB_FLOOR;
 }
 
+/** Inverse of samplePosition (ignoring its clamp): the sample value drawn at a vertical position. */
+export function positionToSample(pos: number, gain: number, unit: AmpUnit): number {
+  if (pos === 0) return 0;
+  if (unit === 'lin') return pos / gain;
+  const db = Math.abs(pos) * -DB_FLOOR + DB_FLOOR;
+  return (Math.sign(pos) * 10 ** (db / 20)) / gain;
+}
+
 const DB_TICKS = [0, -6, -20, -40];
 
 /**

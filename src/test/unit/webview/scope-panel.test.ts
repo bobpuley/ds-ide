@@ -678,6 +678,16 @@ describe('ScopePanel', () => {
     expect(webview.html).toContain('id="meters-reset"');
   });
 
+  // FR-SCI-9 — trigger controls
+  it('webview HTML has trigger mode and source controls, defaulting to Free on In (FR-SCI-9)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    for (const m of ['free', 'rise', 'fall']) expect(webview.html).toContain(`data-trig="${m}"`);
+    for (const s of ['in', 'l']) expect(webview.html).toContain(`data-trigsrc="${s}"`);
+    expect(webview.html).toMatch(/class="seg-btn active" data-trig="free"/);
+    expect(webview.html).toMatch(/class="seg-btn active" data-trigsrc="in"/);
+  });
+
   // FR-SCOPE-1 — Audio Settings always visible (no collapsible)
   it('webview HTML includes emulator-section with no Controls Editor tab (FR-SCOPE-1)', () => {
     panel.show();
