@@ -2,6 +2,7 @@
 #include "emulator_state.h"
 #include "ipc_server.h"
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <csignal>
 #include <mutex>
@@ -68,10 +69,17 @@ int main(int argc, char* argv[]) {
     // audio_thread could otherwise block indefinitely past a shutdown
     // request and this join() would hang forever. run_ipc_server() (joined
     // via ipc_thread) already polls g_state.shutdown itself (~100 ms) and
-    // needs no wakeup. std::exit() (not std::_Exit()) is used so the process
-    // actually terminates instead of returning here — this thread is
-    // detached, and in the (common) signal-driven case main()'s own thread
-    // never reaches its `return 0` below.
+    // needs no wakeup. The process is ended with std::_Exit() *after* the
+    // joins and flush above — this thread is detached, and in the (common)
+    // signal-driven case main()'s own thread never reaches its `return 0`
+    // below. std::exit() must NOT be used here: it runs static destructors,
+    // destroying g_state's mutexes and condition variables while the effect
+    // thread (still inside effect_main()) and the CoreAudio callback thread
+    // keep locking them, which aborts with "mutex lock failed: Invalid
+    // argument" (seen when stopping the emulator from the Daisy view).
+    // Everything that needs an orderly shutdown (recorder, worker threads,
+    // telemetry) has already completed, so skipping the destructors loses
+    // nothing; stdio is flushed explicitly because _Exit does not.
     std::thread shutdown_watcher([&ipc_thread, &audio_thread] {
         while (!daisy_emu::g_state.shutdown.load(std::memory_order_relaxed)) {
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -100,7 +108,8 @@ int main(int argc, char* argv[]) {
         audio_thread.join();
         daisy_emu::g_state.telemetry_drained.store(true);
         ipc_thread.join();
-        std::exit(0);
+        std::fflush(nullptr);
+        std::_Exit(0);
     });
     shutdown_watcher.detach();
 
