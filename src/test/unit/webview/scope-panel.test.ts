@@ -709,6 +709,13 @@ describe('ScopePanel', () => {
     expect(webview.html).toMatch(/class="seg-btn active" data-lmode="abs"/);
   });
 
+  it('Freeze and 1× Single start disabled — nothing streams until audio runs', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toMatch(/id="freeze-btn"[^>]*disabled/);
+    expect(webview.html).toMatch(/id="single-btn"[^>]*disabled/);
+  });
+
   // FR-SCI-12 — snapshot and export
   it('webview HTML has snapshot and export buttons (FR-SCI-12)', () => {
     panel.show();
@@ -721,6 +728,8 @@ describe('ScopePanel', () => {
       expect(at('snapshot-btn')).toBeGreaterThan(at(id));
     }
     expect(at('export-btn')).toBeGreaterThan(at('snapshot-btn'));
+    // grouped: no other control between them
+    expect(webview.html).toMatch(/<span class="btn-group"[^>]*>\s*<button[^>]*id="snapshot-btn"[\s\S]*?<\/button>\s*<button[^>]*id="export-btn"/);
     // icon-only buttons: an SVG icon, an accessible name, and no label text
     expect(webview.html).toMatch(/id="snapshot-btn"[^>]*aria-label="Save snapshot[^"]*"[^>]*><svg/);
     expect(webview.html).toMatch(/id="export-btn"[^>]*aria-label="Export[^"]*"[^>]*><svg/);

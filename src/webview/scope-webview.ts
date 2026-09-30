@@ -738,6 +738,13 @@ window.addEventListener('message', (e: MessageEvent<unknown>) => {
     // The emulator drops its pending arm on a config change or stop — forget ours so it is re-sent.
     armedCapture = null;
     if (!msg.running) { capture.clear(); heldWindow = null; fullRateFrame = null; }
+    // Freeze / 1× Single only mean something while data streams; stopping resets both.
+    freezeBtn.disabled = singleBtn.disabled = !msg.running;
+    if (!msg.running) {
+      singleState = 'idle';
+      renderSingle();
+      setFrozen(false);
+    }
     updateRateNote();
     updateStatusEl();
     if (btnAudioStart) btnAudioStart.disabled = !!msg.running;
