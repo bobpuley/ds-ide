@@ -215,6 +215,7 @@ function setFrozen(freeze: boolean): void {
     };
   }
   freezeBtn.setAttribute('aria-pressed', String(freeze));
+  freezeBtn.textContent = freeze ? 'Resume' : 'Freeze';
   flushScopeDraw();
 }
 
