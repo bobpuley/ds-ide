@@ -1,7 +1,7 @@
 # M70 — Scope Instrument — Display
 
 **Version:** 0.21.0
-**Status:** planned
+**Status:** in progress
 **Source:** feature intake session, 2026-09-30 (01_input-ideas.md; design_plan.md P0-4, §6.B-8, §6.B-10; layout per docs/mockups/v22-scope-instrument.html)
 
 ## Goal
@@ -14,7 +14,7 @@ and per-channel meters with a latching clip indicator, all on the existing scope
 
 ## Sprint Tasks
 
-### [ ] docs: confirm the scope instrument layout in the mockup (FR-SCI-1)
+### [x] docs: confirm the scope instrument layout in the mockup (FR-SCI-1)
 
 The layout is a UI decision, so it is evaluated in the standalone mockup before any view changes.
 
@@ -26,7 +26,7 @@ The layout is a UI decision, so it is evaluated in the standalone mockup before 
 
 ---
 
-### [ ] feat: carry out_r and decimation step in the scope message (FR-SCI-2)
+### [x] feat: carry out_r and decimation step in the scope message (FR-SCI-2)
 
 The emulator already serialises `out_r`, but the `scope` narrower drops it, and the webview cannot
 derive the decimation step reliably from the block size.
@@ -41,7 +41,7 @@ derive the decimation step reliably from the block size.
 
 ---
 
-### [ ] feat: webview capture ring (FR-SCI-3)
+### [x] feat: webview capture ring (FR-SCI-3)
 
 **Affected files:** `src/webview/scope/scope-capture.ts`, `src/webview/scope-webview.ts`, `src/test/unit/webview/scope-capture.test.ts`
 
@@ -52,7 +52,7 @@ derive the decimation step reliably from the block size.
 
 ---
 
-### [ ] feat: labelled axes and time base (FR-SCI-4)
+### [x] feat: labelled axes and time base (FR-SCI-4)
 
 **Affected files:** `src/webview/scope/scope-view.ts`, `src/webview/scope-webview.ts`, `src/webview/scope-panel.ts`, `src/test/unit/webview/scope-view.test.ts`
 
@@ -63,7 +63,7 @@ derive the decimation step reliably from the block size.
 
 ---
 
-### [ ] feat: gain and dBFS amplitude scale (FR-SCI-5)
+### [x] feat: gain and dBFS amplitude scale (FR-SCI-5)
 
 **Affected files:** `src/webview/scope/scope-view.ts`, `src/webview/scope-webview.ts`, `src/webview/scope-panel.ts`, `src/test/unit/webview/scope-view.test.ts`
 
@@ -74,7 +74,7 @@ derive the decimation step reliably from the block size.
 
 ---
 
-### [ ] feat: stereo traces with a toggling legend (FR-SCI-6)
+### [x] feat: stereo traces with a toggling legend (FR-SCI-6)
 
 **Affected files:** `src/webview/scope-webview.ts`, `src/webview/scope-panel.ts`, `src/webview/scope-colors.ts`, `src/webview/theme/theme-css.ts`, `src/test/unit/webview/scope-colors.test.ts`
 
@@ -85,7 +85,7 @@ derive the decimation step reliably from the block size.
 
 ---
 
-### [ ] feat: freeze and cursor read-out (FR-SCI-7)
+### [x] feat: freeze and cursor read-out (FR-SCI-7)
 
 **Affected files:** `src/webview/scope-webview.ts`, `src/webview/scope-panel.ts`, `src/test/unit/webview/scope-panel.test.ts`
 
@@ -95,7 +95,7 @@ derive the decimation step reliably from the block size.
 
 ---
 
-### [ ] feat: per-channel meters with latching clip (FR-SCI-8)
+### [x] feat: per-channel meters with latching clip (FR-SCI-8)
 
 **Affected files:** `src/webview/scope/scope-meters.ts`, `src/webview/scope-webview.ts`, `src/webview/scope-panel.ts`, `src/test/unit/webview/scope-meters.test.ts`
 

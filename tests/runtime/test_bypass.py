@@ -39,6 +39,10 @@ def test_bypass_out_equals_in(exe: str) -> None:
             in_d  = msg["in"]
             out_d = msg["out"]
             assert in_d and out_d, "scope frame has empty arrays"
+            # FR-SCI-2: right channel and decimation step ride along on every frame.
+            assert len(msg["out_r"]) == len(out_d), "out_r length != out length"
+            # 48-frame blocks (<= 256) use the base decimation of 4.
+            assert msg["step"] == 4, f"unexpected scope step: {msg.get('step')}"
             max_err = max(abs(a - b) for a, b in zip(in_d, out_d))
             assert max_err < 1e-5, (
                 f"bypass out != in: max error = {max_err:.2e}"

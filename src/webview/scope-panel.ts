@@ -7,6 +7,7 @@ import { getBoolean, getNumber } from '../ipc/narrow';
 import { ScopeWebviewMessage } from './messages';
 import { hasKnownCommand, assertNever } from './message-guard';
 import { themeCss } from './theme/theme-css';
+import { TIME_BASES_MS, DEFAULT_TIME_BASE_MS, TRACES } from './scope/scope-view';
 
 // FR-EXT-33: see controls-editor-panel.ts's identical comment — the
 // switch's `default: assertNever(...)` is the actual drift-detector; this
@@ -227,7 +228,12 @@ export class ScopePanel {
   }
 
   private postScope(msg: IpcMessage): void {
-    this.panel?.webview.postMessage({ command: 'scope', in: msg['in'], out: msg['out'] });
+    // out_r / step were validated by the IPC narrower (FR-SCI-2); absent on older emulators.
+    this.panel?.webview.postMessage({
+      command: 'scope', in: msg['in'], out: msg['out'],
+      ...(msg['out_r'] !== undefined && { out_r: msg['out_r'] }),
+      ...(msg['step'] !== undefined && { step: msg['step'] }),
+    });
   }
 
   // Only whitelisted, type-checked fields are forwarded — msg originates from
@@ -353,6 +359,22 @@ function escHtml(s: string): string {
 
 function buildHtml(nonce: string, scriptUri: string, sine: SineParams, source: AudioSource): string {
   const audioSourceHtml = buildEmulatorBarHtml(source, sine);
+  const legendItems = TRACES.map(t =>
+    `<button type="button" class="legend-item" data-trace="${t.id}" aria-pressed="true" title="Show / hide ${t.label}">` +
+    `<svg width="26" height="8" aria-hidden="true"><line x1="0" y1="4" x2="26" y2="4" stroke="var(${t.cssVar})" stroke-width="2"` +
+    `${t.dash.length ? ` stroke-dasharray="${t.dash.join(' ')}"` : ''}/></svg>${t.label}</button>`,
+  ).join('');
+  const meterRows = TRACES.map(t => `
+      <div class="meter" data-meter="${t.id}">
+        <div class="meter-name"><svg width="14" height="8" aria-hidden="true"><line x1="0" y1="4" x2="14" y2="4" stroke="var(${t.cssVar})" stroke-width="2"${t.dash.length ? ` stroke-dasharray="${t.dash.join(' ')}"` : ''}/></svg>${t.label}
+          <button type="button" class="clip-chip" data-clip="${t.id}" title="Latched clip — click to clear">CLIP</button></div>
+        <div class="meter-bar"><div class="meter-rms"></div><div class="meter-peak"></div><div class="meter-hold"></div></div>
+        <div class="meter-scale"><span>−60</span><span>−20</span><span>0</span></div>
+        <div class="meter-nums">pk <span class="meter-pk">−∞</span> dB<br>rms <span class="meter-rms-val">−∞</span> dB</div>
+      </div>`).join('');
+  const timeBaseOptions = TIME_BASES_MS.map(ms =>
+    `<option value="${ms}"${ms === DEFAULT_TIME_BASE_MS ? ' selected' : ''}>${ms} ms/div</option>`,
+  ).join('');
   return /* html */`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -368,15 +390,44 @@ ${themeCss({ surface: 'editor' })}
     #fidelity-caveat { font-size: 10px; color: var(--ds-text-muted); cursor: default; margin-left: auto; }
     #status-text { flex: 1; }
     .legend { display: flex; gap: 12px; }
-    .legend span { display: flex; align-items: center; gap: 4px; }
-    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-    .dot-in  { background: var(--ds-trace-in); }
-    .dot-out { background: var(--ds-trace-out); }
+    .legend-item { display: flex; align-items: center; gap: 5px; background: none; border: none; color: var(--ds-text); font-family: monospace; font-size: 12px; cursor: pointer; padding: 1px 2px; }
+    .legend-item[aria-pressed="false"] { opacity: 0.4; text-decoration: line-through; }
+    .legend-item:focus-visible { outline: 1px solid var(--ds-focus); }
     #vol-group { display: flex; align-items: center; gap: 6px; }
     #vol-label { color: var(--ds-text-muted); font-size: 11px; }
     #output-vol { width: 80px; cursor: pointer; accent-color: var(--ds-trace-in); }
     #vol-val { min-width: 30px; color: var(--ds-text); font-size: 11px; }
     #events { padding: 3px 12px; min-height: 22px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); font-size: 11px; color: var(--ds-error); flex-shrink: 0; }
+    #scope-controls { display: flex; align-items: center; gap: 12px; padding: 4px 12px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); flex-shrink: 0; }
+    #freeze-btn[aria-pressed="true"] { background: var(--ds-button-bg); color: var(--ds-button-fg); }
+    #frozen-badge { color: var(--ds-warning-fg); font-weight: bold; border: 1px solid var(--ds-warning-border); padding: 0 6px; border-radius: 2px; }
+    #cursor-readout { margin-left: auto; font-size: 11px; color: var(--ds-text); white-space: pre; }
+    #scope { cursor: crosshair; }
+    .seg { display: inline-flex; }
+    .seg-btn { background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-border); padding: 2px 8px; font-family: monospace; cursor: pointer; margin-left: -1px; }
+    .seg-btn:first-child { border-radius: 2px 0 0 2px; margin-left: 0; }
+    .seg-btn:last-child { border-radius: 0 2px 2px 0; }
+    .seg-btn:hover { background: var(--ds-hover-bg); }
+    .seg-btn.active { background: var(--ds-button-bg); color: var(--ds-button-fg); border-color: var(--ds-focus); }
+    #rate-note { font-size: 11px; color: var(--ds-text-muted); }
+    #rate-note.low-res { color: var(--ds-warning-fg); }
+    #scope-main { flex: 1; min-height: 0; }
+    #plots { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    #meters { width: 132px; flex-shrink: 0; padding: 8px 10px; background: var(--ds-surface-raised); border-left: 1px solid var(--ds-border); overflow-y: auto; }
+    #meters h3 { font-size: 10px; font-weight: normal; text-transform: uppercase; color: var(--ds-text-muted); margin-bottom: 8px; }
+    .meter { margin-bottom: 12px; }
+    .meter-name { display: flex; align-items: center; gap: 5px; margin-bottom: 3px; }
+    .clip-chip { margin-left: auto; font-family: monospace; font-size: 9px; height: 15px; padding: 0 4px; background: none; color: var(--ds-text-muted); border: 1px solid var(--ds-border); border-radius: 2px; cursor: pointer; }
+    .clip-chip.hit { background: var(--ds-error); color: var(--ds-surface); border-color: var(--ds-error); font-weight: bold; }
+    .meter-bar { position: relative; height: 9px; background: var(--ds-grid); border: 1px solid var(--ds-border); }
+    .meter-rms { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--ds-ok); opacity: 0.75; }
+    .meter-peak, .meter-hold { position: absolute; top: -1px; bottom: -1px; width: 2px; left: 0; }
+    .meter-peak { background: var(--ds-text); }
+    .meter-hold { background: var(--ds-warning-fg); }
+    .meter-scale { display: flex; justify-content: space-between; font-size: 8px; color: var(--ds-text-muted); margin-top: 1px; }
+    .meter-nums { font-size: 10px; color: var(--ds-text-muted); margin-top: 2px; line-height: 1.35; }
+    .meter-nums span { color: var(--ds-text); }
+    #meters-reset { margin-top: 8px; width: 100%; }
     canvas { display: block; width: 100%; }
     #scope { flex: 1; min-height: 0; }
     #spectrum { height: 140px; border-top: 1px solid var(--ds-border); background: var(--ds-surface); flex-shrink: 0; }
@@ -422,10 +473,7 @@ ${themeCss({ surface: 'editor' })}
 <body>
   <header>
     <span id="status-text">Deploy to start…</span>
-    <span class="legend">
-      <span><span class="dot dot-in"></span>In</span>
-      <span><span class="dot dot-out"></span>Out</span>
-    </span>
+    <span class="legend">${legendItems}</span>
     <span id="vol-group">
       <label id="vol-label" for="output-vol">Vol</label>
       <input type="range" id="output-vol" min="0" max="1" step="0.01" value="1"/>
@@ -436,8 +484,32 @@ ${themeCss({ surface: 'editor' })}
     <span id="fidelity-caveat" title="Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget">&#x2139; Approx. Seed</span>
   </header>
   <div id="events"></div>
-  <canvas id="scope" style="display:none"></canvas>
-  <canvas id="spectrum" style="display:none"></canvas>
+  <div id="scope-controls" style="display:none">
+    <label class="emu-field">Time <select id="timebase">${timeBaseOptions}</select></label>
+    <button type="button" id="freeze-btn" class="emu-btn" title="Freeze the display (Space)" aria-pressed="false">&#9208; Freeze</button>
+    <span id="frozen-badge" style="display:none">FROZEN</span>
+    <span class="emu-field">Gain
+      <span class="seg" id="gain-seg">
+        <button type="button" class="seg-btn active" data-gain="1">×1</button><button type="button" class="seg-btn" data-gain="2">×2</button><button type="button" class="seg-btn" data-gain="4">×4</button><button type="button" class="seg-btn" data-gain="auto">Auto</button>
+      </span></span>
+    <span class="emu-field">Scale
+      <span class="seg" id="unit-seg">
+        <button type="button" class="seg-btn active" data-unit="lin">Linear</button><button type="button" class="seg-btn" data-unit="db">dBFS</button>
+      </span></span>
+    <span id="rate-note"></span>
+    <span id="cursor-readout"></span>
+  </div>
+  <div id="scope-main" style="display:none">
+    <div id="plots">
+      <canvas id="scope" style="display:none"></canvas>
+      <canvas id="spectrum" style="display:none"></canvas>
+    </div>
+    <div id="meters">
+      <h3>Levels</h3>${meterRows}
+      <div class="meter-nums">headroom<br><span id="meter-headroom">—</span> dB</div>
+      <button type="button" id="meters-reset" class="emu-btn">Reset peaks</button>
+    </div>
+  </div>
   <div id="getting-started">
     <div>Open a libDaisy project, then:</div>
     <ol>

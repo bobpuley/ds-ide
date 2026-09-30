@@ -175,6 +175,7 @@ static void emit_spectrum_if_ready(FftState& fft,
 static void build_scope_json(const std::vector<float>& in_pts,
                              const std::vector<float>& out_pts,
                              const std::vector<float>& out_r_pts,
+                             size_t step,
                              std::string& s) {
     char num[32];
     s.clear();
@@ -196,7 +197,9 @@ static void build_scope_json(const std::vector<float>& in_pts,
         std::snprintf(num, sizeof(num), "%.6g", out_r_pts[i]);
         s += num;
     }
-    s += "]}";
+    // FR-SCI-2: decimation factor, so the webview can derive the effective sample rate.
+    std::snprintf(num, sizeof(num), "],\"step\":%zu}", step);
+    s += num;
 }
 
 // Scan output for NaN/Inf, denormals, and clipping (FR-RU-4). Sends at most
@@ -243,6 +246,7 @@ struct ScopeState {
         (SpscIpcQueue::MAX_MSG - kFixedOverheadBytes) / (3 * kBytesPerValueWorstCase);
 
     std::vector<float> in, out, out_r;
+    size_t step_used{SCOPE_STEP_BASE};  // decimation of the last accumulate(); reported as "step" (FR-SCI-2)
     std::string json_buf;  // pre-reserved to MAX_MSG — no RT heap allocation (FR-RTS-2)
     size_t block_count{0};
 
@@ -272,6 +276,7 @@ struct ScopeState {
         if (frames > SCOPE_STEP_BASE_FRAMES) {
             step = SCOPE_STEP_BASE * frames / SCOPE_STEP_BASE_FRAMES;
         }
+        step_used = step;
 
         size_t buf_samples = frames * 2;
         for (size_t i = 0; i < buf_samples; i += step * 2) {
@@ -863,7 +868,7 @@ void run_audio_engine() {
                 // new-rate block ever arrives.
                 if (popped_block.config_generation == g_state.config_generation.load(std::memory_order_relaxed)) {
                     if (scope.accumulate(popped_block.in_buf, popped_block.out_buf, popped_block.frames)) {
-                        build_scope_json(scope.in, scope.out, scope.out_r, scope.json_buf);
+                        build_scope_json(scope.in, scope.out, scope.out_r, scope.step_used, scope.json_buf);
                         drain_send(scope.json_buf);
                         scope.reset();
                     }
@@ -933,7 +938,7 @@ void run_audio_engine() {
         // Flush any remaining messages after shutdown
         while (scope_queue.pop(popped_block)) {
             if (scope.accumulate(popped_block.in_buf, popped_block.out_buf, popped_block.frames)) {
-                build_scope_json(scope.in, scope.out, scope.out_r, scope.json_buf);
+                build_scope_json(scope.in, scope.out, scope.out_r, scope.step_used, scope.json_buf);
                 drain_send(scope.json_buf);
                 scope.reset();
             }

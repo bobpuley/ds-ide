@@ -8,6 +8,11 @@
 
 Requirements: `FR-SCI-*`. Layout reference: `docs/mockups/v22-scope-instrument.html`.
 
+**Confirmed layout (2026-09-30, `docs/mockups/v22-scope-instrument.html`):** the spectrum stays
+below the scope and always visible; the meters are a 132 px right-hand column (not an overlay);
+export is CSV only (WAV deferred to a future null-test feature); the event history lives in the
+Scope panel for now (it may move to a run-state view, `design_plan.md` P1-5).
+
 **Stance:** M70–M71 leave the emulator's real-time path alone. The only emulator edit is one
 additive field in the scope JSON (`step`); everything else is webview code, split into pure
 modules that unit-test without a DOM.

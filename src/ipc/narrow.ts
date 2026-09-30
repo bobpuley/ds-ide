@@ -40,7 +40,14 @@ const NARROWERS: Record<string, Narrower> = {
     const inSamples = getNumberArray(obj, 'in');
     const outSamples = getNumberArray(obj, 'out');
     if (!inSamples || !outSamples) return undefined;
-    return { type: 'scope', in: inSamples, out: outSamples };
+    const msg: IpcMessage = { type: 'scope', in: inSamples, out: outSamples };
+    // FR-SCI-2: both optional — an older emulator omits them, and a malformed
+    // value is dropped rather than rejecting the whole snapshot.
+    const outR = getNumberArray(obj, 'out_r');
+    if (outR) msg['out_r'] = outR;
+    const step = getNumber(obj, 'step');
+    if (step !== undefined && Number.isInteger(step) && step >= 1) msg['step'] = step;
+    return msg;
   },
   spectrum: (obj) => {
     const inFft = getNumberArray(obj, 'in_fft');

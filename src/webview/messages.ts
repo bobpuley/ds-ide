@@ -11,7 +11,7 @@ import type { SdEntry } from './sd-viewer';
 // ── Daisy Scope panel ────────────────────────────────────────────────────
 
 export type ScopeHostMessage =
-  | { command: 'scope'; in: number[]; out: number[] }
+  | { command: 'scope'; in: number[]; out: number[]; out_r?: number[]; step?: number }
   | { command: 'status'; running: boolean; sampleRate?: number; blockSize?: number }
   | { command: 'wavSelected'; name: string }
   | { command: 'event'; kind: string }

@@ -5,6 +5,13 @@ import { el } from './dom-lookup';
 import { createRafCoalescer } from './raf-coalesce';
 import { readThemeColor, onThemeChange } from './theme/theme-runtime';
 import { loadScopeColors } from './scope-colors';
+import { ScopeCapture, type ScopeChannel } from './scope/scope-capture';
+import { Meters, formatDb, meterPosition } from './scope/scope-meters';
+import {
+  DEFAULT_TIME_BASE_MS, DIVISIONS, windowSamples, pointsPerDivision, isLowResolution,
+  visibleRange, timeTicks, amplitudeTicks, autoGain, peakAbs, samplePosition, TRACES, cursorIndex, formatReadout,
+  type GainMode, type AmpUnit,
+} from './scope/scope-view';
 
 const vscode = acquireVsCodeApi();
 const canvas = el<HTMLCanvasElement>('scope');
@@ -26,12 +33,23 @@ const wavNameEl = el<HTMLElement>('wav-name');
 const wavLoopEl = el<HTMLInputElement>('wav-loop');
 const outputVolEl = el<HTMLInputElement>('output-vol');
 const volValEl = el<HTMLElement>('vol-val');
+const scopeControlsEl = el<HTMLElement>('scope-controls');
+const timeBaseEl = el<HTMLSelectElement>('timebase');
+const rateNoteEl = el<HTMLElement>('rate-note');
+const freezeBtn = el<HTMLButtonElement>('freeze-btn');
+const frozenBadge = el<HTMLElement>('frozen-badge');
+const readoutEl = el<HTMLElement>('cursor-readout');
+const scopeMainEl = el<HTMLElement>('scope-main');
+const headroomEl = el<HTMLElement>('meter-headroom');
+const meterResetBtn = el<HTMLButtonElement>('meters-reset');
 
 // Canvas colours come from the theme (FR-THM-2): read once here and again only
 // when the theme changes (FR-THM-5), never per frame.
 let colors = loadScopeColors(n => readThemeColor(n));
 
 let lastIn: number[] = [], lastOut: number[] = [];
+// FR-SCI-3: stitched history of the snapshots; the axes / time-base tasks draw from it.
+const capture = new ScopeCapture();
 let lastSpecIn: number[] = [], lastSpecOut: number[] = [], lastBinHz = 0;
 const activeEvents = new Set<string>();
 let hasStatus = false;
@@ -59,6 +77,8 @@ function updateStatusEl(): void {
 function showScope(): void {
   if (!hasStatus) return;
   canvas.style.display = 'block';
+  scopeControlsEl.style.display = 'flex';
+  scopeMainEl.style.display = 'flex';
   specCanvas.style.display = 'block';
   gettingStarted.style.display = 'none';
   resize();
@@ -73,35 +93,169 @@ function resize(): void {
   drawSpectrum();
 }
 
+// Plot margins leave room for the axis labels (FR-SCI-4).
+const PLOT_LEFT = 44, PLOT_RIGHT = 8, PLOT_TOP = 8, PLOT_BOTTOM = 18;
+let msPerDiv = DEFAULT_TIME_BASE_MS;
+let gainMode: GainMode = 1;
+let ampUnit: AmpUnit = 'lin';
+const traceVisible: Record<'in' | 'l' | 'r', boolean> = { in: true, l: true, r: true };
+
+type Buffers = Record<'in' | 'l' | 'r', readonly number[]>;
+interface Frame { buffers: Buffers; rate: number }
+// FR-SCI-7: while frozen the display draws this copy; the capture ring keeps
+// collecting underneath, so Resume shows current data.
+let frozenFrame: Frame | null = null;
+let cursorX: number | null = null;
+
+function currentFrame(): Frame {
+  if (frozenFrame) return frozenFrame;
+  const rate = capture.effectiveRate;
+  // Until the rate is known (no status yet), fall back to the newest snapshot as before.
+  return rate > 0
+    ? { buffers: { in: capture.channel('in'), l: capture.channel('l'), r: capture.channel('r') }, rate }
+    : { buffers: { in: lastIn, l: lastOut, r: [] }, rate: 0 };
+}
+
+function setFrozen(freeze: boolean): void {
+  frozenFrame = null;
+  if (freeze) {
+    const live = currentFrame();
+    frozenFrame = {
+      buffers: { in: live.buffers.in.slice(), l: live.buffers.l.slice(), r: live.buffers.r.slice() },
+      rate: live.rate,
+    };
+  }
+  freezeBtn.setAttribute('aria-pressed', String(freeze));
+  frozenBadge.style.display = freeze ? 'inline' : 'none';
+  flushScopeDraw();
+}
+
+// FR-SCI-8: levels of the latest snapshot, with peak hold and latching clip.
+const meters = new Meters();
+
+function renderMeters(): void {
+  for (const ch of ['in', 'l', 'r'] as const) {
+    const row = document.querySelector<HTMLElement>(`[data-meter="${ch}"]`);
+    if (!row) continue;
+    const s = meters.state(ch);
+    const setLeft = (sel: string, db: number): void => {
+      const node = row.querySelector<HTMLElement>(sel);
+      if (node) node.style.left = `${meterPosition(db) * 100}%`;
+    };
+    const rms = row.querySelector<HTMLElement>('.meter-rms');
+    if (rms) rms.style.width = `${meterPosition(s.rmsDb) * 100}%`;
+    setLeft('.meter-peak', s.peakDb);
+    setLeft('.meter-hold', s.holdDb);
+    const pk = row.querySelector('.meter-pk');
+    if (pk) pk.textContent = formatDb(s.peakDb);
+    const rmsVal = row.querySelector('.meter-rms-val');
+    if (rmsVal) rmsVal.textContent = formatDb(s.rmsDb);
+    row.querySelector('.clip-chip')?.classList.toggle('hit', s.clipped);
+  }
+  const headroom = meters.headroomDb();
+  headroomEl.textContent = headroom === null ? '—' : headroom.toFixed(1);
+}
+
+function updateRateNote(): void {
+  const rate = capture.effectiveRate;
+  if (rate <= 0) { rateNoteEl.textContent = ''; rateNoteEl.classList.remove('low-res'); return; }
+  const low = isLowResolution(msPerDiv, rate);
+  const ppd = Math.round(pointsPerDivision(msPerDiv, rate));
+  rateNoteEl.textContent = `effective rate ${(rate / 1000).toFixed(rate % 1000 ? 1 : 0)} kHz` +
+    (low ? ` — low resolution (${ppd} points/div)` : '');
+  rateNoteEl.classList.toggle('low-res', low);
+}
+
 function draw(): void {
   const W = canvas.width, H = canvas.height;
+  const pw = W - PLOT_LEFT - PLOT_RIGHT, ph = H - PLOT_TOP - PLOT_BOTTOM;
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = colors.background;
   ctx.fillRect(0, 0, W, H);
-  ctx.strokeStyle = colors.grid;
+  if (pw <= 0 || ph <= 0) return;
   ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2);
-  ctx.moveTo(0, H / 4); ctx.lineTo(W, H / 4);
-  ctx.moveTo(0, 3 * H / 4); ctx.lineTo(W, 3 * H / 4);
-  ctx.stroke();
-  drawWave(lastIn,  colors.traceIn);
-  drawWave(lastOut, colors.traceOut);
+  ctx.font = '10px monospace';
+  ctx.fillStyle = colors.axis;
+  // Amplitude axis: a grid line and a label per tick.
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  const frame = currentFrame();
+  const buffers = frame.buffers;
+  const win = windowSamples(msPerDiv, frame.rate);
+  const span = win > 0 ? win : lastIn.length;
+  const range = visibleRange(buffers.in.length, span);
+  const shown = TRACES.filter(t => traceVisible[t.id]);
+  const gain = gainMode === 'auto'
+    ? autoGain(Math.max(0, ...shown.map(t => peakAbs(buffers[t.id], range.start, range.count))))
+    : gainMode;
+  for (const t of amplitudeTicks(gain, ampUnit)) {
+    const y = PLOT_TOP + ph * (0.5 - t.pos / 2);
+    ctx.strokeStyle = colors.grid;
+    ctx.beginPath(); ctx.moveTo(PLOT_LEFT, y + 0.5); ctx.lineTo(PLOT_LEFT + pw, y + 0.5); ctx.stroke();
+    if (t.label) ctx.fillText(t.label, PLOT_LEFT - 4, y);
+  }
+  // Time axis: ten divisions, labelled in ms every second one.
+  ctx.strokeStyle = colors.grid;
+  for (let d = 0; d <= DIVISIONS; d++) {
+    const x = PLOT_LEFT + (pw * d) / DIVISIONS;
+    ctx.beginPath(); ctx.moveTo(x + 0.5, PLOT_TOP); ctx.lineTo(x + 0.5, PLOT_TOP + ph); ctx.stroke();
+  }
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  for (const t of timeTicks(msPerDiv)) {
+    ctx.fillText(t.label, PLOT_LEFT + (pw * t.div) / DIVISIONS, PLOT_TOP + ph + 4);
+  }
+  ctx.textAlign = 'right';
+  ctx.fillText('ms', W - 2, PLOT_TOP + ph + 4);
+
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'top';
+  ctx.fillText(`×${gain >= 10 ? gain.toFixed(0) : gain.toFixed(1).replace(/\.0$/, '')}${gainMode === 'auto' ? ' auto' : ''}`, W - PLOT_RIGHT - 4, PLOT_TOP + 3);
+  const { start, count } = range;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(PLOT_LEFT, PLOT_TOP, pw, ph); ctx.clip();
+  for (const t of shown) {
+    const color = t.id === 'in' ? colors.traceIn : t.id === 'l' ? colors.traceOut : colors.traceOutR;
+    drawWave(buffers[t.id], start, count, span, gain, color, t.dash, pw, ph);
+  }
+  ctx.restore();
+  drawCursor(frame, shown.map(t => t), range, span, pw, ph);
 }
 
-function drawWave(pts: number[], color: string): void {
-  if (!pts || pts.length < 2) return;
-  const W = canvas.width, H = canvas.height;
+// FR-SCI-7: a vertical cursor with the time and each visible channel's value under it.
+function drawCursor(
+  frame: Frame, shown: readonly (typeof TRACES)[number][], range: { start: number; count: number },
+  span: number, pw: number, ph: number,
+): void {
+  const index = cursorX === null ? null : cursorIndex((cursorX - PLOT_LEFT) / pw, span, range.count);
+  if (cursorX === null || index === null) { readoutEl.textContent = ''; return; }
+  const x = PLOT_LEFT + (index / (span - 1)) * pw;
+  ctx.strokeStyle = colors.axis;
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x + 0.5, PLOT_TOP); ctx.lineTo(x + 0.5, PLOT_TOP + ph); ctx.stroke();
+  const timeMs = frame.rate > 0 ? (index / frame.rate) * 1000 : 0;
+  readoutEl.textContent = formatReadout(
+    timeMs,
+    shown.map(t => ({ label: t.label, value: frame.buffers[t.id][range.start + index] ?? 0 })),
+  );
+}
+
+function drawWave(
+  pts: readonly number[], start: number, count: number, span: number, gain: number, color: string, dash: number[], pw: number, ph: number,
+): void {
+  if (count < 2 || span < 2) return;
   ctx.strokeStyle = color;
+  ctx.setLineDash(dash);
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  for (let i = 0; i < pts.length; i++) {
-    const x = (i / (pts.length - 1)) * W;
-    const y = H / 2 - pts[i]! * (H / 2 * 0.9);
+  for (let i = 0; i < count; i++) {
+    const x = PLOT_LEFT + (i / (span - 1)) * pw;
+    const y = PLOT_TOP + ph * (0.5 - samplePosition(pts[start + i] ?? 0, gain, ampUnit) / 2);
     if (i === 0) ctx.moveTo(x, y);
     else         ctx.lineTo(x, y);
   }
   ctx.stroke();
+  ctx.setLineDash([]);
 }
 
 function drawSpectrum(): void {
@@ -221,6 +375,54 @@ outputVolEl?.addEventListener('input', () => {
   vscode.postMessage({ command: 'outputVolume', volume: vol });
 });
 
+timeBaseEl?.addEventListener('change', () => {
+  msPerDiv = parseFloat(timeBaseEl.value) || DEFAULT_TIME_BASE_MS;
+  updateRateNote();
+  flushScopeDraw();
+});
+function wireSegment(id: string, attr: string, onPick: (value: string) => void): void {
+  const seg = document.getElementById(id);
+  seg?.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('.seg-btn');
+    const value = btn?.dataset[attr];
+    if (!btn || value === undefined) return;
+    seg.querySelectorAll('.seg-btn').forEach(b => b.classList.toggle('active', b === btn));
+    onPick(value);
+    flushScopeDraw();
+  });
+}
+wireSegment('gain-seg', 'gain', v => { gainMode = v === 'auto' ? 'auto' : (Number(v) as GainMode); });
+document.querySelectorAll<HTMLElement>('.legend-item').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const id = btn.dataset['trace'];
+    if (id !== 'in' && id !== 'l' && id !== 'r') return;
+    traceVisible[id] = !traceVisible[id];
+    btn.setAttribute('aria-pressed', String(traceVisible[id]));
+    flushScopeDraw();
+  });
+});
+wireSegment('unit-seg', 'unit', v => { ampUnit = v === 'db' ? 'db' : 'lin'; });
+document.querySelectorAll<HTMLElement>('.clip-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    const id = chip.dataset['clip'];
+    if (id !== 'in' && id !== 'l' && id !== 'r') return;
+    meters.clearClip(id as ScopeChannel);
+    renderMeters();
+  });
+});
+meterResetBtn?.addEventListener('click', () => { meters.resetPeaks(); renderMeters(); });
+freezeBtn?.addEventListener('click', () => setFrozen(frozenFrame === null));
+window.addEventListener('keydown', (e) => {
+  const tag = (e.target as HTMLElement | null)?.tagName;
+  if (e.code !== 'Space' || tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
+  e.preventDefault();
+  setFrozen(frozenFrame === null);
+});
+canvas.addEventListener('mousemove', (e) => {
+  cursorX = e.clientX - canvas.getBoundingClientRect().left;
+  flushScopeDraw();
+});
+canvas.addEventListener('mouseleave', () => { cursorX = null; flushScopeDraw(); });
 window.addEventListener('resize', resize);
 // Repaint in the new theme even when nothing is streaming (stopped scope, FR-THM-5).
 onThemeChange(() => {
@@ -251,6 +453,12 @@ window.addEventListener('message', (e: MessageEvent<unknown>) => {
   if (msg.command === 'scope') {
     lastIn  = msg.in  || [];
     lastOut = msg.out || [];
+    capture.push({ in: lastIn, out: lastOut, outR: msg.out_r, step: msg.step });
+    updateRateNote();
+    meters.update('in', lastIn);
+    meters.update('l', lastOut);
+    meters.update('r', msg.out_r || []);
+    renderMeters();
     flushScopeDraw();
   } else if (msg.command === 'status') {
     hasStatus = true;
@@ -258,6 +466,10 @@ window.addEventListener('message', (e: MessageEvent<unknown>) => {
     lastStatusRunning   = !!msg.running;
     lastStatusSampleRate = msg.sampleRate || lastStatusSampleRate;
     lastStatusBlockSize  = msg.blockSize  || lastStatusBlockSize;
+    // A rate / block-size change or a stop leaves stale-rate samples in the ring.
+    capture.setConfig(lastStatusSampleRate, lastStatusBlockSize);
+    if (!msg.running) capture.clear();
+    updateRateNote();
     updateStatusEl();
     if (btnAudioStart) btnAudioStart.disabled = !!msg.running;
     if (btnAudioStop)  btnAudioStop.disabled  = !msg.running;

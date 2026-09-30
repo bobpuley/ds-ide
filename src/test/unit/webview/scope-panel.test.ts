@@ -135,6 +135,19 @@ describe('ScopePanel', () => {
     );
   });
 
+  it('forwards out_r and step on scope messages to the webview (FR-SCI-2)', () => {
+    panel.show();
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { postMessage: ReturnType<typeof vi.fn> };
+    };
+    (manager as unknown as EventEmitter).emit('message', {
+      type: 'scope', in: [0.1], out: [0.3], out_r: [0.5], step: 4,
+    });
+    expect(created.webview.postMessage).toHaveBeenCalledWith(
+      { command: 'scope', in: [0.1], out: [0.3], out_r: [0.5], step: 4 },
+    );
+  });
+
   it('forwards status messages from manager to webview', () => {
     panel.show();
     const created = webviewMock.mock.results[0]?.value as {
@@ -611,6 +624,58 @@ describe('ScopePanel', () => {
     expect(webview.html).toContain('value="sine"');
     expect(webview.html).toContain('value="live"');
     expect(webview.html).toContain('value="wav"');
+  });
+
+  // FR-SCI-4 — time-base selector
+  it('webview HTML has a time-base selector defaulting to 2 ms/div (FR-SCI-4)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="timebase"');
+    for (const ms of ['0.5', '1', '2', '5', '10']) {
+      expect(webview.html).toContain(`<option value="${ms}"`);
+    }
+    expect(webview.html).toMatch(/<option value="2" selected>/);
+    expect(webview.html).toContain('id="rate-note"');
+  });
+
+  // FR-SCI-5 — gain and amplitude scale
+  it('webview HTML has gain and amplitude-scale controls with x1 and Linear active (FR-SCI-5)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    for (const g of ['1', '2', '4', 'auto']) expect(webview.html).toContain(`data-gain="${g}"`);
+    expect(webview.html).toMatch(/class="seg-btn active" data-gain="1"/);
+    expect(webview.html).toMatch(/class="seg-btn active" data-unit="lin"/);
+    expect(webview.html).toContain('data-unit="db"');
+  });
+
+  // FR-SCI-6 — stereo traces with a toggling legend
+  it('webview HTML has a legend that toggles In, Out L and Out R (FR-SCI-6)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    for (const id of ['in', 'l', 'r']) expect(webview.html).toContain(`data-trace="${id}"`);
+    expect(webview.html).toContain('stroke-dasharray="7 4"');
+    expect(webview.html).toContain('var(--ds-trace-out-r)');
+  });
+
+  // FR-SCI-7 — freeze and cursor read-out
+  it('webview HTML has a freeze button, a FROZEN badge and a cursor read-out (FR-SCI-7)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="freeze-btn"');
+    expect(webview.html).toContain('id="frozen-badge"');
+    expect(webview.html).toContain('id="cursor-readout"');
+  });
+
+  // FR-SCI-8 — meters column
+  it('webview HTML has a meter per channel, a headroom value and a Reset peaks button (FR-SCI-8)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    for (const id of ['in', 'l', 'r']) {
+      expect(webview.html).toContain(`data-meter="${id}"`);
+      expect(webview.html).toContain(`data-clip="${id}"`);
+    }
+    expect(webview.html).toContain('id="meter-headroom"');
+    expect(webview.html).toContain('id="meters-reset"');
   });
 
   // FR-SCOPE-1 — Audio Settings always visible (no collapsible)
