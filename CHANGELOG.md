@@ -3,6 +3,20 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.21.0 — 2026-09-30
+
+**Scope instrument — display** *(FR-SCI-1 to FR-SCI-8, M70)*
+
+- **FR-SCI-2** — The `scope` IPC message carries `out_r` (the right output channel, already emitted by the emulator but dropped by the extension) and `step` (the emulator's decimation factor). Both are optional, so an older emulator still works; a malformed value is dropped without rejecting the snapshot.
+- **FR-SCI-3** — The Scope stitches consecutive snapshots into a capture ring of about 150 ms, so the usable window no longer depends on the block size (one snapshot is only about 2.75 ms at a 4-frame block). The ring clears on a stop, a sample-rate or block-size change, and a decimation change.
+- **FR-SCI-4** — Labelled axes: time in ms and amplitude values, with a 0.5 / 1 / 2 / 5 / 10 ms-per-division selector. The effective sample rate is shown, and a time base with fewer than 20 points per division is flagged as low resolution.
+- **FR-SCI-5** — Gain ×1 / ×2 / ×4 / Auto (Auto fits the visible peak, capped at ×64) and a Linear / dBFS amplitude scale. A quiet signal is no longer a flat line.
+- **FR-SCI-6** — In, Out L and Out R are drawn with solid, dashed and dotted lines, so colour is not the only cue. The legend toggles each trace. New `--ds-trace-out-r` theme token.
+- **FR-SCI-7** — Freeze / Resume (button or Space) holds the display while the capture keeps collecting. Hovering the scope shows a cursor with the time and each visible channel's value.
+- **FR-SCI-8** — Meters column with peak, RMS, peak hold, a latching CLIP indicator per channel, headroom, and Reset peaks.
+- **FR-SCI-1** — Layout confirmed in `docs/mockups/v22-scope-instrument.html`: spectrum below the scope, meters as a right-hand column, CSV-only export and the event history in the Scope panel for M71.
+- `tests/runtime/test_bypass.py` now also checks `out_r` and `step` on every scope frame.
+
 ## 0.20.5 — 2026-09-30
 
 **Emulator shutdown and record / replay fixes** *(FR-EMU-1, FR-EMU-11)*
