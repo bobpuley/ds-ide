@@ -52,7 +52,27 @@ bytes to the extension, which shows a save dialog and writes the file (VS Code's
 is text-only, so there is no clipboard-image path). CSV: webview builds the text and posts it;
 the host shows a save dialog.
 
-**M72 (planned).** Full-rate ring and triggering in the emulator's non-real-time drain thread,
-new request/response IPC messages; design deferred until M72 is planned. The real-time callback
-keeps its current allocation- and lock-free contract (FR-RTS-*).
+**M72 — emulator capture (FR-SCI-14, decided 2026-09-30).** The drain thread in
+`run_audio_engine()` already receives every full-rate block through `ScopeBlockQueue`; it also
+feeds a new pure class `ScopeCapture` (`emulator/runtime/scope_capture.h`, header-only, unit-tested
+standalone): three float rings of 16384 frames, `arm(request)` / `cancel()`, and
+`push(in, out, frames)`, which returns a window once the trigger has fired and the post-trigger
+samples have arrived (default window 4096 frames, trigger at frame 1024). The RT callback, the
+SPSC queue and its contract are untouched. The ring is cleared with `scope`/`fft` on a mode or
+config-generation change.
+
+*IPC.* Request (host → emulator): `{"type":"scopeCapture","action":"arm","source":"in"|"l",
+"edge":"rise"|"fall","level":<-1..1>}` or `{"action":"cancel"}`. `dispatch()` stores the request
+in a mutex-guarded slot that the drain thread polls (non-RT; never on the audio thread). Reply:
+`{"type":"scope_capture","in":[…],"out":[…],"out_r":[…],"rate":<Hz>,"trigger":<index>}`, sent once
+per armed request; the emulator disarms after replying. The window is a fixed 4096 frames and is sent
+through `drain_send()` (the drain thread's direct socket path), so it is not bound by the SPSC
+queue's `MAX_MSG`. `narrow.ts` gains a `scope_capture` narrower; `ScopeMsg`-style
+`ScopeCaptureMsg` goes to the webview. Emulator and extension ship together, so no old-emulator
+fallback is provided.
+
+*Webview.* A pure `scope-capture-source.ts` decides when to request (1× Single armed; or an edge
+trigger with a low-resolution time base, throttled to ~5 requests/s and re-armed after each
+reply) and when to draw a full-rate window instead of the decimated ring. `scope-webview.ts`
+posts the request through the host and draws the reply with the existing view / trigger modules.
 

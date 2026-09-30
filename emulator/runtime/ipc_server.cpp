@@ -10,6 +10,7 @@
 #include <cctype>
 #include <cerrno>
 #include <chrono>
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -486,6 +487,33 @@ void dispatch(const std::string& line) {
                         g_state.midi_rx_queue_drops.fetch_add(1, std::memory_order_relaxed);
                 }
             } catch (...) { std::fprintf(stderr, "[daisy-emu] stof failed: midiEvent\n"); }
+        }
+    }
+    else if (type == "scopeCapture") {
+        // FR-SCI-14b: hand the request to the drain thread; nothing here touches the RT path.
+        auto action = json_get(line, "action");
+        if (action == "cancel") {
+            g_state.scope_capture_mailbox.post(ScopeCaptureMailbox::Action::Cancel);
+        } else if (action == "arm") {
+            auto source = json_get(line, "source");
+            auto edge   = json_get(line, "edge");
+            auto level  = json_get(line, "level");
+            ScopeCapture::Request req;
+            bool ok = true;
+            if (source == "in")      req.source = ScopeCapture::Source::In;
+            else if (source == "l")  req.source = ScopeCapture::Source::OutL;
+            else ok = false;
+            if (edge == "rise")      req.edge = ScopeCapture::Edge::Rise;
+            else if (edge == "fall") req.edge = ScopeCapture::Edge::Fall;
+            else ok = false;
+            try {
+                float v = std::stof(level);
+                // Reject NaN/Inf; clamp to a little past full scale (a level outside can never trigger).
+                if (!std::isfinite(v)) ok = false;
+                else req.level = std::max(-2.f, std::min(2.f, v));
+            } catch (...) { ok = false; }
+            if (ok) g_state.scope_capture_mailbox.post(ScopeCaptureMailbox::Action::Arm, req);
+            else std::fprintf(stderr, "[daisy-emu] scopeCapture: invalid arm request ignored\n");
         }
     }
     else if (type == "audioMode") {

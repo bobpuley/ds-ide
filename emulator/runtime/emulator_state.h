@@ -13,6 +13,7 @@
 #include <string>
 #include "daisy/audio_handle.h"
 #include "daisy/midi_event.h"
+#include "scope_capture.h"
 #include "session_recorder.h"
 #include "session_player.h"
 #include "wav_reader.h"
@@ -276,6 +277,10 @@ struct EmulatorState {
     // Audio engine calls this to emit scope/status/event JSON lines.
     std::mutex                        send_mutex;
     std::function<void(std::string)>  send_ipc;
+
+    // FR-SCI-14b: `scopeCapture` arm/cancel requests, posted by dispatch() and
+    // consumed by the non-RT drain thread that owns the ScopeCapture ring.
+    ScopeCaptureMailbox scope_capture_mailbox;
 
     // Lock-free queue for IPC messages posted from the RT audio thread (AC-39).
     // The drain thread in run_audio_engine() reads this and forwards via send_ipc.

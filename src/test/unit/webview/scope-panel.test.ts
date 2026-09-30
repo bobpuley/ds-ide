@@ -15,6 +15,7 @@ function makeManager() {
     sendAudioDevice: vi.fn(),
     sendButtonSnapshot: vi.fn(),
     sendOutputVolume: vi.fn(),
+    sendScopeCapture: vi.fn(),
     isConnected: true,
   }) as unknown as EmulatorManager;
 }
@@ -691,11 +692,11 @@ describe('ScopePanel', () => {
   });
 
   // FR-SCI-10 — best-effort single-shot
-  it('webview HTML has a 1x Single button whose tooltip says it is best effort (FR-SCI-10)', () => {
+  it('webview HTML has a 1x Single button whose tooltip explains the full-rate capture and the best-effort free-run case (FR-SCI-10, FR-SCI-14d)', () => {
     panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     expect(webview.html).toContain('id="single-btn"');
-    expect(webview.html).toMatch(/id="single-btn"[^>]*title="[^"]*best effort/i);
+    expect(webview.html).toMatch(/id="single-btn"[^>]*title="[^"]*full rate[^"]*best effort/i);
   });
 
   // FR-SCI-11 — spectrum scaling
@@ -817,6 +818,43 @@ describe('ScopePanel', () => {
     handler({ command: 'outputVolume', volume: 0.6 });
     expect(manager.sendOutputVolume).toHaveBeenCalledWith(0.6);
     expect(onOutputVolume).toHaveBeenCalledWith(0.6);
+  });
+
+  it('forwards a valid scopeCapture arm request to manager.sendScopeCapture (FR-SCI-14c)', () => {
+    panel.show();
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'scopeCapture', action: 'arm', source: 'l', edge: 'fall', level: 0.25 });
+    expect(manager.sendScopeCapture).toHaveBeenCalledWith({ action: 'arm', source: 'l', edge: 'fall', level: 0.25 });
+    handler({ command: 'scopeCapture', action: 'cancel' });
+    expect(manager.sendScopeCapture).toHaveBeenCalledWith({ action: 'cancel' });
+  });
+
+  it('ignores a malformed scopeCapture request (FR-SCI-14c)', () => {
+    panel.show();
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'scopeCapture', action: 'arm', source: 'r', edge: 'rise', level: 0 });
+    handler({ command: 'scopeCapture', action: 'arm', source: 'in', edge: 'up', level: 0 });
+    handler({ command: 'scopeCapture', action: 'arm', source: 'in', edge: 'rise', level: Number.NaN });
+    handler({ command: 'scopeCapture', action: 'arm', source: 'in', edge: 'rise', level: 'x' });
+    handler({ command: 'scopeCapture', action: 'explode' });
+    expect(manager.sendScopeCapture).not.toHaveBeenCalled();
+  });
+
+  it('posts a scope_capture IPC message to the webview as scopeCapture (FR-SCI-14c)', () => {
+    panel.show();
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { postMessage: ReturnType<typeof vi.fn> };
+    };
+    manager.emit('message', { type: 'scope_capture', in: [0, 1], out: [0, 2], out_r: [0, 3], rate: 48000, trigger: 1 });
+    expect(created.webview.postMessage).toHaveBeenCalledWith(
+      { command: 'scopeCapture', in: [0, 1], out: [0, 2], out_r: [0, 3], rate: 48000, trigger: 1 },
+    );
   });
 
   // T19-3 — Simplified recording button labels (AC-28)

@@ -20,6 +20,24 @@ function getNumberArray(obj: Record<string, unknown>, key: string): number[] | u
 
 export type IpcMessage = Record<string, unknown>;
 
+// FR-SCI-14c: host -> emulator capture request.
+export type ScopeCaptureRequest =
+  | { action: 'arm'; source: 'in' | 'l'; edge: 'rise' | 'fall'; level: number }
+  | { action: 'cancel' };
+
+// Validates an untrusted webview request; undefined when malformed.
+export function narrowScopeCaptureRequest(raw: Record<string, unknown>): ScopeCaptureRequest | undefined {
+  const action = getString(raw, 'action');
+  if (action === 'cancel') return { action };
+  if (action !== 'arm') return undefined;
+  const source = getString(raw, 'source');
+  const edge = getString(raw, 'edge');
+  const level = getNumber(raw, 'level');
+  if ((source !== 'in' && source !== 'l') || (edge !== 'rise' && edge !== 'fall')) return undefined;
+  if (level === undefined || !Number.isFinite(level)) return undefined;
+  return { action, source, edge, level };
+}
+
 // One narrowing function per emulator-emitted message type (FR-IPC-2): each
 // rebuilds the message from only its known, type-checked fields, so nothing
 // beyond the whitelisted shape can reach a downstream webview.
@@ -48,6 +66,20 @@ const NARROWERS: Record<string, Narrower> = {
     const step = getNumber(obj, 'step');
     if (step !== undefined && Number.isInteger(step) && step >= 1) msg['step'] = step;
     return msg;
+  },
+  // FR-SCI-14c: one full-rate triggered window. The three channels must be the same
+  // length and `trigger` an integer index inside them; anything else is dropped.
+  scope_capture: (obj) => {
+    const inSamples = getNumberArray(obj, 'in');
+    const outSamples = getNumberArray(obj, 'out');
+    const outR = getNumberArray(obj, 'out_r');
+    const rate = getNumber(obj, 'rate');
+    const trigger = getNumber(obj, 'trigger');
+    if (!inSamples || !outSamples || !outR || rate === undefined || trigger === undefined) return undefined;
+    if (!(rate > 0) || !Number.isInteger(trigger)) return undefined;
+    if (outSamples.length !== inSamples.length || outR.length !== inSamples.length) return undefined;
+    if (trigger < 0 || trigger >= inSamples.length) return undefined;
+    return { type: 'scope_capture', in: inSamples, out: outSamples, out_r: outR, rate, trigger };
   },
   spectrum: (obj) => {
     const inFft = getNumberArray(obj, 'in_fft');

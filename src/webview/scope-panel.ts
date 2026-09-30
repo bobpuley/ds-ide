@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { EmulatorManager } from '../emulator/manager';
 import { IpcMessage } from '../emulator/ipc-client';
 import { startAudio, stopAudio } from '../commands/transport';
-import { getBoolean, getNumber } from '../ipc/narrow';
+import { getBoolean, getNumber, narrowScopeCaptureRequest } from '../ipc/narrow';
 import { ScopeWebviewMessage } from './messages';
 import { hasKnownCommand, assertNever } from './message-guard';
 import { themeCss } from './theme/theme-css';
@@ -16,6 +16,7 @@ import { TIME_BASES_MS, DEFAULT_TIME_BASE_MS, TRACES } from './scope/scope-view'
 const SCOPE_WEBVIEW_COMMANDS = new Set<ScopeWebviewMessage['command']>([
   'webviewReady', 'sine', 'audioSource', 'pickWav', 'startAudio', 'stopAudio',
   'recordStart', 'recordStop', 'replayStart', 'outputVolume', 'saveSnapshot', 'exportCsv',
+  'scopeCapture',
 ]);
 
 export interface ControlsPlacement {
@@ -90,6 +91,7 @@ export class ScopePanel {
 
   private readonly _onManagerMessage = (msg: IpcMessage): void => {
     if (msg['type'] === 'scope') this.postScope(msg);
+    if (msg['type'] === 'scope_capture') this.postScopeCapture(msg);
     if (msg['type'] === 'status') { this.lastStatusMsg = msg; this.postStatus(msg); }
     if (msg['type'] === 'event') this.postEvent(msg);
     if (msg['type'] === 'xrun') this.postXrun(msg);
@@ -211,6 +213,11 @@ export class ScopePanel {
           if (typeof msg.csv === 'string') void saveScopeFile('csv', msg.csv);
           break;
         }
+        case 'scopeCapture': {
+          const req = narrowScopeCaptureRequest(msg);
+          if (req) this.manager.sendScopeCapture(req);
+          break;
+        }
         default:
           assertNever(msg, 'ScopePanel');
       }
@@ -242,6 +249,14 @@ export class ScopePanel {
       command: 'scope', in: msg['in'], out: msg['out'],
       ...(msg['out_r'] !== undefined && { out_r: msg['out_r'] }),
       ...(msg['step'] !== undefined && { step: msg['step'] }),
+    });
+  }
+
+  // Fields were validated by the IPC narrower (FR-SCI-14c).
+  private postScopeCapture(msg: IpcMessage): void {
+    this.panel?.webview.postMessage({
+      command: 'scopeCapture', in: msg['in'], out: msg['out'], out_r: msg['out_r'],
+      rate: msg['rate'], trigger: msg['trigger'],
     });
   }
 
@@ -511,7 +526,7 @@ ${themeCss({ surface: 'editor' })}
   <div id="scope-controls" style="display:none">
     <label class="emu-field">Time <select id="timebase">${timeBaseOptions}</select></label>
     <button type="button" id="freeze-btn" class="ctl-btn" title="Freeze the display (Space)" aria-pressed="false">Freeze</button>
-    <button type="button" id="single-btn" class="ctl-btn" title="Arm a single capture: freezes on the next trigger. Best effort — a short transient between two scope snapshots can be missed." aria-pressed="false">1× Single</button>
+    <button type="button" id="single-btn" class="ctl-btn" title="Arm a single capture: freezes on the next trigger. With a Rising / Falling trigger the emulator captures the window at full rate, so short transients are caught; in Free-run it is best effort." aria-pressed="false">1× Single</button>
     <span class="emu-field">Gain
       <span class="seg" id="gain-seg">
         <button type="button" class="seg-btn active" data-gain="1">×1</button><button type="button" class="seg-btn" data-gain="2">×2</button><button type="button" class="seg-btn" data-gain="4">×4</button><button type="button" class="seg-btn" data-gain="auto">Auto</button>

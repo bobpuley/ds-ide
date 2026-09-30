@@ -6,6 +6,7 @@ import * as path from 'path';
 import { EventEmitter } from 'events';
 import { IpcClient, IpcMessage, IpcWarning, CONNECT_TIMEOUT_MS } from './ipc-client';
 import { potControlId, buttonControlId, toggleControlId, encoderControlId, narrowControlValue, narrowControlSnapshot } from '../ipc/control-values';
+import type { ScopeCaptureRequest } from '../ipc/narrow';
 import { PROTOCOL_VERSION } from '../ipc/protocol-version';
 
 const SOCKET_TIMEOUT_MS = 10_000;
@@ -382,6 +383,12 @@ export class EmulatorManager extends EventEmitter {
   // on encoder's value semantics; no workspaceState store for it).
   sendEncoder(gpioPin: number, position: number): void {
     this.sendControlValue(encoderControlId(gpioPin), position);
+  }
+
+  // FR-SCI-14c: arm / cancel one full-rate, emulator-side triggered capture; the reply
+  // arrives as a `scope_capture` message.
+  sendScopeCapture(req: ScopeCaptureRequest): void {
+    this.ipcClient?.send({ type: 'scopeCapture', ...req });
   }
 
   // M15: master output volume (0.0–1.0) — scales emulator output before CoreAudio write.
