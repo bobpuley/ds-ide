@@ -229,7 +229,8 @@ function cancelCapture(): void {
 
 function renderSingle(): void {
   singleBtn.setAttribute('aria-pressed', String(singleState === 'armed'));
-  singleBtn.textContent = singleState === 'armed' ? '⏳ Armed…' : '1× Single';
+  // The label stays fixed so arming never resizes the toolbar; aria-pressed styles the armed state.
+  singleBtn.textContent = '1× Single';
 }
 
 // Called on each new snapshot: an armed single-shot freezes on the first triggered capture.
