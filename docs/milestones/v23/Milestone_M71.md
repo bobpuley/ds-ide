@@ -55,7 +55,7 @@ and CSV export, and a timestamped event history.
 
 ---
 
-### [ ] feat: timestamped event history (FR-SCI-13)
+### [x] feat: timestamped event history (FR-SCI-13)
 
 **Affected files:** `src/webview/scope/scope-events.ts`, `src/webview/scope-webview.ts`, `src/webview/scope-panel.ts`, `src/test/unit/webview/scope-events.test.ts`
 

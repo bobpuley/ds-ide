@@ -406,7 +406,14 @@ ${themeCss({ surface: 'editor' })}
     #vol-label { color: var(--ds-text-muted); font-size: 11px; }
     #output-vol { width: 80px; cursor: pointer; accent-color: var(--ds-trace-in); }
     #vol-val { min-width: 30px; color: var(--ds-text); font-size: 11px; }
-    #events { padding: 3px 12px; min-height: 22px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); font-size: 11px; color: var(--ds-error); flex-shrink: 0; }
+    #events-bar { display: flex; align-items: center; gap: 12px; padding: 3px 12px; min-height: 22px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); font-size: 11px; flex-shrink: 0; }
+    #events { flex: 1; color: var(--ds-error); }
+    #events-toggle { background: none; border: none; color: var(--ds-text-muted); font-family: monospace; font-size: 11px; cursor: pointer; }
+    #events-toggle:hover { color: var(--ds-text); }
+    #event-log { max-height: 120px; overflow-y: auto; background: var(--ds-surface); border-bottom: 1px solid var(--ds-border); font-size: 11px; flex-shrink: 0; }
+    .event-row { display: flex; gap: 12px; padding: 2px 12px; }
+    .event-time { color: var(--ds-text-muted); width: 64px; flex-shrink: 0; }
+    .event-kind { color: var(--ds-error); min-width: 80px; }
     #scope-controls { display: flex; align-items: center; gap: 12px; padding: 4px 12px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); flex-shrink: 0; }
     #freeze-btn[aria-pressed="true"] { background: var(--ds-button-bg); color: var(--ds-button-fg); }
     #single-btn[aria-pressed="true"] { background: var(--ds-button-bg); color: var(--ds-button-fg); border-color: var(--ds-warning-border); }
@@ -494,7 +501,11 @@ ${themeCss({ surface: 'editor' })}
     <button class="audio-btn" id="btn-audio-stop"  title="Stop Audio"  disabled>&#9632;</button>
     <span id="fidelity-caveat" title="Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget">&#x2139; Approx. Seed</span>
   </header>
-  <div id="events"></div>
+  <div id="events-bar">
+    <span id="events"></span>
+    <button type="button" id="events-toggle" title="Show the event history">▸ history (0)</button>
+  </div>
+  <div id="event-log" style="display:none"></div>
   <div id="scope-controls" style="display:none">
     <label class="emu-field">Time <select id="timebase">${timeBaseOptions}</select></label>
     <button type="button" id="freeze-btn" class="emu-btn" title="Freeze the display (Space)" aria-pressed="false">&#9208; Freeze</button>

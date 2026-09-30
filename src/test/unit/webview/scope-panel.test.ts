@@ -741,6 +741,15 @@ describe('ScopePanel', () => {
     expect(showSave).not.toHaveBeenCalled();
   });
 
+  // FR-SCI-13 — event history
+  it('webview HTML has an events strip with a history toggle and a log (FR-SCI-13)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="events"');
+    expect(webview.html).toContain('id="events-toggle"');
+    expect(webview.html).toContain('id="event-log"');
+  });
+
   // FR-SCOPE-1 — Audio Settings always visible (no collapsible)
   it('webview HTML includes emulator-section with no Controls Editor tab (FR-SCOPE-1)', () => {
     panel.show();

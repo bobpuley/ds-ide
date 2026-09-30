@@ -8,6 +8,7 @@ import { loadScopeColors } from './scope-colors';
 import { ScopeCapture, type ScopeChannel } from './scope/scope-capture';
 import { Meters, formatDb, meterPosition } from './scope/scope-meters';
 import { buildCsv } from './scope/scope-export';
+import { EventLog, formatClock } from './scope/scope-events';
 import {
   freqPosition, freqTicks, levelToDb, dbRange, dbPosition, dbTicks, type FreqScale, type LevelMode,
 } from './scope/scope-spectrum-scale';
@@ -49,6 +50,8 @@ const readoutEl = el<HTMLElement>('cursor-readout');
 const singleBtn = el<HTMLButtonElement>('single-btn');
 const snapshotBtn = el<HTMLButtonElement>('snapshot-btn');
 const exportBtn = el<HTMLButtonElement>('export-btn');
+const eventsToggle = el<HTMLButtonElement>('events-toggle');
+const eventLogEl = el<HTMLElement>('event-log');
 const scopeMainEl = el<HTMLElement>('scope-main');
 const headroomEl = el<HTMLElement>('meter-headroom');
 const meterResetBtn = el<HTMLButtonElement>('meters-reset');
@@ -138,6 +141,54 @@ function currentFrame(): Frame {
     ? { buffers: { in: capture.channel('in'), l: capture.channel('l'), r: capture.channel('r') }, rate }
     : { buffers: { in: lastIn, l: lastOut, r: [] }, rate: 0 };
 }
+
+// FR-SCI-13: timestamped history behind the strip. It survives a stop, so "did it clip
+// while I wasn't looking?" can be answered; the strip itself clears on stop as before.
+const eventLog = new EventLog();
+
+function renderEventLog(): void {
+  const open = eventLogEl.style.display !== 'none';
+  eventsToggle.textContent = `${open ? '▾' : '▸'} history (${eventLog.size})`;
+  eventsToggle.setAttribute('aria-expanded', String(open));
+  if (!open) return;
+  // Built via DOM APIs, never innerHTML — kinds and details originate from the emulator (FR-IPC-2).
+  eventLogEl.textContent = '';
+  if (eventLog.size === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'event-row';
+    empty.textContent = 'no events';
+    eventLogEl.appendChild(empty);
+    return;
+  }
+  for (const e of eventLog.entries()) {
+    const row = document.createElement('div');
+    row.className = 'event-row';
+    const time = document.createElement('span');
+    time.className = 'event-time';
+    time.textContent = formatClock(e.time);
+    const kind = document.createElement('span');
+    kind.className = 'event-kind';
+    kind.textContent = e.kind + (e.count > 1 ? ` ×${e.count}` : '');
+    row.append(time, kind);
+    if (e.detail) {
+      const detail = document.createElement('span');
+      detail.textContent = e.detail;
+      row.appendChild(detail);
+    }
+    eventLogEl.appendChild(row);
+  }
+}
+
+function logEvent(kind: string, detail?: string): void {
+  eventLog.add(kind, Date.now(), detail);
+  renderEventLog();
+}
+
+renderEventLog();   // initial label and aria-expanded (kept out of the static HTML)
+eventsToggle?.addEventListener('click', () => {
+  eventLogEl.style.display = eventLogEl.style.display === 'none' ? 'block' : 'none';
+  renderEventLog();
+});
 
 function renderSingle(): void {
   singleBtn.setAttribute('aria-pressed', String(singleState === 'armed'));
@@ -645,10 +696,13 @@ window.addEventListener('message', (e: MessageEvent<unknown>) => {
     }
     if (typeof msg.kind === 'string') {
       activeEvents.add(msg.kind.toUpperCase());
+      logEvent(msg.kind.toUpperCase());
       eventsEl.textContent = [...activeEvents].map(k => '⚠ ' + k).join('  ');
     }
   } else if (msg.command === 'xrun') {
-    xrunCount = msg.count || 0;
+    const count = msg.count || 0;
+    if (count > xrunCount) logEvent('XRUN', `total ${count}`);
+    xrunCount = count;
     updateStatusEl();
   } else if (msg.command === 'latency') {
     const ms = msg.estimatedMs;
