@@ -112,6 +112,27 @@ function linearLabel(v: number): string {
   return sign + (Number.isInteger(a * 10) ? a.toFixed(1) : a.toFixed(a < 0.1 ? 3 : 2));
 }
 
+/**
+ * Index, within the visible window, of the sample under a horizontal position
+ * (`fraction` of the plot width, 0 = left). Sample i is drawn at i / (span - 1),
+ * the same mapping the webview uses when it draws. Null outside the plot or
+ * where the capture has no sample.
+ */
+export function cursorIndex(fraction: number, span: number, count: number): number | null {
+  if (fraction < 0 || fraction > 1 || span < 2 || count < 1) return null;
+  const index = Math.round(fraction * (span - 1));
+  return index < count ? index : null;
+}
+
+function signed(v: number): string {
+  return (v >= 0 ? '+' : '-') + Math.abs(v).toFixed(3);
+}
+
+/** Cursor read-out text: time in ms and the value of each visible channel. */
+export function formatReadout(timeMs: number, values: readonly { label: string; value: number }[]): string {
+  return [`t ${timeMs.toFixed(2)} ms`, ...values.map(v => `${v.label} ${signed(v.value)}`)].join('   ');
+}
+
 function formatNumber(v: number): string {
   return Number.isInteger(v) ? String(v) : String(Number(v.toFixed(2)));
 }

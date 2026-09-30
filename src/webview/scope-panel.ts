@@ -391,6 +391,10 @@ ${themeCss({ surface: 'editor' })}
     #vol-val { min-width: 30px; color: var(--ds-text); font-size: 11px; }
     #events { padding: 3px 12px; min-height: 22px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); font-size: 11px; color: var(--ds-error); flex-shrink: 0; }
     #scope-controls { display: flex; align-items: center; gap: 12px; padding: 4px 12px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); flex-shrink: 0; }
+    #freeze-btn[aria-pressed="true"] { background: var(--ds-button-bg); color: var(--ds-button-fg); }
+    #frozen-badge { color: var(--ds-warning-fg); font-weight: bold; border: 1px solid var(--ds-warning-border); padding: 0 6px; border-radius: 2px; }
+    #cursor-readout { margin-left: auto; font-size: 11px; color: var(--ds-text); white-space: pre; }
+    #scope { cursor: crosshair; }
     .seg { display: inline-flex; }
     .seg-btn { background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-border); padding: 2px 8px; font-family: monospace; cursor: pointer; margin-left: -1px; }
     .seg-btn:first-child { border-radius: 2px 0 0 2px; margin-left: 0; }
@@ -457,6 +461,8 @@ ${themeCss({ surface: 'editor' })}
   <div id="events"></div>
   <div id="scope-controls" style="display:none">
     <label class="emu-field">Time <select id="timebase">${timeBaseOptions}</select></label>
+    <button type="button" id="freeze-btn" class="emu-btn" title="Freeze the display (Space)" aria-pressed="false">&#9208; Freeze</button>
+    <span id="frozen-badge" style="display:none">FROZEN</span>
     <span class="emu-field">Gain
       <span class="seg" id="gain-seg">
         <button type="button" class="seg-btn active" data-gain="1">×1</button><button type="button" class="seg-btn" data-gain="2">×2</button><button type="button" class="seg-btn" data-gain="4">×4</button><button type="button" class="seg-btn" data-gain="auto">Auto</button>
@@ -466,6 +472,7 @@ ${themeCss({ surface: 'editor' })}
         <button type="button" class="seg-btn active" data-unit="lin">Linear</button><button type="button" class="seg-btn" data-unit="db">dBFS</button>
       </span></span>
     <span id="rate-note"></span>
+    <span id="cursor-readout"></span>
   </div>
   <canvas id="scope" style="display:none"></canvas>
   <canvas id="spectrum" style="display:none"></canvas>

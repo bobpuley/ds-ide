@@ -657,6 +657,15 @@ describe('ScopePanel', () => {
     expect(webview.html).toContain('var(--ds-trace-out-r)');
   });
 
+  // FR-SCI-7 — freeze and cursor read-out
+  it('webview HTML has a freeze button, a FROZEN badge and a cursor read-out (FR-SCI-7)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toContain('id="freeze-btn"');
+    expect(webview.html).toContain('id="frozen-badge"');
+    expect(webview.html).toContain('id="cursor-readout"');
+  });
+
   // FR-SCOPE-1 — Audio Settings always visible (no collapsible)
   it('webview HTML includes emulator-section with no Controls Editor tab (FR-SCOPE-1)', () => {
     panel.show();

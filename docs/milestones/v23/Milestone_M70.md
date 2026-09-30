@@ -85,7 +85,7 @@ derive the decimation step reliably from the block size.
 
 ---
 
-### [ ] feat: freeze and cursor read-out (FR-SCI-7)
+### [x] feat: freeze and cursor read-out (FR-SCI-7)
 
 **Affected files:** `src/webview/scope-webview.ts`, `src/webview/scope-panel.ts`, `src/test/unit/webview/scope-panel.test.ts`
 

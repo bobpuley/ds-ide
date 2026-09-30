@@ -8,7 +8,7 @@ import { loadScopeColors } from './scope-colors';
 import { ScopeCapture } from './scope/scope-capture';
 import {
   DEFAULT_TIME_BASE_MS, DIVISIONS, windowSamples, pointsPerDivision, isLowResolution,
-  visibleRange, timeTicks, amplitudeTicks, autoGain, peakAbs, samplePosition, TRACES,
+  visibleRange, timeTicks, amplitudeTicks, autoGain, peakAbs, samplePosition, TRACES, cursorIndex, formatReadout,
   type GainMode, type AmpUnit,
 } from './scope/scope-view';
 
@@ -35,6 +35,9 @@ const volValEl = el<HTMLElement>('vol-val');
 const scopeControlsEl = el<HTMLElement>('scope-controls');
 const timeBaseEl = el<HTMLSelectElement>('timebase');
 const rateNoteEl = el<HTMLElement>('rate-note');
+const freezeBtn = el<HTMLButtonElement>('freeze-btn');
+const frozenBadge = el<HTMLElement>('frozen-badge');
+const readoutEl = el<HTMLElement>('cursor-readout');
 
 // Canvas colours come from the theme (FR-THM-2): read once here and again only
 // when the theme changes (FR-THM-5), never per frame.
@@ -92,6 +95,36 @@ let gainMode: GainMode = 1;
 let ampUnit: AmpUnit = 'lin';
 const traceVisible: Record<'in' | 'l' | 'r', boolean> = { in: true, l: true, r: true };
 
+type Buffers = Record<'in' | 'l' | 'r', readonly number[]>;
+interface Frame { buffers: Buffers; rate: number }
+// FR-SCI-7: while frozen the display draws this copy; the capture ring keeps
+// collecting underneath, so Resume shows current data.
+let frozenFrame: Frame | null = null;
+let cursorX: number | null = null;
+
+function currentFrame(): Frame {
+  if (frozenFrame) return frozenFrame;
+  const rate = capture.effectiveRate;
+  // Until the rate is known (no status yet), fall back to the newest snapshot as before.
+  return rate > 0
+    ? { buffers: { in: capture.channel('in'), l: capture.channel('l'), r: capture.channel('r') }, rate }
+    : { buffers: { in: lastIn, l: lastOut, r: [] }, rate: 0 };
+}
+
+function setFrozen(freeze: boolean): void {
+  frozenFrame = null;
+  if (freeze) {
+    const live = currentFrame();
+    frozenFrame = {
+      buffers: { in: live.buffers.in.slice(), l: live.buffers.l.slice(), r: live.buffers.r.slice() },
+      rate: live.rate,
+    };
+  }
+  freezeBtn.setAttribute('aria-pressed', String(freeze));
+  frozenBadge.style.display = freeze ? 'inline' : 'none';
+  flushScopeDraw();
+}
+
 function updateRateNote(): void {
   const rate = capture.effectiveRate;
   if (rate <= 0) { rateNoteEl.textContent = ''; rateNoteEl.classList.remove('low-res'); return; }
@@ -115,13 +148,9 @@ function draw(): void {
   // Amplitude axis: a grid line and a label per tick.
   ctx.textAlign = 'right';
   ctx.textBaseline = 'middle';
-  const win = windowSamples(msPerDiv, capture.effectiveRate);
-  // Until the rate is known (no status yet), fall back to the newest snapshot as before.
-  const buffers: Record<'in' | 'l' | 'r', readonly number[]> = {
-    in: win > 0 ? capture.channel('in') : lastIn,
-    l: win > 0 ? capture.channel('l') : lastOut,
-    r: win > 0 ? capture.channel('r') : [],
-  };
+  const frame = currentFrame();
+  const buffers = frame.buffers;
+  const win = windowSamples(msPerDiv, frame.rate);
   const span = win > 0 ? win : lastIn.length;
   const range = visibleRange(buffers.in.length, span);
   const shown = TRACES.filter(t => traceVisible[t.id]);
@@ -159,6 +188,25 @@ function draw(): void {
     drawWave(buffers[t.id], start, count, span, gain, color, t.dash, pw, ph);
   }
   ctx.restore();
+  drawCursor(frame, shown.map(t => t), range, span, pw, ph);
+}
+
+// FR-SCI-7: a vertical cursor with the time and each visible channel's value under it.
+function drawCursor(
+  frame: Frame, shown: readonly (typeof TRACES)[number][], range: { start: number; count: number },
+  span: number, pw: number, ph: number,
+): void {
+  const index = cursorX === null ? null : cursorIndex((cursorX - PLOT_LEFT) / pw, span, range.count);
+  if (cursorX === null || index === null) { readoutEl.textContent = ''; return; }
+  const x = PLOT_LEFT + (index / (span - 1)) * pw;
+  ctx.strokeStyle = colors.axis;
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x + 0.5, PLOT_TOP); ctx.lineTo(x + 0.5, PLOT_TOP + ph); ctx.stroke();
+  const timeMs = frame.rate > 0 ? (index / frame.rate) * 1000 : 0;
+  readoutEl.textContent = formatReadout(
+    timeMs,
+    shown.map(t => ({ label: t.label, value: frame.buffers[t.id][range.start + index] ?? 0 })),
+  );
 }
 
 function drawWave(
@@ -323,6 +371,18 @@ document.querySelectorAll<HTMLElement>('.legend-item').forEach(btn => {
   });
 });
 wireSegment('unit-seg', 'unit', v => { ampUnit = v === 'db' ? 'db' : 'lin'; });
+freezeBtn?.addEventListener('click', () => setFrozen(frozenFrame === null));
+window.addEventListener('keydown', (e) => {
+  const tag = (e.target as HTMLElement | null)?.tagName;
+  if (e.code !== 'Space' || tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
+  e.preventDefault();
+  setFrozen(frozenFrame === null);
+});
+canvas.addEventListener('mousemove', (e) => {
+  cursorX = e.clientX - canvas.getBoundingClientRect().left;
+  flushScopeDraw();
+});
+canvas.addEventListener('mouseleave', () => { cursorX = null; flushScopeDraw(); });
 window.addEventListener('resize', resize);
 // Repaint in the new theme even when nothing is streaming (stopped scope, FR-THM-5).
 onThemeChange(() => {

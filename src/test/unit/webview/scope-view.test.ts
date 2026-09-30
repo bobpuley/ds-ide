@@ -3,6 +3,7 @@ import {
   TIME_BASES_MS, DEFAULT_TIME_BASE_MS, DIVISIONS,
   windowSamples, pointsPerDivision, isLowResolution, visibleRange, timeTicks, amplitudeTicks,
   GAIN_STEPS, autoGain, peakAbs, samplePosition, TRACES,
+  cursorIndex, formatReadout,
 } from '../../../webview/scope/scope-view';
 
 describe('time base (FR-SCI-4)', () => {
@@ -133,5 +134,33 @@ describe('traces (FR-SCI-6)', () => {
     const patterns = TRACES.map(t => t.dash.join(','));
     expect(new Set(patterns).size).toBe(3);
     expect(TRACES[0]?.dash).toEqual([]);   // In is solid
+  });
+});
+
+describe('cursor (FR-SCI-7)', () => {
+  it('maps a horizontal fraction of the plot to a sample index in the window', () => {
+    expect(cursorIndex(0, 240, 240)).toBe(0);
+    expect(cursorIndex(1, 240, 240)).toBe(239);
+    expect(cursorIndex(0.5, 241, 241)).toBe(120);
+  });
+
+  it('finds no sample past the end of a capture shorter than the window', () => {
+    expect(cursorIndex(0.9, 240, 100)).toBeNull();   // x maps to index ~215, only 100 exist
+    expect(cursorIndex(0.2, 240, 100)).toBe(48);
+  });
+
+  it('finds no sample outside the plot or in an empty window', () => {
+    expect(cursorIndex(-0.1, 240, 240)).toBeNull();
+    expect(cursorIndex(1.1, 240, 240)).toBeNull();
+    expect(cursorIndex(0.5, 0, 0)).toBeNull();
+  });
+
+  it('formats time and every visible channel value', () => {
+    expect(formatReadout(1.25, [{ label: 'In', value: 0.5 }, { label: 'Out L', value: -0.25 }]))
+      .toBe('t 1.25 ms   In +0.500   Out L -0.250');
+  });
+
+  it('formats a readout with no visible channels as time only', () => {
+    expect(formatReadout(0, [])).toBe('t 0.00 ms');
   });
 });
