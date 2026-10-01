@@ -69,6 +69,31 @@
         "category": "Daisy IDE"
       },
       {
+        "command": "ds-ide.showScope",
+        "title": "Show Scope",
+        "category": "Daisy IDE"
+      },
+      {
+        "command": "ds-ide.showOled",
+        "title": "Show OLED Display",
+        "category": "Daisy IDE"
+      },
+      {
+        "command": "ds-ide.showMidi",
+        "title": "Show MIDI Panel",
+        "category": "Daisy IDE"
+      },
+      {
+        "command": "ds-ide.focusControls",
+        "title": "Focus Controls Editor",
+        "category": "Daisy IDE"
+      },
+      {
+        "command": "ds-ide.focusWiring",
+        "title": "Focus Wiring Editor",
+        "category": "Daisy IDE"
+      },
+      {
         "command": "ds-ide.createNewEffectProject",
         "title": "Create New Effect Project",
         "category": "Daisy IDE"

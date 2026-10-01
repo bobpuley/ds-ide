@@ -429,6 +429,38 @@ describe('extension', () => {
     expect(ids).toEqual(['ds-ide.transportState', 'ds-ide.flash']);
   });
 
+  it('registers the show/focus commands for every surface (FR-RCH-1)', () => {
+    activate(makeContext());
+    const ids = (vscode.commands.registerCommand as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[0]);
+    expect(ids).toEqual(expect.arrayContaining([
+      'ds-ide.showScope', 'ds-ide.showOled', 'ds-ide.showMidi', 'ds-ide.focusControls', 'ds-ide.focusWiring',
+    ]));
+  });
+
+  it('ds-ide.focusControls / focusWiring focus their views (FR-RCH-1)', async () => {
+    activate(makeContext());
+    await commandHandler('ds-ide.focusControls')();
+    await commandHandler('ds-ide.focusWiring')();
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('ds-ide.controlsEditor.focus');
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('ds-ide.wiringEditor.focus');
+  });
+
+  it('ds-ide.showScope opens the scope panel without building or deploying (FR-RCH-1)', async () => {
+    activate(makeContext());
+    (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mockClear();
+    await commandHandler('ds-ide.showScope')();
+    expect(vscode.window.createWebviewPanel).toHaveBeenCalled();
+    const run = (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[0]);
+    expect(run).not.toContain('ds-ide.buildAndDeploy');
+  });
+
+  it('ds-ide.showMidi opens the MIDI panel even when no MIDI peripheral is enabled (FR-RCH-1)', async () => {
+    activate(makeContext());
+    (vscode.window.createWebviewPanel as ReturnType<typeof vi.fn>).mockClear();
+    await commandHandler('ds-ide.showMidi')();
+    expect(vscode.window.createWebviewPanel).toHaveBeenCalledTimes(1);
+  });
+
   it('registers ds-ide.revealDaisyView, which focuses the Daisy view (FR-TRN-5)', async () => {
     activate(makeContext());
     await commandHandler('ds-ide.revealDaisyView')();

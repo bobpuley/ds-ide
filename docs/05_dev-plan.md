@@ -200,6 +200,10 @@ Full registry in [`docs/v22/05_dev-plan.md`](v22/05_dev-plan.md).
 M70 Scope Instrument — Display · M71 Scope Instrument — Analysis · M72 Scope Instrument — Emulator Capture.
 Full registry in [`docs/v23/05_dev-plan.md`](v23/05_dev-plan.md).
 
-### v24 — planned
+### v24 (0.24.0) — planned
 
-*(no milestones yet)*
+| ID   | Name         | Status      | Version | File                                                   |
+|------|--------------|-------------|---------|--------------------------------------------------------|
+| M73  | Reachability | **in progress** | 0.24.0  | [Milestone_M73.md](milestones/v24/Milestone_M73.md)    |
+
+Source: intake 2026-10-01 (`design_plan.md` §7 row 1 + P1-3).
