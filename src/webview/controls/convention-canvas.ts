@@ -46,6 +46,7 @@ export function createConventionCanvas(
   getButtonMode: (id: string) => ButtonMode | undefined,
   addDocListener: (event: string, fn: EventListener) => void,
   clearDocListeners: () => void,
+  layoutHooks: { onStart?: () => void; onEnd?: () => void } = {},
 ): ConventionCanvas {
   let conventionControls: ConventionControl[] = [];
   let conventionPlacements: ControlsPlacement[] = [];
@@ -193,7 +194,7 @@ export function createConventionCanvas(
       addDocListener('mouseup', onEncoderUp);
     }
 
-    makeDraggable(card, { pos: [pos[0], pos[1]] }, addDocListener);
+    makeDraggable(card, { pos: [pos[0], pos[1]] }, addDocListener, layoutHooks);
     return card;
   }
 

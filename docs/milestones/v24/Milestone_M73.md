@@ -61,12 +61,14 @@ README still says "Open Wiring Editor", a command removed in M21.
 
 ---
 
-### [ ] feat: auto-save Controls Editor layout (FR-RCH-5)
+### [x] feat: auto-save Controls Editor layout (FR-RCH-5)
 
-**Affected files:** `src/webview/controls/save.ts`, `src/webview/controls/drag.ts`, `src/sidebar/controls-editor-panel.ts`, `src/test/unit/webview/controls/save.test.ts`
+**Affected files:** `src/webview/controls/auto-save.ts`, `src/webview/controls/save.ts`, `src/webview/controls/drag.ts`, `src/webview/controls/convention-canvas.ts`, `src/webview/controls/yaml-editor-canvas.ts`, `src/webview/controls-webview.ts`, `src/sidebar/controls-editor-panel.ts`, `src/test/unit/webview/controls-auto-save.test.ts`
 
 **DoD:**
 - layout is saved about 500 ms after a drag ends via the existing `editorSave` message; rapid drags coalesce into one save
 - the "💾 layout" button is removed
-- a failed save is reported to the user
-- unit tests cover debounce and coalescing
+- legacy YAML-mode field edits and card deletes also auto-save, on commit (blur / select change), never per keystroke
+- a drag that starts while a save is pending cancels it; a pending save is flushed when the view is hidden
+- a failed write is reported to the user (existing host error path)
+- unit tests cover debounce, coalescing, cancel and flush

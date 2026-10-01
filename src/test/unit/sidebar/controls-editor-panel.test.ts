@@ -494,6 +494,12 @@ describe('ControlsViewProvider', () => {
     expect(vscode.commands.executeCommand).toHaveBeenCalledWith('ds-ide.focusWiring');
   });
 
+  it('has no manual save-layout button — layout auto-saves (FR-RCH-5)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(view.webview.html).not.toContain('id="save-btn"');
+  });
+
   it('the empty-canvas hint has an Open Wiring Editor button (FR-RCH-2)', () => {
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);

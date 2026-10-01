@@ -272,8 +272,6 @@ ${themeCss({ surface: 'sidebar' })}
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: var(--ds-surface); color: var(--ds-text); font-family: monospace; font-size: 12px; display: flex; flex-direction: column; height: 100vh; }
     #editor-toolbar { padding: 6px 12px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
-    #save-btn { background: var(--ds-button-bg); color: var(--ds-button-fg); border: 1px solid transparent; padding: 4px 14px; font-family: monospace; cursor: pointer; border-radius: 2px; font-size: 12px; }
-    #save-btn:hover { background: var(--ds-button-hover-bg); }
     #save-status { font-size: 11px; color: var(--ds-ok); }
     #ce-emu-status { font-size: 11px; }
     .ce-emu-running { color: var(--ds-ok); }
@@ -357,7 +355,6 @@ ${ctrlCardCssRules()}
     <span id="ce-emu-status" class="ce-emu-stopped">&#9632;</span>
     <span class="emu-sep" style="margin:0 6px">|</span>
     <span id="save-wrap" style="display:inline-flex;align-items:center;gap:8px">
-      <button id="save-btn">&#x1F4BE; layout</button>
       <span id="save-status"></span>
     </span>
   </div>
