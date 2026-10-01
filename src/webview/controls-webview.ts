@@ -14,6 +14,7 @@ import { createDocListenerTracker } from './controls/doc-listeners';
 import { createConventionCanvas } from './controls/convention-canvas';
 import { createYamlEditorCanvas } from './controls/yaml-editor-canvas';
 import { wireAutoSave, type LayoutAutoSave } from './controls/save';
+import { wireLayoutButtons } from './controls/layout-actions';
 import { createSdCardPanel } from './controls/sd-card-panel';
 import { createOledStrip } from './controls/oled-strip';
 import { rgbState, applyVars } from './controls/device-widget';
@@ -77,10 +78,15 @@ autoSave = wireAutoSave({
   getEditorControls: () => yamlEditorCanvas.getEditorControls(),
 });
 
+// FR-CEH-2..4: header buttons that move every card, saved through auto-save.
+const layoutButtons = wireLayoutButtons({ schedule: () => autoSave?.schedule() });
+layoutButtons.setEnabled(false);
+
 type ControlsConfigMsg = Extract<ControlsHostMessage, { command: 'controlsConfig' }>;
 
 function applyControlsConfig(msg: ControlsConfigMsg): void {
   conventionMissing = !!msg.missingBlock;
+  layoutButtons.setEnabled(!conventionMissing);
   const banner = document.getElementById('convention-banner');
   if (banner) banner.style.display = conventionMissing ? 'flex' : 'none';
   if (!conventionMissing) {

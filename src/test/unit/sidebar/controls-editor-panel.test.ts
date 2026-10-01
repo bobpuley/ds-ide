@@ -501,6 +501,12 @@ describe('ControlsViewProvider', () => {
     expect(view.webview.html).not.toContain('ce-emu-running');
   });
 
+  it('has an Align to grid button in the header (FR-CEH-2)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(view.webview.html).toMatch(/<button[^>]*id="align-grid-btn"/);
+  });
+
   it('has no manual save-layout button — layout auto-saves (FR-RCH-5)', () => {
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);

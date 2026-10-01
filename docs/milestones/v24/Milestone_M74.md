@@ -32,13 +32,14 @@ The Wiring Editor draws five pin states with no key, the Controls Editor header 
 
 ---
 
-### [ ] feat: layout helper functions and Align to grid (FR-CEH-2)
+### [x] feat: layout helper functions and Align to grid (FR-CEH-2)
 
-**Affected files:** `src/webview/controls/layout-helpers.ts`, `src/sidebar/controls-editor-panel.ts`, `src/webview/controls-webview.ts`, `src/test/unit/webview/controls-layout-helpers.test.ts`
+**Affected files:** `src/webview/controls/layout-helpers.ts`, `src/webview/controls/layout-actions.ts`, `src/sidebar/controls-editor-panel.ts`, `src/webview/controls-webview.ts`, `src/test/unit/webview/controls-layout-helpers.test.ts`, `src/test/unit/sidebar/controls-editor-panel.test.ts`
 
 **DoD:**
 - new pure module computes grid-snapped positions (20 px, never negative)
 - an *Align to grid* header button moves every card and schedules an auto-save
+- the layout buttons are enabled only in convention mode (the legacy yaml-only canvas keeps positions in its own model)
 - unit tests cover rounding, negative clamping and already-aligned input
 
 ---
