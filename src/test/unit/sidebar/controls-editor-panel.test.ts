@@ -519,6 +519,18 @@ describe('ControlsViewProvider', () => {
     expect(view.webview.html).toMatch(/<button[^>]*id="reset-positions-btn"/);
   });
 
+  it('layout buttons are icon-only: the label is a tooltip and an aria-label, not visible text (FR-CEH-2..4)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    for (const [id, label] of [['align-grid-btn', 'Align to grid'], ['auto-arrange-btn', 'Auto-arrange'], ['reset-positions-btn', 'Reset positions']]) {
+      const m = new RegExp(`<button id="${id}"[^>]*title="([^"]*)"[^>]*aria-label="([^"]*)"[^>]*>([^<]*)</button>`).exec(view.webview.html);
+      expect(m).not.toBeNull();
+      expect(m![1]).toContain(label);
+      expect(m![2]).toBe(label);
+      expect(m![3]).not.toContain(label);
+    }
+  });
+
   it('has no manual save-layout button — layout auto-saves (FR-RCH-5)', () => {
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);

@@ -273,7 +273,7 @@ ${themeCss({ surface: 'sidebar' })}
     body { background: var(--ds-surface); color: var(--ds-text); font-family: monospace; font-size: 12px; display: flex; flex-direction: column; height: 100vh; }
     #editor-toolbar { padding: 6px 12px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
     #save-status { font-size: 11px; color: var(--ds-ok); }
-    .tool-btn { background: var(--ds-input-bg); border: 1px solid var(--ds-border); color: var(--ds-input-fg); padding: 2px 8px; border-radius: 2px; cursor: pointer; font-family: monospace; font-size: 11px; }
+    .tool-btn { background: var(--ds-input-bg); border: 1px solid var(--ds-border); color: var(--ds-input-fg); padding: 2px 7px; border-radius: 2px; cursor: pointer; font-family: monospace; font-size: 13px; line-height: 1; }
     .tool-btn:hover:not(:disabled) { background: var(--ds-hover-bg); }
     .tool-btn:disabled { opacity: .4; cursor: default; }
     #convention-banner { display: none; align-items: center; gap: 8px; padding: 5px 12px; background: var(--ds-warning-bg); border-bottom: 1px solid var(--ds-warning-border); color: var(--ds-warning-fg); font-size: 11px; flex-shrink: 0; }
@@ -352,9 +352,9 @@ ${ctrlCardCssRules()}
 <body>
   <div id="editor-toolbar">
     <span id="layout-tools" style="display:inline-flex;align-items:center;gap:6px">
-      <button id="align-grid-btn" class="tool-btn" title="Snap every card to a 20 px grid">&#x25A6; Align to grid</button>
-      <button id="auto-arrange-btn" class="tool-btn" title="Lay the cards out in tidy rows">&#x2630; Auto-arrange</button>
-      <button id="reset-positions-btn" class="tool-btn" title="Return every card to the default layout">&#x21BA; Reset positions</button>
+      <button id="align-grid-btn" class="tool-btn" title="Align to grid — snap every card to a 20 px grid" aria-label="Align to grid">&#x25A6;</button>
+      <button id="auto-arrange-btn" class="tool-btn" title="Auto-arrange — lay the cards out in tidy rows" aria-label="Auto-arrange">&#x2630;</button>
+      <button id="reset-positions-btn" class="tool-btn" title="Reset positions — return every card to the default layout" aria-label="Reset positions">&#x21BA;</button>
     </span>
     <span id="save-wrap" style="display:inline-flex;align-items:center;gap:8px">
       <span id="save-status"></span>
