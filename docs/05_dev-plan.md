@@ -204,6 +204,6 @@ Full registry in [`docs/v23/05_dev-plan.md`](v23/05_dev-plan.md).
 
 | ID   | Name         | Status      | Version | File                                                   |
 |------|--------------|-------------|---------|--------------------------------------------------------|
-| M73  | Reachability | **in progress** | 0.24.0  | [Milestone_M73.md](milestones/v24/Milestone_M73.md)    |
+| M73  | Reachability | **released** | 0.24.0  | [Milestone_M73.md](milestones/v24/Milestone_M73.md)    |
 
 Source: intake 2026-10-01 (`design_plan.md` §7 row 1 + P1-3).

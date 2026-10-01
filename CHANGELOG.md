@@ -3,6 +3,17 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.24.0 — 2026-10-01
+
+**Reachability** *(FR-RCH-1 to FR-RCH-5, M73)*
+
+- **FR-RCH-1** — New commands `Show Scope`, `Show OLED Display`, `Show MIDI Panel`, `Focus Controls Editor` and `Focus Wiring Editor` reopen any surface without a build or deploy. Show Scope with no emulator running opens the idle panel.
+- **FR-RCH-2** — The Daisy view is now visible in every workspace; outside a Daisy project it shows a *Create New Effect Project* button. The Controls Editor's empty canvas has an *Open Wiring Editor* button. (`viewsWelcome` only renders in tree views, so the Controls and Wiring webviews do not use it.)
+- **FR-RCH-3** — A "Get started with Daisy Seed" walkthrough: create a project, wire a pin, run it, watch and tune.
+- **FR-RCH-4** — `scripts/check-doc-commands.js` (run by `npm run lint`) fails when `README.md` or a walkthrough step names a command that is not in `package.json`. The README's stale "Open Wiring Editor" and click-a-pin text is corrected.
+- **FR-RCH-5** — The Controls Editor saves its layout about 500 ms after a drag ends or a field is committed; the 💾 layout button is removed. A drag that starts while a save is pending cancels it, and a pending save is flushed when the view is hidden.
+- **chore** — `package.json`'s `version` is bumped to `0.24.0` (it was left at 0.22.0 by the 0.23.0 release).
+
 ## 0.23.0 — 2026-09-30
 
 **Scope instrument — emulator capture** *(FR-SCI-14, M72)*

@@ -1,7 +1,7 @@
 # M73 — Reachability
 
 **Version:** 0.24.0
-**Status:** in progress
+**Status:** released
 **Source:** feature intake session, 2026-10-01 (01_input-ideas.md; design_plan.md P0-2, P1-4, P2-3, P1-3)
 
 ## Goal
