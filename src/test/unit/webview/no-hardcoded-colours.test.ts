@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 
 // FR-THM-6: webview code must take colours from the theme layer. This scans
 // the webview-facing sources for hex / rgb() / hsl() literals and fails naming
@@ -49,7 +49,7 @@ describe('no hardcoded colours in webview code (FR-THM-6)', () => {
   it('finds no hex / rgb() / hsl() literal outside the allow-list', () => {
     const violations = SCAN_DIRS
       .flatMap(d => listTsFiles(join(ROOT, d)))
-      .map(p => relative(ROOT, p))
+      .map(p => relative(ROOT, p).split(sep).join('/'))
       .filter(f => !ALLOW_LIST.has(f))
       .flatMap(f => findColourLiterals(f, readFileSync(join(ROOT, f), 'utf8')));
     const report = violations.map(v => `${v.file}:${v.line}  ${v.text}`).join('\n');

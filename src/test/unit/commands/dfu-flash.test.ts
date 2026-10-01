@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'events';
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { flashToHardware, findHardwareBin, DfuFlashDeps } from '../../../commands/dfu-flash';
 
 type ReaddirFn = typeof import('fs').promises.readdir;
@@ -247,7 +248,7 @@ describe('findHardwareBin()', () => {
     const stat = vi.fn(() => Promise.resolve({ mtimeMs: 1000 }));
     const result = await findHardwareBin('/project', readdir as unknown as ReaddirFn, stat as unknown as StatFn);
     expect(result).toMatch(/effect\.bin$/);
-    expect(result).toContain('/project/build/');
+    expect(result).toContain(path.join('/project', 'build') + path.sep);
   });
 
   it('returns the most recently modified .bin when multiple exist', async () => {

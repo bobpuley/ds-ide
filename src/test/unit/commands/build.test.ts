@@ -4,6 +4,7 @@ import { findEffectSource, EffectSourceOutsideWorkspaceError } from '../../../co
 import { buildForEmulator, detectDaisySP } from '../../../commands/build';
 import { EmulatorManager } from '../../../emulator/manager';
 import * as fs from 'fs';
+import * as path from 'path';
 
 vi.mock('fs', () => ({
   promises: {
@@ -34,7 +35,7 @@ describe('findEffectSource', () => {
 
   it('returns the single .cpp file at root', async () => {
     vi.mocked(fs.promises.readdir).mockResolvedValue(['effect.cpp', 'Makefile'] as never);
-    expect(await findEffectSource('/proj')).toBe('/proj/effect.cpp');
+    expect(await findEffectSource('/proj')).toBe(path.join('/proj/effect.cpp'));
   });
 
   it('returns undefined when no .cpp found', async () => {
@@ -49,7 +50,7 @@ describe('findEffectSource', () => {
 
   it('picks non-main.cpp when exactly one other exists', async () => {
     vi.mocked(fs.promises.readdir).mockResolvedValue(['main.cpp', 'effect.cpp'] as never);
-    expect(await findEffectSource('/proj')).toBe('/proj/effect.cpp');
+    expect(await findEffectSource('/proj')).toBe(path.join('/proj/effect.cpp'));
   });
 
   it('returns undefined on fs error', async () => {
@@ -62,7 +63,7 @@ describe('findEffectSource', () => {
       if (String(dir).endsWith('src')) return Promise.resolve(['effect.cpp'] as never);
       return Promise.resolve([] as never);
     });
-    expect(await findEffectSource('/proj')).toBe('/proj/src/effect.cpp');
+    expect(await findEffectSource('/proj')).toBe(path.join('/proj/src/effect.cpp'));
   });
 
   it('falls back to source/ subdirectory when no root or src .cpp found (AC-72)', async () => {
@@ -70,7 +71,7 @@ describe('findEffectSource', () => {
       if (String(dir).endsWith('source')) return Promise.resolve(['effect.cpp'] as never);
       return Promise.resolve([] as never);
     });
-    expect(await findEffectSource('/proj')).toBe('/proj/source/effect.cpp');
+    expect(await findEffectSource('/proj')).toBe(path.join('/proj/source/effect.cpp'));
   });
 
   it('prefers root .cpp over src/ fallback (AC-72)', async () => {
@@ -78,7 +79,7 @@ describe('findEffectSource', () => {
       if (String(dir) === '/proj') return Promise.resolve(['root.cpp'] as never);
       return Promise.resolve(['src.cpp'] as never);
     });
-    expect(await findEffectSource('/proj')).toBe('/proj/root.cpp');
+    expect(await findEffectSource('/proj')).toBe(path.join('/proj/root.cpp'));
   });
 
   it('throws EffectSourceOutsideWorkspaceError for a configured absolute path outside the workspace (FR-UX-3)', async () => {
@@ -98,7 +99,7 @@ describe('findEffectSource', () => {
 
   it('accepts a configured relative path resolving inside the workspace (FR-UX-3)', async () => {
     vi.mocked(fs.promises.access).mockResolvedValue(undefined);
-    expect(await findEffectSource('/proj', 'nested/effect.cpp')).toBe('/proj/nested/effect.cpp');
+    expect(await findEffectSource('/proj', 'nested/effect.cpp')).toBe(path.join('/proj/nested/effect.cpp'));
   });
 });
 
@@ -107,10 +108,10 @@ describe('detectDaisySP', () => {
 
   it('finds DaisySP/Source at project root', async () => {
     vi.mocked(fs.promises.stat).mockImplementation((p) => {
-      if (String(p).endsWith('DaisySP/Source')) return Promise.resolve({ isDirectory: () => true } as fs.Stats);
+      if (String(p).endsWith(path.join('DaisySP', 'Source'))) return Promise.resolve({ isDirectory: () => true } as fs.Stats);
       return Promise.reject(new Error('ENOENT'));
     });
-    expect(await detectDaisySP('/proj')).toBe('/proj/DaisySP/Source');
+    expect(await detectDaisySP('/proj')).toBe(path.join('/proj/DaisySP/Source'));
   });
 
   it('returns undefined when DaisySP not found', async () => {
@@ -248,7 +249,7 @@ describe('buildForEmulator honors ds-ide.effectSource (FR-EXT-10)', () => {
 
     expect(ok).toBe(true);
     expect(manager.build).toHaveBeenCalledWith(
-      expect.objectContaining({ effectSrc: '/proj/custom.cpp' }),
+      expect.objectContaining({ effectSrc: path.join('/proj/custom.cpp') }),
       expect.anything(),
       undefined,
     );
@@ -267,7 +268,7 @@ describe('buildForEmulator honors ds-ide.effectSource (FR-EXT-10)', () => {
 
     expect(ok).toBe(true);
     expect(manager.build).toHaveBeenCalledWith(
-      expect.objectContaining({ effectSrc: '/proj/custom.cpp' }),
+      expect.objectContaining({ effectSrc: path.join('/proj/custom.cpp') }),
       expect.anything(),
       undefined,
     );
