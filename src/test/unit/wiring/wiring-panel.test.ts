@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { buildHtml, PIN_DEFS, WiredPin, expandToWiredPins, paletteRequirement } from '../../../wiring/wiring-panel';
+import { buildHtml, PIN_DEFS, WiredPin, expandToWiredPins, paletteRequirement, legendEntries } from '../../../wiring/wiring-panel';
+import { wiredControlIds } from '../../../devices/registry';
 import { REGISTRY } from '../../../devices/registry';
 import { deviceIconSvg, DEVICE_ICONS } from '../../../wiring/device-icons';
 import { themeCss } from '../../../webview/theme/theme-css';
@@ -417,5 +418,36 @@ describe('Wiring Editor theming (FR-THM-1, FR-THM-3, FR-THM-4)', () => {
 
   it('gives palette icons a fixed plate so the art reads on any theme', () => {
     expect(deviceIconSvg('pot', 'var(--ds-accent-pot)')).toMatch(/<svg class="icon"[^>]*><rect class="icon-plate"/);
+  });
+});
+
+
+// ── Legend (FR-WLG-1) ────────────────────────────────────────────────────────
+
+describe('pin legend (FR-WLG-1)', () => {
+  const html = buildHtml([], [], 'n0nce', 'vscode-resource://test/wiring-webview.js');
+
+  it('has an entry for every resting pin state the board draws', () => {
+    const classes = legendEntries().flatMap(e => e.classes);
+    expect(classes).toEqual(expect.arrayContaining(['pin-unassigned', 'pin-bus', 'pin-power']));
+    for (const id of wiredControlIds()) expect(classes).toContain(`pin-${id}`);
+  });
+
+  it('gives every entry a text label, so colour is never the only cue', () => {
+    for (const e of legendEntries()) expect(e.label.trim().length).toBeGreaterThan(0);
+  });
+
+  it('marks the ADC-capable state with its A-label sample', () => {
+    expect(legendEntries().some(e => e.sample === 'A0')).toBe(true);
+  });
+
+  it('renders the legend in the page using the pins\' own classes', () => {
+    expect(html).toContain('id="legend"');
+    expect(html).toMatch(/id="legend"[\s\S]*class="pin-dot pin-bus"/);
+  });
+
+  it('uses no colour literals', () => {
+    const legend = html.slice(html.indexOf('id="legend"'), html.indexOf('id="main"'));
+    expect(legend).not.toMatch(/#[0-9a-fA-F]{3,6}\b|rgb\(|hsl\(/);
   });
 });

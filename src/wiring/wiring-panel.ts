@@ -89,6 +89,40 @@ function paletteChipHtml(id: string): string {
     + `${deviceIconSvg(id, accentVar(id))}<div class="name">${label}</div><div class="meta">${req}</div>${badge}</div><!-- /chip -->`;
 }
 
+// FR-WLG-1: one entry per resting pin state the board draws. `classes` are the
+// pin's own CSS classes, so a swatch can never drift from the real colours;
+// `sample` is an optional text sample (the ADC pins' A-label) so the entry is
+// recognisable without relying on colour.
+export interface LegendEntry {
+  classes: string[];
+  label: string;
+  sample?: string;
+}
+
+export function legendEntries(): LegendEntry[] {
+  return [
+    { classes: ['pin-unassigned'], label: 'Free pin' },
+    { classes: ['pin-unassigned'], label: 'Free ADC input (pots)', sample: 'A0' },
+    ...wiredControlIds().map(id => ({ classes: [`pin-${id}`], label: `${REGISTRY[id]!.label} wired` })),
+    { classes: ['pin-bus'], label: 'Bus peripheral pin (SPI / I²C / UART)' },
+    { classes: ['pin-power'], label: 'Power / not assignable' },
+  ];
+}
+
+function legendHtml(): string {
+  const items = legendEntries().map(e => {
+    const sample = e.sample ? `<text x="9" y="13" class="a-label legend-sample">${e.sample}</text>` : '';
+    const cx = e.sample ? 30 : 9;
+    return `      <li><svg width="${e.sample ? 44 : 18}" height="18" aria-hidden="true">${sample}<g class="pin-dot ${e.classes.join(' ')}"><circle cx="${cx}" cy="9" r="5"/></g></svg><span>${e.label}</span></li>`;
+  });
+  return `  <details id="legend" open>
+    <summary>Legend</summary>
+    <ul>
+${items.join('\n')}
+    </ul>
+  </details>`;
+}
+
 // FR-UDM-5: one palette for all devices, generated from REGISTRY and grouped
 // Controls / Peripherals, so a new registry entry appears with no edit here.
 function devicePaletteHtml(): string {
@@ -130,6 +164,12 @@ ${themeCss({ surface: 'sidebar' })}
          border-bottom: 1px solid var(--ds-border); flex-shrink: 0; }
     #hint { padding: 4px 14px 6px; font-size: 11px; color: var(--ds-text-muted); background: var(--ds-surface-raised);
             border-bottom: 1px solid var(--ds-border); flex-shrink: 0; }
+    #legend { padding: 4px 14px 6px; font-size: 10px; color: var(--ds-text-muted); background: var(--ds-surface-raised);
+              border-bottom: 1px solid var(--ds-border); flex-shrink: 0; }
+    #legend summary { cursor: pointer; }
+    #legend ul { list-style: none; display: flex; flex-wrap: wrap; gap: 2px 14px; padding-top: 4px; }
+    #legend li { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+    #legend .legend-sample { font-size: 9px; }
     #main { flex: 1; display: flex; min-height: 0; }
     #svg-wrap { flex: 1; overflow: auto; padding: 16px; display: flex; justify-content: center; align-items: flex-start; }
     /* FR-THM-4: the board drawing keeps its colours; its frame follows the theme. */
@@ -270,6 +310,7 @@ ${BOARD_ART_CSS}
 <body>
   <h1>Daisy Seed Wiring Editor</h1>
   <div id="hint">Drag a device from the palette onto the board · Click a placed device to inspect it · Drag it to move it</div>
+${legendHtml()}
   <div id="main">
 ${devicePaletteHtml()}
   <div id="svg-wrap">

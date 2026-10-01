@@ -18,3 +18,19 @@ Source: `01_input-ideas.md`, 2026-10-01; `design_plan.md` P0-2, P1-4, P2-3, P1-3
 **FR-RCH-4 — Docs/manifest lint.** A static check (precedent: `scripts/check-active-folder-convention.sh`) fails when a `Daisy IDE: <title>` mention or a `(command:<id>)` link in `README.md` or the walkthrough is not in `contributes.commands`. Bare `ds-ide.<name>` in prose is ignored, since the prefix also names settings and state keys. The stale "Open Wiring Editor" README text is corrected.
 
 **FR-RCH-5 — Auto-save layout.** The Controls Editor persists card positions ~500 ms after a drag ends, using the existing `editorSave` path. The "💾 layout" button is removed. A failed save is reported, not silent.
+
+## Editor polish — `FR-WLG-*`, `FR-CEH-*` (intake 2026-10-01)
+
+Source: `01_input-ideas.md`, 2026-10-01; `design_plan.md` P1-6, P2-2. Milestone: **M74**.
+
+**Decisions recorded 2026-10-01:** the header gets *Align to grid*, *Auto-arrange* and *Reset positions* (snap-while-dragging, align/distribute and layout undo are out of scope); the card dimming stays.
+
+**FR-WLG-1 — Wiring legend.** The Wiring Editor has a legend explaining every pin state it draws: ADC-capable free pin, other free pin, claimed by a bus peripheral, wired device (with the device accent colours), power/non-assignable. It uses theme tokens, and each entry pairs the colour with a shape or text, not colour alone.
+
+**FR-CEH-1 — No run marker in the header.** The ▶/■ marker (`ce-emu-status`) is removed from the Controls Editor header. Cards still dim while the emulator is not running.
+
+**FR-CEH-2 — Align to grid.** A header button snaps every card to a 20 px grid. The result is saved through the existing auto-save (FR-RCH-5).
+
+**FR-CEH-3 — Auto-arrange.** A header button lays the cards out in rows, in the order of the effect's controls block, wrapping at the canvas width; cards not in code follow. Saved through auto-save.
+
+**FR-CEH-4 — Reset positions.** A header button returns every card to the default cascade (the layout used when no position is stored). Saved through auto-save.
