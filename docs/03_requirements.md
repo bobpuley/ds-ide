@@ -15,6 +15,6 @@ Source: `01_input-ideas.md`, 2026-10-01; `design_plan.md` P0-2, P1-4, P2-3, P1-3
 
 **FR-RCH-3 — Walkthrough.** A "Get started with Daisy Seed" walkthrough (create project → wire a pin → Run → watch the scope) is contributed, with command links, so VS Code lists it on the Welcome page.
 
-**FR-RCH-4 — Docs/manifest lint.** A static check (precedent: `scripts/check-active-folder-convention.sh`) fails when a `Daisy IDE: <title>` or `ds-ide.<id>` reference in `README.md` or the walkthrough is not in `contributes.commands`. The stale "Open Wiring Editor" README text is corrected.
+**FR-RCH-4 — Docs/manifest lint.** A static check (precedent: `scripts/check-active-folder-convention.sh`) fails when a `Daisy IDE: <title>` mention or a `(command:<id>)` link in `README.md` or the walkthrough is not in `contributes.commands`. Bare `ds-ide.<name>` in prose is ignored, since the prefix also names settings and state keys. The stale "Open Wiring Editor" README text is corrected.
 
 **FR-RCH-5 — Auto-save layout.** The Controls Editor persists card positions ~500 ms after a drag ends, using the existing `editorSave` path. The "💾 layout" button is removed. A failed save is reported, not silent.

@@ -62,9 +62,9 @@ npm run package
 
 ![Wiring Editor showing assigned pins on the Daisy Seed pinout](media/screenshot-wiring-editor.png)
 
-Open with **Daisy IDE: Open Wiring Editor** (`Cmd+Shift+P`).
+Open with **Daisy IDE: Focus Wiring Editor** (`Cmd+Shift+P`), or the Wiring Editor icon in the Activity Bar.
 
-The Wiring Editor shows the full Daisy Seed 40-pin layout. Click any unassigned pin to open a device-selection popup:
+The Wiring Editor shows the full Daisy Seed 40-pin layout. Drag a device from the palette onto the board; the pins it can use light up as you drag, and dropping it opens a confirmation popover:
 
 - **Pot** — maps to an ADC channel (`AdcChannelConfig`). A warning badge appears when the selected pin is not ADC-capable (D0–D14, D27–D30), but the assignment is still allowed.
 - **Button** — maps to a GPIO input (`Switch`)
@@ -72,7 +72,7 @@ The Wiring Editor shows the full Daisy Seed 40-pin layout. Click any unassigned 
 
 Each device requires a unique **id** (pre-filled with `pot1`, `button1`, `led1`, etc.). On confirm, the extension writes a declaration to the `ds-ide:controls` block in the effect source file via an undoable workspace edit (`Cmd+Z` restores the original).
 
-Clicking an assigned pin shows its device type and id, plus a **Remove** button that deletes the declaration from the source file.
+Clicking a placed device shows its type and id, plus **Show panel** (for the OLED and MIDI devices), **Reveal in code** and **Remove**, which deletes the declaration from the source file.
 
 After any change, the Controls Editor is updated automatically to reflect the new wiring.
 

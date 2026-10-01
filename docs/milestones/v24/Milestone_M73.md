@@ -48,16 +48,16 @@ Closing the Scope tab costs a full rebuild and relaunch to undo; OLED and MIDI c
 
 ---
 
-### [ ] chore: README/manifest consistency lint (FR-RCH-4)
+### [x] chore: README/manifest consistency lint (FR-RCH-4)
 
 README still says "Open Wiring Editor", a command removed in M21.
 
-**Affected files:** `README.md`, `scripts/check-doc-commands.sh`, `package.json`
+**Affected files:** `README.md`, `scripts/check-doc-commands.js`, `src/test/unit/scripts/check-doc-commands.test.ts`, `package.json`
 
 **DoD:**
-- the script fails, naming file and line, when a `Daisy IDE: <title>` or `ds-ide.<id>` reference in `README.md` or the walkthrough is not in `contributes.commands`
+- the script fails, naming file and line, when a `Daisy IDE: <title>` mention or a `(command:<id>)` link in `README.md` or the walkthrough is not in `contributes.commands` (bare `ds-ide.<name>` in prose is ignored: it also names settings and state keys)
 - the stale README text is corrected and the script passes
-- the script runs with the existing static-lint step
+- the script runs as part of `npm run lint`
 
 ---
 
