@@ -24,6 +24,11 @@ interface VsCodeApiForControls {
 
 const vscode = acquireVsCodeApi() as unknown as VsCodeApiForControls;
 
+// FR-RCH-2: the empty-canvas hint's button.
+document.getElementById('open-wiring-btn')?.addEventListener('click', () => {
+  vscode.postMessage({ command: 'focusWiring' });
+});
+
 function isPartialControllerConfig(v: unknown): v is Partial<ControllerConfig> {
   if (typeof v !== 'object' || v === null) return false;
   const obj = v as Record<string, unknown>;

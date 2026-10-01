@@ -1367,6 +1367,7 @@ export function activate(context: vscode.ExtensionContext): void {
     if (!activeFolder) {
       effectSourcePath = undefined;
       void vscode.commands.executeCommand('setContext', 'ds-ide.isDaisyProject', false);
+      daisyView.setDaisyProject(false);
       statusItems.setVisible(false);
       updateEffectSourceContext(vscode.window.activeTextEditor);
       return;
@@ -1378,6 +1379,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // Scopes the ds-ide.* keybindings (package.json) so they don't fire in
     // unrelated workspaces (FR-QA-EXT-6).
     void vscode.commands.executeCommand('setContext', 'ds-ide.isDaisyProject', effectPath !== undefined);
+    daisyView.setDaisyProject(effectPath !== undefined);
     statusItems.setVisible(effectPath !== undefined);
     effectSourcePath = effectPath;
     updateEffectSourceContext(vscode.window.activeTextEditor);

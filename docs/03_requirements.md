@@ -11,7 +11,7 @@ Source: `01_input-ideas.md`, 2026-10-01; `design_plan.md` P0-2, P1-4, P2-3, P1-3
 
 **FR-RCH-1 — Show / focus commands.** The palette has `Daisy IDE: Show Scope`, `Show OLED`, `Show MIDI`, `Focus Controls Editor` and `Focus Wiring Editor`. Each reveals the surface if it exists, or opens it if it was closed, without a build or deploy. Show OLED / Show MIDI work even when the peripheral is disabled, showing the panel's idle state.
 
-**FR-RCH-2 — Welcome content.** The Controls Editor and Wiring Editor views contribute `viewsWelcome` gated on `ds-ide.isDaisyProject`: not a Daisy project → *Create New Effect Project* button; Daisy project with nothing wired → button to focus the Wiring Editor.
+**FR-RCH-2 — Welcome content.** (Revised 2026-10-01: VS Code renders `viewsWelcome` only in tree views, never in webview views.) The native Daisy tree view is visible in every workspace and, outside a Daisy project, is empty with `viewsWelcome` content: a *Create New Effect Project* button. The Controls Editor's empty canvas shows an *Open Wiring Editor* button (the webview posts a `focusWiring` message; the host runs `ds-ide.focusWiring`). The Wiring Editor keeps its existing hint line.
 
 **FR-RCH-3 — Walkthrough.** A "Get started with Daisy Seed" walkthrough (create project → wire a pin → Run → watch the scope) is contributed, with command links, so VS Code lists it on the Welcome page.
 

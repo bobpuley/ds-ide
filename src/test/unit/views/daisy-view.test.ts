@@ -73,6 +73,7 @@ describe('formatAudioDetail()', () => {
 describe('DaisyViewProvider', () => {
   it('renders rows as TreeItems with ThemeIcon + ThemeColor only', () => {
     const provider = new DaisyViewProvider(new TransportController(), () => undefined);
+    provider.setDaisyProject(true);
     const rows = provider.getChildren();
     const running = { ...rows[0]!, icon: { id: 'play-circle', color: 'debugIcon.startForeground' } };
     const item = provider.getTreeItem(running);
@@ -84,12 +85,26 @@ describe('DaisyViewProvider', () => {
 
   it('has no children below a row', () => {
     const provider = new DaisyViewProvider(new TransportController(), () => undefined);
+    provider.setDaisyProject(true);
     expect(provider.getChildren(provider.getChildren()[0])).toEqual([]);
+  });
+
+  it('has no rows outside a Daisy project so the view shows its welcome content (FR-RCH-2)', () => {
+    const provider = new DaisyViewProvider(new TransportController(), () => undefined);
+    provider.setDaisyProject(true);
+    const changed = vi.fn();
+    provider.onDidChangeTreeData(changed);
+    provider.setDaisyProject(false);
+    expect(provider.getChildren()).toEqual([]);
+    expect(changed).toHaveBeenCalled();
+    provider.setDaisyProject(true);
+    expect(provider.getChildren().length).toBeGreaterThan(0);
   });
 
   it('refreshes the tree whenever the transport state changes', () => {
     const controller = new TransportController();
     const provider = new DaisyViewProvider(controller, () => undefined);
+    provider.setDaisyProject(true);
     const changed = vi.fn();
     provider.onDidChangeTreeData(changed);
     controller.dispatch({ type: 'buildStarted', mode: 'run' });

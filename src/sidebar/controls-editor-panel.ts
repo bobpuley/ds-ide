@@ -24,7 +24,7 @@ import { themeCss } from '../webview/theme/theme-css';
 // is what actually catches a missing case at compile time if this list and
 // messages.ts's union ever drift.
 const CONTROLS_WEBVIEW_COMMANDS = new Set<ControlsWebviewMessage['command']>([
-  'webviewReady', 'editorSave', 'pot', 'button', 'toggle', 'encoder', 'sdRefresh', 'sdPreview', 'oledPopOut',
+  'webviewReady', 'editorSave', 'pot', 'button', 'toggle', 'encoder', 'sdRefresh', 'sdPreview', 'oledPopOut', 'focusWiring',
 ]);
 
 export class ControlsViewProvider implements vscode.WebviewViewProvider {
@@ -135,6 +135,10 @@ export class ControlsViewProvider implements vscode.WebviewViewProvider {
         }
         case 'oledPopOut': {
           this.onOledPopOut();
+          break;
+        }
+        case 'focusWiring': {
+          void vscode.commands.executeCommand('ds-ide.focusWiring');
           break;
         }
         default:
@@ -288,7 +292,8 @@ ${themeCss({ surface: 'sidebar' })}
     #oled-strip-foot { font-size: 9px; color: var(--ds-text-muted); }
     #design-area { display: flex; flex: 1; min-height: 0; overflow: hidden; }
     #canvas-area { flex: 1; position: relative; overflow: auto; background: var(--ds-surface); }
-    #canvas-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--ds-text-muted); font-size: 13px; pointer-events: none; }
+    #canvas-hint { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px; align-items: center; justify-content: center; color: var(--ds-text-muted); font-size: 13px; pointer-events: none; }
+    #open-wiring-btn { pointer-events: auto; cursor: pointer; padding: 2px 10px; font: inherit; color: var(--ds-button-fg); background: var(--ds-button-bg); border: 1px solid var(--ds-border); border-radius: 2px; }
     /* FR-CWS-3: the palette chip's tile — themed frame, accent underline. */
     .ctrl-card { position: absolute; min-width: 132px; background: var(--ds-surface-raised); border: 1px solid var(--ds-border); border-radius: 8px; box-shadow: 0 2px 6px var(--ds-shadow); }
     .ctrl-card::after { content: ''; position: absolute; left: 22%; right: 22%; bottom: 2px; height: 2px; border-radius: 2px; background: var(--accent); opacity: .75; pointer-events: none; }
@@ -365,7 +370,7 @@ ${ctrlCardCssRules()}
   </div>
   <div id="design-area">
     <div id="canvas-area">
-      <div id="canvas-hint">No controls yet &#8212; add devices in the Wiring Editor</div>
+      <div id="canvas-hint">No controls yet &#8212; add devices in the Wiring Editor <button id="open-wiring-btn">Open Wiring Editor</button></div>
     </div>
   </div>
   <div id="sdcard-contents">

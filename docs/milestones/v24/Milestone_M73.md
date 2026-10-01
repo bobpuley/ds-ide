@@ -24,14 +24,16 @@ Closing the Scope tab costs a full rebuild and relaunch to undo; OLED and MIDI c
 
 ---
 
-### [ ] feat: welcome content for empty views (FR-RCH-2)
+### [x] feat: welcome content for empty views (FR-RCH-2)
 
-**Affected files:** `package.json`, `src/test/unit/manifest.test.ts`
+`viewsWelcome` only renders in tree views, so the Daisy tree view carries the not-a-project state and the Controls Editor gets an in-webview button.
+
+**Affected files:** `package.json`, `src/views/daisy-view.ts`, `src/extension.ts`, `src/webview/messages.ts`, `src/sidebar/controls-editor-panel.ts`, `src/webview/controls/`, `src/test/unit/views/daisy-view.test.ts`, `src/test/unit/build/package-metadata.test.ts`
 
 **DoD:**
-- both webview views contribute `viewsWelcome` gated on `ds-ide.isDaisyProject`
-- not a Daisy project → *Create New Effect Project* button; Daisy project with nothing wired → button running `ds-ide.focusWiring`
-- a manifest test checks every welcome command exists in `contributes.commands`
+- the Daisy view is visible in every workspace; outside a Daisy project it has no rows and `viewsWelcome` shows a *Create New Effect Project* button
+- the Controls Editor's empty-canvas hint has an *Open Wiring Editor* button that runs `ds-ide.focusWiring` (validated `focusWiring` webview message)
+- a manifest test checks every `viewsWelcome` command exists in `contributes.commands`
 
 ---
 

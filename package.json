@@ -291,11 +291,17 @@
       "debug": [
         {
           "id": "ds-ide.daisyView",
-          "name": "Daisy",
-          "when": "ds-ide.isDaisyProject"
+          "name": "Daisy"
         }
       ]
     },
+    "viewsWelcome": [
+      {
+        "view": "ds-ide.daisyView",
+        "contents": "Not a Daisy Seed project yet.\n[Create New Effect Project](command:ds-ide.createNewEffectProject)",
+        "when": "!ds-ide.isDaisyProject"
+      }
+    ],
     "configuration": {
       "title": "Daisy IDE",
       "properties": {
