@@ -28,6 +28,21 @@ describe('package.json marketplace metadata (FR-QA-EXT-6)', () => {
     expect(view.when).toBeUndefined();
   });
 
+  it('contributes a Get started walkthrough whose steps link to real commands and files (FR-RCH-3)', () => {
+    const ids = new Set((pkg.contributes?.commands ?? []).map((c: { command: string }) => c.command));
+    const walk = (pkg.contributes?.walkthroughs ?? []).find((w: { id: string }) => w.id === 'ds-ide.getStarted');
+    expect(walk).toBeDefined();
+    expect(walk.steps.length).toBeGreaterThanOrEqual(4);
+    for (const step of walk.steps) {
+      expect(typeof step.title).toBe('string');
+      expect(fs.existsSync(path.join(__dirname, '../../../..', step.media.markdown))).toBe(true);
+      const md = fs.readFileSync(path.join(__dirname, '../../../..', step.media.markdown), 'utf8');
+      for (const m of `${step.description}\n${md}`.matchAll(/\(command:([^)\s?]+)/g)) {
+        expect(ids.has(m[1])).toBe(true);
+      }
+    }
+  });
+
   it('declares an icon whose asset file exists', () => {
     expect(typeof pkg.icon).toBe('string');
     const iconPath = path.join(__dirname, '../../../..', pkg.icon);

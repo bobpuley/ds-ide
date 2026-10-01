@@ -37,7 +37,7 @@ Closing the Scope tab costs a full rebuild and relaunch to undo; OLED and MIDI c
 
 ---
 
-### [ ] feat: Get started walkthrough (FR-RCH-3)
+### [x] feat: Get started walkthrough (FR-RCH-3)
 
 **Affected files:** `package.json`, `media/walkthrough/`
 

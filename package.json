@@ -295,6 +295,39 @@
         }
       ]
     },
+    "walkthroughs": [
+      {
+        "id": "ds-ide.getStarted",
+        "title": "Get started with Daisy Seed",
+        "description": "Create an effect, wire a control, run it on the emulator and watch the output.",
+        "steps": [
+          {
+            "id": "ds-ide.step.create",
+            "title": "Create an effect project",
+            "description": "Start from a working effect.\n[Create New Effect Project](command:ds-ide.createNewEffectProject)",
+            "media": { "markdown": "media/walkthrough/create-project.md" }
+          },
+          {
+            "id": "ds-ide.step.wire",
+            "title": "Wire a pin",
+            "description": "Drag a device onto the board.\n[Open the Wiring Editor](command:ds-ide.focusWiring)",
+            "media": { "markdown": "media/walkthrough/wire-a-pin.md" }
+          },
+          {
+            "id": "ds-ide.step.run",
+            "title": "Run it on the emulator",
+            "description": "No hardware needed.\n[Run Daisy Effect](command:ds-ide.runEffect)",
+            "media": { "markdown": "media/walkthrough/run-effect.md" }
+          },
+          {
+            "id": "ds-ide.step.scope",
+            "title": "Watch and tune",
+            "description": "See the waveforms and turn the knobs.\n[Show Scope](command:ds-ide.showScope)",
+            "media": { "markdown": "media/walkthrough/watch-scope.md" }
+          }
+        ]
+      }
+    ],
     "viewsWelcome": [
       {
         "view": "ds-ide.daisyView",
