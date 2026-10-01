@@ -16,6 +16,7 @@ import { wrapEncoderPosition } from '../../devices/codegen/encoder';
 import { escJ, truncId } from './text-utils';
 import { adcChannelFromPin } from './adc-channel';
 import { makeDraggable } from './drag';
+import { createCascade } from './layout-helpers';
 import { widgetHtml, potState, encoderState, toggleState, applyVars } from './device-widget';
 
 // sdcard (FR-DEV-10), oled (FR-DEV-14), midiTrs (FR-DEV-16) and midiUsb
@@ -215,13 +216,7 @@ export function createConventionCanvas(
     const placementMap: Record<string, [number, number]> = {};
     for (const p of conventionPlacements) placementMap[p.id] = p.pos;
     const conventionIds = new Set(conventionControls.map(c => c.id));
-    const posState = { ax: 20, ay: 20 };
-    function nextPos(): [number, number] {
-      const p: [number, number] = [posState.ax, posState.ay];
-      posState.ax += 190;
-      if (posState.ax > 580) { posState.ax = 20; posState.ay += 170; }
-      return p;
-    }
+    const nextPos = createCascade();
     for (const ctrl of conventionControls) {
       const pos = placementMap[ctrl.id] || nextPos();
       area.appendChild(buildConventionCard(ctrl, pos));

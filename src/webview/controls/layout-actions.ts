@@ -2,7 +2,7 @@
 // Header buttons that move every card at once (FR-CEH-2..4). They only touch
 // the cards' inline left/top, then schedule the shared auto-save (FR-RCH-5),
 // which reads positions back from the DOM — so no new IPC or schema.
-import { snapToGrid, arrangeInRows, CARD_ROW_PITCH, type Pos } from './layout-helpers';
+import { snapToGrid, arrangeInRows, cascadePositions, CARD_ROW_PITCH, type Pos } from './layout-helpers';
 
 export interface LayoutActionDeps {
   /** Auto-save trigger (FR-RCH-5). */
@@ -40,11 +40,18 @@ export function wireLayoutButtons(deps: LayoutActionDeps): { setEnabled(enabled:
     deps.schedule();
   });
 
+  document.getElementById('reset-positions-btn')?.addEventListener('click', () => {
+    const all = cards();
+    const positions = cascadePositions(all.length);
+    all.forEach((card, i) => place(card, positions[i]!));
+    deps.schedule();
+  });
+
   return {
     // Positions persist from the DOM only in convention mode; the legacy
     // yaml-only canvas keeps them in its own model, so the buttons are off.
     setEnabled(enabled: boolean): void {
-      for (const id of ['align-grid-btn', 'auto-arrange-btn']) {
+      for (const id of ['align-grid-btn', 'auto-arrange-btn', 'reset-positions-btn']) {
         const b = document.getElementById(id) as HTMLButtonElement | null;
         if (b) b.disabled = !enabled;
       }

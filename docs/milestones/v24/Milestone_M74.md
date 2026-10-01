@@ -55,9 +55,9 @@ The Wiring Editor draws five pin states with no key, the Controls Editor header 
 
 ---
 
-### [ ] feat: Reset positions (FR-CEH-4)
+### [x] feat: Reset positions (FR-CEH-4)
 
-**Affected files:** `src/webview/controls/layout-helpers.ts`, `src/webview/controls/convention-canvas.ts`, `src/sidebar/controls-editor-panel.ts`, `src/test/unit/webview/controls-layout-helpers.test.ts`
+**Affected files:** `src/webview/controls/layout-helpers.ts`, `src/webview/controls/layout-actions.ts`, `src/webview/controls/convention-canvas.ts`, `src/sidebar/controls-editor-panel.ts`, `src/test/unit/webview/controls-layout-helpers.test.ts`, `src/test/unit/sidebar/controls-editor-panel.test.ts`
 
 **DoD:**
 - a *Reset positions* header button returns every card to the default cascade (the layout used when no position is stored)

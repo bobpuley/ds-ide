@@ -513,6 +513,12 @@ describe('ControlsViewProvider', () => {
     expect(view.webview.html).toMatch(/<button[^>]*id="auto-arrange-btn"/);
   });
 
+  it('has a Reset positions button in the header (FR-CEH-4)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(view.webview.html).toMatch(/<button[^>]*id="reset-positions-btn"/);
+  });
+
   it('has no manual save-layout button — layout auto-saves (FR-RCH-5)', () => {
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);

@@ -27,3 +27,26 @@ export function arrangeInRows(count: number, canvasWidth: number, rowPitch: numb
     MARGIN + Math.floor(i / cols) * rowPitch,
   ]);
 }
+
+const CASCADE_WRAP_X = 580;
+
+/**
+ * The default layout for cards with no stored position: left to right in
+ * 190 px steps, wrapping 170 px down once the next x would pass 580. Shared
+ * by the canvas's first render and the Reset positions button (FR-CEH-4).
+ */
+export function createCascade(): () => Pos {
+  let x = MARGIN;
+  let y = MARGIN;
+  return (): Pos => {
+    const p: Pos = [x, y];
+    x += CARD_COL_PITCH;
+    if (x > CASCADE_WRAP_X) { x = MARGIN; y += CARD_ROW_PITCH; }
+    return p;
+  };
+}
+
+export function cascadePositions(count: number): Pos[] {
+  const next = createCascade();
+  return Array.from({ length: count }, () => next());
+}

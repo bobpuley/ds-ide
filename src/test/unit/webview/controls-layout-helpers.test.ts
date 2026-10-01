@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { GRID_PX, snapToGrid, arrangeInRows, CARD_COL_PITCH, CARD_ROW_PITCH } from '../../../webview/controls/layout-helpers';
+import { GRID_PX, snapToGrid, arrangeInRows, CARD_COL_PITCH, CARD_ROW_PITCH, createCascade, cascadePositions } from '../../../webview/controls/layout-helpers';
 
 describe('snapToGrid (FR-CEH-2)', () => {
   it('uses a 20 px grid', () => {
@@ -51,5 +51,20 @@ describe('arrangeInRows (FR-CEH-3)', () => {
 
   it('returns nothing for no cards', () => {
     expect(arrangeInRows(0, 700)).toEqual([]);
+  });
+});
+
+describe('default cascade (FR-CEH-4)', () => {
+  it('starts at 20,20 and steps 190 px right, wrapping 170 px down after three columns', () => {
+    expect(cascadePositions(5)).toEqual([[20, 20], [210, 20], [400, 20], [20, 190], [210, 190]]);
+  });
+
+  it('createCascade() hands out the same sequence one position at a time', () => {
+    const next = createCascade();
+    expect([next(), next(), next(), next()]).toEqual(cascadePositions(4));
+  });
+
+  it('never repeats a position', () => {
+    expect(new Set(cascadePositions(30).map(p => p.join(','))).size).toBe(30);
   });
 });
