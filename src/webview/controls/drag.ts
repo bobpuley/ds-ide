@@ -8,6 +8,7 @@ export function makeDraggable(
   card: HTMLElement,
   ctrl: { pos: [number, number] },
   addDocListener: (event: string, fn: EventListener) => void,
+  hooks: { onStart?: () => void; onEnd?: () => void } = {},
 ): void {
   const header = (card.querySelector('.ctrl-handle') || card.querySelector('.card-header')) as HTMLElement | null;
   if (!header) return;
@@ -15,7 +16,7 @@ export function makeDraggable(
   header.addEventListener('mousedown', e => {
     const me = e as MouseEvent;
     if ((me.target as HTMLElement).closest('.card-del')) return;
-    drag = true; sx = me.clientX; sy = me.clientY;
+    drag = true; hooks.onStart?.(); sx = me.clientX; sy = me.clientY;
     sl = parseInt(card.style.left, 10) || 0; st = parseInt(card.style.top, 10) || 0;
     e.preventDefault();
   });
@@ -27,5 +28,9 @@ export function makeDraggable(
     card.style.left = nx + 'px'; card.style.top = ny + 'px';
     ctrl.pos = [nx, ny];
   });
-  addDocListener('mouseup', () => { drag = false; });
+  addDocListener('mouseup', () => {
+    if (!drag) return;
+    drag = false;
+    hooks.onEnd?.();
+  });
 }

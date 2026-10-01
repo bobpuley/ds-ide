@@ -848,6 +848,9 @@ interface CommandDeps {
   extensionPath: string;
   deployCoordinator: DeployCoordinator;
   scopePanel: ScopePanel;
+  midiPanel: MidiPanel;
+  showOledPanel: () => Promise<void>;
+  sessionState: SessionState;
   controlsProvider: ControlsViewProvider;
   initViewsFromProject: () => Promise<void>;
   emulatorChannel: vscode.OutputChannel;
@@ -877,7 +880,7 @@ async function withCancellableProgress<T>(
 function registerCommands(deps: CommandDeps): vscode.Disposable[] {
   const {
     manager, diagnostics, buildChannel, hardwareChannel, flashChannel,
-    workspaceState, extensionPath, deployCoordinator, scopePanel, controlsProvider, initViewsFromProject,
+    workspaceState, extensionPath, deployCoordinator, scopePanel, midiPanel, showOledPanel, sessionState, controlsProvider, initViewsFromProject,
     emulatorChannel, transport, stopEmulator, refreshBoard,
   } = deps;
 
@@ -989,6 +992,15 @@ function registerCommands(deps: CommandDeps): vscode.Disposable[] {
     // FR-TRN-5: the state item's default click action.
     vscode.commands.registerCommand('ds-ide.revealDaisyView', () =>
       vscode.commands.executeCommand(`${DAISY_VIEW_ID}.focus`)),
+    // FR-RCH-1: reopen any surface without a build or deploy.
+    vscode.commands.registerCommand('ds-ide.showScope', () =>
+      scopePanel.show(sessionState.sineState, sessionState.audioSourceState)),
+    vscode.commands.registerCommand('ds-ide.showOled', () => showOledPanel()),
+    vscode.commands.registerCommand('ds-ide.showMidi', () => midiPanel.show()),
+    vscode.commands.registerCommand('ds-ide.focusControls', () =>
+      vscode.commands.executeCommand('ds-ide.controlsEditor.focus')),
+    vscode.commands.registerCommand('ds-ide.focusWiring', () =>
+      vscode.commands.executeCommand('ds-ide.wiringEditor.focus')),
     vscode.commands.registerCommand('ds-ide.createNewEffectProject', () => createEffectProject(extensionPath)),
     vscode.commands.registerCommand('ds-ide.selectActiveFolder', async () => {
       const chosen = await promptSelectActiveFolder(workspaceState);
@@ -1355,6 +1367,7 @@ export function activate(context: vscode.ExtensionContext): void {
     if (!activeFolder) {
       effectSourcePath = undefined;
       void vscode.commands.executeCommand('setContext', 'ds-ide.isDaisyProject', false);
+      daisyView.setDaisyProject(false);
       statusItems.setVisible(false);
       updateEffectSourceContext(vscode.window.activeTextEditor);
       return;
@@ -1366,6 +1379,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // Scopes the ds-ide.* keybindings (package.json) so they don't fire in
     // unrelated workspaces (FR-QA-EXT-6).
     void vscode.commands.executeCommand('setContext', 'ds-ide.isDaisyProject', effectPath !== undefined);
+    daisyView.setDaisyProject(effectPath !== undefined);
     statusItems.setVisible(effectPath !== undefined);
     effectSourcePath = effectPath;
     updateEffectSourceContext(vscode.window.activeTextEditor);
@@ -1391,7 +1405,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const commandDisposables = registerCommands({
     manager, diagnostics, buildChannel, hardwareChannel, flashChannel,
     workspaceState: context.workspaceState, extensionPath: context.extensionPath,
-    deployCoordinator, scopePanel, controlsProvider, initViewsFromProject,
+    deployCoordinator, scopePanel, midiPanel, showOledPanel, sessionState: session, controlsProvider, initViewsFromProject,
     emulatorChannel, transport, daisyView, stopEmulator, refreshBoard,
   });
 

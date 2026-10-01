@@ -99,7 +99,9 @@ export type ControlsWebviewMessage =
   | { command: 'sdPreview'; name: string }
   // FR-CE-2: "show in separate view" — opens today's standalone OledPanel
   // unchanged, same target the Wiring Editor's View button opens.
-  | { command: 'oledPopOut' };
+  | { command: 'oledPopOut' }
+  // FR-RCH-2: the empty-canvas "Open Wiring Editor" button.
+  | { command: 'focusWiring' };
 
 // ── Wiring Editor ────────────────────────────────────────────────────────
 

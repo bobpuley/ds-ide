@@ -12,6 +12,37 @@ describe('package.json marketplace metadata (FR-QA-EXT-6)', () => {
     expect(pkg.version).toBe(latest);
   });
 
+  it('every viewsWelcome command exists in contributes.commands (FR-RCH-2)', () => {
+    const ids = new Set((pkg.contributes?.commands ?? []).map((c: { command: string }) => c.command));
+    const welcome = pkg.contributes?.viewsWelcome ?? [];
+    expect(welcome.length).toBeGreaterThan(0);
+    for (const w of welcome) {
+      for (const m of String(w.contents).matchAll(/\(command:([^)\s]+)/g)) {
+        expect(ids.has(m[1])).toBe(true);
+      }
+    }
+  });
+
+  it('the Daisy view is not hidden outside Daisy projects, so its welcome content can show (FR-RCH-2)', () => {
+    const view = pkg.contributes.views.debug.find((v: { id: string }) => v.id === 'ds-ide.daisyView');
+    expect(view.when).toBeUndefined();
+  });
+
+  it('contributes a Get started walkthrough whose steps link to real commands and files (FR-RCH-3)', () => {
+    const ids = new Set((pkg.contributes?.commands ?? []).map((c: { command: string }) => c.command));
+    const walk = (pkg.contributes?.walkthroughs ?? []).find((w: { id: string }) => w.id === 'ds-ide.getStarted');
+    expect(walk).toBeDefined();
+    expect(walk.steps.length).toBeGreaterThanOrEqual(4);
+    for (const step of walk.steps) {
+      expect(typeof step.title).toBe('string');
+      expect(fs.existsSync(path.join(__dirname, '../../../..', step.media.markdown))).toBe(true);
+      const md = fs.readFileSync(path.join(__dirname, '../../../..', step.media.markdown), 'utf8');
+      for (const m of `${step.description}\n${md}`.matchAll(/\(command:([^)\s?]+)/g)) {
+        expect(ids.has(m[1])).toBe(true);
+      }
+    }
+  });
+
   it('declares an icon whose asset file exists', () => {
     expect(typeof pkg.icon).toBe('string');
     const iconPath = path.join(__dirname, '../../../..', pkg.icon);
@@ -115,8 +146,8 @@ describe('Daisy view in Run and Debug (FR-TRN-4)', () => {
   const viewItem: Array<{ command: string; when?: string; group?: string }> = pkg.contributes?.menus?.['view/item/context'] ?? [];
   const inView = (cmd: string) => viewTitle.find((m) => m.command === cmd && m.when?.includes('view == ds-ide.daisyView'));
 
-  it('contributes ds-ide.daisyView to the debug container, shown only in Daisy projects', () => {
-    expect(pkg.contributes.views.debug).toContainEqual({ id: 'ds-ide.daisyView', name: 'Daisy', when: 'ds-ide.isDaisyProject' });
+  it('contributes ds-ide.daisyView to the debug container, in every workspace (FR-RCH-2)', () => {
+    expect(pkg.contributes.views.debug).toContainEqual({ id: 'ds-ide.daisyView', name: 'Daisy' });
   });
 
   it('declares ds-ide.revealDaisyView (the state item\'s click action, FR-TRN-5)', () => {

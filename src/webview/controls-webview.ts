@@ -13,7 +13,7 @@ import { readDataIsland, showDataIslandError } from './data-island';
 import { createDocListenerTracker } from './controls/doc-listeners';
 import { createConventionCanvas } from './controls/convention-canvas';
 import { createYamlEditorCanvas } from './controls/yaml-editor-canvas';
-import { wireSaveButton } from './controls/save';
+import { wireAutoSave, type LayoutAutoSave } from './controls/save';
 import { createSdCardPanel } from './controls/sd-card-panel';
 import { createOledStrip } from './controls/oled-strip';
 import { rgbState, applyVars } from './controls/device-widget';
@@ -23,6 +23,11 @@ interface VsCodeApiForControls {
 }
 
 const vscode = acquireVsCodeApi() as unknown as VsCodeApiForControls;
+
+// FR-RCH-2: the empty-canvas hint's button.
+document.getElementById('open-wiring-btn')?.addEventListener('click', () => {
+  vscode.postMessage({ command: 'focusWiring' });
+});
 
 function isPartialControllerConfig(v: unknown): v is Partial<ControllerConfig> {
   if (typeof v !== 'object' || v === null) return false;
@@ -40,13 +45,23 @@ if (_yamlInitResult.error) showDataIslandError('yaml-init', _yamlInitResult.erro
 
 const docListeners = createDocListenerTracker();
 
-const yamlEditorCanvas = createYamlEditorCanvas(_yamlInitResult.value, docListeners.add, docListeners.clear);
+// FR-RCH-5: the canvases are built before the saver (it reads their state), so
+// they reach it through this late-bound handle.
+let autoSave: LayoutAutoSave | undefined;
+const layoutHooks = {
+  onStart: () => autoSave?.cancel(),
+  onEnd: () => autoSave?.schedule(),
+  onChange: () => autoSave?.schedule(),
+};
+
+const yamlEditorCanvas = createYamlEditorCanvas(_yamlInitResult.value, docListeners.add, docListeners.clear, layoutHooks);
 
 const conventionCanvas = createConventionCanvas(
   vscode,
   (id) => yamlEditorCanvas.getYamlCfg().buttons.find(b => b.id === id)?.mode,
   docListeners.add,
   docListeners.clear,
+  layoutHooks,
 );
 
 const sdCardPanel = createSdCardPanel(vscode);
@@ -54,7 +69,7 @@ const oledStrip = createOledStrip(vscode);
 
 let conventionMissing = true;
 
-wireSaveButton({
+autoSave = wireAutoSave({
   vscode,
   isConventionMissing: () => conventionMissing,
   getConventionControls: () => conventionCanvas.getControls(),

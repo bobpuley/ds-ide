@@ -111,8 +111,18 @@ export class DaisyViewProvider implements vscode.TreeDataProvider<DaisyRow>, vsc
     this._onDidChangeTreeData.fire();
   }
 
+  // FR-RCH-2: outside a Daisy project the view has no rows, which is what
+  // makes VS Code show its viewsWelcome content.
+  private isDaisyProject = false;
+
+  setDaisyProject(isDaisyProject: boolean): void {
+    if (this.isDaisyProject === isDaisyProject) return;
+    this.isDaisyProject = isDaisyProject;
+    this.refresh();
+  }
+
   getChildren(element?: DaisyRow): DaisyRow[] {
-    if (element) return [];
+    if (element || !this.isDaisyProject) return [];
     return buildDaisyRows(this.controller.state, this.getAudioDetail());
   }
 

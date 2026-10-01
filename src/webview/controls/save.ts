@@ -9,6 +9,7 @@ import type { ControlsWebviewMessage } from '../messages';
 import type { EditorControl } from './yaml-editor-canvas';
 import { el } from '../dom-lookup';
 import { adcChannelFromPin } from './adc-channel';
+import { createDebouncedSaver } from './auto-save';
 
 export interface SaveDeps {
   vscode: { postMessage(msg: ControlsWebviewMessage): void };
@@ -18,10 +19,20 @@ export interface SaveDeps {
   getEditorControls(): EditorControl[];
 }
 
-export function wireSaveButton(deps: SaveDeps): void {
+// FR-RCH-5: the layout saves itself ~500 ms after a drag ends or a field is
+// committed — there is no save button. `schedule` is what the canvases call;
+// `cancel` is for a drag that starts while a save is still pending, so the
+// host's post-save re-render cannot stomp it.
+export interface LayoutAutoSave {
+  schedule(): void;
+  cancel(): void;
+  flush(): void;
+}
+
+export function wireAutoSave(deps: SaveDeps): LayoutAutoSave {
   const { vscode, isConventionMissing, getConventionControls, getYamlCfg, getEditorControls } = deps;
 
-  el<HTMLElement>('save-btn').addEventListener('click', () => {
+  const saveNow = (): void => {
     let cfg: ControllerConfig;
     if (!isConventionMissing()) {
       const conventionControls = getConventionControls();
@@ -93,5 +104,10 @@ export function wireSaveButton(deps: SaveDeps): void {
     const st = el<HTMLElement>('save-status');
     st.textContent = 'Saved ✓';
     setTimeout(() => { st.textContent = ''; }, 2000);
-  });
+  };
+
+  const saver = createDebouncedSaver(saveNow);
+  // A pending save must not be lost when the view is hidden or torn down.
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saver.flush(); });
+  return saver;
 }

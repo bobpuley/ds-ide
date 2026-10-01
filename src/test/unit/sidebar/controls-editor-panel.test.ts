@@ -486,6 +486,26 @@ describe('ControlsViewProvider', () => {
     expect(onOledPopOut).toHaveBeenCalled();
   });
 
+  it('runs ds-ide.focusWiring when a focusWiring message is received (FR-RCH-2)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    const handler = (view.webview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as (msg: unknown) => void;
+    handler({ command: 'focusWiring' });
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('ds-ide.focusWiring');
+  });
+
+  it('has no manual save-layout button — layout auto-saves (FR-RCH-5)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(view.webview.html).not.toContain('id="save-btn"');
+  });
+
+  it('the empty-canvas hint has an Open Wiring Editor button (FR-RCH-2)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(view.webview.html).toContain('id="open-wiring-btn"');
+  });
+
   it('flushes oledEnabled and the last frame on resolve after being set pre-resolve', () => {
     provider.postOledEnabled(true, 'SPI1');
     provider.postOledFrame('AAECAw==');

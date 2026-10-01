@@ -69,4 +69,9 @@
 > **v23 complete** — archived to `docs/v23/` on 2026-09-30. Full v23 ideas archived in
 > [`docs/v23/01_input-ideas.md`](v23/01_input-ideas.md).
 
-*v24 planning not yet started. Use `/doc-creator-driver:intake` or `/doc-creator-driver:start` to begin.*
+## Reachability (intake 2026-10-01, source: `design_plan.md` §7 row 1 + P1-3)
+
+- **Reopen commands** — palette commands to show/focus Scope, OLED, MIDI, Controls Editor and Wiring Editor (`design_plan.md` P0-2). Closing the Scope tab today costs a full rebuild + relaunch to get it back.
+- **First-run onboarding** — `viewsWelcome` on the Controls/Wiring views (gated on `ds-ide.isDaisyProject`) plus a "Get started with Daisy Seed" walkthrough (P1-4).
+- **README/manifest lint** — README still says "Open Wiring Editor" (removed in M21); add a check that command names in docs exist in `package.json` (P2-3).
+- **Auto-save layout** — Controls Editor layout saved on drag-end (debounced) instead of only via the "💾 layout" button (P1-3).

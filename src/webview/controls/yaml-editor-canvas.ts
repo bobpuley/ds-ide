@@ -39,6 +39,9 @@ export function createYamlEditorCanvas(
   initialYamlInit: Partial<ControllerConfig>,
   addDocListener: (event: string, fn: EventListener) => void,
   clearDocListeners: () => void,
+  // FR-RCH-5: `onChange` fires on a committed edit (blur/select change/delete) —
+  // never per keystroke, since the host re-renders the canvas after a save.
+  layoutHooks: { onStart?: () => void; onEnd?: () => void; onChange?: () => void } = {},
 ): YamlEditorCanvas {
   let yamlCfg: ControllerConfig = {
     pots: initialYamlInit.pots || [], buttons: initialYamlInit.buttons || [], leds: initialYamlInit.leds || [],
@@ -85,6 +88,7 @@ export function createYamlEditorCanvas(
     (card.querySelector('.card-del') as HTMLElement).addEventListener('click', () => {
       editorControls = editorControls.filter(c => c !== ctrl);
       card.remove();
+      layoutHooks.onChange?.();
       const hint = document.getElementById('canvas-hint');
       if (hint) hint.style.display = editorControls.length ? 'none' : 'flex';
     });
@@ -98,7 +102,8 @@ export function createYamlEditorCanvas(
       (card.querySelector('.card-pin') as HTMLSelectElement).addEventListener('change', e => { ctrl.gpioPin = parseInt((e.target as HTMLSelectElement).value, 10); });
       if (ctrl.kind === 'button') (card.querySelector('.card-mode') as HTMLSelectElement).addEventListener('change', e => { ctrl.mode = (e.target as HTMLSelectElement).value as ButtonMode; });
     }
-    makeDraggable(card, ctrl, addDocListener);
+    makeDraggable(card, ctrl, addDocListener, layoutHooks);
+    card.querySelectorAll('input, select').forEach(f => f.addEventListener('change', () => layoutHooks.onChange?.()));
     return card;
   }
 
