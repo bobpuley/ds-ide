@@ -494,6 +494,13 @@ describe('ControlsViewProvider', () => {
     expect(vscode.commands.executeCommand).toHaveBeenCalledWith('ds-ide.focusWiring');
   });
 
+  it('has no play/stop marker in the header (FR-CEH-1)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(view.webview.html).not.toContain('ce-emu-status');
+    expect(view.webview.html).not.toContain('ce-emu-running');
+  });
+
   it('has no manual save-layout button — layout auto-saves (FR-RCH-5)', () => {
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);

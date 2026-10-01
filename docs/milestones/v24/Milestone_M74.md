@@ -21,7 +21,7 @@ The Wiring Editor draws five pin states with no key, the Controls Editor header 
 
 ---
 
-### [ ] fix: remove the play/stop marker from the Controls header (FR-CEH-1)
+### [x] fix: remove the play/stop marker from the Controls header (FR-CEH-1)
 
 **Affected files:** `src/sidebar/controls-editor-panel.ts`, `src/webview/controls/convention-canvas.ts`, `src/test/unit/sidebar/controls-editor-panel.test.ts`
 

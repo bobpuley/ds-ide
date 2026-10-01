@@ -54,11 +54,6 @@ export function createConventionCanvas(
 
   function updateCeEmulatorState(running: boolean): void {
     ceEmulatorRunning = running;
-    const ceStatusEl = document.getElementById('ce-emu-status');
-    if (ceStatusEl) {
-      ceStatusEl.textContent = running ? '▶' : '■';
-      ceStatusEl.className = running ? 'ce-emu-running' : 'ce-emu-stopped';
-    }
     document.querySelectorAll('#canvas-area .ctrl-body').forEach(body => {
       body.classList.toggle('body-disabled', !running);
     });

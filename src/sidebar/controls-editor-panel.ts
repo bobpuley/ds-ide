@@ -273,10 +273,6 @@ ${themeCss({ surface: 'sidebar' })}
     body { background: var(--ds-surface); color: var(--ds-text); font-family: monospace; font-size: 12px; display: flex; flex-direction: column; height: 100vh; }
     #editor-toolbar { padding: 6px 12px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
     #save-status { font-size: 11px; color: var(--ds-ok); }
-    #ce-emu-status { font-size: 11px; }
-    .ce-emu-running { color: var(--ds-ok); }
-    .ce-emu-stopped { color: var(--ds-error); }
-    .emu-sep { color: var(--ds-border); user-select: none; }
     #convention-banner { display: none; align-items: center; gap: 8px; padding: 5px 12px; background: var(--ds-warning-bg); border-bottom: 1px solid var(--ds-warning-border); color: var(--ds-warning-fg); font-size: 11px; flex-shrink: 0; }
     /* OLED docked strip (FR-CE-2) — collapses to nothing (display:none) when
        the oled peripheral is disabled, so #design-area's flex:1 fills the
@@ -352,8 +348,6 @@ ${ctrlCardCssRules()}
 </head>
 <body>
   <div id="editor-toolbar">
-    <span id="ce-emu-status" class="ce-emu-stopped">&#9632;</span>
-    <span class="emu-sep" style="margin:0 6px">|</span>
     <span id="save-wrap" style="display:inline-flex;align-items:center;gap:8px">
       <span id="save-status"></span>
     </span>
