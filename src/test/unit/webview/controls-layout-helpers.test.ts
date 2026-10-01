@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { GRID_PX, snapToGrid } from '../../../webview/controls/layout-helpers';
+import { GRID_PX, snapToGrid, arrangeInRows, CARD_COL_PITCH, CARD_ROW_PITCH } from '../../../webview/controls/layout-helpers';
 
 describe('snapToGrid (FR-CEH-2)', () => {
   it('uses a 20 px grid', () => {
@@ -18,5 +18,38 @@ describe('snapToGrid (FR-CEH-2)', () => {
 
   it('never returns a negative coordinate', () => {
     expect(snapToGrid([-30, -5])).toEqual([0, 0]);
+  });
+});
+
+describe('arrangeInRows (FR-CEH-3)', () => {
+  it('fills rows left to right, in the given order, starting at 20,20', () => {
+    const out = arrangeInRows(3, 3 * CARD_COL_PITCH + 20);
+    expect(out).toEqual([[20, 20], [20 + CARD_COL_PITCH, 20], [20 + 2 * CARD_COL_PITCH, 20]]);
+  });
+
+  it('wraps to a new row when the canvas width is full', () => {
+    const out = arrangeInRows(5, 2 * CARD_COL_PITCH + 20);
+    expect(out.map(p => p[1])).toEqual([20, 20, 20 + CARD_ROW_PITCH, 20 + CARD_ROW_PITCH, 20 + 2 * CARD_ROW_PITCH]);
+    expect(out.map(p => p[0])).toEqual([20, 20 + CARD_COL_PITCH, 20, 20 + CARD_COL_PITCH, 20]);
+  });
+
+  it('uses at least one column however narrow the canvas is', () => {
+    const out = arrangeInRows(3, 10);
+    expect(out.map(p => p[0])).toEqual([20, 20, 20]);
+    expect(out.map(p => p[1])).toEqual([20, 20 + CARD_ROW_PITCH, 20 + 2 * CARD_ROW_PITCH]);
+  });
+
+  it('honours a taller row pitch so tall cards do not overlap', () => {
+    const out = arrangeInRows(2, 10, 260);
+    expect(out[1]![1] - out[0]![1]).toBe(260);
+  });
+
+  it('never places two cards at the same position', () => {
+    const out = arrangeInRows(23, 700);
+    expect(new Set(out.map(p => p.join(','))).size).toBe(23);
+  });
+
+  it('returns nothing for no cards', () => {
+    expect(arrangeInRows(0, 700)).toEqual([]);
   });
 });

@@ -353,6 +353,7 @@ ${ctrlCardCssRules()}
   <div id="editor-toolbar">
     <span id="layout-tools" style="display:inline-flex;align-items:center;gap:6px">
       <button id="align-grid-btn" class="tool-btn" title="Snap every card to a 20 px grid">&#x25A6; Align to grid</button>
+      <button id="auto-arrange-btn" class="tool-btn" title="Lay the cards out in tidy rows">&#x2630; Auto-arrange</button>
     </span>
     <span id="save-wrap" style="display:inline-flex;align-items:center;gap:8px">
       <span id="save-status"></span>

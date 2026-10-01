@@ -44,7 +44,7 @@ The Wiring Editor draws five pin states with no key, the Controls Editor header 
 
 ---
 
-### [ ] feat: Auto-arrange (FR-CEH-3)
+### [x] feat: Auto-arrange (FR-CEH-3)
 
 **Affected files:** `src/webview/controls/layout-helpers.ts`, `src/webview/controls/convention-canvas.ts`, `src/sidebar/controls-editor-panel.ts`, `src/test/unit/webview/controls-layout-helpers.test.ts`
 
