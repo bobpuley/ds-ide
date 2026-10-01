@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createEffectProject } from '../../../commands/create-effect-project';
 import { parseControllerConfig } from '../../../controllers/controller-config';
 import * as vscode from 'vscode';
+import * as path from 'path';
 
 // vscode is resolved via the alias in vitest.config.ts to src/__mocks__/vscode.ts.
 // All exports there are vi.fn() — no vi.mock('vscode') call needed.
@@ -179,7 +180,7 @@ describe('createEffectProject', () => {
     const [source, target] = fsCopy.mock.calls[0] as [{ fsPath: string }, { fsPath: string }];
     // Resolved from extensionPath (not a symlink into it) — vscode.workspace.fs
     // has no symlink API, so a real fs.copy call is the only way this happens.
-    expect(source.fsPath).toBe('/ext/vendor/DaisySP/Source');
+    expect(source.fsPath).toBe(path.join('/ext/vendor/DaisySP/Source'));
     expect(target.fsPath).toBe('/dest/myEffect/DaisySP/Source');
   });
 

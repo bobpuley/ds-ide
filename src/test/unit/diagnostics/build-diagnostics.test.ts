@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
 import { parseBuildLine, applyDiagnostics } from '../../../diagnostics/build-diagnostics';
+import * as path from 'path';
 
 describe('parseBuildLine', () => {
   it('parses a clang error line', () => {
@@ -113,7 +114,7 @@ describe('applyDiagnostics', () => {
       '/proj',
     );
     const [uri] = collection.set.mock.calls[0] as [vscode.Uri, vscode.Diagnostic[]];
-    expect(uri.fsPath).toBe('/proj/a.cpp');
+    expect(uri.fsPath).toBe(path.resolve('/proj', 'a.cpp'));
   });
 
   it('uses correct VS Code severity', () => {

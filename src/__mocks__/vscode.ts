@@ -96,8 +96,9 @@ function findContainingFolder(
 ): MockWorkspaceFolder | undefined {
   if (!folders) return undefined;
   return folders.find((f) => {
-    const root = f.uri.fsPath;
-    return uri.fsPath === root || uri.fsPath.startsWith(root + path.sep);
+    const root = path.normalize(f.uri.fsPath);
+    const target = path.normalize(uri.fsPath);
+    return target === root || target.startsWith(root + path.sep);
   });
 }
 

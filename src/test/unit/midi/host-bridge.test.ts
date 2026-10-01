@@ -132,6 +132,13 @@ describe('installed midi package (FR-EXT-36)', () => {
         console.warn('ds-ide: midi package ABI mismatch under this Node runtime — skipping shape check:', message);
         return;
       }
+      // The native addon is only built on macOS (rebuild-midi-native.sh skips
+      // other platforms; the host bridge is FR-DEV-18, macOS-only), so a
+      // missing binding elsewhere is the expected state, not a regression.
+      if (process.platform !== 'darwin' && /Could not locate the bindings file/.test(message)) {
+        console.warn('ds-ide: midi native addon not built on this platform — skipping shape check');
+        return;
+      }
       throw err;
     }
     expect(typeof probe.getPortCount).toBe('function');
