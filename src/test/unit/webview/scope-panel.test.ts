@@ -682,6 +682,17 @@ describe('ScopePanel', () => {
     expect(html).toMatch(/#cursor-readout \{[^}]*pointer-events: none/);
   });
 
+  it('unselected toolbar buttons have a border as visible as the selected one, so all look the same size', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    const css = webview.html;
+    for (const sel of ['\\.seg-btn', '\\.ctl-btn']) {
+      const rule = new RegExp(`${sel} \\{([^}]*)\\}`).exec(css)![1]!;
+      expect(rule).toMatch(/border: 1px solid var\(--ds-control-border\)/);
+    }
+    expect(css).toMatch(/--ds-control-border: color-mix\(in srgb, var\(--ds-text\) \d+%, transparent\)/);
+  });
+
   it('toolbar buttons share one font size and never wrap their label', () => {
     panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
