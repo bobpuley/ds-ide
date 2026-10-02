@@ -7,8 +7,8 @@ import {
 } from '../../../webview/scope/scope-view';
 
 describe('time base (FR-SCI-4)', () => {
-  it('offers 0.5 / 1 / 2 / 5 / 10 ms per division, defaulting to 2', () => {
-    expect([...TIME_BASES_MS]).toEqual([0.5, 1, 2, 5, 10]);
+  it('offers 0.5 / 1 / 2 / 5 / 10 / 20 ms per division, defaulting to 2', () => {
+    expect([...TIME_BASES_MS]).toEqual([0.5, 1, 2, 5, 10, 20]);
     expect(DEFAULT_TIME_BASE_MS).toBe(2);
     expect(DIVISIONS).toBe(10);
   });

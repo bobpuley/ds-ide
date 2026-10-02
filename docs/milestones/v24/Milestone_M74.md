@@ -76,3 +76,15 @@ Found in manual testing: the segmented buttons used the browser's default button
 - `.seg-btn` and `.ctl-btn` share one font size and line height and never wrap their label
 - the cursor read-out is an overlay in the plot's corner, so hovering never changes the toolbar's height
 
+---
+
+### [x] feat: 20 ms/div time base (FR-SCI-4)
+
+Requested during manual testing. Slower bases (50 ms/div up to 1000 ms/div) are deferred: they need a larger circular ring and a roll mode without a trigger.
+
+**Affected files:** `src/webview/scope/scope-view.ts`, `src/webview/scope/scope-capture.ts`, `src/test/unit/webview/scope-view.test.ts`, `src/test/unit/webview/scope-capture.test.ts`
+
+**DoD:**
+- the Time selector offers 20 ms/div after 10 ms/div
+- the capture ring keeps 300 ms (the widest window, 200 ms, plus 100 ms of trigger headroom), tested against the widest time base so a future option cannot outgrow it
+
