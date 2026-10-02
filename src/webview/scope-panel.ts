@@ -409,7 +409,7 @@ function buildHtml(nonce: string, scriptUri: string, sine: SineParams, source: A
   <style>
 ${themeCss({ surface: 'editor' })}
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { --ctl-h: 22px; background: var(--ds-surface); color: var(--ds-text); font-family: monospace; font-size: 12px; display: flex; flex-direction: column; height: 100vh; border: 1px solid var(--ds-border); }
+    body { background: var(--ds-surface); color: var(--ds-text); font-family: monospace; font-size: 12px; display: flex; flex-direction: column; height: 100vh; border: 1px solid var(--ds-border); }
     header { padding: 6px 12px; background: var(--ds-surface-raised); display: flex; align-items: center; gap: 16px; border-bottom: 1px solid var(--ds-border); flex-wrap: wrap; flex-shrink: 0; }
     #fidelity-caveat { font-size: 10px; color: var(--ds-text-muted); cursor: default; margin-left: auto; }
     #status-text { flex: 1; }
@@ -430,14 +430,14 @@ ${themeCss({ surface: 'editor' })}
     .event-time { color: var(--ds-text-muted); width: 64px; flex-shrink: 0; }
     .event-kind { color: var(--ds-error); min-width: 80px; }
     #scope-controls { display: flex; align-items: center; gap: 12px; padding: 4px 12px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); flex-shrink: 0; }
-    .ctl-btn { display: inline-flex; align-items: center; box-sizing: border-box; height: var(--ctl-h); background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-border); padding: 2px 8px; font-family: monospace; font-size: inherit; line-height: 1.4; white-space: nowrap; cursor: pointer; border-radius: 2px; }
+    .ctl-btn { display: inline-flex; align-items: center; background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-border); padding: 2px 8px; font-family: monospace; font-size: inherit; line-height: 1.4; white-space: nowrap; cursor: pointer; border-radius: 2px; }
     .ctl-btn:disabled { opacity: 0.4; cursor: default; }
     .btn-group { display: inline-flex; }
     .btn-group .ctl-btn:not(:first-child) { margin-left: -1px; border-top-left-radius: 0; border-bottom-left-radius: 0; }
     .btn-group .ctl-btn:not(:last-child) { border-top-right-radius: 0; border-bottom-right-radius: 0; }
     .ctl-btn:hover { background: var(--ds-hover-bg); }
     .ctl-btn[aria-pressed="true"] { background: var(--ds-button-bg); color: var(--ds-button-fg); border-color: var(--ds-focus); }
-    .ctl-icon { padding: 0 5px; }
+    .ctl-icon { padding: 2px 5px; }
     .ctl-icon svg { width: 14px; height: 14px; display: block; }
     /* Overlaid on the plot, not in the toolbar: its text changes on every mouse move, and
        in the toolbar it wrapped the other controls onto a second row on hover. */
@@ -446,7 +446,7 @@ ${themeCss({ surface: 'editor' })}
     #cursor-readout:empty { display: none; }
     #scope { cursor: crosshair; }
     .seg { display: inline-flex; }
-    .seg-btn { display: inline-flex; align-items: center; box-sizing: border-box; height: var(--ctl-h); background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-border); padding: 2px 8px; font-family: monospace; font-size: inherit; line-height: 1.4; white-space: nowrap; cursor: pointer; margin-left: -1px; }
+    .seg-btn { display: inline-flex; align-items: center; background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-border); padding: 2px 8px; font-family: monospace; font-size: inherit; line-height: 1.4; white-space: nowrap; cursor: pointer; margin-left: -1px; }
     .seg-btn:first-child { border-radius: 2px 0 0 2px; margin-left: 0; }
     .seg-btn:last-child { border-radius: 0 2px 2px 0; }
     .seg-btn:hover { background: var(--ds-hover-bg); }

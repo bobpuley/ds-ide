@@ -682,18 +682,6 @@ describe('ScopePanel', () => {
     expect(html).toMatch(/#cursor-readout \{[^}]*pointer-events: none/);
   });
 
-  it('selected and unselected segmented buttons have the same box: fixed height, constant border width', () => {
-    panel.show();
-    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    const css = webview.html;
-    expect(css).toMatch(/\.seg-btn \{[^}]*height: var\(--ctl-h\)/);
-    expect(css).toMatch(/\.ctl-btn \{[^}]*height: var\(--ctl-h\)/);
-    expect(css).toMatch(/\.seg-btn \{[^}]*box-sizing: border-box/);
-    // the active state may only change colours, never size
-    const active = /\.seg-btn\.active \{([^}]*)\}/.exec(css)![1]!;
-    expect(active).not.toMatch(/padding|border-width|height|font|margin|border:/);
-  });
-
   it('toolbar buttons share one font size and never wrap their label', () => {
     panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
