@@ -1,7 +1,7 @@
 # M74 — Editor Polish
 
 **Version:** 0.24.1
-**Status:** in progress
+**Status:** released
 **Source:** intake session, 2026-10-01 (01_input-ideas.md; design_plan.md P1-6, P2-2; user request)
 
 ## Goal

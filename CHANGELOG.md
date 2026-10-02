@@ -3,6 +3,17 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.24.1 — 2026-10-02
+
+**Editor polish** *(FR-WLG-1, FR-CEH-1 to FR-CEH-4, M74)*
+
+- **FR-WLG-1** — The Wiring Editor has a collapsible legend under the hint line: free pin, free ADC input (with its A-label), one entry per wired device colour, bus peripheral pin, and power / non-assignable. Swatches reuse the pins' own classes, so they cannot drift from the board.
+- **FR-CEH-1** — The play/stop marker is removed from the Controls Editor header; cards still dim while the emulator is stopped.
+- **FR-CEH-2 / 3 / 4** — Three icon-only header buttons (tooltip and `aria-label` carry the name): *Align to grid* (20 px), *Auto-arrange* (rows in controls-block order, wrapping at the panel width, row pitch grown to the tallest card) and *Reset positions* (the default cascade, now shared with the first render). They save through auto-save and are disabled in the legacy yaml-only mode.
+- **FR-SCI-7** — Scope toolbar: the cursor read-out is now an overlay on the plot, so hovering no longer wraps the toolbar onto a second row; text and icon buttons share one height and an 11 px font; unselected buttons get a more visible border (`--ds-control-border`), so they no longer look smaller than the selected one.
+- **FR-SCI-4** — New 20 ms/div time base; the capture ring grows from 150 ms to 300 ms (the widest window plus 100 ms of trigger headroom). Slower bases are deferred: they need a larger circular ring and a roll mode.
+- **chore** — `package.json`'s `version` is bumped to `0.24.1`.
+
 ## 0.24.0 — 2026-10-01
 
 **Reachability** *(FR-RCH-1 to FR-RCH-5, M73)*
