@@ -669,6 +669,28 @@ describe('ScopePanel', () => {
     expect(webview.html).toContain('id="cursor-readout"');
   });
 
+  // Toolbar stability: hovering the plot must never change the toolbar's height.
+  it('the cursor read-out overlays the plot instead of sitting in the toolbar (toolbar height stays fixed)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    const html = webview.html;
+    const toolbarStart = html.indexOf('id="scope-controls"');
+    const toolbarEnd = html.indexOf('id="scope-main"');
+    expect(html.slice(toolbarStart, toolbarEnd)).not.toContain('id="cursor-readout"');
+    expect(html.indexOf('id="cursor-readout"')).toBeGreaterThan(html.indexOf('id="plots"'));
+    expect(html).toMatch(/#cursor-readout \{[^}]*position: absolute/);
+    expect(html).toMatch(/#cursor-readout \{[^}]*pointer-events: none/);
+  });
+
+  it('toolbar buttons share one font size and never wrap their label', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toMatch(/\.seg-btn \{[^}]*font-size: inherit/);
+    expect(webview.html).toMatch(/\.ctl-btn \{[^}]*white-space: nowrap/);
+    expect(webview.html).toMatch(/\.seg-btn \{[^}]*white-space: nowrap/);
+    expect(webview.html).toMatch(/#rate-note \{[^}]*white-space: nowrap/);
+  });
+
   // FR-SCI-8 — meters column
   it('webview HTML has a meter per channel, a headroom value and a Reset peaks button (FR-SCI-8)', () => {
     panel.show();

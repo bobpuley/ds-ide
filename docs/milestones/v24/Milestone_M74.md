@@ -63,3 +63,16 @@ The Wiring Editor draws five pin states with no key, the Controls Editor header 
 - a *Reset positions* header button returns every card to the default cascade (the layout used when no position is stored)
 - the default-cascade rule is shared with the canvas's first render, not duplicated
 - the result is saved through auto-save; a unit test covers the cascade
+
+---
+
+### [x] fix: stable Scope toolbar — uniform button font, read-out off the toolbar (FR-SCI-7)
+
+Found in manual testing: the segmented buttons used the browser's default button font, so they looked larger than the other controls, and the cursor read-out in the toolbar made it wrap onto a second row whenever the mouse moved over the plot.
+
+**Affected files:** `src/webview/scope-panel.ts`, `src/test/unit/webview/scope-panel.test.ts`
+
+**DoD:**
+- `.seg-btn` and `.ctl-btn` share one font size and line height and never wrap their label
+- the cursor read-out is an overlay in the plot's corner, so hovering never changes the toolbar's height
+
