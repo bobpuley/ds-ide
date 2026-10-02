@@ -411,7 +411,7 @@ ${themeCss({ surface: 'editor' })}
     * { box-sizing: border-box; margin: 0; padding: 0; }
     /* Resting button border: --ds-border is too faint next to the selected state's focus-coloured
        border, which made unselected buttons look smaller than identical selected ones. */
-    body { --ds-control-border: color-mix(in srgb, var(--ds-text) 45%, transparent); background: var(--ds-surface); color: var(--ds-text); font-family: monospace; font-size: 12px; display: flex; flex-direction: column; height: 100vh; border: 1px solid var(--ds-border); }
+    body { --ctl-line: 14px; --ds-control-border: color-mix(in srgb, var(--ds-text) 45%, transparent); background: var(--ds-surface); color: var(--ds-text); font-family: monospace; font-size: 12px; display: flex; flex-direction: column; height: 100vh; border: 1px solid var(--ds-border); }
     header { padding: 6px 12px; background: var(--ds-surface-raised); display: flex; align-items: center; gap: 16px; border-bottom: 1px solid var(--ds-border); flex-wrap: wrap; flex-shrink: 0; }
     #fidelity-caveat { font-size: 10px; color: var(--ds-text-muted); cursor: default; margin-left: auto; }
     #status-text { flex: 1; }
@@ -432,7 +432,7 @@ ${themeCss({ surface: 'editor' })}
     .event-time { color: var(--ds-text-muted); width: 64px; flex-shrink: 0; }
     .event-kind { color: var(--ds-error); min-width: 80px; }
     #scope-controls { display: flex; align-items: center; gap: 12px; padding: 4px 12px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); flex-shrink: 0; }
-    .ctl-btn { display: inline-flex; align-items: center; background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-control-border); padding: 2px 8px; font-family: monospace; font-size: inherit; line-height: 1.4; white-space: nowrap; cursor: pointer; border-radius: 2px; }
+    .ctl-btn { display: inline-flex; align-items: center; background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-control-border); padding: 2px 8px; font-family: monospace; font-size: 11px; line-height: var(--ctl-line); white-space: nowrap; cursor: pointer; border-radius: 2px; }
     .ctl-btn:disabled { opacity: 0.4; cursor: default; }
     .btn-group { display: inline-flex; }
     .btn-group .ctl-btn:not(:first-child) { margin-left: -1px; border-top-left-radius: 0; border-bottom-left-radius: 0; }
@@ -440,7 +440,7 @@ ${themeCss({ surface: 'editor' })}
     .ctl-btn:hover { background: var(--ds-hover-bg); }
     .ctl-btn[aria-pressed="true"] { background: var(--ds-button-bg); color: var(--ds-button-fg); border-color: var(--ds-focus); }
     .ctl-icon { padding: 2px 5px; }
-    .ctl-icon svg { width: 14px; height: 14px; display: block; }
+    .ctl-icon svg { width: var(--ctl-line); height: var(--ctl-line); display: block; }
     /* Overlaid on the plot, not in the toolbar: its text changes on every mouse move, and
        in the toolbar it wrapped the other controls onto a second row on hover. */
     #cursor-readout { position: absolute; top: 4px; right: 8px; z-index: 1; padding: 2px 6px; border-radius: 2px; pointer-events: none;
@@ -448,7 +448,7 @@ ${themeCss({ surface: 'editor' })}
     #cursor-readout:empty { display: none; }
     #scope { cursor: crosshair; }
     .seg { display: inline-flex; }
-    .seg-btn { display: inline-flex; align-items: center; background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-control-border); padding: 2px 8px; font-family: monospace; font-size: inherit; line-height: 1.4; white-space: nowrap; cursor: pointer; margin-left: -1px; }
+    .seg-btn { display: inline-flex; align-items: center; background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-control-border); padding: 2px 8px; font-family: monospace; font-size: 11px; line-height: var(--ctl-line); white-space: nowrap; cursor: pointer; margin-left: -1px; }
     .seg-btn:first-child { border-radius: 2px 0 0 2px; margin-left: 0; }
     .seg-btn:last-child { border-radius: 0 2px 2px 0; }
     .seg-btn:hover { background: var(--ds-hover-bg); }
