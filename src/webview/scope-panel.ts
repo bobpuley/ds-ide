@@ -409,7 +409,9 @@ function buildHtml(nonce: string, scriptUri: string, sine: SineParams, source: A
   <style>
 ${themeCss({ surface: 'editor' })}
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: var(--ds-surface); color: var(--ds-text); font-family: monospace; font-size: 12px; display: flex; flex-direction: column; height: 100vh; border: 1px solid var(--ds-border); }
+    /* Resting button border: --ds-border is too faint next to the selected state's focus-coloured
+       border, which made unselected buttons look smaller than identical selected ones. */
+    body { --ctl-line: 14px; --ds-control-border: color-mix(in srgb, var(--ds-text) 45%, transparent); background: var(--ds-surface); color: var(--ds-text); font-family: monospace; font-size: 12px; display: flex; flex-direction: column; height: 100vh; border: 1px solid var(--ds-border); }
     header { padding: 6px 12px; background: var(--ds-surface-raised); display: flex; align-items: center; gap: 16px; border-bottom: 1px solid var(--ds-border); flex-wrap: wrap; flex-shrink: 0; }
     #fidelity-caveat { font-size: 10px; color: var(--ds-text-muted); cursor: default; margin-left: auto; }
     #status-text { flex: 1; }
@@ -430,7 +432,7 @@ ${themeCss({ surface: 'editor' })}
     .event-time { color: var(--ds-text-muted); width: 64px; flex-shrink: 0; }
     .event-kind { color: var(--ds-error); min-width: 80px; }
     #scope-controls { display: flex; align-items: center; gap: 12px; padding: 4px 12px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); flex-shrink: 0; }
-    .ctl-btn { display: inline-flex; align-items: center; background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-border); padding: 2px 8px; font-family: monospace; font-size: inherit; cursor: pointer; border-radius: 2px; }
+    .ctl-btn { display: inline-flex; align-items: center; background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-control-border); padding: 2px 8px; font-family: monospace; font-size: 11px; line-height: var(--ctl-line); white-space: nowrap; cursor: pointer; border-radius: 2px; }
     .ctl-btn:disabled { opacity: 0.4; cursor: default; }
     .btn-group { display: inline-flex; }
     .btn-group .ctl-btn:not(:first-child) { margin-left: -1px; border-top-left-radius: 0; border-bottom-left-radius: 0; }
@@ -438,20 +440,24 @@ ${themeCss({ surface: 'editor' })}
     .ctl-btn:hover { background: var(--ds-hover-bg); }
     .ctl-btn[aria-pressed="true"] { background: var(--ds-button-bg); color: var(--ds-button-fg); border-color: var(--ds-focus); }
     .ctl-icon { padding: 2px 5px; }
-    .ctl-icon svg { width: 14px; height: 14px; display: block; }
-    #cursor-readout { margin-left: auto; font-size: 11px; color: var(--ds-text); white-space: pre; }
+    .ctl-icon svg { width: var(--ctl-line); height: var(--ctl-line); display: block; }
+    /* Overlaid on the plot, not in the toolbar: its text changes on every mouse move, and
+       in the toolbar it wrapped the other controls onto a second row on hover. */
+    #cursor-readout { position: absolute; top: 4px; right: 8px; z-index: 1; padding: 2px 6px; border-radius: 2px; pointer-events: none;
+                      font-size: 11px; color: var(--ds-text); white-space: pre; background: var(--ds-surface-raised); opacity: 0.92; }
+    #cursor-readout:empty { display: none; }
     #scope { cursor: crosshair; }
     .seg { display: inline-flex; }
-    .seg-btn { background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-border); padding: 2px 8px; font-family: monospace; cursor: pointer; margin-left: -1px; }
+    .seg-btn { display: inline-flex; align-items: center; background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-control-border); padding: 2px 8px; font-family: monospace; font-size: 11px; line-height: var(--ctl-line); white-space: nowrap; cursor: pointer; margin-left: -1px; }
     .seg-btn:first-child { border-radius: 2px 0 0 2px; margin-left: 0; }
     .seg-btn:last-child { border-radius: 0 2px 2px 0; }
     .seg-btn:hover { background: var(--ds-hover-bg); }
     .seg-btn.active { background: var(--ds-button-bg); color: var(--ds-button-fg); border-color: var(--ds-focus); }
     #spectrum-controls { display: flex; align-items: center; gap: 8px; padding: 3px 12px; background: var(--ds-surface-raised); border-top: 1px solid var(--ds-border); flex-shrink: 0; }
-    #rate-note { font-size: 11px; color: var(--ds-text-muted); }
+    #rate-note { font-size: 11px; color: var(--ds-text-muted); white-space: nowrap; }
     #rate-note.low-res { color: var(--ds-warning-fg); }
     #scope-main { flex: 1; min-height: 0; }
-    #plots { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    #plots { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; }
     #meters { width: 132px; flex-shrink: 0; padding: 8px 10px; background: var(--ds-surface-raised); border-left: 1px solid var(--ds-border); overflow-y: auto; }
     #meters h3 { font-size: 10px; font-weight: normal; text-transform: uppercase; color: var(--ds-text-muted); margin-bottom: 8px; }
     .meter { margin-bottom: 12px; }
@@ -551,10 +557,10 @@ ${themeCss({ surface: 'editor' })}
     <button type="button" id="export-btn" class="ctl-btn ctl-icon" title="Save the visible samples as CSV" aria-label="Export visible samples (CSV)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v8M4.5 7L8 10.5 11.5 7M2.5 13.5h11"/></svg></button>
     </span>
     <span id="rate-note"></span>
-    <span id="cursor-readout"></span>
   </div>
   <div id="scope-main" style="display:none">
     <div id="plots">
+      <span id="cursor-readout"></span>
       <canvas id="scope" style="display:none"></canvas>
       <div id="spectrum-controls">
         <span class="emu-label">Spectrum</span>

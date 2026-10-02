@@ -75,3 +75,9 @@
 - **First-run onboarding** — `viewsWelcome` on the Controls/Wiring views (gated on `ds-ide.isDaisyProject`) plus a "Get started with Daisy Seed" walkthrough (P1-4).
 - **README/manifest lint** — README still says "Open Wiring Editor" (removed in M21); add a check that command names in docs exist in `package.json` (P2-3).
 - **Auto-save layout** — Controls Editor layout saved on drag-end (debounced) instead of only via the "💾 layout" button (P1-3).
+
+## Editor polish (intake 2026-10-01, source: user request)
+
+- **Wiring legend** — the Wiring Editor shows no key for its pin colours (`design_plan.md` P1-6).
+- **Remove the play/stop marker** from the Controls Editor header.
+- **Layout helpers in the Controls header** — an *align to grid* button, plus other relevant helpers (`design_plan.md` P2-2): auto-arrange and reset positions were chosen.

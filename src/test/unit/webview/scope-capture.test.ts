@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { ScopeCapture, deriveStep } from '../../../webview/scope/scope-capture';
+import { TIME_BASES_MS, DIVISIONS } from '../../../webview/scope/scope-view';
+import { ScopeCapture, DEFAULT_WINDOW_MS, deriveStep } from '../../../webview/scope/scope-capture';
 
 const ramp = (from: number, n: number): number[] => Array.from({ length: n }, (_, i) => from + i);
 
@@ -70,6 +71,15 @@ describe('ScopeCapture (FR-SCI-3)', () => {
     cap.setConfig(48000, 4);           // step 4 -> 12 kHz effective
     for (let i = 0; i < 100; i++) cap.push({ in: ramp(i * 33, 33), out: ramp(i * 33, 33), step: 4 });
     expect(cap.length).toBeGreaterThanOrEqual(1200); // >= 100 ms at 12 kHz
+  });
+
+  it('the default ring holds the widest time base plus 100 ms of trigger headroom', () => {
+    const widestMs = Math.max(...TIME_BASES_MS) * DIVISIONS;
+    expect(DEFAULT_WINDOW_MS).toBeGreaterThanOrEqual(widestMs + 100);
+    const cap = new ScopeCapture();
+    cap.setConfig(48000, 4);           // 12 kHz effective
+    for (let i = 0; i < 400; i++) cap.push({ in: ramp(i * 33, 33), out: ramp(i * 33, 33), step: 4 });
+    expect(cap.length).toBe(Math.ceil((12000 * DEFAULT_WINDOW_MS) / 1000));
   });
 
   it('clears when the sample rate or block size changes', () => {

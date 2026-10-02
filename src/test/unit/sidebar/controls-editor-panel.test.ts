@@ -494,6 +494,44 @@ describe('ControlsViewProvider', () => {
     expect(vscode.commands.executeCommand).toHaveBeenCalledWith('ds-ide.focusWiring');
   });
 
+  it('has no play/stop marker in the header (FR-CEH-1)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(view.webview.html).not.toContain('ce-emu-status');
+    expect(view.webview.html).not.toContain('ce-emu-running');
+  });
+
+  it('has an Align to grid button in the header (FR-CEH-2)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(view.webview.html).toMatch(/<button[^>]*id="align-grid-btn"/);
+  });
+
+  it('has an Auto-arrange button in the header (FR-CEH-3)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(view.webview.html).toMatch(/<button[^>]*id="auto-arrange-btn"/);
+  });
+
+  it('has a Reset positions button in the header (FR-CEH-4)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    expect(view.webview.html).toMatch(/<button[^>]*id="reset-positions-btn"/);
+  });
+
+  it('layout buttons are icon-only: the label is a tooltip and an aria-label, not visible text (FR-CEH-2..4)', () => {
+    const view = makeWebviewViewMock();
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    for (const [id, label] of [['align-grid-btn', 'Align to grid'], ['auto-arrange-btn', 'Auto-arrange'], ['reset-positions-btn', 'Reset positions']]) {
+      const m = new RegExp(`<button id="${id}"[^>]*title="([^"]*)"[^>]*aria-label="([^"]*)"[^>]*>(<svg[\\s\\S]*?</svg>)</button>`).exec(view.webview.html);
+      expect(m).not.toBeNull();
+      expect(m![1]).toContain(label);
+      expect(m![2]).toBe(label);
+      expect(m![3]).not.toContain(label);
+      expect(m![3]).not.toMatch(/>[^<]*[A-Za-z][^<]*</);
+    }
+  });
+
   it('has no manual save-layout button — layout auto-saves (FR-RCH-5)', () => {
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);

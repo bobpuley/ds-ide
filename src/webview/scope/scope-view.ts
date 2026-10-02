@@ -1,7 +1,7 @@
 // Pure view maths for the Daisy Scope (FR-SCI-4, FR-SCI-5): time base, visible
 // window and axis ticks. No DOM — scope-webview.ts draws from these.
 
-export const TIME_BASES_MS = [0.5, 1, 2, 5, 10] as const;
+export const TIME_BASES_MS = [0.5, 1, 2, 5, 10, 20] as const;
 export const DEFAULT_TIME_BASE_MS = 2;
 export const DIVISIONS = 10;
 /** Below this many points per division a time base is flagged as low resolution. */

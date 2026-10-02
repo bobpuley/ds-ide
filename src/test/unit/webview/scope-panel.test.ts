@@ -669,6 +669,55 @@ describe('ScopePanel', () => {
     expect(webview.html).toContain('id="cursor-readout"');
   });
 
+  // Toolbar stability: hovering the plot must never change the toolbar's height.
+  it('the cursor read-out overlays the plot instead of sitting in the toolbar (toolbar height stays fixed)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    const html = webview.html;
+    const toolbarStart = html.indexOf('id="scope-controls"');
+    const toolbarEnd = html.indexOf('id="scope-main"');
+    expect(html.slice(toolbarStart, toolbarEnd)).not.toContain('id="cursor-readout"');
+    expect(html.indexOf('id="cursor-readout"')).toBeGreaterThan(html.indexOf('id="plots"'));
+    expect(html).toMatch(/#cursor-readout \{[^}]*position: absolute/);
+    expect(html).toMatch(/#cursor-readout \{[^}]*pointer-events: none/);
+  });
+
+  it('unselected toolbar buttons have a border as visible as the selected one, so all look the same size', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    const css = webview.html;
+    for (const sel of ['\\.seg-btn', '\\.ctl-btn']) {
+      const rule = new RegExp(`${sel} \\{([^}]*)\\}`).exec(css)![1]!;
+      expect(rule).toMatch(/border: 1px solid var\(--ds-control-border\)/);
+    }
+    expect(css).toMatch(/--ds-control-border: color-mix\(in srgb, var\(--ds-text\) \d+%, transparent\)/);
+  });
+
+  it('text buttons and icon-only buttons have the same height: same line box and vertical padding', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    const css = webview.html;
+    const rule = (sel: string): string => new RegExp(`${sel} \\{([^}]*)\\}`).exec(css)![1]!;
+    const vpad = (r: string): string => /padding: (\d+)px/.exec(r)![1]!;
+    expect(css).toMatch(/--ctl-line: 14px/);
+    expect(rule('\\.seg-btn')).toMatch(/line-height: var\(--ctl-line\)/);
+    expect(rule('\\.ctl-btn')).toMatch(/line-height: var\(--ctl-line\)/);
+    expect(rule('\\.ctl-icon svg')).toMatch(/height: var\(--ctl-line\)/);
+    expect(vpad(rule('\\.seg-btn'))).toBe(vpad(rule('\\.ctl-btn')));
+    expect(rule('\\.ctl-icon')).toMatch(/padding: \d+px (\d+px)?/);
+    expect(/padding: (\d+)px/.exec(rule('\\.ctl-icon'))![1]).toBe(vpad(rule('\\.ctl-btn')));
+  });
+
+  it('toolbar buttons share one font size and never wrap their label', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toMatch(/\.seg-btn \{[^}]*font-size: 11px/);
+    expect(webview.html).toMatch(/\.ctl-btn \{[^}]*font-size: 11px/);
+    expect(webview.html).toMatch(/\.ctl-btn \{[^}]*white-space: nowrap/);
+    expect(webview.html).toMatch(/\.seg-btn \{[^}]*white-space: nowrap/);
+    expect(webview.html).toMatch(/#rate-note \{[^}]*white-space: nowrap/);
+  });
+
   // FR-SCI-8 — meters column
   it('webview HTML has a meter per channel, a headroom value and a Reset peaks button (FR-SCI-8)', () => {
     panel.show();

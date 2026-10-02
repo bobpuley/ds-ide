@@ -25,6 +25,12 @@ export function deriveStep(blockSize: number): number {
   return blockSize > STEP_BASE_FRAMES ? Math.floor((STEP_BASE * blockSize) / STEP_BASE_FRAMES) : STEP_BASE;
 }
 
+/**
+ * Ring length: the widest time base (20 ms/div × 10 divisions = 200 ms) plus 100 ms,
+ * so a trigger crossing still has a full window of data after it.
+ */
+export const DEFAULT_WINDOW_MS = 300;
+
 export class ScopeCapture {
   private sampleRate = 0;
   private blockSize = 0;
@@ -34,7 +40,7 @@ export class ScopeCapture {
   private bufR: number[] = [];
 
   /** @param windowMs how much signal the ring keeps (the largest time base plus trigger headroom). */
-  constructor(private readonly windowMs = 150) {}
+  constructor(private readonly windowMs = DEFAULT_WINDOW_MS) {}
 
   /**
    * Record the emulator configuration. Returns true — and clears the ring — when
