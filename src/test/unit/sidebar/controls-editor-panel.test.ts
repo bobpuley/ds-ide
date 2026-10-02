@@ -523,11 +523,12 @@ describe('ControlsViewProvider', () => {
     const view = makeWebviewViewMock();
     provider.resolveWebviewView(view as unknown as vscode.WebviewView);
     for (const [id, label] of [['align-grid-btn', 'Align to grid'], ['auto-arrange-btn', 'Auto-arrange'], ['reset-positions-btn', 'Reset positions']]) {
-      const m = new RegExp(`<button id="${id}"[^>]*title="([^"]*)"[^>]*aria-label="([^"]*)"[^>]*>([^<]*)</button>`).exec(view.webview.html);
+      const m = new RegExp(`<button id="${id}"[^>]*title="([^"]*)"[^>]*aria-label="([^"]*)"[^>]*>(<svg[\\s\\S]*?</svg>)</button>`).exec(view.webview.html);
       expect(m).not.toBeNull();
       expect(m![1]).toContain(label);
       expect(m![2]).toBe(label);
       expect(m![3]).not.toContain(label);
+      expect(m![3]).not.toMatch(/>[^<]*[A-Za-z][^<]*</);
     }
   });
 
