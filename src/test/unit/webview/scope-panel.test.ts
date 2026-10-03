@@ -770,6 +770,36 @@ describe('ScopePanel', () => {
     expect(webview.html).toMatch(/id="chip-trigger"[^>]*>[^]*?<span class="chip-value">Free<\/span>/);
   });
 
+  // FR-SCI-16 — choice popover
+  it('has one popover menu, hidden at first, with an opaque theme-dropdown background (FR-SCI-16)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toMatch(/<div id="chip-popover" role="menu"[^>]*hidden/);
+    const rule = /#chip-popover \{([^}]*)\}/.exec(webview.html)?.[1] ?? '';
+    expect(rule).toMatch(/background: var\(--ds-dropdown-bg\)/);
+    expect(rule).toMatch(/color: var\(--ds-dropdown-fg\)/);
+    expect(rule).toMatch(/position: fixed/);
+    expect(rule).not.toMatch(/opacity/);
+  });
+
+  it('every chip is a menu button that starts collapsed (FR-SCI-16)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    const chips = webview.html.match(/<button[^>]*class="chip"[^>]*>/g) ?? [];
+    expect(chips).toHaveLength(5);
+    for (const c of chips) {
+      expect(c).toContain('aria-haspopup="menu"');
+      expect(c).toContain('aria-expanded="false"');
+    }
+  });
+
+  it('popover entries show a check for the active one and dim disabled ones (FR-SCI-16)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toMatch(/\.chip-item\[aria-checked="true"\]/);
+    expect(webview.html).toMatch(/\.chip-item:disabled \{[^}]*opacity/);
+  });
+
   // FR-SCI-10 — best-effort single-shot
   it('webview HTML has a 1x Single button whose tooltip explains the full-rate capture and the best-effort free-run case (FR-SCI-10, FR-SCI-14d)', () => {
     panel.show();

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  CHIPS, chipLabel, isDefault, defaultState, isGroupDisabled, type ChipId,
+  CHIPS, chipLabel, isDefault, defaultState, isGroupDisabled, placePopover, type ChipId,
 } from '../../../webview/scope/scope-chips';
 
 const chip = (id: ChipId) => CHIPS.find(c => c.id === id)!;
@@ -53,6 +53,26 @@ describe('scope chips (FR-SCI-15)', () => {
   it('defaultState seeds every group with its default value', () => {
     expect(defaultState()).toEqual({
       gain: '1', unit: 'lin', edge: 'free', source: 'in', fscale: 'log', lmode: 'abs',
+    });
+  });
+
+  describe('placePopover (FR-SCI-16)', () => {
+    const view = { width: 600, height: 400 };
+    const size = { width: 120, height: 100 };
+    it('opens below the chip, left-aligned', () => {
+      expect(placePopover({ left: 50, top: 20, bottom: 40 }, size, view)).toEqual({ left: 50, top: 42, flipped: false });
+    });
+    it('flips above when it would leave the viewport at the bottom', () => {
+      expect(placePopover({ left: 50, top: 340, bottom: 360 }, size, view)).toEqual({ left: 50, top: 238, flipped: true });
+    });
+    it('stays below when there is no room above either', () => {
+      expect(placePopover({ left: 50, top: 60, bottom: 80 }, { width: 120, height: 400 }, view).flipped).toBe(false);
+    });
+    it('shifts left to stay within the viewport width', () => {
+      expect(placePopover({ left: 540, top: 20, bottom: 40 }, size, view).left).toBe(600 - 120 - 4);
+    });
+    it('never goes past the left edge', () => {
+      expect(placePopover({ left: -30, top: 20, bottom: 40 }, size, view).left).toBe(4);
     });
   });
 });

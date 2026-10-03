@@ -36,7 +36,7 @@ The options, labels, defaults and enabled state of the five chips are pure data,
 
 ---
 
-### [ ] feat: choice popover (FR-SCI-16)
+### [x] feat: choice popover (FR-SCI-16)
 
 **Affected files:** `src/webview/scope-panel.ts`, `src/webview/scope-webview.ts`, `src/test/unit/webview/scope-panel.test.ts`
 

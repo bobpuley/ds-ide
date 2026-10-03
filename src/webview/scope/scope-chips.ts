@@ -100,3 +100,22 @@ export function defaultState(): Record<string, string> {
   for (const chip of CHIPS) for (const g of chip.groups) state[g.id] = g.defaultValue;
   return state;
 }
+
+export interface Rect { readonly left: number; readonly top: number; readonly bottom: number }
+export interface Size { readonly width: number; readonly height: number }
+
+const POPOVER_GAP = 2;
+const VIEW_MARGIN = 4;
+
+/**
+ * Where a popover goes under (or, if it would not fit, above) its chip, kept inside the
+ * viewport's width. Viewport coordinates, for `position: fixed`.
+ */
+export function placePopover(anchor: Rect, size: Size, view: Size): { left: number; top: number; flipped: boolean } {
+  const below = anchor.bottom + POPOVER_GAP;
+  const above = anchor.top - POPOVER_GAP - size.height;
+  const flipped = below + size.height > view.height - VIEW_MARGIN && above >= VIEW_MARGIN;
+  const maxLeft = view.width - size.width - VIEW_MARGIN;
+  const left = Math.max(VIEW_MARGIN, Math.min(anchor.left, maxLeft));
+  return { left, top: flipped ? above : below, flipped };
+}
