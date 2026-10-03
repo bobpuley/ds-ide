@@ -65,7 +65,7 @@ Implements FR-GEN-1, FR-GEN-5 and the host/webview side of FR-GEN-4.
 
 ---
 
-### [ ] chore: manual test cases for the generators (FR-GEN-5)
+### [x] chore: manual test cases for the generators (FR-GEN-5)
 
 **Affected files:** `src/test/manual/manual-tests.html`
 
