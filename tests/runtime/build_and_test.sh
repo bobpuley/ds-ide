@@ -43,6 +43,7 @@ run_test "buttons + LED (AC-11)"   "test_buttons.py"
 run_test "config reload (FR-EMU-7)" "test_config_reload.py"
 run_test "shutdown recording (FR-EMU-8)" "test_shutdown_recording.py"
 run_test "scope capture (FR-SCI-14b)" "test_scope_capture.py"
+run_test "input generators (FR-GEN-3)" "test_generators.py"
 
 echo ""
 echo "Results: ${pass} passed, ${fail} failed."

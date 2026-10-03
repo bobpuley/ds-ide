@@ -35,7 +35,7 @@ The ids, labels, parameters, defaults, ranges and hints of the seven generators 
 
 ---
 
-### [ ] feat: wire generators into the audio engine and IPC (FR-GEN-3)
+### [x] feat: wire generators into the audio engine and IPC (FR-GEN-3)
 
 Implements FR-GEN-3 (engine input stage) and the emulator side of FR-GEN-4 (the `generator` message).
 

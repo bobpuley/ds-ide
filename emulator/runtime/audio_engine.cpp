@@ -4,6 +4,7 @@
 #include "session_player.h"
 #include "session_recorder.h"
 #include "wav_reader.h"
+#include "input_generators.h"
 #include <algorithm>
 #include <cfloat>
 #include <chrono>
@@ -400,6 +401,47 @@ private:
     std::atomic<size_t> read_{0};
 };
 
+// ---- Input generator feed (FR-GEN-3) ------------------------------------------
+
+// Audio-thread side of the generator: reads the EmulatorState atomics once per block,
+// (re)configures the InputGenerator when the selection or generation changed, applies
+// parameter changes without resetting phase, and renders. No allocation, lock or syscall.
+struct GeneratorFeed {
+    daisy_emu::InputGenerator gen;
+    int                       kind_seen{-1};
+    uint64_t                  generation_seen{0};
+    daisy_emu::GenParams      params_seen{};
+
+    // Returns false when no generator is selected (caller keeps its own input).
+    bool render(float sample_rate, size_t frames, float* interleaved_out) {
+        const int kind = g_state.gen_kind.load();
+        if (kind < 0) { kind_seen = -1; return false; }
+
+        daisy_emu::GenParams p;
+        p.freq      = g_state.gen_freq.load();
+        p.amp       = g_state.gen_amp.load();
+        p.pink      = g_state.gen_pink.load();
+        p.from      = g_state.gen_from.load();
+        p.to        = g_state.gen_to.load();
+        p.time      = g_state.gen_time.load();
+        p.period_ms = g_state.gen_period_ms.load();
+        const uint64_t generation = g_state.gen_generation.load(std::memory_order_relaxed);
+
+        if (kind != kind_seen || generation != generation_seen) {
+            gen.configure(static_cast<daisy_emu::GenKind>(kind), p, sample_rate);
+            kind_seen = kind;
+            generation_seen = generation;
+        } else if (p.freq != params_seen.freq || p.amp != params_seen.amp || p.pink != params_seen.pink
+                   || p.from != params_seen.from || p.to != params_seen.to
+                   || p.time != params_seen.time || p.period_ms != params_seen.period_ms) {
+            gen.setParams(p);
+        }
+        params_seen = p;
+        gen.render(interleaved_out, frames);
+        return true;
+    }
+};
+
 // ---- Simulated mode loop ----------------------------------------------------
 
 static void run_simulated(float sample_rate,
@@ -412,6 +454,7 @@ static void run_simulated(float sample_rate,
                           std::vector<float>& out_ch1,
                           ScopeBlockQueue& scope_queue) {
     double phase = 0.0;
+    GeneratorFeed generator_feed;
 
     // WAV playhead (M9): fractional read position and generation counter.
     double   wav_pos      = 0.0;
@@ -502,6 +545,8 @@ static void run_simulated(float sample_rate,
                 std::fill(in_buf.begin(),
                           in_buf.begin() + static_cast<ptrdiff_t>(frames * 2), 0.f);
             }
+        } else if (generator_feed.render(sample_rate, frames, in_buf.data())) {
+            // FR-GEN-3: a selected generator replaces the sine branch (replay and WAV keep priority).
         } else {
             const float freq = g_state.sine_freq.load();
             const float amp  = g_state.sine_amp.load();
@@ -677,6 +722,7 @@ static void run_realtime(float sample_rate,
     uint32_t xrun_report_blocks  = 0;
 
     CoreAudioDevice device;
+    GeneratorFeed generator_feed;
 
     auto processBlock = [&](const float* ca_in, float* ca_out, size_t frames) {
         // Guard against hardware delivering more frames than rt_buffer_size.
@@ -690,6 +736,8 @@ static void run_realtime(float sample_rate,
         }
         // Copy CoreAudio input to interleaved in_buf
         std::memcpy(in_buf.data(), ca_in, frames * 2 * sizeof(float));
+        // FR-GEN-3: a selected generator replaces the host input in real-time mode too.
+        generator_feed.render(sample_rate, frames, in_buf.data());
         std::fill(out_buf.begin(), out_buf.begin() + static_cast<ptrdiff_t>(frames * 2), 0.f);
 
         if (!g_state.transport_running.load()) {
