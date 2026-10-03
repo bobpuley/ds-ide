@@ -376,6 +376,120 @@
   <p class="expected">Both panels update smoothly in real time; the spectrum panel's frequency peaks match the actual input/output content with no lag or frozen display.</p>
 </div>
 
+<div class="test">
+  <div class="test-header">
+    <h2 class="test-title">Scope chips: open and close each popover (FR-SCI-15, FR-SCI-16)</h2>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
+  </div>
+  <p class="description">Gain, Scale, Trigger, frequency axis and level mode are one chip each; clicking opens a popover of choices.</p>
+  <p class="section-label">Steps</p>
+  <ol class="steps">
+    <li>Run an effect and open the Scope panel.</li>
+    <li>Click each of the five chips in turn; pick a value, then reopen and close with Esc, with a click outside, and by clicking the chip again.</li>
+    <li>With a popover open, use ↑/↓ and Enter; press Space with a chip focused.</li>
+  </ol>
+  <p class="section-label">Expected result</p>
+  <p class="expected">Each popover opens under its chip with the current value ticked (✓). A pick closes it and updates the chip text and the plot. Esc returns focus to the chip. ↑/↓ move between entries and Enter picks. Space on a focused chip does not freeze the display; Space elsewhere still does.</p>
+</div>
+
+<div class="test">
+  <div class="test-header">
+    <h2 class="test-title">Scope Trigger chip: two-step choice (FR-SCI-16)</h2>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
+  </div>
+  <p class="description">The Trigger popover has Edge and Source groups; Source only applies once an edge is chosen.</p>
+  <p class="section-label">Steps</p>
+  <ol class="steps">
+    <li>Open the Trigger chip while it shows Free: Source entries are dimmed.</li>
+    <li>Pick Rising: the popover stays open and Source becomes available. Pick L.</li>
+    <li>Reopen and pick Free.</li>
+  </ol>
+  <p class="section-label">Expected result</p>
+  <p class="expected">After Rising + L the chip reads <code>↗ L</code> in amber with a ●; the popover stayed open after the edge pick. Back at Free the chip reads <code>Free</code> with no ●.</p>
+</div>
+
+<div class="test">
+  <div class="test-header">
+    <h2 class="test-title">Scope chips: non-default marker (FR-SCI-17)</h2>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
+  </div>
+  <p class="description">A chip that is not at its default is marked.</p>
+  <p class="section-label">Steps</p>
+  <ol class="steps">
+    <li>Set Gain ×4, Scale dBFS, Lin Hz and Relative.</li>
+    <li>Set each back to ×1, Linear, Log Hz and Absolute dBFS.</li>
+  </ol>
+  <p class="section-label">Expected result</p>
+  <p class="expected">Changed chips show a ● and amber text; chips at their default show neither. A screen reader announces “(changed from default)” on changed chips.</p>
+</div>
+
+<div class="test">
+  <div class="test-header">
+    <h2 class="test-title">Scope popover flips above in a short panel (FR-SCI-16)</h2>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
+  </div>
+  <p class="description">The popover must not run off the bottom of the viewport.</p>
+  <p class="section-label">Steps</p>
+  <ol class="steps">
+    <li>Make the Scope panel very short (drag the panel divider) so the Spectrum bar is near the bottom.</li>
+    <li>Open the Level mode and Frequency axis chips.</li>
+  </ol>
+  <p class="section-label">Expected result</p>
+  <p class="expected">The popover opens above the chip when there is no room below, and is never cut off at the left or right edge.</p>
+</div>
+
+<div class="test">
+  <div class="test-header">
+    <h2 class="test-title">Scope toolbar fits one row beside code (FR-SCI-15)</h2>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
+  </div>
+  <p class="description">With chips, the toolbar needs far less width than the old segmented buttons.</p>
+  <p class="section-label">Steps</p>
+  <ol class="steps">
+    <li>Open the Scope panel in a split beside the code editor and drag it to about 560 px wide.</li>
+  </ol>
+  <p class="section-label">Expected result</p>
+  <p class="expected">The toolbar (Time, Freeze, 1× Single, Gain, Scale, Trigger, snapshot, CSV) stays on a single row; the spectrum bar's two chips also fit on one row.</p>
+</div>
+
+<div class="test">
+  <div class="test-header">
+    <h2 class="test-title">Scope popover legibility in dark, light and high-contrast themes (FR-SCI-16)</h2>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
+  </div>
+  <p class="description">The popover is opaque and uses the theme's dropdown colours.</p>
+  <p class="section-label">Steps</p>
+  <ol class="steps">
+    <li>Open any chip's popover under a dark, a light and a high-contrast theme.</li>
+  </ol>
+  <p class="section-label">Expected result</p>
+  <p class="expected">Entries, the ✓, group titles and dimmed entries are legible in all three themes, and the plot behind the popover does not show through.</p>
+</div>
+
 <script>
   function updateTestStatus(select) {
     var value = select.value;

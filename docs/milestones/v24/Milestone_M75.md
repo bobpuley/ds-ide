@@ -61,7 +61,7 @@ The options, labels, defaults and enabled state of the five chips are pure data,
 
 ---
 
-### [ ] chore: manual test cases for the chips and popovers (FR-SCI-16)
+### [x] chore: manual test cases for the chips and popovers (FR-SCI-16)
 
 **Affected files:** `src/test/manual/manual-tests.html`
 
