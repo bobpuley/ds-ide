@@ -7,6 +7,7 @@ import { readThemeColor, onThemeChange } from './theme/theme-runtime';
 import { loadScopeColors } from './scope-colors';
 import { ScopeCapture, type ScopeChannel } from './scope/scope-capture';
 import { Meters, formatDb, meterPosition } from './scope/scope-meters';
+import { CHIPS, chipLabel, defaultState, type ChipDef } from './scope/scope-chips';
 import { buildCsv } from './scope/scope-export';
 import { EventLog, formatClock } from './scope/scope-events';
 import {
@@ -564,25 +565,43 @@ timeBaseEl?.addEventListener('change', () => {
   updateRateNote();
   flushScopeDraw();
 });
-function wireSegment(id: string, attr: string, onPick: (value: string) => void): void {
-  const seg = document.getElementById(id);
-  seg?.addEventListener('click', (e) => {
-    const btn = (e.target as HTMLElement).closest<HTMLElement>('.seg-btn');
-    const value = btn?.dataset[attr];
-    if (!btn || value === undefined) return;
-    seg.querySelectorAll('.seg-btn').forEach(b => b.classList.toggle('active', b === btn));
-    onPick(value);
-    flushScopeDraw();
-  });
+// FR-SCI-15: each setting is one chip; `chipState` holds the current value of every group.
+const chipState: Record<string, string> = defaultState();
+const chipEl = (chip: ChipDef): HTMLElement => el<HTMLElement>(`chip-${chip.id}`);
+
+function renderChips(): void {
+  for (const chip of CHIPS) {
+    const btn = chipEl(chip);
+    const label = chipLabel(chip, chipState);
+    const value = btn.querySelector('.chip-value');
+    if (value) value.textContent = label;
+    btn.setAttribute('aria-label', `${chip.name}: ${label}`);
+  }
 }
-wireSegment('trig-seg', 'trig', v => {
-  trigMode = v === 'rise' || v === 'fall' ? v : 'free';
-  heldWindow = null;
-});
-wireSegment('trigsrc-seg', 'trigsrc', v => { trigSource = v === 'l' ? 'l' : 'in'; heldWindow = null; });
-wireSegment('fscale-seg', 'fscale', v => { freqScale = v === 'lin' ? 'lin' : 'log'; flushSpectrumDraw(); });
-wireSegment('lmode-seg', 'lmode', v => { levelMode = v === 'rel' ? 'rel' : 'abs'; flushSpectrumDraw(); });
-wireSegment('gain-seg', 'gain', v => { gainMode = v === 'auto' ? 'auto' : (Number(v) as GainMode); });
+
+/** Set one group's value: the same state the matching segmented button used to set. */
+function applyChoice(groupId: string, value: string): void {
+  chipState[groupId] = value;
+  switch (groupId) {
+    case 'gain': gainMode = value === 'auto' ? 'auto' : (Number(value) as GainMode); break;
+    case 'unit': ampUnit = value === 'db' ? 'db' : 'lin'; break;
+    case 'edge':
+      trigMode = value === 'rise' || value === 'fall' ? value : 'free';
+      heldWindow = null;
+      syncCapture();
+      break;
+    case 'source':
+      trigSource = value === 'l' ? 'l' : 'in';
+      heldWindow = null;
+      syncCapture();
+      break;
+    case 'fscale': freqScale = value === 'lin' ? 'lin' : 'log'; flushSpectrumDraw(); break;
+    case 'lmode': levelMode = value === 'rel' ? 'rel' : 'abs'; flushSpectrumDraw(); break;
+    default: return;
+  }
+  renderChips();
+  flushScopeDraw();
+}
 document.querySelectorAll<HTMLElement>('.legend-item').forEach(btn => {
   btn.addEventListener('click', () => {
     const id = btn.dataset['trace'];
@@ -592,7 +611,6 @@ document.querySelectorAll<HTMLElement>('.legend-item').forEach(btn => {
     flushScopeDraw();
   });
 });
-wireSegment('unit-seg', 'unit', v => { ampUnit = v === 'db' ? 'db' : 'lin'; });
 document.querySelectorAll<HTMLElement>('.clip-chip').forEach(chip => {
   chip.addEventListener('click', () => {
     const id = chip.dataset['clip'];

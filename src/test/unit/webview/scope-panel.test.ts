@@ -640,13 +640,45 @@ describe('ScopePanel', () => {
   });
 
   // FR-SCI-5 — gain and amplitude scale
-  it('webview HTML has gain and amplitude-scale controls with x1 and Linear active (FR-SCI-5)', () => {
+  it('webview HTML has gain and amplitude-scale chips showing ×1 and Linear (FR-SCI-5, FR-SCI-15)', () => {
     panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    for (const g of ['1', '2', '4', 'auto']) expect(webview.html).toContain(`data-gain="${g}"`);
-    expect(webview.html).toMatch(/class="seg-btn active" data-gain="1"/);
-    expect(webview.html).toMatch(/class="seg-btn active" data-unit="lin"/);
-    expect(webview.html).toContain('data-unit="db"');
+    expect(webview.html).toMatch(/id="chip-gain"[^>]*>[^]*?<span class="chip-value">×1<\/span>/);
+    expect(webview.html).toMatch(/id="chip-scale"[^>]*>[^]*?<span class="chip-value">Linear<\/span>/);
+  });
+
+  // FR-SCI-15 — chips replace the segmented groups
+  it('renders exactly five chips and no segmented groups (FR-SCI-15)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    for (const id of ['gain', 'scale', 'trigger', 'faxis', 'lmode']) {
+      expect(webview.html, id).toContain(`id="chip-${id}"`);
+    }
+    expect(webview.html.match(/class="chip"/g)).toHaveLength(5);
+    for (const id of ['gain-seg', 'unit-seg', 'trig-seg', 'trigsrc-seg', 'fscale-seg', 'lmode-seg']) {
+      expect(webview.html, id).not.toContain(id);
+    }
+    expect(webview.html).not.toContain('seg-btn');
+  });
+
+  it('puts Gain, Scale and Trigger chips in the toolbar and the axis and level chips in the spectrum bar (FR-SCI-15)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    const html = webview.html;
+    const toolbar = html.slice(html.indexOf('id="scope-controls"'), html.indexOf('id="scope-main"'));
+    const spectrum = html.slice(html.indexOf('id="spectrum-controls"'), html.indexOf('id="spectrum"'));
+    for (const id of ['gain', 'scale', 'trigger']) expect(toolbar).toContain(`id="chip-${id}"`);
+    for (const id of ['faxis', 'lmode']) expect(spectrum).toContain(`id="chip-${id}"`);
+    // unchanged controls
+    for (const id of ['timebase', 'freeze-btn', 'single-btn', 'snapshot-btn', 'export-btn']) expect(toolbar).toContain(`id="${id}"`);
+  });
+
+  it('chips start at the defaults: Free trigger, Log Hz, Absolute dBFS (FR-SCI-15)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toMatch(/id="chip-trigger"[^>]*>[^]*?<span class="chip-value">Free<\/span>/);
+    expect(webview.html).toMatch(/id="chip-faxis"[^>]*>[^]*?<span class="chip-value">Log Hz<\/span>/);
+    expect(webview.html).toMatch(/id="chip-lmode"[^>]*>[^]*?<span class="chip-value">Absolute dBFS<\/span>/);
   });
 
   // FR-SCI-6 — stereo traces with a toggling legend
@@ -686,7 +718,7 @@ describe('ScopePanel', () => {
     panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
     const css = webview.html;
-    for (const sel of ['\\.seg-btn', '\\.ctl-btn']) {
+    for (const sel of ['\\.chip', '\\.ctl-btn']) {
       const rule = new RegExp(`${sel} \\{([^}]*)\\}`).exec(css)![1]!;
       expect(rule).toMatch(/border: 1px solid var\(--ds-control-border\)/);
     }
@@ -700,10 +732,10 @@ describe('ScopePanel', () => {
     const rule = (sel: string): string => new RegExp(`${sel} \\{([^}]*)\\}`).exec(css)![1]!;
     const vpad = (r: string): string => /padding: (\d+)px/.exec(r)![1]!;
     expect(css).toMatch(/--ctl-line: 14px/);
-    expect(rule('\\.seg-btn')).toMatch(/line-height: var\(--ctl-line\)/);
+    expect(rule('\\.chip')).toMatch(/line-height: var\(--ctl-line\)/);
     expect(rule('\\.ctl-btn')).toMatch(/line-height: var\(--ctl-line\)/);
     expect(rule('\\.ctl-icon svg')).toMatch(/height: var\(--ctl-line\)/);
-    expect(vpad(rule('\\.seg-btn'))).toBe(vpad(rule('\\.ctl-btn')));
+    expect(vpad(rule('\\.chip'))).toBe(vpad(rule('\\.ctl-btn')));
     expect(rule('\\.ctl-icon')).toMatch(/padding: \d+px (\d+px)?/);
     expect(/padding: (\d+)px/.exec(rule('\\.ctl-icon'))![1]).toBe(vpad(rule('\\.ctl-btn')));
   });
@@ -711,10 +743,10 @@ describe('ScopePanel', () => {
   it('toolbar buttons share one font size and never wrap their label', () => {
     panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    expect(webview.html).toMatch(/\.seg-btn \{[^}]*font-size: 11px/);
+    expect(webview.html).toMatch(/\.chip \{[^}]*font-size: 11px/);
     expect(webview.html).toMatch(/\.ctl-btn \{[^}]*font-size: 11px/);
     expect(webview.html).toMatch(/\.ctl-btn \{[^}]*white-space: nowrap/);
-    expect(webview.html).toMatch(/\.seg-btn \{[^}]*white-space: nowrap/);
+    expect(webview.html).toMatch(/\.chip \{[^}]*white-space: nowrap/);
     expect(webview.html).toMatch(/#rate-note \{[^}]*white-space: nowrap/);
   });
 
@@ -731,13 +763,11 @@ describe('ScopePanel', () => {
   });
 
   // FR-SCI-9 — trigger controls
-  it('webview HTML has trigger mode and source controls, defaulting to Free on In (FR-SCI-9)', () => {
+  it('webview HTML has a Trigger chip defaulting to Free (FR-SCI-9, FR-SCI-15)', () => {
     panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    for (const m of ['free', 'rise', 'fall']) expect(webview.html).toContain(`data-trig="${m}"`);
-    for (const s of ['in', 'l']) expect(webview.html).toContain(`data-trigsrc="${s}"`);
-    expect(webview.html).toMatch(/class="seg-btn active" data-trig="free"/);
-    expect(webview.html).toMatch(/class="seg-btn active" data-trigsrc="in"/);
+    expect(webview.html).toMatch(/id="chip-trigger"[^>]*data-chip="trigger"/);
+    expect(webview.html).toMatch(/id="chip-trigger"[^>]*>[^]*?<span class="chip-value">Free<\/span>/);
   });
 
   // FR-SCI-10 — best-effort single-shot
@@ -749,13 +779,11 @@ describe('ScopePanel', () => {
   });
 
   // FR-SCI-11 — spectrum scaling
-  it('webview HTML has Lin/Log frequency and Relative/Absolute level toggles, Log + Absolute by default (FR-SCI-11)', () => {
+  it('webview HTML has frequency-axis and level-mode chips, Log Hz + Absolute by default (FR-SCI-11, FR-SCI-15)', () => {
     panel.show();
     const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
-    for (const f of ['lin', 'log']) expect(webview.html).toContain(`data-fscale="${f}"`);
-    for (const m of ['rel', 'abs']) expect(webview.html).toContain(`data-lmode="${m}"`);
-    expect(webview.html).toMatch(/class="seg-btn active" data-fscale="log"/);
-    expect(webview.html).toMatch(/class="seg-btn active" data-lmode="abs"/);
+    expect(webview.html).toMatch(/id="chip-faxis"[^>]*>[^]*?<span class="chip-value">Log Hz<\/span>/);
+    expect(webview.html).toMatch(/id="chip-lmode"[^>]*>[^]*?<span class="chip-value">Absolute dBFS<\/span>/);
   });
 
   it('Freeze and 1× Single start disabled — nothing streams until audio runs', () => {
@@ -773,7 +801,7 @@ describe('ScopePanel', () => {
     expect(webview.html).toContain('id="export-btn"');
     // not controls like the rest: they are the last two buttons of the bar
     const at = (id: string): number => webview.html.indexOf(`id="${id}"`);
-    for (const id of ['freeze-btn', 'single-btn', 'gain-seg', 'unit-seg', 'trig-seg', 'trigsrc-seg']) {
+    for (const id of ['freeze-btn', 'single-btn', 'chip-gain', 'chip-scale', 'chip-trigger']) {
       expect(at('snapshot-btn')).toBeGreaterThan(at(id));
     }
     expect(at('export-btn')).toBeGreaterThan(at('snapshot-btn'));
@@ -834,7 +862,9 @@ describe('ScopePanel', () => {
     expect(webview.html).not.toContain('coll-header');
     expect(webview.html).not.toContain('coll-arrow');
     expect(webview.html).not.toContain('coll-body');
-    expect(webview.html).not.toContain('aria-expanded');
+    // (the toolbar chips legitimately use aria-expanded, FR-SCI-16)
+    const section = webview.html.slice(webview.html.indexOf('id="emulator-section"'));
+    expect(section).not.toContain('aria-expanded');
   });
 
   it('audio-source-select is directly inside emulator-section — always visible (FR-SCOPE-1)', () => {

@@ -24,7 +24,7 @@ The options, labels, defaults and enabled state of the five chips are pure data,
 
 ---
 
-### [ ] feat: replace the segmented groups with chips (FR-SCI-15)
+### [x] feat: replace the segmented groups with chips (FR-SCI-15)
 
 **Affected files:** `src/webview/scope-panel.ts`, `src/webview/scope-webview.ts`, `src/test/unit/webview/scope-panel.test.ts`
 

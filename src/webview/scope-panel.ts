@@ -8,6 +8,7 @@ import { ScopeWebviewMessage } from './messages';
 import { hasKnownCommand, assertNever } from './message-guard';
 import { themeCss } from './theme/theme-css';
 import { saveScopeFile } from './scope/scope-save';
+import { CHIPS, chipLabel, defaultState, type ChipId } from './scope/scope-chips';
 import { TIME_BASES_MS, DEFAULT_TIME_BASE_MS, TRACES } from './scope/scope-view';
 
 // FR-EXT-33: see controls-editor-panel.ts's identical comment — the
@@ -372,6 +373,18 @@ function buildEmulatorBarHtml(source: AudioSource, sine: SineParams): string {
   </div>`;
 }
 
+/** One toolbar chip showing its default value; the webview script keeps it current (FR-SCI-15). */
+function chipButton(id: ChipId): string {
+  const chip = CHIPS.find(c => c.id === id)!;
+  const label = chipLabel(chip, defaultState());
+  return `<button type="button" class="chip" id="chip-${id}" data-chip="${id}" aria-haspopup="menu" aria-expanded="false" aria-label="${chip.name}: ${label}"><span class="chip-value">${label}</span></button>`;
+}
+
+function chipField(id: ChipId): string {
+  const chip = CHIPS.find(c => c.id === id)!;
+  return `<span class="emu-field">${chip.name} ${chipButton(id)}</span>`;
+}
+
 function baseName(p: string): string {
   const parts = p.split(/[\\/]/);
   return parts[parts.length - 1] || p;
@@ -447,12 +460,10 @@ ${themeCss({ surface: 'editor' })}
                       font-size: 11px; color: var(--ds-text); white-space: pre; background: var(--ds-surface-raised); opacity: 0.92; }
     #cursor-readout:empty { display: none; }
     #scope { cursor: crosshair; }
-    .seg { display: inline-flex; }
-    .seg-btn { display: inline-flex; align-items: center; background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-control-border); padding: 2px 8px; font-family: monospace; font-size: 11px; line-height: var(--ctl-line); white-space: nowrap; cursor: pointer; margin-left: -1px; }
-    .seg-btn:first-child { border-radius: 2px 0 0 2px; margin-left: 0; }
-    .seg-btn:last-child { border-radius: 0 2px 2px 0; }
-    .seg-btn:hover { background: var(--ds-hover-bg); }
-    .seg-btn.active { background: var(--ds-button-bg); color: var(--ds-button-fg); border-color: var(--ds-focus); }
+    .chip { display: inline-flex; align-items: center; gap: 4px; background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-control-border); padding: 2px 8px; font-family: monospace; font-size: 11px; line-height: var(--ctl-line); white-space: nowrap; cursor: pointer; border-radius: 2px; }
+    .chip::after { content: "▾"; font-size: 9px; }
+    .chip:hover { background: var(--ds-hover-bg); }
+    .chip[aria-expanded="true"] { border-color: var(--ds-focus); }
     #spectrum-controls { display: flex; align-items: center; gap: 8px; padding: 3px 12px; background: var(--ds-surface-raised); border-top: 1px solid var(--ds-border); flex-shrink: 0; }
     #rate-note { font-size: 11px; color: var(--ds-text-muted); white-space: nowrap; }
     #rate-note.low-res { color: var(--ds-warning-fg); }
@@ -537,21 +548,9 @@ ${themeCss({ surface: 'editor' })}
     <label class="emu-field">Time <select id="timebase">${timeBaseOptions}</select></label>
     <button type="button" id="freeze-btn" class="ctl-btn" title="Freeze the display (Space)" aria-pressed="false" disabled>Freeze</button>
     <button type="button" id="single-btn" class="ctl-btn" title="Arm a single capture: freezes on the next trigger. With a Rising / Falling trigger the emulator captures the window at full rate, so short transients are caught; in Free-run it is best effort." aria-pressed="false" disabled>1× Single</button>
-    <span class="emu-field">Gain
-      <span class="seg" id="gain-seg">
-        <button type="button" class="seg-btn active" data-gain="1">×1</button><button type="button" class="seg-btn" data-gain="2">×2</button><button type="button" class="seg-btn" data-gain="4">×4</button><button type="button" class="seg-btn" data-gain="auto">Auto</button>
-      </span></span>
-    <span class="emu-field">Scale
-      <span class="seg" id="unit-seg">
-        <button type="button" class="seg-btn active" data-unit="lin">Linear</button><button type="button" class="seg-btn" data-unit="db">dBFS</button>
-      </span></span>
-    <span class="emu-field">Trigger
-      <span class="seg" id="trig-seg">
-        <button type="button" class="seg-btn active" data-trig="free">Free</button><button type="button" class="seg-btn" data-trig="rise" title="Rising edge">↗</button><button type="button" class="seg-btn" data-trig="fall" title="Falling edge">↘</button>
-      </span>
-      <span class="seg" id="trigsrc-seg" title="Trigger source">
-        <button type="button" class="seg-btn active" data-trigsrc="in">In</button><button type="button" class="seg-btn" data-trigsrc="l">L</button>
-      </span></span>
+    ${chipField('gain')}
+    ${chipField('scale')}
+    ${chipField('trigger')}
     <span class="btn-group">
     <button type="button" id="snapshot-btn" class="ctl-btn ctl-icon" title="Save a PNG of the scope and spectrum" aria-label="Save snapshot (PNG)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="4.5" width="13" height="9" rx="1.5"/><circle cx="8" cy="9" r="2.5"/><path d="M5.5 4.5l1-2h3l1 2"/></svg></button>
     <button type="button" id="export-btn" class="ctl-btn ctl-icon" title="Save the visible samples as CSV" aria-label="Export visible samples (CSV)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v8M4.5 7L8 10.5 11.5 7M2.5 13.5h11"/></svg></button>
@@ -564,12 +563,8 @@ ${themeCss({ surface: 'editor' })}
       <canvas id="scope" style="display:none"></canvas>
       <div id="spectrum-controls">
         <span class="emu-label">Spectrum</span>
-        <span class="seg" id="fscale-seg">
-          <button type="button" class="seg-btn" data-fscale="lin">Lin Hz</button><button type="button" class="seg-btn active" data-fscale="log">Log Hz</button>
-        </span>
-        <span class="seg" id="lmode-seg">
-          <button type="button" class="seg-btn" data-lmode="rel">Relative</button><button type="button" class="seg-btn active" data-lmode="abs">Absolute dBFS</button>
-        </span>
+        ${chipButton('faxis')}
+        ${chipButton('lmode')}
       </div>
       <canvas id="spectrum" style="display:none"></canvas>
     </div>
