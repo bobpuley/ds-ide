@@ -23,7 +23,7 @@ The ids, labels, parameters, defaults, ranges and hints of the seven generators 
 
 ---
 
-### [ ] feat: emulator input generators (FR-GEN-2)
+### [x] feat: emulator input generators (FR-GEN-2)
 
 **Affected files:** `emulator/runtime/input_generators.h`, `emulator/runtime/input_generators.cpp`, `emulator/CMakeLists.txt`, `tests/input-generators/test_input_generators.cpp`, `tests/input-generators/run_tests.sh`
 
