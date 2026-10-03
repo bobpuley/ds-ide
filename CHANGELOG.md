@@ -3,6 +3,14 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.24.2 — 2026-10-03
+
+**Scope toolbar popovers** *(FR-SCI-15 to FR-SCI-17, M75)*
+
+- **FR-SCI-15** — Gain, Scale, Trigger, frequency axis and level mode are one chip each showing only the current value, replacing the thirteen segmented buttons. Options, labels, defaults and the Trigger Edge/Source rule are a pure, unit-tested model (`scope-chips.ts`).
+- **FR-SCI-16** — Clicking a chip opens an opaque popover (theme dropdown colours) that flips above when it would leave the viewport. Active entry shows ✓; Trigger has Edge and Source groups, Source disabled while Free, and stays open after an edge pick. Esc, click outside and pick close it; ↑/↓/Enter work; ARIA `menu` / `menuitemradio`. Manual test cases added.
+- **FR-SCI-17** — A chip not at its default shows its value in the warning colour with a `●`, and its accessible name ends with "(changed from default)".
+
 ## 0.24.1 — 2026-10-02
 
 **Editor polish** *(FR-WLG-1, FR-CEH-1 to FR-CEH-4, M74)*
