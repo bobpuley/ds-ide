@@ -3,6 +3,17 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.24.3 — 2026-10-03
+
+**Input generators** *(FR-GEN-1 to FR-GEN-5, M76)*
+
+- **FR-GEN-1** — The Scope's Input select is grouped: *Generators* (Sine, Noise, Log sweep, Impulse, Step, Silence, Two-tone) and *External* (Live mic, WAV). Sine stays the default; External entries behave as before.
+- **FR-GEN-2** — Each generator has its own parameter row, shown only while it is selected, with a hint on Silence, Impulse, Step and Two-tone. Definitions, defaults (Amp 0.25) and clamping are a pure module (`scope-generators.ts`).
+- **FR-GEN-3** — The emulator's `InputGenerator` renders every generator deterministically (fixed-seed noise, phase-continuous sweep, sample-exact Impulse/Step periods) with no allocation or lock on the audio thread, in simulated and real-time modes. Replay and WAV keep priority.
+- **FR-GEN-4** — New `generator` IPC message, validated and range-clamped in the emulator; the host validates the new `audioSource` ids, remembers each generator's parameters for the session and re-sends them after a redeploy.
+- **FR-GEN-5** — Selecting a generator leaves Time, Gain, Scale and Trigger as they are. Manual test cases added.
+- **Fix** — `package.json` version is brought in line with the changelog (it was left at 0.24.1 by the 0.24.2 release).
+
 ## 0.24.2 — 2026-10-03
 
 **Scope toolbar popovers** *(FR-SCI-15 to FR-SCI-17, M75)*
