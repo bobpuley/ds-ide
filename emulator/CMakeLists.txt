@@ -69,6 +69,7 @@ set(RUNTIME_SRC
     "${CMAKE_SOURCE_DIR}/runtime/core_audio_device.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/ipc_server.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/wav_reader.cpp"
+    "${CMAKE_SOURCE_DIR}/runtime/input_generators.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/session_recorder.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/session_player.cpp"
 )

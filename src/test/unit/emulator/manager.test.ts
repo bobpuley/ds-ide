@@ -578,6 +578,35 @@ describe('EmulatorManager', () => {
     });
   });
 
+  describe('sendGenerator() (FR-GEN-4)', () => {
+    const deployed = async (): Promise<void> => {
+      await manager.build(
+        { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+    };
+
+    it('sends a generator message with the kind and every parameter', async () => {
+      await deployed();
+      manager.sendGenerator('sweep', { freq: 440, amp: 0.5, color: 'white', from: 50, to: 8000, time: 12, period: 500 });
+      expect(ipcClientStub.send).toHaveBeenCalledWith({
+        type: 'generator', kind: 'sweep', freq: 440, amp: 0.5, color: 'white', from: 50, to: 8000, time: 12, period: 500,
+      });
+    });
+
+    it("sends only the kind for 'none'", async () => {
+      await deployed();
+      manager.sendGenerator('none');
+      expect(ipcClientStub.send).toHaveBeenCalledWith({ type: 'generator', kind: 'none' });
+    });
+
+    it('is a no-op when not connected', () => {
+      manager.sendGenerator('noise');
+      expect(ipcClientStub.send).not.toHaveBeenCalled();
+    });
+  });
+
   describe('sendAudioMode()', () => {
     it('sends audioMode:simulated IPC message', async () => {
       await manager.build(

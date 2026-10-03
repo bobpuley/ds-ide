@@ -8,6 +8,7 @@ import { loadScopeColors } from './scope-colors';
 import { ScopeCapture, type ScopeChannel } from './scope/scope-capture';
 import { Meters, formatDb, meterPosition } from './scope/scope-meters';
 import { CHIPS, chipLabel, chipAriaLabel, isDefault, defaultState, isGroupDisabled, placePopover, type ChipDef } from './scope/scope-chips';
+import { GENERATOR_DEFAULTS, clampParams, isGeneratorId, type GeneratorParams } from './scope/scope-generators';
 import { buildCsv } from './scope/scope-export';
 import { EventLog, formatClock } from './scope/scope-events';
 import {
@@ -525,6 +526,8 @@ function updateSourceGroups(input: string): void {
   const isLive = input === 'live';
   const isWav  = input === 'wav';
   document.getElementById('sine-group')?.classList.toggle('emu-hidden', !isSine);
+  document.querySelectorAll<HTMLElement>('[id^="gen-"]').forEach(g =>
+    g.classList.toggle('emu-hidden', g.id !== `gen-${input}`));
   document.getElementById('wav-group')?.classList.toggle('emu-hidden', !isWav);
   document.getElementById('buffer-group')?.classList.toggle('emu-hidden', !(isLive || isWav));
   document.getElementById('latency-group')?.classList.toggle('emu-hidden', !isLive);
@@ -539,10 +542,49 @@ function sendAudioSource(): void {
   updateSourceGroups(input);
   vscode.postMessage({
     command: 'audioSource',
-    input: input === 'live' || input === 'wav' ? input : 'sine',
+    input: input === 'live' || input === 'wav' || isGeneratorId(input) ? input : 'sine',
     sampleRate, bufferSize, wavLoop,
   });
 }
+
+// FR-GEN-2 / FR-GEN-4: read one generator's parameter row, clamp it, and send it. Changing
+// a row never touches Time, Gain, Scale or Trigger (FR-GEN-5).
+function readGeneratorParams(kind: string): GeneratorParams {
+  const p: Record<string, number | string> = { ...GENERATOR_DEFAULTS };
+  document.querySelectorAll<HTMLInputElement | HTMLSelectElement>(`[data-gen="${kind}"]`).forEach(field => {
+    const key = field.dataset['key'];
+    if (!key) return;
+    if (key === 'color') { p[key] = field.value; return; }
+    const n = parseFloat(field.value);
+    if (!Number.isNaN(n)) p[key] = n;
+  });
+  return clampParams(p as unknown as GeneratorParams);
+}
+
+function sendGenerator(field: HTMLElement): void {
+  const kind = field.dataset['gen'];
+  if (!kind || !isGeneratorId(kind) || kind === 'sine') return;
+  const params = readGeneratorParams(kind);
+  // Show the clamped values back in the number fields.
+  document.querySelectorAll<HTMLInputElement>(`input[type="number"][data-gen="${kind}"]`).forEach(f => {
+    const v = params[f.dataset['key'] as keyof GeneratorParams];
+    if (typeof v === 'number') f.value = String(v);
+  });
+  vscode.postMessage({ command: 'generator', kind, params });
+}
+document.getElementById('emulator-bar')?.addEventListener('input', (e) => {
+  const t = e.target as HTMLInputElement;
+  if (t.dataset['gen'] === undefined) return;
+  if (t.type === 'range') {
+    const label = document.querySelector(`[data-val-for="${t.dataset['gen']}-${t.dataset['key']}"]`);
+    if (label) label.textContent = parseFloat(t.value).toFixed(2);
+    sendGenerator(t);
+  }
+});
+document.getElementById('emulator-bar')?.addEventListener('change', (e) => {
+  const t = e.target as HTMLInputElement | HTMLSelectElement;
+  if (t.dataset['gen'] !== undefined && !(t instanceof HTMLInputElement && t.type === 'range')) sendGenerator(t);
+});
 
 sineFreqEl?.addEventListener('change', sendSine);
 sineAmpEl?.addEventListener('input', () => {

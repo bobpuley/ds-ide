@@ -35,7 +35,8 @@ import { ToggleStore } from './controllers/toggle-store';
 import { DaisyDebugAdapterFactory, DaisyDebugAdapterTrackerFactory } from './debug/debug-adapter';
 import { buildForHardware } from './commands/hardware-build';
 import { flashToHardware } from './commands/dfu-flash';
-import { SineParams, SINE_DEFAULTS, AudioSource, AUDIO_SOURCE_DEFAULTS } from './webview/scope-panel';
+import { SineParams, SINE_DEFAULTS, AudioSource, AUDIO_SOURCE_DEFAULTS, GeneratorParamsMap } from './webview/scope-panel';
+import { GENERATOR_DEFAULTS, clampParams, isGeneratorId, type GeneratorId, type GeneratorParams } from './webview/scope/scope-generators';
 import { SdEntry, sortSdEntries, SD_PREVIEW_MAX_BYTES } from './webview/sd-viewer';
 import { ControlsViewProvider } from './sidebar/controls-editor-panel';
 import { WiringViewProvider } from './sidebar/wiring-editor-panel';
@@ -268,6 +269,8 @@ async function buildControlsConfig(folder: string, yamlCfg: ControllerConfig): P
 class SessionState {
   sineState: SineParams;
   audioSourceState: AudioSource;
+  // FR-GEN-4: the parameters of each generator other than Sine, remembered for the session.
+  generatorState: GeneratorParamsMap;
   activeRecordPath: string | undefined;
 
   constructor(private readonly workspaceState: vscode.Memento) {
@@ -276,6 +279,18 @@ class SessionState {
       ...AUDIO_SOURCE_DEFAULTS,
       ...workspaceState.get<Partial<AudioSource>>('ds-ide.audioSource'),
     };
+    this.generatorState = workspaceState.get<GeneratorParamsMap>('ds-ide.generators') ?? {};
+  }
+
+  setGenerator(kind: GeneratorId, params: GeneratorParams): void {
+    if (kind === 'sine') return;
+    this.generatorState = { ...this.generatorState, [kind]: params };
+    void this.workspaceState.update('ds-ide.generators', this.generatorState);
+  }
+
+  /** Remembered parameters of a generator, completed with the defaults. */
+  generatorParams(kind: GeneratorId): GeneratorParams {
+    return clampParams({ ...GENERATOR_DEFAULTS, ...(kind === 'sine' ? {} : this.generatorState[kind]) });
   }
 
   setSine(freq: number, amplitude: number): void {
@@ -392,6 +407,9 @@ class DeployCoordinator {
       this.potStore.getSnapshot(), this.buttonStore.getSnapshot(), this.toggleStore.getSnapshot(),
     );
     this.manager.sendSine(this.session.sineState.freq, this.session.sineState.amplitude);
+    // FR-GEN-4: Sine uses the sine message above; any other generator is re-selected after it.
+    const input = this.session.audioSourceState.input;
+    if (isGeneratorId(input) && input !== 'sine') this.manager.sendGenerator(input, this.session.generatorParams(input));
     const mode = this.session.audioSourceState.input === 'live' ? 'realtime' : 'simulated';
     this.manager.sendAudioMode(mode);
     this.manager.sendAudioDevice(this.session.audioSourceState.sampleRate, this.session.audioSourceState.bufferSize);
@@ -456,7 +474,7 @@ class DeployCoordinator {
         this.manager,
         () => cfg.pots,
         () => {
-          this.scopePanel.show(this.session.sineState, this.session.audioSourceState);
+          this.scopePanel.show(this.session.sineState, this.session.audioSourceState, this.session.generatorState);
           void this.showOledIfEnabled();
           void this.showMidiIfEnabled();
         },
@@ -473,7 +491,7 @@ class DeployCoordinator {
       return true;
     }
 
-    this.scopePanel.show(this.session.sineState, this.session.audioSourceState);
+    this.scopePanel.show(this.session.sineState, this.session.audioSourceState, this.session.generatorState);
     void this.showOledIfEnabled();
     void this.showMidiIfEnabled();
     this.controlsProvider.loadEditor(cfg);
@@ -994,7 +1012,7 @@ function registerCommands(deps: CommandDeps): vscode.Disposable[] {
       vscode.commands.executeCommand(`${DAISY_VIEW_ID}.focus`)),
     // FR-RCH-1: reopen any surface without a build or deploy.
     vscode.commands.registerCommand('ds-ide.showScope', () =>
-      scopePanel.show(sessionState.sineState, sessionState.audioSourceState)),
+      scopePanel.show(sessionState.sineState, sessionState.audioSourceState, sessionState.generatorState)),
     vscode.commands.registerCommand('ds-ide.showOled', () => showOledPanel()),
     vscode.commands.registerCommand('ds-ide.showMidi', () => midiPanel.show()),
     vscode.commands.registerCommand('ds-ide.focusControls', () =>
@@ -1247,6 +1265,11 @@ export function activate(context: vscode.ExtensionContext): void {
       const mode = source.input === 'live' ? 'realtime' : 'simulated';
       manager?.sendAudioMode(mode);
       manager?.sendAudioDevice(source.sampleRate, source.bufferSize);
+      // FR-GEN-4: Sine goes back to the sine message, other generators select themselves,
+      // and the External inputs hand the input stage back.
+      if (source.input === 'sine') manager?.sendSine(session.sineState.freq, session.sineState.amplitude);
+      else if (isGeneratorId(source.input)) manager?.sendGenerator(source.input, session.generatorParams(source.input));
+      else manager?.sendGenerator('none');
       if (source.input === 'wav' && session.audioSourceState.wavPath) {
         manager?.sendWavFile(session.audioSourceState.wavPath, session.audioSourceState.wavLoop);
       } else {
@@ -1299,6 +1322,7 @@ export function activate(context: vscode.ExtensionContext): void {
     () => {
       controlsProvider?.postStatus({ type: 'status', running: false });
     },
+    (kind, params) => session.setGenerator(kind, params),
   );
 
   wireManagerEvents(manager, controlsProvider, emulatorChannel);

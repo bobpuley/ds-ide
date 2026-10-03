@@ -11,6 +11,7 @@ function makeManager() {
     sendPotSnapshot: vi.fn(),
     sendTransport: vi.fn(),
     sendSine: vi.fn(),
+    sendGenerator: vi.fn(),
     sendAudioMode: vi.fn(),
     sendAudioDevice: vi.fn(),
     sendButtonSnapshot: vi.fn(),
@@ -1020,5 +1021,122 @@ describe('ScopePanel', () => {
     const handler = created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void;
     handler({ command: 'stopAudio' });
     expect(manager.sendTransport).toHaveBeenCalledWith('stop');
+  });
+});
+
+describe('ScopePanel input generators (FR-GEN-1, FR-GEN-4, FR-GEN-5)', () => {
+  const GEN_IDS = ['sine', 'noise', 'sweep', 'impulse', 'step', 'silence', 'twotone'] as const;
+  let manager: EmulatorManager;
+  let sourceSpy: ReturnType<typeof vi.fn>;
+  let generatorSpy: ReturnType<typeof vi.fn>;
+  let panel: ScopePanel;
+
+  const open = (generatorParams?: Record<string, unknown>) => {
+    (panel.show as (...a: unknown[]) => void)(undefined, undefined, generatorParams);
+    const created = (vscode.window.createWebviewPanel as ReturnType<typeof vi.fn>).mock.results.at(-1)?.value as {
+      webview: { html: string; onDidReceiveMessage: ReturnType<typeof vi.fn> };
+    };
+    return {
+      html: created.webview.html,
+      send: created.webview.onDidReceiveMessage.mock.calls[0]![0] as (msg: unknown) => void,
+    };
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    manager = makeManager();
+    sourceSpy = vi.fn();
+    generatorSpy = vi.fn();
+    panel = new ScopePanel(
+      { fsPath: '/ext' } as unknown as vscode.Uri, manager,
+      undefined, sourceSpy, undefined, undefined, undefined, undefined, undefined, undefined, generatorSpy,
+    );
+  });
+
+  it('the Input select has a Generators group and an External group, with Sine selected (FR-GEN-1)', () => {
+    const { html } = open();
+    const select = /<select id="audio-source-select">([^]*?)<\/select>/.exec(html)![1]!;
+    const groups = [...select.matchAll(/<optgroup label="([^"]+)">([^]*?)<\/optgroup>/g)];
+    expect(groups.map(g => g[1])).toEqual(['Generators', 'External']);
+    const values = (g: RegExpMatchArray): string[] => [...g[2]!.matchAll(/<option value="([^"]+)"/g)].map(m => m[1]!);
+    expect(values(groups[0]!)).toEqual([...GEN_IDS]);
+    expect(values(groups[1]!)).toEqual(['live', 'wav']);
+    expect(select).toMatch(/<option value="sine" selected>Sine<\/option>/);
+    expect(select).toContain('>Live (mic)<');
+    expect(select).toContain('>WAV<');
+  });
+
+  it('renders a parameter group for every generator, only the selected one visible (FR-GEN-2)', () => {
+    const { html } = open();
+    for (const id of GEN_IDS) {
+      const gid = id === 'sine' ? 'sine-group' : `gen-${id}`;
+      expect(html, id).toMatch(new RegExp(`id="${gid}" class="emu-group ${id === 'sine' ? '' : 'emu-hidden'}"`));
+    }
+  });
+
+  it('gives each generator only its own fields and a hint where it has one (FR-GEN-2)', () => {
+    const { html } = open();
+    const group = (id: string): string =>
+      new RegExp(`<span id="gen-${id}"[^]*?(?=<span id="(?:gen-|wav-group|buffer-group))`).exec(html)?.[0] ?? '';
+    expect(group('sweep')).toMatch(/data-key="from"[^]*data-key="to"[^]*data-key="time"[^]*data-key="amp"/);
+    expect(group('noise')).toMatch(/data-key="color"[^]*data-key="amp"/);
+    expect(group('impulse')).toMatch(/data-key="amp"[^]*data-key="period"/);
+    expect(group('silence')).not.toContain('data-key=');
+    for (const id of ['silence', 'impulse', 'step', 'twotone']) expect(group(id), id).toContain('class="gen-hint"');
+    for (const id of ['noise', 'sweep']) expect(group(id), id).not.toContain('gen-hint');
+  });
+
+  it('shows the remembered parameters of a generator, falling back to the defaults (FR-GEN-4)', () => {
+    const { html } = open({ sweep: { freq: 440, amp: 0.7, color: 'white', from: 50, to: 8000, time: 12, period: 500 } });
+    expect(html).toMatch(/data-gen="sweep" data-key="from"[^>]*value="50"/);
+    expect(html).toMatch(/data-gen="sweep" data-key="time"[^>]*value="12"/);
+    expect(html).toMatch(/data-gen="impulse" data-key="period"[^>]*value="500"/);
+    expect(html).toMatch(/data-gen="noise" data-key="amp"[^>]*value="0.25"/);
+  });
+
+  it('fails if a generator is missing from the select (FR-GEN-1)', () => {
+    const { html } = open();
+    for (const id of GEN_IDS) expect(html).toContain(`<option value="${id}"`);
+  });
+
+  it('accepts every generator id in an audioSource message and rejects unknown ones (FR-GEN-4)', () => {
+    const { send } = open();
+    for (const id of GEN_IDS) {
+      send({ command: 'audioSource', input: id, sampleRate: 48000, bufferSize: 256, wavLoop: true });
+      expect(sourceSpy).toHaveBeenLastCalledWith(expect.objectContaining({ input: id }));
+    }
+    sourceSpy.mockClear();
+    send({ command: 'audioSource', input: 'bogus', sampleRate: 48000, bufferSize: 256, wavLoop: true });
+    expect(sourceSpy).not.toHaveBeenCalled();
+  });
+
+  it('forwards a generator message to the emulator with clamped parameters, and remembers it (FR-GEN-4)', () => {
+    const { send } = open();
+    send({ command: 'generator', kind: 'sweep', params: { freq: 440, amp: 9, color: 'white', from: 1000, to: 10, time: 5, period: 500 } });
+    const sent = (manager.sendGenerator as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(sent[0]).toBe('sweep');
+    expect(sent[1]).toMatchObject({ amp: 1, from: 1000 });
+    expect(sent[1].to).toBeGreaterThan(1000);
+    expect(generatorSpy).toHaveBeenCalledWith('sweep', sent[1]);
+  });
+
+  it('drops generator messages with an unknown kind, sine, or malformed params (FR-GEN-4)', () => {
+    const { send } = open();
+    send({ command: 'generator', kind: 'bogus', params: {} });
+    send({ command: 'generator', kind: 'sine', params: {} });
+    send({ command: 'generator', kind: 'noise', params: 'loud' });
+    send({ command: 'generator', kind: 'noise', params: { amp: 'loud' } });
+    expect(manager.sendGenerator).not.toHaveBeenCalled();
+    expect(generatorSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not touch Time, Gain, Scale or Trigger when a generator is selected (FR-GEN-5)', () => {
+    const { html } = open();
+    const script = /<script[^>]*src=/.test(html);
+    expect(script).toBe(true);
+    // the chips and time select are independent of the Input select markup
+    expect(html).toContain('id="timebase"');
+    expect(html).toContain('id="chip-gain"');
+    expect(html).not.toMatch(/audio-source-select[^>]*data-(time|gain|trigger)/);
   });
 });

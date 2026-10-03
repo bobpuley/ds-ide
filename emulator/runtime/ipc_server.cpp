@@ -3,6 +3,7 @@
 #include "daisy/midi_event.h"
 #include "session_recorder.h"
 #include "session_player.h"
+#include "input_generators.h"
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -310,6 +311,75 @@ static void emit_event(const std::string& msg) {
     if (g_state.send_ipc) g_state.send_ipc(msg);
 }
 
+// ---- Generator message (FR-GEN-4) ---------------------------------------------
+
+// Reads an optional numeric field into `out`. Absent leaves `out` alone; a present
+// but non-numeric value is ignored with a stderr note (never a crash).
+static void read_gen_field(const std::string& line, const char* key, float& out) {
+    const std::string v = json_get(line, key);
+    if (v.empty()) return;
+    char* end = nullptr;
+    const float f = std::strtof(v.c_str(), &end);
+    if (end == v.c_str() || *end != '\0' || !std::isfinite(f)) {
+        std::fprintf(stderr, "[daisy-emu] generator.%s ignored: not a number\n", key);
+        return;
+    }
+    out = f;
+}
+
+static void handle_generator_message(const std::string& line) {
+    using daisy_emu::GenKind;
+    const std::string kind = json_get(line, "kind");
+    int new_kind = -1;
+    if      (kind == "none")    new_kind = -1;
+    else if (kind == "sine")    new_kind = static_cast<int>(GenKind::Sine);
+    else if (kind == "noise")   new_kind = static_cast<int>(GenKind::Noise);
+    else if (kind == "sweep")   new_kind = static_cast<int>(GenKind::Sweep);
+    else if (kind == "impulse") new_kind = static_cast<int>(GenKind::Impulse);
+    else if (kind == "step")    new_kind = static_cast<int>(GenKind::Step);
+    else if (kind == "silence") new_kind = static_cast<int>(GenKind::Silence);
+    else if (kind == "twotone") new_kind = static_cast<int>(GenKind::TwoTone);
+    else {
+        std::fprintf(stderr, "[daisy-emu] generator ignored: unknown kind\n");
+        return;
+    }
+
+    // Start from the stored settings so a message may carry only the fields it changes.
+    daisy_emu::GenParams p;
+    p.freq      = g_state.gen_freq.load();
+    p.amp       = g_state.gen_amp.load();
+    p.pink      = g_state.gen_pink.load();
+    p.from      = g_state.gen_from.load();
+    p.to        = g_state.gen_to.load();
+    p.time      = g_state.gen_time.load();
+    p.period_ms = g_state.gen_period_ms.load();
+    read_gen_field(line, "freq", p.freq);
+    read_gen_field(line, "amp", p.amp);
+    read_gen_field(line, "from", p.from);
+    read_gen_field(line, "to", p.to);
+    read_gen_field(line, "time", p.time);
+    read_gen_field(line, "period", p.period_ms);
+    const std::string color = json_get(line, "color");
+    if (color == "pink") p.pink = true;
+    else if (color == "white") p.pink = false;
+    else if (!color.empty()) std::fprintf(stderr, "[daisy-emu] generator.color ignored: unknown value\n");
+    p = daisy_emu::clamp_gen_params(p);
+
+    g_state.gen_freq.store(p.freq);
+    g_state.gen_amp.store(p.amp);
+    g_state.gen_pink.store(p.pink);
+    g_state.gen_from.store(p.from);
+    g_state.gen_to.store(p.to);
+    g_state.gen_time.store(p.time);
+    g_state.gen_period_ms.store(p.period_ms);
+
+    // Reset the stream when newly selected or applied from a stopped stream; a
+    // parameter change while running keeps phase (FR-GEN-3).
+    const int old_kind = g_state.gen_kind.exchange(new_kind);
+    if (new_kind != old_kind || !g_state.transport_running.load())
+        g_state.gen_generation.fetch_add(1, std::memory_order_relaxed);
+}
+
 // ---- Message dispatch -------------------------------------------------------
 
 void dispatch(const std::string& line) {
@@ -356,7 +426,12 @@ void dispatch(const std::string& line) {
         if (action == "start") g_state.transport_running.store(true);
         else if (action == "stop") g_state.transport_running.store(false);
     }
+    else if (type == "generator") {
+        handle_generator_message(line);
+    }
     else if (type == "sine") {
+        // Selecting Sine (FR-GEN-4) hands the input stage back to the sine branch.
+        g_state.gen_kind.store(-1);
         auto freq = json_get(line, "freq");
         auto amp  = json_get(line, "amplitude");
         if (!freq.empty()) {

@@ -490,6 +490,119 @@
   <p class="expected">Entries, the ✓, group titles and dimmed entries are legible in all three themes, and the plot behind the popover does not show through.</p>
 </div>
 
+<div class="test">
+  <div class="test-header">
+    <h2 class="test-title">Input generators: waveform and spectrum of each generator (FR-GEN-2)</h2>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
+  </div>
+  <p class="description">Each generator in the Input select's Generators group produces its signal on the Scope and the spectrum.</p>
+  <p class="section-label">Steps</p>
+  <ol class="steps">
+    <li>Deploy a bypass effect and start audio; open the Scope.</li>
+    <li>Select Sine, Noise (White, then Pink), Log sweep, Impulse, Step, Silence and Two-tone in turn, leaving Time, Gain, Scale and Trigger alone.</li>
+  </ol>
+  <p class="section-label">Expected result</p>
+  <p class="expected">Sine is a clean sine at its Freq. White noise has a flat spectrum, Pink slopes down about 3 dB per octave. The sweep is a chirp rising from From to To and restarting after Time. Impulse shows single spikes, Step a square wave between 0 and Amp. Silence is a flat line. Two-tone shows peaks at 60 Hz and 7 kHz at about 4:1. Selecting a generator changes none of Time, Gain, Scale or Trigger.</p>
+</div>
+
+<div class="test">
+  <div class="test-header">
+    <h2 class="test-title">Input generators: Impulse and Step repeat at their Period (FR-GEN-2)</h2>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
+  </div>
+  <p class="description">Impulse and Step switch exactly on their Period.</p>
+  <p class="section-label">Steps</p>
+  <ol class="steps">
+    <li>Select Impulse, set Period 100 ms and Time 20 ms/div, with an edge Trigger on In.</li>
+    <li>Change Period to 10 ms, then 5000 ms; repeat with Step.</li>
+  </ol>
+  <p class="section-label">Expected result</p>
+  <p class="expected">Impulse spikes are one period apart (100 ms is five divisions) and Step flips between 0 and Amp every period. Changing Period while running takes effect within a block, without restarting the stream or the emulator.</p>
+</div>
+
+<div class="test">
+  <div class="test-header">
+    <h2 class="test-title">Input generators: the sweep restarts (FR-GEN-2)</h2>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
+  </div>
+  <p class="description">The log sweep rises exponentially and starts over after its Time.</p>
+  <p class="section-label">Steps</p>
+  <ol class="steps">
+    <li>Select Log sweep with From 20, To 20000, Time 5 s and watch the spectrum with Freeze off.</li>
+    <li>Set From 1000 and To 500, then From 20000.</li>
+  </ol>
+  <p class="section-label">Expected result</p>
+  <p class="expected">The frequency rises smoothly and the sweep restarts every 5 s. With To below From, or From at 20000, the fields are corrected so To stays above From and nothing breaks.</p>
+</div>
+
+<div class="test">
+  <div class="test-header">
+    <h2 class="test-title">Input generators: Silence reads −∞ on the meters (FR-GEN-2)</h2>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
+  </div>
+  <p class="description">Silence is exact digital zero.</p>
+  <p class="section-label">Steps</p>
+  <ol class="steps">
+    <li>Select Silence while an effect with a delay or reverb is running, then watch the Levels column.</li>
+  </ol>
+  <p class="section-label">Expected result</p>
+  <p class="expected">The In meter reads −∞ (or the floor) with no clip marker. The output shows only what the effect itself produces: its tail, noise floor or self-oscillation.</p>
+</div>
+
+<div class="test">
+  <div class="test-header">
+    <h2 class="test-title">Input generators: live host output at the default Amp (FR-GEN-3)</h2>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
+  </div>
+  <p class="description">Generators are audible through the host speakers at a safe level.</p>
+  <p class="section-label">Steps</p>
+  <ol class="steps">
+    <li>Lower the host volume, then select Sine, Noise and Two-tone in turn and start audio; leave Amp at its default (0.25) and Vol at 1.</li>
+  </ol>
+  <p class="section-label">Expected result</p>
+  <p class="expected">Each is audible at a moderate level (about −12 dBFS), with no clicks when switching between them or when Amp is moved.</p>
+</div>
+
+<div class="test">
+  <div class="test-header">
+    <h2 class="test-title">Input generators: switching between Generators and External entries (FR-GEN-1)</h2>
+    <select class="status status-pending" onchange="updateTestStatus(this)">
+      <option value="pending" selected>pending</option>
+      <option value="success">success</option>
+      <option value="fail">fail</option>
+    </select>
+  </div>
+  <p class="description">External inputs behave as before and generators hand the input back and forth cleanly.</p>
+  <p class="section-label">Steps</p>
+  <ol class="steps">
+    <li>Select Noise, then Live (mic), then WAV (choose a file), then Impulse, then Sine.</li>
+    <li>Redeploy while Noise is selected, with its parameters changed from the defaults.</li>
+    <li>Reload the window with the Scope open.</li>
+  </ol>
+  <p class="section-label">Expected result</p>
+  <p class="expected">Live shows the buffer and latency fields, WAV the file chooser and Loop, a generator only its own parameter row. After redeploying, the emulator resumes the selected generator with the changed parameters. Parameters are remembered per generator while switching, and Sine returns to its own Freq and Amp.</p>
+</div>
+
 <script>
   function updateTestStatus(select) {
     var value = select.value;

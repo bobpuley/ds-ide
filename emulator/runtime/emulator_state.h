@@ -177,6 +177,21 @@ struct EmulatorState {
     std::atomic<float> sine_freq{440.f};
     std::atomic<float> sine_amp{0.353553f};  // ~-9 dBFS
 
+    // FR-GEN-3 / FR-GEN-4: input generator. gen_kind is a GenKind value, or -1 for
+    // "none" (the sine branch in simulated mode, the host input in real-time mode).
+    // The IPC thread writes these; the audio thread reads them once per block and
+    // owns the InputGenerator. gen_generation bumps when the stream must restart from
+    // its initial state (generator newly selected, or applied from a stopped stream).
+    std::atomic<int>      gen_kind{-1};
+    std::atomic<uint64_t> gen_generation{0};
+    std::atomic<float>    gen_freq{440.f};
+    std::atomic<float>    gen_amp{0.25f};
+    std::atomic<bool>     gen_pink{false};
+    std::atomic<float>    gen_from{20.f};
+    std::atomic<float>    gen_to{20000.f};
+    std::atomic<float>    gen_time{5.f};
+    std::atomic<float>    gen_period_ms{500.f};
+
     // ADC pot values (0..1), one per channel (Daisy Seed has 12 ADC channels)
     std::atomic<float> pot_values[12];
 
