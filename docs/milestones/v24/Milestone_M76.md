@@ -1,7 +1,7 @@
 # M76 — Input Generators
 
 **Version:** 0.24.3
-**Status:** planned
+**Status:** released
 **Source:** intake session, 2026-10-03 (01_input-ideas.md; user request; mockup `docs/mockups/v23b-effect-testing-layered.html`; `docs/raw/test_framework/effect-testing-features.md` §3.1, §5.1)
 
 ## Goal

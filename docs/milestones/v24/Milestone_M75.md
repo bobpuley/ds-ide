@@ -1,7 +1,7 @@
 # M75 — Scope Toolbar Popovers
 
 **Version:** 0.24.2
-**Status:** planned
+**Status:** released
 **Source:** intake session, 2026-10-03 (01_input-ideas.md; user request; mockup `docs/mockups/v22-scope-instrument_alt1.html`)
 
 ## Goal
