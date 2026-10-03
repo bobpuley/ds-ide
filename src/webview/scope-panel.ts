@@ -8,6 +8,9 @@ import { ScopeWebviewMessage } from './messages';
 import { hasKnownCommand, assertNever } from './message-guard';
 import { themeCss } from './theme/theme-css';
 import { saveScopeFile } from './scope/scope-save';
+import {
+  GENERATORS, GENERATOR_DEFAULTS, clampParams, isGeneratorId, type GeneratorId, type GeneratorParams, type NoiseColor,
+} from './scope/scope-generators';
 import { CHIPS, chipLabel, defaultState, type ChipId } from './scope/scope-chips';
 import { TIME_BASES_MS, DEFAULT_TIME_BASE_MS, TRACES } from './scope/scope-view';
 
@@ -15,7 +18,7 @@ import { TIME_BASES_MS, DEFAULT_TIME_BASE_MS, TRACES } from './scope/scope-view'
 // switch's `default: assertNever(...)` is the actual drift-detector; this
 // Set only drives the runtime hasKnownCommand narrow.
 const SCOPE_WEBVIEW_COMMANDS = new Set<ScopeWebviewMessage['command']>([
-  'webviewReady', 'sine', 'audioSource', 'pickWav', 'startAudio', 'stopAudio',
+  'webviewReady', 'sine', 'generator', 'audioSource', 'pickWav', 'startAudio', 'stopAudio',
   'recordStart', 'recordStop', 'replayStart', 'outputVolume', 'saveSnapshot', 'exportCsv',
   'scopeCapture',
 ]);
@@ -41,7 +44,10 @@ export interface SineParams {
   amplitude: number;
 }
 
-export type AudioInputSource = 'sine' | 'live' | 'wav';
+export type AudioInputSource = GeneratorId | 'live' | 'wav';
+
+/** Remembered parameters of the generators other than Sine (Sine keeps its own state). */
+export type GeneratorParamsMap = Partial<Record<Exclude<GeneratorId, 'sine'>, GeneratorParams>>;
 
 export interface AudioSource {
   input: AudioInputSource;
@@ -61,6 +67,7 @@ export const AUDIO_SOURCE_DEFAULTS: AudioSource = {
 
 export type SineChangeHandler = (freq: number, amplitude: number) => void;
 export type AudioSourceChangeHandler = (source: AudioSource) => void;
+export type GeneratorChangeHandler = (kind: GeneratorId, params: GeneratorParams) => void;
 export type PickWavHandler = () => void;
 export type RecordStartHandler = () => void;
 export type RecordStopHandler = () => void;
@@ -72,6 +79,7 @@ export class ScopePanel {
   private panel: vscode.WebviewPanel | null = null;
   private sineParams: SineParams = { ...SINE_DEFAULTS };
   private audioSource: AudioSource = { ...AUDIO_SOURCE_DEFAULTS };
+  private generatorParams: GeneratorParamsMap = {};
   private msgDisposable: vscode.Disposable | null = null;
   private lastStatusMsg: IpcMessage | null = null;
 
@@ -86,6 +94,7 @@ export class ScopePanel {
     private readonly onReplayStart?: ReplayStartHandler,
     private readonly onOutputVolume?: OutputVolumeHandler,
     private readonly onStopAudio?: StopAudioHandler,
+    private readonly onGeneratorChange?: GeneratorChangeHandler,
   ) {
     manager.on('message', this._onManagerMessage);
   }
@@ -105,9 +114,11 @@ export class ScopePanel {
   show(
     sineParams: SineParams = { ...SINE_DEFAULTS },
     audioSource: AudioSource = { ...AUDIO_SOURCE_DEFAULTS },
+    generatorParams: GeneratorParamsMap = {},
   ): void {
     this.sineParams = sineParams;
     this.audioSource = audioSource;
+    this.generatorParams = generatorParams;
 
     if (this.panel) {
       // Reveal only — reassigning webview.html would reload the page and
@@ -148,10 +159,20 @@ export class ScopePanel {
           }
           break;
         }
+        case 'generator': {
+          const params = narrowGeneratorParams(msg.params);
+          if (isGeneratorId(msg.kind) && msg.kind !== 'sine' && params) {
+            const clamped = clampParams(params);
+            this.generatorParams = { ...this.generatorParams, [msg.kind]: clamped };
+            this.manager.sendGenerator(msg.kind, clamped);
+            this.onGeneratorChange?.(msg.kind, clamped);
+          }
+          break;
+        }
         case 'audioSource': {
           const inputRaw = msg.input;
           const input: AudioInputSource | undefined =
-            inputRaw === 'sine' || inputRaw === 'live' || inputRaw === 'wav' ? inputRaw : undefined;
+            isGeneratorId(inputRaw) || inputRaw === 'live' || inputRaw === 'wav' ? inputRaw : undefined;
           const sampleRate = typeof msg.sampleRate === 'number' ? msg.sampleRate : undefined;
           const bufferSize = typeof msg.bufferSize === 'number' ? msg.bufferSize : undefined;
           const validSampleRates = [8000, 22050, 44100, 48000];
@@ -321,11 +342,45 @@ export class ScopePanel {
     const scriptUri = this.panel!.webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview', 'scope-webview.js'),
     ).toString();
-    return buildHtml(nonce, scriptUri, this.sineParams, this.audioSource);
+    return buildHtml(nonce, scriptUri, this.sineParams, this.audioSource, this.generatorParams);
   }
 }
 
-function buildEmulatorBarHtml(source: AudioSource, sine: SineParams): string {
+/** Webview-supplied generator parameters, or undefined unless every field has the right type. */
+function narrowGeneratorParams(raw: unknown): GeneratorParams | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const r = raw as Record<string, unknown>;
+  const nums = ['freq', 'amp', 'from', 'to', 'time', 'period'] as const;
+  if (!nums.every(k => typeof r[k] === 'number' && Number.isFinite(r[k]))) return undefined;
+  if (r['color'] !== 'white' && r['color'] !== 'pink') return undefined;
+  return {
+    freq: r['freq'] as number, amp: r['amp'] as number, color: r['color'] as NoiseColor,
+    from: r['from'] as number, to: r['to'] as number, time: r['time'] as number, period: r['period'] as number,
+  };
+}
+
+/** Parameter row of one generator other than Sine; shown only while it is selected (FR-GEN-2). */
+function generatorGroupHtml(id: GeneratorId, selected: boolean, saved: GeneratorParams | undefined): string {
+  const def = GENERATORS.find(g => g.id === id)!;
+  const p = clampParams({ ...GENERATOR_DEFAULTS, ...saved });
+  const fields = def.params.map(f => {
+    const attrs = `data-gen="${id}" data-key="${f.key}"`;
+    if (f.kind === 'choice') {
+      const opts = f.options.map(o => `<option value="${o.value}" ${p.color === o.value ? 'selected' : ''}>${o.label}</option>`).join('');
+      return `<label class="emu-field">${f.label} <select ${attrs}>${opts}</select></label>`;
+    }
+    if (f.key === 'amp') {
+      return `<label class="emu-field">${f.label} <input type="range" ${attrs} min="${f.min}" max="${f.max}" step="${f.step}" value="${p.amp}"/> <span class="gen-val" data-val-for="${id}-amp">${p.amp.toFixed(2)}</span></label>`;
+    }
+    return `<label class="emu-field">${f.label} <input type="number" ${attrs} min="${f.min}" max="${f.max}" step="${f.step}" value="${p[f.key]}"/>${f.unit ? ` ${f.unit}` : ''}</label>`;
+  }).join('\n      ');
+  const hint = def.hint ? `<span class="gen-hint">${escHtml(def.hint)}</span>` : '';
+  return `<span id="gen-${id}" class="emu-group ${selected ? '' : 'emu-hidden'}">
+      ${fields}${fields && hint ? '\n      ' : ''}${hint}
+    </span>`;
+}
+
+function buildEmulatorBarHtml(source: AudioSource, sine: SineParams, generators: GeneratorParamsMap): string {
   const freq      = Number(sine.freq)        || SINE_DEFAULTS.freq;
   const amplitude = Number(sine.amplitude)   || SINE_DEFAULTS.amplitude;
   const bufferSize = Number(source.bufferSize) || AUDIO_SOURCE_DEFAULTS.bufferSize;
@@ -339,11 +394,15 @@ function buildEmulatorBarHtml(source: AudioSource, sine: SineParams): string {
     `<option value="${s}" ${s === bufferSize ? 'selected' : ''}>${s}</option>`
   ).join('');
   const wavName = source.wavPath ? baseName(source.wavPath) : '';
+  const genOptions = GENERATORS.map(g =>
+    `<option value="${g.id}" ${source.input === g.id ? 'selected' : ''}>${g.label}</option>`).join('');
   const srcOptions = [
-    `<option value="sine" ${isSine ? 'selected' : ''}>Sine</option>`,
-    `<option value="live" ${isLive ? 'selected' : ''}>Live (mic)</option>`,
-    `<option value="wav" ${isWav  ? 'selected' : ''}>WAV</option>`,
+    `<optgroup label="Generators">${genOptions}</optgroup>`,
+    `<optgroup label="External"><option value="live" ${isLive ? 'selected' : ''}>Live (mic)</option><option value="wav" ${isWav ? 'selected' : ''}>WAV</option></optgroup>`,
   ].join('');
+  const genGroups = GENERATORS.filter(g => g.id !== 'sine')
+    .map(g => generatorGroupHtml(g.id, source.input === g.id, generators[g.id as Exclude<GeneratorId, 'sine'>]))
+    .join('\n    ');
   return `<div id="emulator-bar">
     <span class="emu-label">Input:</span>
     <select id="audio-source-select">${srcOptions}</select>
@@ -353,6 +412,7 @@ function buildEmulatorBarHtml(source: AudioSource, sine: SineParams): string {
       <label class="emu-field">Amp <input type="range" id="sine-amp" min="0" max="1" step="0.01" value="${amplitude}"/>
         <span id="sine-amp-val">${amplitude.toFixed(2)}</span></label>
     </span>
+    ${genGroups}
     <span id="wav-group" class="emu-group ${isWav ? '' : 'emu-hidden'}">
       <button id="wav-choose" type="button" class="emu-btn">Choose WAV…</button>
       <span id="wav-name" class="wav-name">${wavName ? escHtml(wavName) : 'no file'}</span>
@@ -394,8 +454,8 @@ function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function buildHtml(nonce: string, scriptUri: string, sine: SineParams, source: AudioSource): string {
-  const audioSourceHtml = buildEmulatorBarHtml(source, sine);
+function buildHtml(nonce: string, scriptUri: string, sine: SineParams, source: AudioSource, generators: GeneratorParamsMap): string {
+  const audioSourceHtml = buildEmulatorBarHtml(source, sine, generators);
   const legendItems = TRACES.map(t =>
     `<button type="button" class="legend-item" data-trace="${t.id}" aria-pressed="true" title="Show / hide ${t.label}">` +
     `<svg width="26" height="8" aria-hidden="true"><line x1="0" y1="4" x2="26" y2="4" stroke="var(${t.cssVar})" stroke-width="2"` +
@@ -509,6 +569,7 @@ ${themeCss({ surface: 'editor' })}
     .emu-field input[type="number"] { width: 64px; background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-border); padding: 2px 4px; font-family: monospace; }
     .emu-field input[type="range"] { width: 90px; cursor: pointer; }
     .emu-field select { background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-border); padding: 2px 4px; font-family: monospace; cursor: pointer; }
+    .gen-hint { color: var(--ds-text-muted); font-size: 11px; font-style: italic; }
     .emu-btn { background: var(--ds-button-bg); color: var(--ds-button-fg); border: 1px solid transparent; padding: 3px 8px; font-family: monospace; cursor: pointer; border-radius: 2px; }
     .emu-btn:hover { background: var(--ds-button-hover-bg); }
     .latency-text { color: var(--ds-text); }

@@ -8,6 +8,7 @@ import { IpcClient, IpcMessage, IpcWarning, CONNECT_TIMEOUT_MS } from './ipc-cli
 import { potControlId, buttonControlId, toggleControlId, encoderControlId, narrowControlValue, narrowControlSnapshot } from '../ipc/control-values';
 import type { ScopeCaptureRequest } from '../ipc/narrow';
 import { PROTOCOL_VERSION } from '../ipc/protocol-version';
+import type { GeneratorId, GeneratorParams } from '../webview/scope/scope-generators';
 
 const SOCKET_TIMEOUT_MS = 10_000;
 // Grace period between SIGTERM and SIGKILL escalation when reclaiming a
@@ -298,6 +299,20 @@ export class EmulatorManager extends EventEmitter {
 
   sendSine(freq: number, amplitude: number): void {
     this.ipcClient?.send({ type: 'sine', freq, amplitude });
+  }
+
+  /**
+   * Select an input generator (FR-GEN-4). 'none' hands the input stage back to the host
+   * input or WAV; Sine uses sendSine() instead.
+   */
+  sendGenerator(kind: GeneratorId | 'none', params?: GeneratorParams): void {
+    this.ipcClient?.send({
+      type: 'generator', kind,
+      ...(params && {
+        freq: params.freq, amp: params.amp, color: params.color,
+        from: params.from, to: params.to, time: params.time, period: params.period,
+      }),
+    });
   }
 
   // FR-DEV-1: pot/potSnapshot/button/buttonSnapshot collapse into

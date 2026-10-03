@@ -39,6 +39,7 @@ vi.mock('../../emulator/manager', () => {
     sendPot = vi.fn();
     sendTransport = vi.fn();
     sendSine = vi.fn();
+    sendGenerator = vi.fn();
     sendAudioMode = vi.fn();
     sendAudioDevice = vi.fn();
     sendWavFile = vi.fn();
@@ -2145,6 +2146,31 @@ describe('deploy sequencing via DeployCoordinator (FR-IPC-7)', () => {
     expect(mgr.sendSine).toHaveBeenCalled();
     expect(mgr.sendAudioMode).toHaveBeenCalled();
     expect(mgr.sendAudioDevice).toHaveBeenCalled();
+  });
+
+  it('ds-ide.deploy re-selects the remembered generator after a successful deploy (FR-GEN-4)', async () => {
+    const { activate: act } = await import('../../extension');
+    const ctx = makeContext();
+    const stored: Record<string, unknown> = {
+      'ds-ide.audioSource': { input: 'sweep' },
+      'ds-ide.generators': { sweep: { freq: 440, amp: 0.6, color: 'white', from: 50, to: 8000, time: 12, period: 500 } },
+    };
+    (ctx.workspaceState as unknown as { get: unknown }).get = (k: string, d?: unknown) => stored[k] ?? d;
+    act(ctx);
+    await flush();
+    const mgr = managerInstances[0]! as unknown as ManagerSpies & { sendGenerator: ReturnType<typeof vi.fn> };
+    await getCommand('ds-ide.deploy')!();
+    expect(mgr.sendGenerator).toHaveBeenCalledWith('sweep', expect.objectContaining({ from: 50, to: 8000, time: 12, amp: 0.6 }));
+  });
+
+  it('ds-ide.deploy sends no generator message while Sine is the input (FR-GEN-4)', async () => {
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    await flush();
+    const mgr = managerInstances[0]! as unknown as ManagerSpies & { sendGenerator: ReturnType<typeof vi.fn> };
+    await getCommand('ds-ide.deploy')!();
+    expect(mgr.sendSine).toHaveBeenCalled();
+    expect(mgr.sendGenerator).not.toHaveBeenCalled();
   });
 
   it('ds-ide.deploy opens the OLED viewer when the deployed effect has OLED enabled (FR-DEV-15)', async () => {

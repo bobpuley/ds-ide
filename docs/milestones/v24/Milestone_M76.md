@@ -50,7 +50,7 @@ Implements FR-GEN-3 (engine input stage) and the emulator side of FR-GEN-4 (the 
 
 ---
 
-### [ ] feat: grouped Input select and generator parameter rows (FR-GEN-1)
+### [x] feat: grouped Input select and generator parameter rows (FR-GEN-1)
 
 Implements FR-GEN-1, FR-GEN-5 and the host/webview side of FR-GEN-4.
 

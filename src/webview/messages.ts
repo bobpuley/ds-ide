@@ -7,6 +7,7 @@ import type { WiredPin, DeviceType } from '../wiring/wiring-panel';
 import type { ControlsPlacement } from './scope-panel';
 import type { PeripheralDisplayState } from '../wiring/peripheral-state';
 import type { SdEntry } from './sd-viewer';
+import type { GeneratorId, GeneratorParams } from './scope/scope-generators';
 
 // ── Daisy Scope panel ────────────────────────────────────────────────────
 
@@ -26,7 +27,8 @@ export type ScopeHostMessage =
 export type ScopeWebviewMessage =
   | { command: 'webviewReady' }
   | { command: 'sine'; freq: number; amplitude: number }
-  | { command: 'audioSource'; input: 'sine' | 'live' | 'wav'; sampleRate: number; bufferSize: number; wavLoop: boolean }
+  | { command: 'generator'; kind: GeneratorId; params: GeneratorParams }
+  | { command: 'audioSource'; input: GeneratorId | 'live' | 'wav'; sampleRate: number; bufferSize: number; wavLoop: boolean }
   | { command: 'pickWav' }
   | { command: 'startAudio' }
   | { command: 'stopAudio' }
