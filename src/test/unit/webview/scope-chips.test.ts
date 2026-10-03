@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  CHIPS, chipLabel, isDefault, defaultState, isGroupDisabled, placePopover, type ChipId,
+  CHIPS, chipLabel, isDefault, defaultState, isGroupDisabled, placePopover, chipAriaLabel, type ChipId,
 } from '../../../webview/scope/scope-chips';
 
 const chip = (id: ChipId) => CHIPS.find(c => c.id === id)!;
@@ -54,6 +54,12 @@ describe('scope chips (FR-SCI-15)', () => {
     expect(defaultState()).toEqual({
       gain: '1', unit: 'lin', edge: 'free', source: 'in', fscale: 'log', lmode: 'abs',
     });
+  });
+
+  it('accessible name is "Name: value", plus "(changed from default)" when not at the default (FR-SCI-17)', () => {
+    expect(chipAriaLabel(chip('gain'), { gain: '1' })).toBe('Gain: ×1');
+    expect(chipAriaLabel(chip('gain'), { gain: '4' })).toBe('Gain: ×4 (changed from default)');
+    expect(chipAriaLabel(chip('trigger'), { edge: 'rise', source: 'l' })).toBe('Trigger: ↗ L (changed from default)');
   });
 
   describe('placePopover (FR-SCI-16)', () => {

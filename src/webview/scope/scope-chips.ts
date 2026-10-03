@@ -85,6 +85,11 @@ export function chipLabel(chip: ChipDef, state: ChipState): string {
   return optionLabel(chip.groups[0]!, state[chip.groups[0]!.id]);
 }
 
+/** Accessible name: "Gain: ×4 (changed from default)". */
+export function chipAriaLabel(chip: ChipDef, state: ChipState): string {
+  return `${chip.name}: ${chipLabel(chip, state)}${isDefault(chip, state) ? '' : ' (changed from default)'}`;
+}
+
 /** A group's entries are disabled when the group has no effect: Source while the edge is Free. */
 export function isGroupDisabled(chip: ChipDef, groupId: string, state: ChipState): boolean {
   return chip.id === 'trigger' && groupId === 'source' && state['edge'] === 'free';

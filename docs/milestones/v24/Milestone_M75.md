@@ -50,7 +50,7 @@ The options, labels, defaults and enabled state of the five chips are pure data,
 
 ---
 
-### [ ] feat: non-default chip marker (FR-SCI-17)
+### [x] feat: non-default chip marker (FR-SCI-17)
 
 **Affected files:** `src/webview/scope-panel.ts`, `src/webview/scope-webview.ts`, `src/test/unit/webview/scope-panel.test.ts`
 

@@ -463,6 +463,8 @@ ${themeCss({ surface: 'editor' })}
     .chip { display: inline-flex; align-items: center; gap: 4px; background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-control-border); padding: 2px 8px; font-family: monospace; font-size: 11px; line-height: var(--ctl-line); white-space: nowrap; cursor: pointer; border-radius: 2px; }
     .chip::after { content: "▾"; font-size: 9px; }
     .chip:hover { background: var(--ds-hover-bg); }
+    .chip.changed { color: var(--ds-warning-fg); }
+    .chip.changed .chip-value::before { content: "● "; }
     .chip[aria-expanded="true"] { border-color: var(--ds-focus); }
     #chip-popover { position: fixed; z-index: 10; min-width: 120px; padding: 3px 0; background: var(--ds-dropdown-bg); color: var(--ds-dropdown-fg); border: 1px solid var(--ds-control-border); border-radius: 2px; box-shadow: 0 2px 8px var(--ds-shadow); font-family: monospace; font-size: 11px; }
     #chip-popover[hidden] { display: none; }

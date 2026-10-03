@@ -7,7 +7,7 @@ import { readThemeColor, onThemeChange } from './theme/theme-runtime';
 import { loadScopeColors } from './scope-colors';
 import { ScopeCapture, type ScopeChannel } from './scope/scope-capture';
 import { Meters, formatDb, meterPosition } from './scope/scope-meters';
-import { CHIPS, chipLabel, defaultState, isGroupDisabled, placePopover, type ChipDef } from './scope/scope-chips';
+import { CHIPS, chipLabel, chipAriaLabel, isDefault, defaultState, isGroupDisabled, placePopover, type ChipDef } from './scope/scope-chips';
 import { buildCsv } from './scope/scope-export';
 import { EventLog, formatClock } from './scope/scope-events';
 import {
@@ -575,7 +575,8 @@ function renderChips(): void {
     const label = chipLabel(chip, chipState);
     const value = btn.querySelector('.chip-value');
     if (value) value.textContent = label;
-    btn.setAttribute('aria-label', `${chip.name}: ${label}`);
+    btn.setAttribute('aria-label', chipAriaLabel(chip, chipState));
+    btn.classList.toggle('changed', !isDefault(chip, chipState));
   }
 }
 

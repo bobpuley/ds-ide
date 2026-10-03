@@ -800,6 +800,17 @@ describe('ScopePanel', () => {
     expect(webview.html).toMatch(/\.chip-item:disabled \{[^}]*opacity/);
   });
 
+  // FR-SCI-17 — non-default marker
+  it('a non-default chip is drawn in the warning colour with a ● before its value; a default one is not (FR-SCI-17)', () => {
+    panel.show();
+    const { webview } = webviewMock.mock.results[0]?.value as { webview: { html: string } };
+    expect(webview.html).toMatch(/\.chip\.changed \{[^}]*color: var\(--ds-warning-fg\)/);
+    expect(webview.html).toMatch(/\.chip\.changed \.chip-value::before \{[^}]*content: "●/);
+    // all five start at their default: none is marked
+    expect(webview.html).not.toMatch(/class="chip changed"/);
+    expect(webview.html).not.toContain('changed from default');
+  });
+
   // FR-SCI-10 — best-effort single-shot
   it('webview HTML has a 1x Single button whose tooltip explains the full-rate capture and the best-effort free-run case (FR-SCI-10, FR-SCI-14d)', () => {
     panel.show();
