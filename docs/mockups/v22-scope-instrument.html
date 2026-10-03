@@ -1,33 +1,35 @@
 <!DOCTYPE html>
 <!--
-  MOCKUP — not production code. (design_plan.md P0-4 "The scope is a picture of a waveform,
-  not an instrument", plus §6.B-8 metering and §6.B-10 right channel.)
+  MOCKUP — updated to mirror the IMPLEMENTED Daisy Scope (design_plan.md P0-4, §6.B-8, §6.B-10;
+  shipped M70–M72, FR-SCI-1…14, v0.21.0–0.24.x). Originally a proposal; the layout below now follows
+  src/webview/scope-panel.ts (markup + CSS) and src/webview/scope-webview.ts (drawing/behaviour).
 
-  What this mockup lets you evaluate (all interactive, signals are synthetic):
-    1. Axes with units       — time (ms/div) across, amplitude (±1.0 or dBFS) down, both labelled.
-    2. Gain                  — x1 / x2 / x4 / Auto, so a -40 dBFS signal is no longer a flat line.
-    3. Trigger               — Free / rising / falling + draggable level marker; periodic waves stand still.
-    4. Freeze / Single       — hold the display; hover for cursor read-out (t, value) on frozen or live data.
-    5. Stereo output         — In, Out L, Out R (R is captured by the emulator today but never drawn).
-    6. Meters                — peak / RMS / latching clip per channel (click clip LED to reset).
-    7. Spectrum              — Lin/Log frequency, Relative/Absolute dBFS, labelled Hz + dB axes.
-    8. Snapshot / export     — PNG + CSV buttons (stubbed) for bug reports.
-    9. Event history         — the 22px transient strip becomes a click-to-expand timestamped log.
-   10. Accessibility         — traces differ by line style as well as colour; legend toggles channels.
+  Layout, top to bottom, as shipped:
+    1. header         status text (▶/■ | rate | block | xruns) · trace legend (click = show/hide) · Vol · ▶ ■ · "ℹ Approx. Seed"
+    2. events bar     active events as "⚠ KIND" text · "▸ history (n)" toggle  →  timestamped event log below it
+    3. scope toolbar  Time (0.5…20 ms/div) · Freeze · 1× Single · Gain ×1/×2/×4/Auto · Scale Linear/dBFS ·
+                      Trigger Free/↗/↘ + source In/L · snapshot + CSV icon buttons · effective-rate note
+    4. plots          scope canvas (axes drawn on canvas: trigger pointer, FROZEN + gain label, "no trigger — waiting…",
+                      cursor read-out overlaid top-right) · spectrum bar (Lin/Log Hz, Relative/Absolute dBFS) · spectrum canvas
+                      + Levels column (In / Out L / Out R meters, latching CLIP chip, headroom, Reset peaks)
+    5. emulator bar   Input select · Freq/Amp (or WAV / buffer / latency) | Session: ● ■ ▶ Replay file…
 
-  Use the toolbar at the top to switch the synthetic SOURCE, the VS Code THEME, and the panel WIDTH.
-  Existing bar (Input / Freq / Amp / record / replay) is kept unchanged at the bottom.
+  Things the original proposal had that were NOT shipped (removed here): legend row above the plot, trigger
+  value label on the marker, DOM "FROZEN" badge, 📷/⤓ emoji buttons with a WAV export, ⏸ glyph on Freeze,
+  Rising-edge as the default trigger (default is Free), Lin as the default spectrum axis (default is Log + Absolute).
 
-  Open questions this raises are listed in the notes panel on the right.
+  Mockup-only controls are in the dark toolbar at the top (SOURCE · AUDIO · THEME · WIDTH).
+  Synthetic signals only. Effective-rate figures in the toolbar note are illustrative (the real value comes from
+  the emulator stream); the emulator-side full-rate capture on trigger (FR-SCI-14d) is approximated by using 48 kHz
+  whenever a trigger is active.
 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<title>ds-ide — scope as an instrument (design_plan.md P0-4)</title>
+<title>ds-ide — Daisy Scope as implemented (design_plan.md P0-4)</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #111; color: #ccc; font-family: -apple-system, "Segoe UI", sans-serif; font-size: 12px; }
-  .mono { font-family: Menlo, Consolas, monospace; }
 
   /* ---- mockup chrome (not part of the product) ---- */
   #chrome { border-bottom: 1px solid #3c3c3c; padding: 10px 16px; font-family: monospace; }
@@ -43,122 +45,136 @@
   #stage { display: flex; gap: 16px; padding: 16px; align-items: flex-start; }
   #notes { width: 300px; flex-shrink: 0; font-family: monospace; font-size: 10.5px; color: #9a9a9a; line-height: 1.55; }
   #notes h2 { font-size: 11px; color: #f4c430; font-weight: normal; margin: 0 0 6px; }
-  #notes ol { padding-left: 16px; margin-bottom: 12px; }
+  #notes ol, #notes ul { padding-left: 16px; margin-bottom: 12px; }
   #notes li { margin-bottom: 6px; }
   #notes b { color: #d4d4d4; font-weight: normal; }
 
-  /* ---- theme tokens (mirror the real --ds-* names in src/webview/theme) ---- */
+  /* ---- theme tokens: same names as src/webview/theme/theme-css.ts, values = typical VS Code theme output ---- */
   #panel {
-    --ds-bg: #1e1e1e; --ds-surface: #181818; --ds-fg: #d4d4d4; --ds-dim: #8a8a8a; --ds-border: #3c3c3c;
-    --ds-grid: #2e2e2e; --ds-grid-major: #3d3d3d; --ds-axis: #7a7a7a;
-    --ds-trace-in: #4ec9b0; --ds-trace-outl: #ff9d4d; --ds-trace-outr: #e6d34d;
-    --ds-ok: #89d185; --ds-error: #f14c4c; --ds-warn: #cca700;
-    --ds-btn: #3a3d41; --ds-btn-hover: #45494e; --ds-accent: #0e639c; --ds-accent-fg: #fff;
-    --ds-input-bg: #3c3c3c;
+    --ds-surface: #1e1e1e; --ds-surface-raised: #252526; --ds-text: #cccccc; --ds-text-muted: #9d9d9d;
+    --ds-border: #3c3c3c; --ds-focus: #007fd4; --ds-input-bg: #3c3c3c; --ds-input-fg: #cccccc;
+    --ds-button-bg: #0e639c; --ds-button-fg: #ffffff; --ds-hover-bg: #4a4d4f;
+    --ds-trace-in: #3794ff; --ds-trace-out: #d18616; --ds-trace-out-r: #b180d7;
+    --ds-grid: #3a3a3a; --ds-axis: #b0b0b0; --ds-warning-fg: #cca700; --ds-ok: #73c991; --ds-error: #f48771;
   }
   #panel.light {
-    --ds-bg: #ffffff; --ds-surface: #f7f7f7; --ds-fg: #333333; --ds-dim: #6e6e6e; --ds-border: #cfcfcf;
-    --ds-grid: #e4e4e4; --ds-grid-major: #cfcfcf; --ds-axis: #767676;
-    --ds-trace-in: #007a66; --ds-trace-outl: #c25b00; --ds-trace-outr: #8a7800;
-    --ds-ok: #2d8a34; --ds-error: #c72e2e; --ds-warn: #946800;
-    --ds-btn: #e6e6e6; --ds-btn-hover: #d6d6d6; --ds-accent: #0069c0; --ds-accent-fg: #fff;
-    --ds-input-bg: #ffffff;
+    --ds-surface: #ffffff; --ds-surface-raised: #f3f3f3; --ds-text: #616161; --ds-text-muted: #717171;
+    --ds-border: #c8c8c8; --ds-focus: #0090f1; --ds-input-bg: #ffffff; --ds-input-fg: #616161;
+    --ds-button-bg: #007acc; --ds-button-fg: #ffffff; --ds-hover-bg: #dcdcdc;
+    --ds-trace-in: #1a85ff; --ds-trace-out: #d18616; --ds-trace-out-r: #652d90;
+    --ds-grid: #d9d9d9; --ds-axis: #616161; --ds-warning-fg: #bf8803; --ds-ok: #388a34; --ds-error: #a1260d;
   }
   #panel.hc {
-    --ds-bg: #000; --ds-surface: #000; --ds-fg: #fff; --ds-dim: #d0d0d0; --ds-border: #6fc3df;
-    --ds-grid: #333; --ds-grid-major: #666; --ds-axis: #fff;
-    --ds-trace-in: #00ffff; --ds-trace-outl: #ffa500; --ds-trace-outr: #ffff00;
-    --ds-ok: #00ff00; --ds-error: #ff5050; --ds-warn: #ffff00;
-    --ds-btn: #000; --ds-btn-hover: #222; --ds-accent: #000; --ds-accent-fg: #fff;
-    --ds-input-bg: #000;
+    --ds-surface: #000000; --ds-surface-raised: #0c141f; --ds-text: #ffffff; --ds-text-muted: #ffffff;
+    --ds-border: #6fc3df; --ds-focus: #f38518; --ds-input-bg: #000000; --ds-input-fg: #ffffff;
+    --ds-button-bg: #000000; --ds-button-fg: #ffffff; --ds-hover-bg: #1d2a3a;
+    --ds-trace-in: #3794ff; --ds-trace-out: #d18616; --ds-trace-out-r: #b180d7;
+    --ds-grid: #3a5560; --ds-axis: #ffffff; --ds-warning-fg: #ffd33d; --ds-ok: #89d185; --ds-error: #f48771;
   }
 
-  /* ---- the panel under design ---- */
-  #panel { width: 860px; background: var(--ds-bg); color: var(--ds-fg); border: 1px solid var(--ds-border);
-           border-radius: 4px; font-family: -apple-system, "Segoe UI", sans-serif; font-size: 12px; overflow: hidden; }
+  /* ---- the panel under design: CSS mirrors scope-panel.ts buildHtml() ---- */
+  #panel { --ctl-line: 14px; --ds-control-border: color-mix(in srgb, var(--ds-text) 45%, transparent);
+           width: 860px; height: 700px; display: flex; flex-direction: column; background: var(--ds-surface); color: var(--ds-text);
+           border: 1px solid var(--ds-border); font-family: monospace; font-size: 12px; overflow: hidden; }
   #panel.narrow { width: 560px; }
-  #panel button, #panel select, #panel input { font-family: inherit; font-size: 11px; color: var(--ds-fg); }
-  .btn { background: var(--ds-btn); border: 1px solid var(--ds-border); padding: 2px 8px; border-radius: 2px; cursor: pointer; height: 22px; }
-  .btn:hover { background: var(--ds-btn-hover); }
-  .btn.on { background: var(--ds-accent); color: var(--ds-accent-fg); border-color: var(--ds-accent); }
-  #panel.hc .btn.on { border: 2px solid #fff; }
+  #panel button, #panel select, #panel input { font-family: monospace; }
+
+  #panel header { padding: 6px 12px; background: var(--ds-surface-raised); display: flex; align-items: center; gap: 16px;
+                  border-bottom: 1px solid var(--ds-border); flex-wrap: wrap; flex-shrink: 0; }
+  #status-text { flex: 1; }
+  #fidelity-caveat { font-size: 10px; color: var(--ds-text-muted); cursor: default; margin-left: auto; }
+  .legend { display: flex; gap: 12px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; background: none; border: none; color: var(--ds-text); font-size: 12px; cursor: pointer; padding: 1px 2px; }
+  .legend-item[aria-pressed="false"] { opacity: .4; text-decoration: line-through; }
+  .legend-item svg { width: 26px; height: 8px; }
+  #vol-group { display: flex; align-items: center; gap: 6px; }
+  #vol-label { color: var(--ds-text-muted); font-size: 11px; }
+  #output-vol { width: 80px; cursor: pointer; accent-color: var(--ds-trace-in); }
+  #vol-val { min-width: 30px; color: var(--ds-text); font-size: 11px; }
+  .audio-btn { background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-border); padding: 3px 8px; font-size: 13px; cursor: pointer; border-radius: 2px; }
+  .audio-btn:disabled { opacity: .35; cursor: default; }
+  #btn-audio-start { border-color: var(--ds-ok); color: var(--ds-ok); }
+  #btn-audio-stop  { border-color: var(--ds-error); color: var(--ds-error); }
+
+  #events-bar { display: flex; align-items: center; gap: 12px; padding: 3px 12px; min-height: 22px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); font-size: 11px; flex-shrink: 0; }
+  #events { flex: 1; color: var(--ds-error); }
+  #events-toggle { background: none; border: none; color: var(--ds-text-muted); font-size: 11px; cursor: pointer; }
+  #events-toggle:hover { color: var(--ds-text); }
+  #event-log { display: none; max-height: 120px; overflow-y: auto; background: var(--ds-surface); border-bottom: 1px solid var(--ds-border); font-size: 11px; flex-shrink: 0; }
+  .event-row { display: flex; gap: 12px; padding: 2px 12px; }
+  .event-time { color: var(--ds-text-muted); width: 64px; flex-shrink: 0; }
+  .event-kind { color: var(--ds-error); min-width: 80px; }
+
+  #scope-controls { display: flex; align-items: center; gap: 12px; padding: 4px 12px; background: var(--ds-surface-raised); border-bottom: 1px solid var(--ds-border); flex-shrink: 0; flex-wrap: wrap; }
+  .emu-field { display: inline-flex; align-items: center; gap: 4px; }
+  .emu-label { color: var(--ds-text-muted); }
+  .emu-field select, #audio-source-select, #buffer-size { background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-border); padding: 2px 4px; cursor: pointer; border-radius: 2px; }
+  .ctl-btn { display: inline-flex; align-items: center; background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-control-border); padding: 2px 8px; font-size: 11px; line-height: var(--ctl-line); white-space: nowrap; cursor: pointer; border-radius: 2px; }
+  .ctl-btn:disabled { opacity: .4; cursor: default; }
+  .ctl-btn:hover:not(:disabled) { background: var(--ds-hover-bg); }
+  .ctl-btn[aria-pressed="true"] { background: var(--ds-button-bg); color: var(--ds-button-fg); border-color: var(--ds-focus); }
+  .ctl-icon { padding: 2px 5px; } .ctl-icon svg { width: var(--ctl-line); height: var(--ctl-line); display: block; }
+  .btn-group { display: inline-flex; }
+  .btn-group .ctl-btn:not(:first-child) { margin-left: -1px; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+  .btn-group .ctl-btn:not(:last-child) { border-top-right-radius: 0; border-bottom-right-radius: 0; }
   .seg { display: inline-flex; }
-  .seg .btn { border-radius: 0; margin-left: -1px; }
-  .seg .btn:first-child { border-radius: 2px 0 0 2px; margin-left: 0; }
-  .seg .btn:last-child  { border-radius: 0 2px 2px 0; }
-  .grp { display: inline-flex; align-items: center; gap: 4px; }
-  .grp > .lbl { color: var(--ds-dim); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+  .seg-btn { display: inline-flex; align-items: center; background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-control-border); padding: 2px 8px; font-size: 11px; line-height: var(--ctl-line); white-space: nowrap; cursor: pointer; margin-left: -1px; }
+  .seg-btn:first-child { border-radius: 2px 0 0 2px; margin-left: 0; } .seg-btn:last-child { border-radius: 0 2px 2px 0; }
+  .seg-btn:hover { background: var(--ds-hover-bg); }
+  .seg-btn.active { background: var(--ds-button-bg); color: var(--ds-button-fg); border-color: var(--ds-focus); }
+  #rate-note { font-size: 11px; color: var(--ds-text-muted); white-space: nowrap; }
+  #rate-note.low-res { color: var(--ds-warning-fg); }
 
-  #status { display: flex; gap: 12px; align-items: center; padding: 5px 10px; border-bottom: 1px solid var(--ds-border); font-family: Menlo, monospace; font-size: 11px; }
-  #status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ds-ok); display: inline-block; margin-right: 5px; }
-  #status .spacer { flex: 1; }
-  #status .caveat { color: var(--ds-dim); }
+  #scope-main { flex: 1; min-height: 0; display: flex; }
+  #plots { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  canvas { display: block; width: 100%; }
+  #scope { flex: 1; min-height: 0; cursor: crosshair; }
+  #cursor-readout { position: absolute; top: 4px; right: 8px; z-index: 1; padding: 2px 6px; border-radius: 2px; pointer-events: none; font-size: 11px; color: var(--ds-text); white-space: pre; background: var(--ds-surface-raised); opacity: .92; }
+  #cursor-readout:empty { display: none; }
+  #spectrum-controls { display: flex; align-items: center; gap: 8px; padding: 3px 12px; background: var(--ds-surface-raised); border-top: 1px solid var(--ds-border); flex-shrink: 0; }
+  #spectrum { height: 140px; border-top: 1px solid var(--ds-border); background: var(--ds-surface); flex-shrink: 0; }
 
-  #ctl { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--ds-border); background: var(--ds-surface); }
-  #ctl .spacer { flex: 1; }
+  #meters { width: 132px; flex-shrink: 0; padding: 8px 10px; background: var(--ds-surface-raised); border-left: 1px solid var(--ds-border); overflow-y: auto; }
+  #meters h3 { font-size: 10px; font-weight: normal; text-transform: uppercase; color: var(--ds-text-muted); margin-bottom: 8px; }
+  .meter { margin-bottom: 12px; }
+  .meter-name { display: flex; align-items: center; gap: 5px; margin-bottom: 3px; }
+  .meter-name svg { width: 14px; height: 8px; }
+  .clip-chip { margin-left: auto; font-size: 9px; height: 15px; padding: 0 4px; background: none; color: var(--ds-text-muted); border: 1px solid var(--ds-border); border-radius: 2px; cursor: pointer; }
+  .clip-chip.hit { background: var(--ds-error); color: var(--ds-surface); border-color: var(--ds-error); font-weight: bold; }
+  .meter-bar { position: relative; height: 9px; background: var(--ds-grid); border: 1px solid var(--ds-border); }
+  .meter-rms { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--ds-ok); opacity: .75; }
+  .meter-peak, .meter-hold { position: absolute; top: -1px; bottom: -1px; width: 2px; left: 0; }
+  .meter-peak { background: var(--ds-text); } .meter-hold { background: var(--ds-warning-fg); }
+  .meter-scale { display: flex; justify-content: space-between; font-size: 8px; color: var(--ds-text-muted); margin-top: 1px; }
+  .meter-nums { font-size: 10px; color: var(--ds-text-muted); margin-top: 2px; line-height: 1.35; }
+  .meter-nums span { color: var(--ds-text); }
+  #meters-reset { margin-top: 8px; width: 100%; justify-content: center; }
 
-  #main { display: flex; }
-  #plots { flex: 1; min-width: 0; padding: 8px 8px 4px 8px; }
-  #legend { display: flex; gap: 12px; padding: 0 0 4px 44px; font-size: 11px; align-items: center; }
-  #legend label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; }
-  #legend svg { width: 26px; height: 8px; }
-  #legend .off { opacity: .35; text-decoration: line-through; }
-  #legend .readout { margin-left: auto; font-family: Menlo, monospace; color: var(--ds-dim); }
+  #getting-started { flex: 1; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--ds-text-muted); padding: 32px; text-align: center; }
+  #getting-started ol { text-align: left; padding-left: 20px; line-height: 2; }
+  #getting-started code { background: var(--ds-input-bg); padding: 1px 4px; border-radius: 2px; color: var(--ds-text); }
 
-  .plotwrap { position: relative; }
-  canvas { display: block; width: 100%; background: var(--ds-surface); border: 1px solid var(--ds-border); }
-  #scope { height: 250px; cursor: crosshair; }
-  #spectrum { height: 150px; cursor: crosshair; }
-  #trigmark { position: absolute; left: 0; width: 44px; height: 14px; margin-top: -7px; cursor: ns-resize; display: flex; align-items: center; }
-  #trigmark::before { content: ""; border: 6px solid transparent; border-left: 10px solid var(--ds-warn); margin-left: 30px; }
-  #trigmark span { position: absolute; left: 2px; font-size: 9px; color: var(--ds-warn); font-family: Menlo, monospace; }
-  #frozen-badge { position: absolute; right: 8px; top: 6px; background: var(--ds-warn); color: #000; font-size: 10px; padding: 1px 6px; border-radius: 2px; display: none; font-weight: bold; }
-  #frozen-badge.show { display: block; }
-  .plotlbl { display: flex; justify-content: space-between; align-items: center; margin: 6px 0 3px 44px; color: var(--ds-dim); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
-
-  /* meters */
-  #meters { width: 132px; border-left: 1px solid var(--ds-border); padding: 8px 10px; background: var(--ds-surface); flex-shrink: 0; }
-  #meters h3 { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--ds-dim); font-weight: normal; margin-bottom: 8px; }
-  .mrow { margin-bottom: 12px; }
-  .mrow .name { display: flex; align-items: center; gap: 5px; font-size: 11px; margin-bottom: 3px; }
-  .mrow .name i { width: 14px; height: 0; display: inline-block; border-top: 2px solid; }
-  .mrow .name .clip { margin-left: auto; font-size: 9px; padding: 0 4px; border: 1px solid var(--ds-border); border-radius: 2px; color: var(--ds-dim); cursor: pointer; background: transparent; height: 15px; }
-  .mrow .name .clip.hit { background: var(--ds-error); color: #fff; border-color: var(--ds-error); font-weight: bold; }
-  .bar { position: relative; height: 9px; background: var(--ds-grid); border: 1px solid var(--ds-border); }
-  .bar .rms { position: absolute; left: 0; top: 0; bottom: 0; background: var(--ds-ok); opacity: .75; }
-  .bar .pk  { position: absolute; top: -1px; bottom: -1px; width: 2px; background: var(--ds-fg); }
-  .bar .hold{ position: absolute; top: -1px; bottom: -1px; width: 2px; background: var(--ds-warn); }
-  .scale { display: flex; justify-content: space-between; font-size: 8px; color: var(--ds-dim); font-family: Menlo, monospace; margin-top: 1px; }
-  .nums { font-family: Menlo, monospace; font-size: 10px; color: var(--ds-dim); margin-top: 2px; line-height: 1.35; }
-  .nums b { color: var(--ds-fg); font-weight: normal; }
-
-  /* events */
-  #events-bar { border-top: 1px solid var(--ds-border); display: flex; align-items: center; gap: 8px; padding: 3px 10px; font-family: Menlo, monospace; font-size: 10.5px; cursor: pointer; }
-  #events-bar .chip { padding: 0 6px; border-radius: 2px; border: 1px solid var(--ds-border); }
-  #events-bar .chip.err { background: var(--ds-error); color: #fff; border-color: var(--ds-error); }
-  #events-bar .chip.warn { background: var(--ds-warn); color: #000; border-color: var(--ds-warn); }
-  #events-bar .hist { margin-left: auto; color: var(--ds-dim); }
-  #eventlog { display: none; max-height: 120px; overflow: auto; border-top: 1px solid var(--ds-border); font-family: Menlo, monospace; font-size: 10.5px; background: var(--ds-surface); }
-  #eventlog.open { display: block; }
-  #eventlog div { padding: 2px 10px; display: flex; gap: 12px; }
-  #eventlog .t { color: var(--ds-dim); width: 74px; }
-  #eventlog .sev-CLIP, #eventlog .sev-XRUN { color: var(--ds-error); }
-  #eventlog .sev-DENORMAL { color: var(--ds-warn); }
-
-  /* existing input bar (unchanged) */
-  #emu { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 6px 10px; border-top: 1px solid var(--ds-border); background: var(--ds-surface); }
-  #emu input[type=number] { width: 58px; background: var(--ds-input-bg); border: 1px solid var(--ds-border); padding: 1px 4px; height: 22px; }
-  #emu select { background: var(--ds-input-bg); border: 1px solid var(--ds-border); height: 22px; }
-  #emu .spacer { flex: 1; }
+  #emulator-section { background: var(--ds-surface-raised); border-top: 1px solid var(--ds-border); flex-shrink: 0; }
+  #emulator-bar { padding: 6px 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .emu-sep { color: var(--ds-border); user-select: none; }
+  .emu-rec-sep { border-left: 1px solid var(--ds-border); height: 14px; margin: 0 4px; }
+  .emu-group { display: inline-flex; align-items: center; gap: 6px; } .emu-hidden { display: none !important; }
+  .emu-field input[type="number"] { width: 64px; background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-border); padding: 2px 4px; }
+  .emu-field input[type="range"] { width: 90px; cursor: pointer; }
+  .rec-label { color: var(--ds-text-muted); }
+  .rec-btn { background: var(--ds-input-bg); color: var(--ds-input-fg); border: 1px solid var(--ds-border); padding: 3px 10px; font-size: 12px; cursor: pointer; border-radius: 2px; }
+  .rec-btn:hover:not(:disabled) { background: var(--ds-hover-bg); } .rec-btn:disabled { opacity: .4; cursor: default; }
+  #rec-start-btn { border-color: var(--ds-error); color: var(--ds-error); }
+  #replay-start-btn { border-color: var(--ds-ok); color: var(--ds-ok); }
   #toast { position: fixed; right: 16px; bottom: 16px; background: #252526; color: #ddd; border: 1px solid #555; padding: 8px 12px; border-radius: 3px; font-family: monospace; font-size: 11px; display: none; }
 </style>
 </head>
 <body>
 
 <div id="chrome">
-  <h1>MOCKUP · Scope as an instrument — design_plan.md P0-4 (+ §6.B-8, §6.B-10)</h1>
-  <p>Synthetic signals only. Everything in the grey panel is the proposed Daisy Scope; the toolbar above it is mockup-only.
-     Today's scope has no axes, fixed 0.9 gain, no trigger/freeze, peak-normalised linear-Hz spectrum, and never draws the right output channel.</p>
+  <h1>MOCKUP · Daisy Scope — as implemented (design_plan.md P0-4 · shipped M70–M72)</h1>
+  <p>Mirrors the shipped panel (scope-panel.ts / scope-webview.ts). Synthetic signals only; the dark toolbar above the panel is mockup-only.
+     Compare with the original proposal's differences listed in the file header: legend moved into the header, drawn trigger pointer, drawn FROZEN label, icon-only snapshot/CSV, Session controls in the bottom bar.</p>
 </div>
 
 <div id="mock-toolbar">
@@ -168,6 +184,11 @@
   <button data-src="click">transient click</button>
   <button data-src="clip">clipping</button>
   <button data-src="noise">filtered noise</button>
+  <span class="sep"></span>
+  <span class="lbl">AUDIO</span>
+  <button data-audio="run" class="on">running</button>
+  <button data-audio="stop">stopped</button>
+  <button data-audio="idle">not deployed</button>
   <span class="sep"></span>
   <span class="lbl">THEME</span>
   <button data-theme="dark" class="on">dark</button>
@@ -181,110 +202,122 @@
 
 <div id="stage">
 <div id="panel">
-  <div id="status">
-    <span><span class="dot"></span>running</span>
-    <span>48000 Hz</span><span>block 4</span><span id="xr">xruns: 0</span>
-    <span class="spacer"></span>
-    <span class="caveat">&#x2139; Approx. Seed</span>
-    <span class="grp"><span class="lbl">Vol</span><input type="range" min="0" max="1" step="0.01" value="1" style="width:70px"/></span>
-    <button class="btn" title="Start audio">&#9654;</button><button class="btn" title="Stop audio">&#9632;</button>
+  <header>
+    <span id="status-text"></span>
+    <span class="legend">
+      <button type="button" class="legend-item" data-trace="in" aria-pressed="true" title="Show / hide In"><svg aria-hidden="true"><line x1="0" y1="4" x2="26" y2="4" stroke="var(--ds-trace-in)" stroke-width="2"/></svg>In</button>
+      <button type="button" class="legend-item" data-trace="l" aria-pressed="true" title="Show / hide Out L"><svg aria-hidden="true"><line x1="0" y1="4" x2="26" y2="4" stroke="var(--ds-trace-out)" stroke-width="2" stroke-dasharray="7 4"/></svg>Out L</button>
+      <button type="button" class="legend-item" data-trace="r" aria-pressed="true" title="Show / hide Out R"><svg aria-hidden="true"><line x1="0" y1="4" x2="26" y2="4" stroke="var(--ds-trace-out-r)" stroke-width="2" stroke-dasharray="1.5 3.5"/></svg>Out R</button>
+    </span>
+    <span id="vol-group"><label id="vol-label" for="output-vol">Vol</label><input type="range" id="output-vol" min="0" max="1" step="0.01" value="1"/><span id="vol-val">1.00</span></span>
+    <button class="audio-btn" id="btn-audio-start" title="Start Audio">&#9654;</button>
+    <button class="audio-btn" id="btn-audio-stop" title="Stop Audio">&#9632;</button>
+    <span id="fidelity-caveat" title="Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget">&#x2139; Approx. Seed</span>
+  </header>
+
+  <div id="events-bar"><span id="events"></span><button type="button" id="events-toggle" title="Show the event history">▸ history (0)</button></div>
+  <div id="event-log"></div>
+
+  <div id="scope-controls">
+    <label class="emu-field">Time <select id="timebase">
+      <option value="0.5">0.5 ms/div</option><option value="1">1 ms/div</option><option value="2" selected>2 ms/div</option>
+      <option value="5">5 ms/div</option><option value="10">10 ms/div</option><option value="20">20 ms/div</option></select></label>
+    <button type="button" id="freeze-btn" class="ctl-btn" title="Freeze the display (Space)" aria-pressed="false">Freeze</button>
+    <button type="button" id="single-btn" class="ctl-btn" title="Arm a single capture: freezes on the next trigger." aria-pressed="false">1× Single</button>
+    <span class="emu-field">Gain
+      <span class="seg" id="gain-seg"><button type="button" class="seg-btn active" data-gain="1">×1</button><button type="button" class="seg-btn" data-gain="2">×2</button><button type="button" class="seg-btn" data-gain="4">×4</button><button type="button" class="seg-btn" data-gain="auto">Auto</button></span></span>
+    <span class="emu-field">Scale
+      <span class="seg" id="unit-seg"><button type="button" class="seg-btn active" data-unit="lin">Linear</button><button type="button" class="seg-btn" data-unit="db">dBFS</button></span></span>
+    <span class="emu-field">Trigger
+      <span class="seg" id="trig-seg"><button type="button" class="seg-btn active" data-trig="free">Free</button><button type="button" class="seg-btn" data-trig="rise" title="Rising edge">↗</button><button type="button" class="seg-btn" data-trig="fall" title="Falling edge">↘</button></span>
+      <span class="seg" id="trigsrc-seg" title="Trigger source"><button type="button" class="seg-btn active" data-trigsrc="in">In</button><button type="button" class="seg-btn" data-trigsrc="l">L</button></span></span>
+    <span class="btn-group">
+      <button type="button" id="snapshot-btn" class="ctl-btn ctl-icon" title="Save a PNG of the scope and spectrum" aria-label="Save snapshot (PNG)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="4.5" width="13" height="9" rx="1.5"/><circle cx="8" cy="9" r="2.5"/><path d="M5.5 4.5l1-2h3l1 2"/></svg></button>
+      <button type="button" id="export-btn" class="ctl-btn ctl-icon" title="Save the visible samples as CSV" aria-label="Export visible samples (CSV)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v8M4.5 7L8 10.5 11.5 7M2.5 13.5h11"/></svg></button>
+    </span>
+    <span id="rate-note"></span>
   </div>
 
-  <div id="ctl">
-    <span class="grp"><span class="lbl">Time</span>
-      <select id="timebase" class="btn" style="height:22px">
-        <option value="0.5">0.5 ms/div</option><option value="1">1 ms/div</option>
-        <option value="2" selected>2 ms/div</option><option value="5">5 ms/div</option>
-        <option value="10">10 ms/div</option>
-      </select></span>
-    <span class="grp"><span class="lbl">Gain</span>
-      <span class="seg" id="gain">
-        <button class="btn on" data-g="1">×1</button><button class="btn" data-g="2">×2</button>
-        <button class="btn" data-g="4">×4</button><button class="btn" data-g="auto">Auto</button></span></span>
-    <span class="grp"><span class="lbl">Scale</span>
-      <span class="seg" id="yunit"><button class="btn on" data-u="lin">Linear</button><button class="btn" data-u="db">dBFS</button></span></span>
-    <span class="grp"><span class="lbl">Trigger</span>
-      <span class="seg" id="trig"><button class="btn" data-t="free">Free</button><button class="btn on" data-t="rise">↗</button><button class="btn" data-t="fall">↘</button></span>
-      <span class="seg" id="trigsrc"><button class="btn on" data-s="in">In</button><button class="btn" data-s="l">L</button></span></span>
-    <span class="spacer"></span>
-    <button class="btn" id="freeze" title="Freeze display (Space)">⏸ Freeze</button>
-    <button class="btn" id="single" title="Arm single-shot: capture next trigger, then freeze">1× Single</button>
-    <button class="btn" id="snap" title="Save PNG of scope + spectrum">📷</button>
-    <button class="btn" id="export" title="Export visible samples as CSV / WAV">⤓</button>
-  </div>
-
-  <div id="main">
+  <div id="scope-main">
     <div id="plots">
-      <div id="legend">
-        <label id="lg-in"><svg><line x1="0" y1="4" x2="26" y2="4" stroke="var(--ds-trace-in)" stroke-width="2"/></svg>In</label>
-        <label id="lg-l"><svg><line x1="0" y1="4" x2="26" y2="4" stroke="var(--ds-trace-outl)" stroke-width="2" stroke-dasharray="6 3"/></svg>Out L</label>
-        <label id="lg-r"><svg><line x1="0" y1="4" x2="26" y2="4" stroke="var(--ds-trace-outr)" stroke-width="2" stroke-dasharray="1 3" stroke-linecap="round"/></svg>Out R</label>
-        <span class="readout" id="readout">hover the scope for a cursor read-out</span>
+      <span id="cursor-readout"></span>
+      <canvas id="scope"></canvas>
+      <div id="spectrum-controls">
+        <span class="emu-label">Spectrum</span>
+        <span class="seg" id="fscale-seg"><button type="button" class="seg-btn" data-fscale="lin">Lin Hz</button><button type="button" class="seg-btn active" data-fscale="log">Log Hz</button></span>
+        <span class="seg" id="lmode-seg"><button type="button" class="seg-btn" data-lmode="rel">Relative</button><button type="button" class="seg-btn active" data-lmode="abs">Absolute dBFS</button></span>
       </div>
-      <div class="plotwrap">
-        <canvas id="scope"></canvas>
-        <div id="trigmark"><span id="trigval">+0.0</span></div>
-        <div id="frozen-badge">FROZEN</div>
-      </div>
-      <div class="plotlbl"><span>Spectrum</span>
-        <span>
-          <span class="seg" id="fscale"><button class="btn" data-f="lin">Lin Hz</button><button class="btn on" data-f="log">Log Hz</button></span>
-          <span class="seg" id="dbmode"><button class="btn" data-d="rel">Relative</button><button class="btn on" data-d="abs">Absolute dBFS</button></span>
-        </span></div>
-      <div class="plotwrap"><canvas id="spectrum"></canvas></div>
+      <canvas id="spectrum"></canvas>
     </div>
-
     <div id="meters">
       <h3>Levels</h3>
-      <div class="mrow" data-ch="in"><div class="name"><i style="border-color:var(--ds-trace-in)"></i>In<button class="clip" title="Latched clip — click to reset">CLIP</button></div>
-        <div class="bar"><div class="rms"></div><div class="pk"></div><div class="hold"></div></div>
-        <div class="scale"><span>−60</span><span>−20</span><span>0</span></div>
-        <div class="nums">pk <b class="pkv">—</b> dB<br>rms <b class="rmsv">—</b> dB</div></div>
-      <div class="mrow" data-ch="l"><div class="name"><i style="border-color:var(--ds-trace-outl);border-top-style:dashed"></i>Out L<button class="clip">CLIP</button></div>
-        <div class="bar"><div class="rms"></div><div class="pk"></div><div class="hold"></div></div>
-        <div class="scale"><span>−60</span><span>−20</span><span>0</span></div>
-        <div class="nums">pk <b class="pkv">—</b> dB<br>rms <b class="rmsv">—</b> dB</div></div>
-      <div class="mrow" data-ch="r"><div class="name"><i style="border-color:var(--ds-trace-outr);border-top-style:dotted"></i>Out R<button class="clip">CLIP</button></div>
-        <div class="bar"><div class="rms"></div><div class="pk"></div><div class="hold"></div></div>
-        <div class="scale"><span>−60</span><span>−20</span><span>0</span></div>
-        <div class="nums">pk <b class="pkv">—</b> dB<br>rms <b class="rmsv">—</b> dB</div></div>
-      <div class="nums" style="margin-top:6px">headroom<br><b id="headroom">—</b> dB</div>
-      <button class="btn" id="reset-meters" style="margin-top:8px;width:100%">Reset peaks</button>
+      <div class="meter" data-meter="in"><div class="meter-name"><svg aria-hidden="true"><line x1="0" y1="4" x2="14" y2="4" stroke="var(--ds-trace-in)" stroke-width="2"/></svg>In<button type="button" class="clip-chip" data-clip="in" title="Latched clip — click to clear">CLIP</button></div>
+        <div class="meter-bar"><div class="meter-rms"></div><div class="meter-peak"></div><div class="meter-hold"></div></div>
+        <div class="meter-scale"><span>−60</span><span>−20</span><span>0</span></div>
+        <div class="meter-nums">pk <span class="meter-pk">−∞</span> dB<br>rms <span class="meter-rms-val">−∞</span> dB</div></div>
+      <div class="meter" data-meter="l"><div class="meter-name"><svg aria-hidden="true"><line x1="0" y1="4" x2="14" y2="4" stroke="var(--ds-trace-out)" stroke-width="2" stroke-dasharray="7 4"/></svg>Out L<button type="button" class="clip-chip" data-clip="l" title="Latched clip — click to clear">CLIP</button></div>
+        <div class="meter-bar"><div class="meter-rms"></div><div class="meter-peak"></div><div class="meter-hold"></div></div>
+        <div class="meter-scale"><span>−60</span><span>−20</span><span>0</span></div>
+        <div class="meter-nums">pk <span class="meter-pk">−∞</span> dB<br>rms <span class="meter-rms-val">−∞</span> dB</div></div>
+      <div class="meter" data-meter="r"><div class="meter-name"><svg aria-hidden="true"><line x1="0" y1="4" x2="14" y2="4" stroke="var(--ds-trace-out-r)" stroke-width="2" stroke-dasharray="1.5 3.5"/></svg>Out R<button type="button" class="clip-chip" data-clip="r" title="Latched clip — click to clear">CLIP</button></div>
+        <div class="meter-bar"><div class="meter-rms"></div><div class="meter-peak"></div><div class="meter-hold"></div></div>
+        <div class="meter-scale"><span>−60</span><span>−20</span><span>0</span></div>
+        <div class="meter-nums">pk <span class="meter-pk">−∞</span> dB<br>rms <span class="meter-rms-val">−∞</span> dB</div></div>
+      <div class="meter-nums">headroom<br><span id="meter-headroom">—</span> dB</div>
+      <button type="button" id="meters-reset" class="ctl-btn">Reset peaks</button>
     </div>
   </div>
 
-  <div id="events-bar"><span id="ev-chips"></span><span class="hist" id="ev-hist">▸ history (0)</span></div>
-  <div id="eventlog"></div>
+  <div id="getting-started">
+    <div>Open a libDaisy project, then:</div>
+    <ol><li><code>Daisy IDE: Build for Emulator</code></li><li><code>Daisy IDE: Deploy to Emulator</code></li><li><code>Daisy IDE: Start Audio</code></li></ol>
+    <div style="margin-top:8px;font-size:11px">Use <code>Deploy and Debug</code> to attach breakpoints.</div>
+  </div>
 
-  <div id="emu">
-    <span class="grp"><span class="lbl">Input</span>
-      <select><option>Sine</option><option>Live mic</option><option>WAV file</option></select></span>
-    <span class="grp"><span class="lbl">Freq</span><input type="number" value="440"/> Hz</span>
-    <span class="grp"><span class="lbl">Amp</span><input type="range" min="0" max="1" step="0.01" value="0.8" style="width:80px"/></span>
-    <span class="spacer"></span>
-    <button class="btn">●</button><button class="btn">■</button><button class="btn">▶ Replay file…</button>
+  <div id="emulator-section">
+    <div id="emulator-bar">
+      <span class="emu-label">Input:</span>
+      <select id="audio-source-select"><option value="sine" selected>Sine</option><option value="live">Live (mic)</option><option value="wav">WAV</option></select>
+      <span class="emu-sep">|</span>
+      <span id="sine-group" class="emu-group">
+        <label class="emu-field">Freq <input type="number" id="sine-freq" min="20" max="20000" step="1" value="440"/> Hz</label>
+        <label class="emu-field">Amp <input type="range" id="sine-amp" min="0" max="1" step="0.01" value="0.8"/> <span id="sine-amp-val">0.80</span></label>
+      </span>
+      <span id="wav-group" class="emu-group emu-hidden">
+        <button id="wav-choose" type="button" class="rec-btn">Choose WAV…</button><span style="font-style:italic">no file</span>
+        <label class="emu-field"><input type="checkbox" id="wav-loop"/> Loop</label>
+      </span>
+      <span id="buffer-group" class="emu-group emu-hidden">
+        <label class="emu-field">Buffer <select id="buffer-size"><option>64</option><option>128</option><option selected>256</option><option>512</option></select> samples</label>
+      </span>
+      <span id="latency-group" class="emu-group emu-hidden"><span>latency: 12.4 ms</span></span>
+      <span class="emu-rec-sep"></span>
+      <span class="rec-label">Session:</span>
+      <button id="rec-start-btn" class="rec-btn" type="button">&#9679;</button>
+      <button id="rec-stop-btn" class="rec-btn" type="button" disabled>&#9632;</button>
+      <button id="replay-start-btn" class="rec-btn" type="button">&#9654; Replay file&hellip;</button>
+    </div>
   </div>
 </div>
 
 <div id="notes">
-  <h2>What to evaluate</h2>
+  <h2>Reading this mockup</h2>
+  <ul>
+    <li><b>AUDIO = stopped</b>: status shows a red ■, Freeze and 1× Single are disabled and reset (as shipped).</li>
+    <li><b>AUDIO = not deployed</b>: only the header, events bar, getting-started steps and emulator bar are visible.</li>
+    <li><b>Trigger ≠ Free</b>: a dotted level line and a pointer triangle appear on the amplitude axis — drag the pointer. With no crossing the last window is held and "no trigger — waiting…" is drawn.</li>
+    <li><b>Freeze</b>: the button turns into "Resume"; "FROZEN" is drawn on the canvas, left of the gain label. Hover for the cursor read-out (top right).</li>
+    <li><b>Time = 0.5 / 1 ms/div in Free-run</b> shows the amber "low resolution" note; a trigger switches to the emulator's full-rate capture.</li>
+    <li><b>SOURCE = clipping</b> latches the CLIP chips, adds "⚠ CLIP" to the strip and an entry to the history (click "history").</li>
+  </ul>
+  <h2>Resolved from the original proposal</h2>
   <ol>
-    <li><b>Toolbar density.</b> Two rows (status, instrument controls) above the plots. Is "Time · Gain · Scale · Trigger" + 4 actions too much? At 560 px it wraps — try the narrow width.</li>
-    <li><b>Try SOURCE = quiet −40 dBFS</b> at ×1 (barely visible), then ×4 and Auto. Compare with the flat line today.</li>
-    <li><b>Try SOURCE = transient click</b>: Trigger Free → smears. Press <b>1× Single</b>, then hover the frozen trace for the cursor read-out.</li>
-    <li><b>Drag the ▶ trigger marker</b> on the left axis; the waveform re-locks to the new level.</li>
-    <li><b>Spectrum:</b> compare Lin vs Log for the 200 Hz-corner case, and Relative vs Absolute (absolute answers "did it get quieter or did the display rescale?").</li>
-    <li><b>Meters:</b> SOURCE = clipping latches the CLIP chip and adds a history entry; click a chip or "Reset peaks".</li>
-    <li><b>Themes:</b> the dashed/dotted line styles must stay distinguishable in high contrast.</li>
-  </ol>
-  <h2>Open questions</h2>
-  <ol>
-    <li><b>Capture length.</b> The emulator sends one block-sized snapshot per message today. ≥ 5 ms/div needs a longer ring buffer (≈ 4096 samples). Where does it live — emulator (protocol change) or webview accumulation?</li>
-    <li><b>Trigger in the webview or emulator?</b> Webview trigger is trivial but can miss events between snapshots; only Single-shot needs emulator help.</li>
-    <li><b>Keep the spectrum below the scope</b> or make it a tab/toggle to give the scope more height when the panel sits beside code?</li>
-    <li><b>Meters column vs inline overlay.</b> Column costs 132 px; could be a thin overlay bar on the scope's right edge.</li>
-    <li><b>Export format:</b> CSV only, or WAV too (useful for a null test later)?</li>
-    <li><b>Event history</b> overlaps P1-5 (run-state view). Keep it in the scope for now, or wait for the run-state view?</li>
+    <li>Capture length: emulator-side full-rate capture on trigger (FR-SCI-14d), webview history otherwise.</li>
+    <li>Trigger runs in the webview; only single-shot / fine time bases ask the emulator.</li>
+    <li>Spectrum stays below the scope.</li>
+    <li>Meters stay as a 132 px column.</li>
+    <li>Export: PNG and CSV only (no WAV).</li>
+    <li>Event history stays inside the Scope.</li>
   </ol>
 </div>
 </div>
@@ -293,223 +326,238 @@
 <script>
 (() => {
   const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
-  const FS = 48000, N = 4096;                       // synthetic capture: 4096 samples ≈ 85 ms
-  const st = { src: 'tremolo', gain: '1', unit: 'lin', trig: 'rise', trigSrc: 'in', level: 0.0,
-               ms: 2, frozen: false, armed: false, flog: true, dbabs: true,
-               show: { in: true, l: true, r: true }, hover: null };
-  let t0 = 0, cap = null, xruns = 0;
+  const FS = 48000, N = 12000;                      // synthetic capture: 12000 samples = 250 ms (enough for 20 ms/div)
+  const st = { src: 'tremolo', gain: '1', unit: 'lin', trig: 'free', trigSrc: 'in', level: 0.0,
+               ms: 2, frozen: false, armed: false, flog: true, dbabs: true, audio: 'run',
+               show: { in: true, l: true, r: true }, hoverX: null, drag: false };
+  let cap = null, held = null, lastGain = 1, xruns = 0, drawn = null;
+  const LEFT = 44, BOT = 18, TOP = 8, RIGHT = 8;
 
   // ---- synthetic signal source ----
   function synth(tStart) {
     const inp = new Float32Array(N), l = new Float32Array(N), r = new Float32Array(N);
-    const f = 440, lp = 0.16;
-    let z1 = 0, z2 = 0, seed = 12345;
+    const f = 440, lp = 0.16; let z1 = 0, z2 = 0, seed = 12345;
     const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296 * 2 - 1;
     for (let i = 0; i < N; i++) {
-      const t = tStart + i / FS;
-      let x = 0.8 * Math.sin(2 * Math.PI * f * t);
-      if (st.src === 'quiet') x *= 0.01;                                    // −40 dBFS
+      const t = tStart + i / FS; let x = 0.8 * Math.sin(2 * Math.PI * f * t);
+      if (st.src === 'quiet') x *= 0.01;
       if (st.src === 'noise') x = 0.6 * rnd();
-      if (st.src === 'click') { const p = (t % 0.25); x = p < 0.0004 ? 0.95 : 0.0; }
+      if (st.src === 'click') { const p = (t % 0.12); x = p < 0.0004 ? 0.95 : 0.0; }
       if (st.src === 'clip')  x = 1.6 * Math.sin(2 * Math.PI * f * t);
       inp[i] = Math.max(-1, Math.min(1, x));
-      const lfo = 0.5 + 0.5 * Math.sin(2 * Math.PI * 5 * t);                // tremolo 5 Hz
+      const lfo = 0.5 + 0.5 * Math.sin(2 * Math.PI * 5 * t);
       let y = inp[i] * (st.src === 'click' ? 1 : lfo);
-      z1 += lp * (y - z1); z2 += lp * (z1 - z2);                              // 2-pole lowpass
-      l[i] = st.src === 'click' ? z2 * 1.0 : Math.max(-1.15, Math.min(1.15, z2 * (st.src === 'clip' ? 1.7 : 1)));
-      const lfoR = 0.5 + 0.5 * Math.sin(2 * Math.PI * 5 * t + 1.2);          // R: phase-shifted tremolo
+      z1 += lp * (y - z1); z2 += lp * (z1 - z2);
+      l[i] = st.src === 'click' ? z2 : Math.max(-1.15, Math.min(1.15, z2 * (st.src === 'clip' ? 1.7 : 1)));
+      const lfoR = 0.5 + 0.5 * Math.sin(2 * Math.PI * 5 * t + 1.2);
       r[i] = Math.max(-1.15, Math.min(1.15, z2 * (lfoR / Math.max(lfo, .15)) * 0.9));
     }
-    return { inp, l, r, tStart };
+    return { in: inp, l, r };
   }
 
   // ---- canvases ----
-  const sc = $('#scope'), sp = $('#spectrum');
-  const sctx = sc.getContext('2d'), pctx = sp.getContext('2d');
+  const sc = $('#scope'), sp = $('#spectrum'), sctx = sc.getContext('2d'), pctx = sp.getContext('2d');
   const css = n => getComputedStyle($('#panel')).getPropertyValue(n).trim();
-  function fit(c) { const r = c.getBoundingClientRect(), d = devicePixelRatio || 1; c.width = r.width * d; c.height = r.height * d; return d; }
-  const LEFT = 44, BOT = 18, TOP = 8, RIGHT = 8;
-
-  function dbfs(v) { return v <= 1e-6 ? -120 : 20 * Math.log10(v); }
-  function autoGain(a) { let pk = 1e-6; for (const s of [cap.inp, cap.l, cap.r]) for (let i = 0; i < 2048; i++) pk = Math.max(pk, Math.abs(s[i])); return Math.min(64, Math.max(1, 0.9 / pk)); }
-  function gainVal() { return st.gain === 'auto' ? autoGain() : +st.gain; }
+  function fit(c) { const r = c.getBoundingClientRect(), d = devicePixelRatio || 1; c.width = Math.max(1, r.width * d); c.height = Math.max(1, r.height * d); return d; }
+  const dbfs = v => v <= 1e-6 ? -120 : 20 * Math.log10(v);
+  const signed = v => (v >= 0 ? '+' : '-') + Math.abs(v).toFixed(3);
+  const rate = () => st.trig === 'free' ? 12000 : 48000;          // illustrative effective rate (see header comment)
+  const step = () => Math.round(FS / rate());
+  const pos = (v, g) => { if (st.unit === 'lin') return v * g; const m = (Math.max(-60, dbfs(Math.abs(v) * g)) + 60) / 60; return Math.sign(v) * m; };
+  const unpos = (p, g) => { if (st.unit === 'lin') return p / g; const m = Math.abs(p) * 60 - 60; return Math.sign(p) * Math.pow(10, m / 20) / g; };
+  const ph = H => H - TOP - BOT;
+  const trigY = (H) => TOP + ph(H) * (0.5 - Math.max(-1, Math.min(1, pos(st.level, lastGain))) / 2);
 
   function findTrigger(buf, win) {
-    if (st.trig === 'free') return 0;
-    const b = st.trigSrc === 'in' ? cap.inp : cap.l;
-    for (let i = 1; i < N - win; i++) {
-      if (st.trig === 'rise' && b[i - 1] < st.level && b[i] >= st.level) return i;
-      if (st.trig === 'fall' && b[i - 1] > st.level && b[i] <= st.level) return i;
-    }
-    return -1;
+    const b = buf[st.trigSrc === 'in' ? 'in' : 'l'], s = step();
+    for (let i = s; i < b.length - win; i += s) {
+      if (st.trig === 'rise' && b[i - s] < st.level && b[i] >= st.level) return i;
+      if (st.trig === 'fall' && b[i - s] > st.level && b[i] <= st.level) return i;
+    } return -1;
   }
-
-  function yOf(v, H, g) {
-    if (st.unit === 'lin') return TOP + (H - TOP - BOT) * (0.5 - (v * g) / 2 / 1.0 * 1.0 / 1.0 * 1);
-    // dBFS mode: signed log-ish display — map ±amplitude through dB so quiet detail shows; ±1 = 0 dBFS at edges
-    const s = Math.sign(v), db = Math.max(-60, dbfs(Math.abs(v) * g));
-    const m = (db + 60) / 60; return TOP + (H - TOP - BOT) * (0.5 - s * m / 2);
-  }
+  const ticks = () => {
+    if (st.unit === 'lin') { const g = lastGain, out = []; for (const v of [1, .5, 0, -.5, -1]) out.push({ p: v, label: (v > 0 ? '+' : '') + (v / g).toFixed(g > 1 ? 2 : 1) }); return out; }
+    const out = [{ p: 0, label: '' }]; for (const db of [0, -6, -20, -40]) { const m = (db + 60) / 60; out.push({ p: m, label: db + ' dB' }, { p: -m, label: '' }); } return out;
+  };
 
   function drawScope() {
     if (!cap) return;
     const d = fit(sc), W = sc.width / d, H = sc.height / d; sctx.setTransform(d, 0, 0, d, 0, 0);
-    sctx.clearRect(0, 0, W, H); sctx.fillStyle = css('--ds-surface'); sctx.fillRect(0, 0, W, H);
-    const pw = W - LEFT - RIGHT, ph = H - TOP - BOT, g = gainVal();
-    const win = Math.round(st.ms * 10 * FS / 1000);           // 10 divisions
-    // grid
-    sctx.font = '9px Menlo, monospace'; sctx.textAlign = 'right'; sctx.textBaseline = 'middle';
-    const ylines = st.unit === 'lin' ? [1, .5, 0, -.5, -1] : [0, -6, -20, -40, null, -40, -20, -6, 0];
-    if (st.unit === 'lin') {
-      ylines.forEach(v => { const y = TOP + ph * (0.5 - v / 2 / Math.min(1, 1)); line(LEFT, y, LEFT + pw, y, v === 0 ? css('--ds-grid-major') : css('--ds-grid')); sctx.fillStyle = css('--ds-axis'); sctx.fillText((v > 0 ? '+' : '') + (v / g).toFixed(g > 1 ? 2 : 1), LEFT - 4, y); });
-    } else {
-      [0, -6, -20, -40].forEach(db => { const m = (db + 60) / 60; [1, -1].forEach(s => { const y = TOP + ph * (0.5 - s * m / 2); line(LEFT, y, LEFT + pw, y, css('--ds-grid')); if (s > 0) { sctx.fillStyle = css('--ds-axis'); sctx.fillText(db + ' dB', LEFT - 4, y); } }); });
-      line(LEFT, TOP + ph / 2, LEFT + pw, TOP + ph / 2, css('--ds-grid-major'));
-    }
-    sctx.textAlign = 'center'; sctx.textBaseline = 'top';
-    for (let i = 0; i <= 10; i++) { const x = LEFT + pw * i / 10; line(x, TOP, x, TOP + ph, i === 5 ? css('--ds-grid-major') : css('--ds-grid')); if (i % 2 === 0) { sctx.fillStyle = css('--ds-axis'); sctx.fillText((i * st.ms).toString().replace(/\.0$/, ''), x, TOP + ph + 4); } }
-    sctx.textAlign = 'right'; sctx.fillStyle = css('--ds-axis'); sctx.fillText('ms', W - 2, TOP + ph + 4);
-
-    const start = findTrigger(null, win);
-    const trigOk = start >= 0;
-    const s0 = trigOk ? start : 0;
-    // clip band when gain pushes out of range
-    sctx.save(); sctx.beginPath(); sctx.rect(LEFT, TOP, pw, ph); sctx.clip();
-    const trace = (buf, col, dash, on) => {
-      if (!on) return; sctx.strokeStyle = col; sctx.lineWidth = 1.6; sctx.setLineDash(dash); sctx.beginPath();
-      const step = Math.max(1, Math.floor(win / pw / 2));
-      for (let i = 0; i < win; i += step) {
-        const x = LEFT + pw * i / win;
-        const v = buf[s0 + i]; let y;
-        if (st.unit === 'lin') y = TOP + ph * (0.5 - (v * g) / 2); else { const sg = Math.sign(v), db = Math.max(-60, dbfs(Math.abs(v) * g)); y = TOP + ph * (0.5 - sg * ((db + 60) / 60) / 2); }
-        i === 0 ? sctx.moveTo(x, y) : sctx.lineTo(x, y);
-      }
-      sctx.stroke(); sctx.setLineDash([]);
-    };
-    trace(cap.inp, css('--ds-trace-in'), [], st.show.in);
-    trace(cap.l, css('--ds-trace-outl'), [7, 4], st.show.l);
-    trace(cap.r, css('--ds-trace-outr'), [1.5, 3.5], st.show.r);
-    // clip zones
-    if (st.unit === 'lin' && g > 1) { sctx.fillStyle = 'rgba(241,76,76,.08)'; }
-    sctx.restore();
-    if (!trigOk && st.trig !== 'free') { sctx.fillStyle = css('--ds-warn'); sctx.textAlign = 'left'; sctx.font = '11px Menlo, monospace'; sctx.fillText('no trigger — waiting…', LEFT + 8, TOP + 6); }
-    // trigger level line + marker
+    sctx.fillStyle = css('--ds-surface'); sctx.fillRect(0, 0, W, H);
+    const pw = W - LEFT - RIGHT, PH = ph(H), s = step(), win = Math.round(st.ms * 10 * FS / 1000);
+    let buf = cap, s0 = Math.max(0, N - win), noTrig = false;
     if (st.trig !== 'free') {
-      const y = st.unit === 'lin' ? TOP + ph * (0.5 - st.level * g / 2) : TOP + ph / 2;
-      sctx.strokeStyle = css('--ds-warn'); sctx.setLineDash([2, 4]); sctx.beginPath(); sctx.moveTo(LEFT, y); sctx.lineTo(LEFT + pw, y); sctx.stroke(); sctx.setLineDash([]);
-      const tm = $('#trigmark'); tm.style.display = 'flex'; tm.style.top = (y) + 'px'; $('#trigval').textContent = (st.level >= 0 ? '+' : '') + st.level.toFixed(2);
-    } else $('#trigmark').style.display = 'none';
-    // hover cursor
-    if (st.hover) {
-      const { x } = st.hover; if (x > LEFT && x < LEFT + pw) {
-        line(x, TOP, x, TOP + ph, css('--ds-fg')); const i = Math.round((x - LEFT) / pw * win), tms = (i / FS * 1000);
-        const parts = [`t ${tms.toFixed(2)} ms`]; if (st.show.in) parts.push(`In ${cap.inp[s0 + i].toFixed(3)}`); if (st.show.l) parts.push(`L ${cap.l[s0 + i].toFixed(3)}`); if (st.show.r) parts.push(`R ${cap.r[s0 + i].toFixed(3)}`);
-        $('#readout').textContent = parts.join('   ');
-      }
-    } else $('#readout').textContent = 'hover the scope for a cursor read-out';
-    // gain badge
-    sctx.textAlign = 'right'; sctx.textBaseline = 'top'; sctx.font = '10px Menlo, monospace'; sctx.fillStyle = css('--ds-dim');
-    sctx.fillText(`×${g >= 10 ? g.toFixed(0) : g.toFixed(1)}${st.gain === 'auto' ? ' auto' : ''}`, W - RIGHT - 4, TOP + 3);
-  }
-  function line(x1, y1, x2, y2, c) { sctx.strokeStyle = c; sctx.lineWidth = 1; sctx.beginPath(); sctx.moveTo(x1 + .5, y1 + .5); sctx.lineTo(x2 + .5, y2 + .5); sctx.stroke(); }
-
-  // ---- spectrum (naive DFT on 512 pts, log-spaced evaluation → cheap enough for a mock) ----
-  function spectrum(buf) {
-    const M = 1024, out = [];
-    const bins = 220;
-    for (let k = 0; k < bins; k++) {
-      const f = st.flog ? 20 * Math.pow(1000, k / (bins - 1)) : 20 + (20000 - 20) * k / (bins - 1);
-      let re = 0, im = 0; const w = 2 * Math.PI * f / FS;
-      for (let n = 0; n < M; n += 2) { const win = 0.5 - 0.5 * Math.cos(2 * Math.PI * n / M); re += buf[n] * win * Math.cos(w * n); im -= buf[n] * win * Math.sin(w * n); }
-      out.push([f, 2 * Math.hypot(re, im) / (M / 2) ]);
+      const t = findTrigger(cap, win);
+      if (t >= 0) { s0 = t; held = { in: cap.in.slice(t, t + win), l: cap.l.slice(t, t + win), r: cap.r.slice(t, t + win) }; }
+      else { noTrig = true; if (held) { buf = held; s0 = 0; } }
     }
-    return out;
+    const shown = ['in', 'l', 'r'].filter(k => st.show[k]);
+    let pk = 1e-6; shown.forEach(k => { for (let i = s0; i < Math.min(buf[k].length, s0 + win); i += s) pk = Math.max(pk, Math.abs(buf[k][i])); });
+    const g = st.gain === 'auto' ? Math.min(64, Math.max(1, 0.9 / pk)) : +st.gain; lastGain = g;
+    sctx.font = '10px monospace'; sctx.lineWidth = 1; sctx.textAlign = 'right'; sctx.textBaseline = 'middle';
+    ticks().forEach(t => { const y = TOP + PH * (0.5 - t.p / 2); sctx.strokeStyle = css('--ds-grid'); sctx.beginPath(); sctx.moveTo(LEFT, y + .5); sctx.lineTo(LEFT + pw, y + .5); sctx.stroke(); if (t.label) { sctx.fillStyle = css('--ds-axis'); sctx.fillText(t.label, LEFT - 4, y); } });
+    for (let i = 0; i <= 10; i++) { const x = LEFT + pw * i / 10; sctx.strokeStyle = css('--ds-grid'); sctx.beginPath(); sctx.moveTo(x + .5, TOP); sctx.lineTo(x + .5, TOP + PH); sctx.stroke(); }
+    sctx.textAlign = 'center'; sctx.textBaseline = 'top'; sctx.fillStyle = css('--ds-axis');
+    for (let i = 0; i <= 10; i += 2) sctx.fillText(String(Number((i * st.ms).toFixed(2))), LEFT + pw * i / 10, TOP + PH + 4);
+    sctx.textAlign = 'right'; sctx.fillText('ms', W - 2, TOP + PH + 4);
+    const gl = '×' + (g >= 10 ? g.toFixed(0) : g.toFixed(1).replace(/\.0$/, '')) + (st.gain === 'auto' ? ' auto' : '');
+    sctx.fillText(gl, W - RIGHT - 4, TOP + 3);
+    if (st.frozen) { sctx.fillStyle = css('--ds-warning-fg'); sctx.fillText('FROZEN', W - RIGHT - 4 - sctx.measureText(gl).width - 12, TOP + 3); }
+    const npts = Math.floor(win / s);
+    sctx.save(); sctx.beginPath(); sctx.rect(LEFT, TOP, pw, PH); sctx.clip();
+    const col = { in: '--ds-trace-in', l: '--ds-trace-out', r: '--ds-trace-out-r' }, dash = { in: [], l: [7, 4], r: [1.5, 3.5] };
+    shown.forEach(k => { sctx.strokeStyle = css(col[k]); sctx.setLineDash(dash[k]); sctx.lineWidth = 1.5; sctx.beginPath();
+      for (let j = 0; j < npts; j++) { const v = buf[k][s0 + j * s]; if (v === undefined) break; const x = LEFT + pw * j / (npts - 1), y = TOP + PH * (0.5 - Math.max(-1.5, Math.min(1.5, pos(v, g))) / 2); j ? sctx.lineTo(x, y) : sctx.moveTo(x, y); }
+      sctx.stroke(); sctx.setLineDash([]); });
+    sctx.restore();
+    if (st.trig !== 'free') {                                   // dotted level line + pointer on the axis
+      const y = Math.max(TOP, Math.min(TOP + PH, trigY(H))); sctx.strokeStyle = sctx.fillStyle = css('--ds-warning-fg');
+      sctx.setLineDash([2, 4]); sctx.beginPath(); sctx.moveTo(LEFT, y + .5); sctx.lineTo(LEFT + pw, y + .5); sctx.stroke(); sctx.setLineDash([]);
+      sctx.beginPath(); sctx.moveTo(LEFT - 12, y - 5); sctx.lineTo(LEFT - 2, y); sctx.lineTo(LEFT - 12, y + 5); sctx.closePath(); sctx.fill();
+      if (noTrig) { sctx.font = '11px monospace'; sctx.textAlign = 'left'; sctx.textBaseline = 'top'; sctx.fillText('no trigger — waiting…', LEFT + 8, TOP + 6); }
+    }
+    const ro = $('#cursor-readout');
+    if (st.hoverX !== null && st.hoverX > LEFT && st.hoverX < LEFT + pw) {
+      const j = Math.max(0, Math.min(npts - 1, Math.round((st.hoverX - LEFT) / pw * (npts - 1)))), x = LEFT + pw * j / (npts - 1);
+      sctx.strokeStyle = css('--ds-axis'); sctx.beginPath(); sctx.moveTo(x + .5, TOP); sctx.lineTo(x + .5, TOP + PH); sctx.stroke();
+      const lab = { in: 'In', l: 'Out L', r: 'Out R' };
+      ro.textContent = [`t ${(j * s / FS * 1000).toFixed(2)} ms`, ...shown.map(k => `${lab[k]} ${signed(buf[k][s0 + j * s] || 0)}`)].join('   ');
+    } else ro.textContent = '';
+  }
+
+  // ---- spectrum ----
+  function spectrum(buf) {
+    const M = 1024, out = [], bins = 220;
+    for (let k = 0; k < bins; k++) {
+      const f = st.flog ? 20 * Math.pow(1000, k / (bins - 1)) : 20 + (20000 - 20) * k / (bins - 1); let re = 0, im = 0; const w = 2 * Math.PI * f / FS;
+      for (let n = 0; n < M; n += 2) { const win = 0.5 - 0.5 * Math.cos(2 * Math.PI * n / M); re += buf[n] * win * Math.cos(w * n); im -= buf[n] * win * Math.sin(w * n); }
+      out.push([f, 2 * Math.hypot(re, im) / (M / 2)]);
+    } return out;
   }
   function drawSpectrum() {
     const d = fit(sp), W = sp.width / d, H = sp.height / d; pctx.setTransform(d, 0, 0, d, 0, 0);
     pctx.fillStyle = css('--ds-surface'); pctx.fillRect(0, 0, W, H);
-    const pw = W - LEFT - RIGHT, ph = H - TOP - BOT;
-    const A = spectrum(cap.inp), B = spectrum(cap.l);
-    let peak = 1e-9; if (!st.dbabs) A.concat(B).forEach(([, a]) => peak = Math.max(peak, a));
+    const L = 36, B = 16, T = 4, pw = W - L - 6, PH = H - B - T, A = spectrum(cap.in), Bn = spectrum(cap.l);
+    let peak = 1e-9; if (!st.dbabs) A.concat(Bn).forEach(([, a]) => peak = Math.max(peak, a));
     const ref = st.dbabs ? 1 : peak, DBMIN = -90;
-    const fx = f => LEFT + pw * (st.flog ? Math.log(f / 20) / Math.log(1000) : (f - 20) / 19980);
-    const dy = a => TOP + ph * (1 - (Math.max(DBMIN, dbfs(a / ref)) - DBMIN) / -DBMIN);
-    pctx.font = '9px Menlo, monospace'; pctx.textAlign = 'right'; pctx.textBaseline = 'middle';
-    for (let db = 0; db >= DBMIN; db -= 20) { const y = TOP + ph * (1 - (db - DBMIN) / -DBMIN); pctx.strokeStyle = css('--ds-grid'); pctx.beginPath(); pctx.moveTo(LEFT, y + .5); pctx.lineTo(LEFT + pw, y + .5); pctx.stroke(); pctx.fillStyle = css('--ds-axis'); pctx.fillText(db + '', LEFT - 4, y); }
+    const fx = f => L + pw * (st.flog ? Math.log(f / 20) / Math.log(1000) : (f - 20) / 19980);
+    const dy = a => T + PH * (1 - (Math.max(DBMIN, dbfs(a / ref)) - DBMIN) / -DBMIN);
+    pctx.font = '9px monospace'; pctx.textAlign = 'right'; pctx.textBaseline = 'middle'; pctx.lineWidth = 1;
+    for (let db = 0; db >= DBMIN; db -= 20) { const y = T + PH * (1 - (db - DBMIN) / -DBMIN); pctx.strokeStyle = css('--ds-grid'); pctx.beginPath(); pctx.moveTo(L, y + .5); pctx.lineTo(L + pw, y + .5); pctx.stroke(); pctx.fillStyle = css('--ds-axis'); pctx.fillText(db + '', L - 4, y); }
     pctx.textAlign = 'center'; pctx.textBaseline = 'top';
-    (st.flog ? [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000] : [0, 5000, 10000, 15000, 20000]).forEach(f => { const x = fx(Math.max(f, 20)); pctx.strokeStyle = css('--ds-grid'); pctx.beginPath(); pctx.moveTo(x + .5, TOP); pctx.lineTo(x + .5, TOP + ph); pctx.stroke(); pctx.fillStyle = css('--ds-axis'); pctx.fillText(f >= 1000 ? (f / 1000) + 'k' : f, x, TOP + ph + 4); });
-    pctx.textAlign = 'left'; pctx.fillStyle = css('--ds-dim'); pctx.fillText(st.dbabs ? 'dBFS' : 'dB rel. peak', 4, 2);
-    const path = (P, col, dash) => { pctx.strokeStyle = col; pctx.lineWidth = 1.5; pctx.setLineDash(dash); pctx.beginPath(); P.forEach(([f, a], i) => { const x = fx(f), y = dy(a); i ? pctx.lineTo(x, y) : pctx.moveTo(x, y); }); pctx.stroke(); pctx.setLineDash([]); };
-    if (st.show.in) path(A, css('--ds-trace-in'), []);
-    if (st.show.l) path(B, css('--ds-trace-outl'), [7, 4]);
+    (st.flog ? [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000] : [0, 5000, 10000, 15000, 20000]).forEach(f => { const x = fx(Math.max(f, 20)); pctx.strokeStyle = css('--ds-grid'); pctx.beginPath(); pctx.moveTo(x + .5, T); pctx.lineTo(x + .5, T + PH); pctx.stroke(); pctx.fillStyle = css('--ds-axis'); pctx.fillText(f >= 1000 ? (f / 1000) + 'k' : f, x, T + PH + 4); });
+    const path = (P, c, dash) => { pctx.strokeStyle = c; pctx.lineWidth = 1.5; pctx.setLineDash(dash); pctx.beginPath(); P.forEach(([f, a], i) => { const x = fx(f), y = dy(a); i ? pctx.lineTo(x, y) : pctx.moveTo(x, y); }); pctx.stroke(); pctx.setLineDash([]); };
+    if (st.show.in) path(A, css('--ds-trace-in'), []); if (st.show.l) path(Bn, css('--ds-trace-out'), [7, 4]);
   }
 
   // ---- meters ----
-  const holds = { in: -120, l: -120, r: -120 }, clips = { in: false, l: false, r: false };
+  const holds = { in: -120, l: -120, r: -120 }, clips = { in: false, l: false, r: false }, ACTIVE = new Set();
   function meters() {
-    const map = { in: cap.inp, l: cap.l, r: cap.r }; let worst = -120;
+    let worst = -120;
     for (const ch of ['in', 'l', 'r']) {
-      const b = map[ch]; let pk = 0, ss = 0; for (let i = 0; i < 2048; i++) { pk = Math.max(pk, Math.abs(b[i])); ss += b[i] * b[i]; }
-      const pkDb = dbfs(pk), rmsDb = dbfs(Math.sqrt(ss / 2048)); holds[ch] = Math.max(holds[ch], pkDb);
+      const b = cap[ch], from = N - 2048; let pk = 0, ss = 0; for (let i = from; i < N; i++) { pk = Math.max(pk, Math.abs(b[i])); ss += b[i] * b[i]; }
+      const pkDb = dbfs(pk), rmsDb = dbfs(Math.sqrt(ss / 2048)); holds[ch] = Math.max(holds[ch], pkDb); worst = Math.max(worst, pkDb);
       if (pk >= 0.999 && !clips[ch]) { clips[ch] = true; logEvent('CLIP', ch === 'in' ? 'in' : 'out ' + ch.toUpperCase()); }
-      worst = Math.max(worst, pkDb);
-      const row = $(`.mrow[data-ch=${ch}]`), pos = db => Math.max(0, Math.min(100, (db + 60) / 60 * 100)) + '%';
-      $('.rms', row).style.width = pos(rmsDb); $('.pk', row).style.left = pos(pkDb); $('.hold', row).style.left = pos(holds[ch]);
-      $('.pkv', row).textContent = pkDb <= -120 ? '−∞' : pkDb.toFixed(1); $('.rmsv', row).textContent = rmsDb <= -120 ? '−∞' : rmsDb.toFixed(1);
-      $('.clip', row).classList.toggle('hit', clips[ch]);
+      const row = $(`.meter[data-meter=${ch}]`), p = db => Math.max(0, Math.min(100, (db + 60) / 60 * 100)) + '%';
+      $('.meter-rms', row).style.width = p(rmsDb); $('.meter-peak', row).style.left = p(pkDb); $('.meter-hold', row).style.left = p(holds[ch]);
+      $('.meter-pk', row).textContent = pkDb <= -120 ? '−∞' : pkDb.toFixed(1); $('.meter-rms-val', row).textContent = rmsDb <= -120 ? '−∞' : rmsDb.toFixed(1);
+      $('.clip-chip', row).classList.toggle('hit', clips[ch]);
     }
-    $('#headroom').textContent = worst <= -120 ? '—' : (-worst).toFixed(1);
+    $('#meter-headroom').textContent = worst <= -120 ? '—' : (-worst).toFixed(1);
   }
 
-  // ---- events ----
-  const log = []; let lastLogAt = {};
-  function logEvent(kind, where) {
-    const now = performance.now(); if (lastLogAt[kind + where] && now - lastLogAt[kind + where] < 1500) return; lastLogAt[kind + where] = now;
-    const d = new Date(), ts = d.toTimeString().slice(0, 8);
-    log.unshift({ ts, kind, where }); renderEvents();
+  // ---- events: strip (active kinds) + timestamped history with coalescing ----
+  const log = [];
+  function logEvent(kind, detail) {
+    const now = Date.now(), n = log[0]; ACTIVE.add(kind);
+    if (n && n.kind === kind && now - n.time < 1000) n.count++; else { log.unshift({ kind, time: now, count: 1, detail }); if (log.length > 200) log.pop(); }
+    renderEvents();
   }
+  function clock(t) { const d = new Date(t), p = n => String(n).padStart(2, '0'); return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; }
   function renderEvents() {
-    $('#eventlog').innerHTML = log.map(e => `<div><span class="t">${e.ts}</span><span class="sev-${e.kind}">${e.kind}</span><span>${e.where}</span></div>`).join('') || '<div><span class="t">—</span>no events</div>';
-    $('#ev-hist').textContent = (($('#eventlog').classList.contains('open')) ? '▾' : '▸') + ` history (${log.length})`;
-    $('#ev-chips').innerHTML = log.length ? `<span class="chip ${log[0].kind === 'DENORMAL' ? 'warn' : 'err'}">${log[0].kind}</span> ${log[0].where} · ${log[0].ts}` : '<span style="color:var(--ds-dim)">no events</span>';
+    $('#events').textContent = [...ACTIVE].map(k => '⚠ ' + k).join('  ');
+    const open = $('#event-log').style.display === 'block';
+    $('#events-toggle').textContent = `${open ? '▾' : '▸'} history (${log.length})`;
+    if (!open) return;
+    $('#event-log').innerHTML = log.length ? log.map(e => `<div class="event-row"><span class="event-time">${clock(e.time)}</span><span class="event-kind">${e.kind}${e.count > 1 ? ' ×' + e.count : ''}</span>${e.detail ? `<span>${e.detail}</span>` : ''}</div>`).join('') : '<div class="event-row">no events</div>';
   }
-  $('#events-bar').onclick = () => { $('#eventlog').classList.toggle('open'); renderEvents(); };
+  $('#events-toggle').onclick = () => { const o = $('#event-log'); o.style.display = o.style.display === 'block' ? 'none' : 'block'; renderEvents(); };
+
+  // ---- status / rate note / audio state ----
+  function renderStatus() {
+    const s = $('#status-text'), running = st.audio === 'run';
+    s.textContent = st.audio === 'idle' ? 'Deploy to start…' : '';
+    if (st.audio !== 'idle') { const dot = document.createElement('span'); dot.style.color = running ? css('--ds-ok') : css('--ds-error'); dot.textContent = running ? '▶' : '■'; s.append(dot, `  |  48000 Hz  |  block 4  |  xruns: ${xruns}`); }
+    const live = st.audio !== 'idle';
+    $('#scope-controls').style.display = $('#scope-main').style.display = live ? 'flex' : 'none';
+    $('#getting-started').style.display = live ? 'none' : 'flex';
+    $('#btn-audio-start').disabled = !live || running; $('#btn-audio-stop').disabled = !live || !running;
+    $('#freeze-btn').disabled = $('#single-btn').disabled = st.audio !== 'run';
+  }
+  function renderRate() {
+    const r = rate(), ppd = r * st.ms / 1000, low = ppd < 20, n = $('#rate-note');
+    n.textContent = `effective rate ${r / 1000} kHz` + (low ? ` — low resolution (${Math.round(ppd)} points/div)` : ''); n.classList.toggle('low-res', low);
+  }
 
   // ---- loop ----
+  let t0 = performance.now(), frame = 0;
   function tick(ts) {
-    if (!st.frozen) {
-      cap = synth(ts / 1000);
-      if (st.armed) { const s = findTrigger(null, 100); if (s >= 0 || st.trig === 'free') { st.armed = false; setFrozen(true); } }
+    if (st.audio === 'run' && !st.frozen) {
+      cap = synth(ts / 1000); frame++;
+      if (st.armed) { const win = Math.round(st.ms * 10 * FS / 1000); if (st.trig === 'free' || findTrigger(cap, win) >= 0) { st.armed = false; setFrozen(true); } }
+      if (frame % 240 === 0 && st.src !== 'quiet') { xruns += Math.random() < .15 ? 1 : 0; renderStatus(); }
     }
-    if (cap) { drawScope(); if (!tick.n || (tick.n++ % 6 === 0)) drawSpectrum(); tick.n = tick.n || 1; if (!st.frozen) meters(); }
+    if (cap && st.audio !== 'idle') { drawScope(); if (frame % 6 === 0 || st.frozen) drawSpectrum(); if (st.audio === 'run' && !st.frozen) meters(); }
     requestAnimationFrame(tick);
   }
-
-  function setFrozen(f) { st.frozen = f; $('#freeze').classList.toggle('on', f); $('#freeze').textContent = f ? '▶ Resume' : '⏸ Freeze'; $('#frozen-badge').classList.toggle('show', f); $('#single').classList.toggle('on', st.armed); }
+  function setFrozen(f) { st.frozen = f; const b = $('#freeze-btn'); b.textContent = f ? 'Resume' : 'Freeze'; b.setAttribute('aria-pressed', f); $('#single-btn').setAttribute('aria-pressed', st.armed); }
 
   // ---- wiring ----
-  function seg(sel, attr, fn) { $$(`${sel} .btn`).forEach(b => b.onclick = () => { $$(`${sel} .btn`).forEach(x => x.classList.toggle('on', x === b)); fn(b.dataset[attr]); }); }
-  seg('#gain', 'g', v => st.gain = v); seg('#yunit', 'u', v => st.unit = v); seg('#trig', 't', v => st.trig = v); seg('#trigsrc', 's', v => st.trigSrc = v);
-  seg('#fscale', 'f', v => st.flog = v === 'log'); seg('#dbmode', 'd', v => st.dbabs = v === 'abs');
-  $('#timebase').onchange = e => st.ms = +e.target.value;
-  $('#freeze').onclick = () => { st.armed = false; setFrozen(!st.frozen); };
-  $('#single').onclick = () => { if (st.frozen) setFrozen(false); st.armed = !st.armed; $('#single').classList.toggle('on', st.armed); };
-  addEventListener('keydown', e => { if (e.code === 'Space' && !/INPUT|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); $('#freeze').click(); } });
-  $('#snap').onclick = () => toast('📷 save dialog → scope-snapshot.png (stub)');
-  $('#export').onclick = () => toast('⤓ ' + Math.round(st.ms * 10 * FS / 1000) + ' samples × 3 ch → scope-capture.csv (stub)');
-  [['in', '#lg-in'], ['l', '#lg-l'], ['r', '#lg-r']].forEach(([k, s]) => $(s).onclick = () => { st.show[k] = !st.show[k]; $(s).classList.toggle('off', !st.show[k]); });
-  $$('.clip').forEach(b => b.onclick = e => { e.stopPropagation(); const ch = b.closest('.mrow').dataset.ch; clips[ch] = false; b.classList.remove('hit'); });
-  $('#reset-meters').onclick = () => { for (const k in holds) { holds[k] = -120; clips[k] = false; } $$('.clip').forEach(b => b.classList.remove('hit')); };
-  sc.onmousemove = e => { const r = sc.getBoundingClientRect(); st.hover = { x: e.clientX - r.left }; if (st.frozen) drawScope(); };
-  sc.onmouseleave = () => { st.hover = null; };
-  // draggable trigger level
-  $('#trigmark').onmousedown = e => { e.preventDefault(); const mv = ev => { const r = sc.getBoundingClientRect(), ph = r.height - TOP - BOT, g = gainVal(); const y = Math.max(TOP, Math.min(TOP + ph, ev.clientY - r.top)); st.level = Math.round((0.5 - (y - TOP) / ph) * 2 / g * 100) / 100; }; const up = () => { removeEventListener('mousemove', mv); removeEventListener('mouseup', up); }; addEventListener('mousemove', mv); addEventListener('mouseup', up); };
-  // mockup toolbar
-  $$('#mock-toolbar [data-src]').forEach(b => b.onclick = () => { $$('#mock-toolbar [data-src]').forEach(x => x.classList.toggle('on', x === b)); st.src = b.dataset.src; if (st.src === 'click') { st.ms = 5; $('#timebase').value = '5'; st.trig = 'rise'; st.level = 0.3; $$('#trig .btn').forEach(x => x.classList.toggle('on', x.dataset.t === 'rise')); } if (st.src === 'quiet') logEvent('DENORMAL', 'out L (−40 dBFS tail)'); for (const k in clips) clips[k] = false; });
-  $$('#mock-toolbar [data-theme]').forEach(b => b.onclick = () => { $$('#mock-toolbar [data-theme]').forEach(x => x.classList.toggle('on', x === b)); $('#panel').classList.remove('light', 'hc'); if (b.dataset.theme !== 'dark') $('#panel').classList.add(b.dataset.theme); });
+  function seg(sel, attr, fn) { $$(`${sel} .seg-btn`).forEach(b => b.onclick = () => { $$(`${sel} .seg-btn`).forEach(x => x.classList.toggle('active', x === b)); fn(b.dataset[attr]); }); }
+  seg('#gain-seg', 'gain', v => st.gain = v); seg('#unit-seg', 'unit', v => st.unit = v);
+  seg('#trig-seg', 'trig', v => { st.trig = v; held = null; renderRate(); }); seg('#trigsrc-seg', 'trigsrc', v => st.trigSrc = v);
+  seg('#fscale-seg', 'fscale', v => st.flog = v === 'log'); seg('#lmode-seg', 'lmode', v => st.dbabs = v === 'abs');
+  $('#timebase').onchange = e => { st.ms = +e.target.value; renderRate(); };
+  $('#freeze-btn').onclick = () => { st.armed = false; setFrozen(!st.frozen); };
+  $('#single-btn').onclick = () => { if (st.frozen) setFrozen(false); st.armed = !st.armed; $('#single-btn').setAttribute('aria-pressed', st.armed); };
+  addEventListener('keydown', e => { if (e.code === 'Space' && !/INPUT|SELECT|TEXTAREA|BUTTON/.test(document.activeElement.tagName) && st.audio === 'run') { e.preventDefault(); st.armed = false; setFrozen(!st.frozen); } });
+  $('#snapshot-btn').onclick = () => toast('save dialog → scope-snapshot.png (stub)');
+  $('#export-btn').onclick = () => toast(Math.round(st.ms * 10 * FS / 1000 / step()) + ' samples × 3 ch → scope-capture.csv (stub)');
+  $$('.legend-item').forEach(b => b.onclick = () => { const k = b.dataset.trace; st.show[k] = !st.show[k]; b.setAttribute('aria-pressed', st.show[k]); });
+  $$('.clip-chip').forEach(b => b.onclick = () => { clips[b.dataset.clip] = false; b.classList.remove('hit'); });
+  $('#meters-reset').onclick = () => { for (const k in holds) { holds[k] = -120; clips[k] = false; } $$('.clip-chip').forEach(b => b.classList.remove('hit')); ACTIVE.clear(); renderEvents(); };
+  $('#output-vol').oninput = e => $('#vol-val').textContent = (+e.target.value).toFixed(2);
+  $('#sine-amp').oninput = e => $('#sine-amp-val').textContent = (+e.target.value).toFixed(2);
+  $('#btn-audio-start').onclick = () => setAudio('run'); $('#btn-audio-stop').onclick = () => setAudio('stop');
+  $('#audio-source-select').onchange = e => { const v = e.target.value; $('#sine-group').classList.toggle('emu-hidden', v !== 'sine'); $('#wav-group').classList.toggle('emu-hidden', v !== 'wav'); $('#buffer-group').classList.toggle('emu-hidden', v === 'sine'); $('#latency-group').classList.toggle('emu-hidden', v !== 'live'); };
+  let recOn = false; $('#rec-start-btn').onclick = () => { recOn = true; $('#rec-start-btn').disabled = true; $('#rec-stop-btn').disabled = false; };
+  $('#rec-stop-btn').onclick = () => { recOn = false; $('#rec-start-btn').disabled = false; $('#rec-stop-btn').disabled = true; toast('session saved (stub)'); };
+  // cursor + draggable trigger pointer (hit-test as in scope-webview.ts: left of the plot, within 9 px of the marker)
+  const cvY = e => e.clientY - sc.getBoundingClientRect().top, cvX = e => e.clientX - sc.getBoundingClientRect().left;
+  const onMarker = e => st.trig !== 'free' && cvX(e) < LEFT && Math.abs(cvY(e) - trigY(sc.getBoundingClientRect().height)) <= 9;
+  sc.addEventListener('mousedown', e => { if (onMarker(e)) { st.drag = true; e.preventDefault(); } });
+  addEventListener('mouseup', () => st.drag = false);
+  sc.addEventListener('mousemove', e => {
+    const H = sc.getBoundingClientRect().height;
+    if (st.drag) { const p = Math.max(-1, Math.min(1, (0.5 - (cvY(e) - TOP) / ph(H)) * 2)); st.level = Math.max(-1, Math.min(1, Math.round(unpos(p, lastGain) * 100) / 100)); }
+    st.hoverX = cvX(e); sc.style.cursor = onMarker(e) || st.drag ? 'ns-resize' : 'crosshair'; if (st.frozen || st.audio !== 'run') drawScope(); });
+  sc.addEventListener('mouseleave', () => { st.hoverX = null; if (st.frozen || st.audio !== 'run') drawScope(); });
+
+  // ---- mockup toolbar ----
+  function setAudio(a) {
+    st.audio = a; if (a !== 'run') { st.armed = false; setFrozen(false); } if (a === 'idle') { ACTIVE.clear(); } if (a === 'stop') ACTIVE.clear();
+    $$('#mock-toolbar [data-audio]').forEach(x => x.classList.toggle('on', x.dataset.audio === a)); renderStatus(); renderEvents(); if (cap && a !== 'idle') { drawScope(); drawSpectrum(); }
+  }
+  $$('#mock-toolbar [data-src]').forEach(b => b.onclick = () => {
+    $$('#mock-toolbar [data-src]').forEach(x => x.classList.toggle('on', x === b)); st.src = b.dataset.src;
+    if (st.src === 'click') { st.ms = 5; $('#timebase').value = '5'; st.trig = 'rise'; st.level = 0.3; $$('#trig-seg .seg-btn').forEach(x => x.classList.toggle('active', x.dataset.trig === 'rise')); renderRate(); }
+    if (st.src === 'quiet') logEvent('DENORMAL', 'out L tail');
+    for (const k in clips) clips[k] = false; ACTIVE.clear(); renderEvents(); });
+  $$('#mock-toolbar [data-audio]').forEach(b => b.onclick = () => setAudio(b.dataset.audio));
+  $$('#mock-toolbar [data-theme]').forEach(b => b.onclick = () => { $$('#mock-toolbar [data-theme]').forEach(x => x.classList.toggle('on', x === b)); $('#panel').classList.remove('light', 'hc'); if (b.dataset.theme !== 'dark') $('#panel').classList.add(b.dataset.theme); renderStatus(); });
   $$('#mock-toolbar [data-width]').forEach(b => b.onclick = () => { $$('#mock-toolbar [data-width]').forEach(x => x.classList.toggle('on', x === b)); $('#panel').classList.toggle('narrow', b.dataset.width === 'narrow'); });
   function toast(m) { const t = $('#toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 2200); }
-  renderEvents(); requestAnimationFrame(tick);
+  renderStatus(); renderRate(); renderEvents(); requestAnimationFrame(tick);
 })();
 </script>
 </body>

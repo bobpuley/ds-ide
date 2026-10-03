@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<!--
+  MOCKUP — not production code. Layered variant of v23-effect-testing.html
+  (design_plan.md §6.B 1–6). Same features, but each one lives where its OBJECT lives:
+
+    signal      → Scope bar     : the Input menu grows (Generators group); params reuse the Freq/Amp slot
+    parameters  → Controls Editor: Preset menu in the toolbar; right-click (or ⋯) a knob → Automate…; AUTO badge
+    builds      → Scope bar     : A/B/Bypass segment, ONLY once a 2nd build exists
+    comparison  → Scope bar     : one "Compare ▾" menu (None · Dry · Previous build · Golden). Difference strip
+                                  + PASS/FAIL appear only while a reference is selected
+    regression  → Effect Tests  : native Test Explorer view (welcome state when empty). Selecting a case
+                                  loads its signal/preset/automation and sets Compare = Golden.
+
+  The Scope panel is deliberately almost identical to today's: Input · params · record/replay.
+  Mock toolbar: toggle the conditional pieces (builds 1/2, tests none/some), the NEW markers, or jump to a scenario.
+  Where this differs from v23: no drawer, no tabs, no Pots strip inside the Scope.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>ds-ide — effect testing, layered (design_plan.md §6.B 1–6)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #111; color: #ccc; font-family: -apple-system, "Segoe UI", sans-serif; font-size: 12px; }
+  #chrome { border-bottom: 1px solid #3c3c3c; padding: 10px 16px; font-family: monospace; }
+  #chrome h1 { font-size: 13px; color: #f4c430; font-weight: normal; }
+  #chrome p { font-size: 11px; color: #6a6a6a; margin-top: 3px; max-width: 1150px; line-height: 1.5; }
+  #mock-toolbar { display: flex; gap: 8px; align-items: center; padding: 8px 16px; background: #161616; border-bottom: 1px solid #3c3c3c; flex-wrap: wrap; font-family: monospace; }
+  #mock-toolbar .lbl { font-size: 10px; color: #9a9a9a; }
+  #mock-toolbar button { background: #3c3c3c; border: 1px solid #555; color: #d4d4d4; padding: 4px 10px; border-radius: 2px; cursor: pointer; font-family: monospace; font-size: 10px; }
+  #mock-toolbar button.on { background: #0e639c; border-color: #1177bb; color: #fff; }
+  #mock-toolbar .sep { width: 1px; height: 18px; background: #3c3c3c; margin: 0 6px; }
+  #stage { display: flex; gap: 16px; padding: 16px; align-items: flex-start; }
+  #notes { width: 280px; flex-shrink: 0; font-family: monospace; font-size: 10.5px; color: #9a9a9a; line-height: 1.55; }
+  #notes h2 { font-size: 11px; color: #f4c430; font-weight: normal; margin: 0 0 6px; }
+  #notes ol { padding-left: 16px; margin-bottom: 12px; } #notes li { margin-bottom: 6px; }
+  #notes b { color: #d4d4d4; font-weight: normal; } #notes code { color: #4ec9b0; }
+  #notes table { border-collapse: collapse; margin-bottom: 12px; width: 100%; }
+  #notes td, #notes th { border: 1px solid #333; padding: 2px 5px; text-align: left; font-weight: normal; font-size: 10px; }
+
+  .tok { --ds-bg:#1e1e1e; --ds-surface:#181818; --ds-fg:#d4d4d4; --ds-dim:#8a8a8a; --ds-border:#3c3c3c; --ds-grid:#2e2e2e; --ds-grid-major:#3d3d3d; --ds-axis:#7a7a7a;
+         --ds-in:#4ec9b0; --ds-out:#ff9d4d; --ds-ref:#d670d6; --ds-diff:#6cb6ff; --ds-ok:#89d185; --ds-error:#f14c4c; --ds-warn:#cca700;
+         --ds-btn:#3a3d41; --ds-btn-hover:#45494e; --ds-accent:#0e639c; --ds-accent-fg:#fff; --ds-input-bg:#3c3c3c; }
+  button, select, input { font-family: inherit; font-size: 11px; color: var(--ds-fg); }
+  .btn { background: var(--ds-btn); border: 1px solid var(--ds-border); padding: 2px 8px; border-radius: 2px; cursor: pointer; height: 22px; }
+  .btn:hover { background: var(--ds-btn-hover); } .btn.on { background: var(--ds-accent); color: var(--ds-accent-fg); border-color: var(--ds-accent); } .btn[disabled] { opacity:.4; cursor: default; }
+  .seg { display: inline-flex; } .seg .btn { border-radius: 0; margin-left: -1px; } .seg .btn:first-child { border-radius: 2px 0 0 2px; margin-left: 0; } .seg .btn:last-child { border-radius: 0 2px 2px 0; }
+  select, input[type=number] { background: var(--ds-input-bg); border: 1px solid var(--ds-border); height: 22px; padding: 0 4px; border-radius: 2px; }
+  input[type=number] { width: 62px; }
+  .grp { display: inline-flex; align-items: center; gap: 4px; }
+  .lbl { color: var(--ds-dim); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+  .mono { font-family: Menlo, Consolas, monospace; }
+  .new { outline: 1px dashed #f4c430; outline-offset: 2px; } body.nonew .new { outline: none; }
+
+  /* left column */
+  #left { width: 260px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
+  .view { background: var(--ds-bg); border: 1px solid var(--ds-border); border-radius: 4px; }
+  .view > h3 { font-size: 11px; font-weight: normal; letter-spacing: .06em; padding: 7px 10px; border-bottom: 1px solid var(--ds-border); display: flex; align-items: center; gap: 4px; }
+  .view > h3 .sp { flex: 1; }
+  .view > h3 button { background: transparent; border: 0; cursor: pointer; font-size: 12px; padding: 0 4px; }
+  .view > h3 button:hover { background: var(--ds-btn-hover); }
+  #ce-tool { display: flex; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--ds-border); align-items: center; }
+  #ce-tool select { flex: 1; min-width: 0; }
+  #cards { padding: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .card { border: 1px solid var(--ds-border); background: var(--ds-surface); border-radius: 3px; padding: 5px 6px; position: relative; }
+  .card .top { display: flex; align-items: center; gap: 4px; font-family: Menlo, monospace; font-size: 10.5px; }
+  .card .more { margin-left: auto; background: transparent; border: 0; cursor: pointer; opacity: 0; font-size: 12px; line-height: 1; }
+  .card:hover .more { opacity: 1; }
+  .card .auto { display: none; font-size: 8.5px; background: var(--ds-warn); color: #000; padding: 0 4px; border-radius: 2px; font-weight: bold; }
+  .card.isauto .auto { display: inline-block; } .card.locked input { opacity: .5; pointer-events: none; }
+  .card .val { font-family: Menlo, monospace; font-size: 14px; margin: 3px 0; }
+  .card input[type=range] { width: 100%; accent-color: var(--ds-accent); }
+  .card.isauto { border-color: var(--ds-warn); }
+  #ce-hint { padding: 0 10px 8px; color: var(--ds-dim); font-size: 10px; }
+
+  #tl { padding: 4px 0; } .titem { display: flex; gap: 6px; padding: 3px 10px; cursor: pointer; align-items: center; font-size: 11.5px; } .titem:hover { background: #2a2d2e; } .titem.sel { background: #04395e; }
+  .titem .res { margin-left: auto; font-family: Menlo, monospace; font-size: 10px; color: var(--ds-dim); }
+  .ic.pass { color: var(--ds-ok); } .ic.fail { color: var(--ds-error); } .ic.none { color: var(--ds-dim); } .ic.run { color: var(--ds-warn); } .ic { width: 14px; text-align: center; }
+  #twelcome { padding: 12px 12px 14px; color: var(--ds-dim); line-height: 1.55; font-size: 11.5px; } #twelcome .btn { width: 100%; margin-top: 8px; height: 26px; background: var(--ds-accent); color: #fff; border-color: var(--ds-accent); }
+  #tdetail { margin: 4px 10px 10px; padding: 6px 8px; border: 1px solid var(--ds-border); border-radius: 3px; font-size: 10.5px; line-height: 1.5; color: var(--ds-dim); } #tdetail b { color: var(--ds-fg); font-weight: normal; } #tdetail .f { color: var(--ds-error); }
+
+  /* scope */
+  #panel { width: 860px; background: var(--ds-bg); border: 1px solid var(--ds-border); border-radius: 4px; overflow: hidden; }
+  #status { display: flex; gap: 12px; align-items: center; padding: 5px 10px; border-bottom: 1px solid var(--ds-border); font-family: Menlo, monospace; font-size: 11px; }
+  #status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ds-ok); display: inline-block; margin-right: 5px; } #status .sp { flex: 1; } #status .caveat { color: var(--ds-dim); }
+  .row { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--ds-border); background: var(--ds-surface); } .row .sp { flex: 1; }
+  #plots { padding: 8px; } .plotwrap { margin-bottom: 6px; position: relative; }
+  canvas { display: block; background: var(--ds-surface); border: 1px solid var(--ds-border); }
+  #legend { display: flex; gap: 14px; align-items: center; margin: 0 0 4px 40px; font-size: 11px; }
+  #legend i { display: inline-block; width: 22px; border-top: 2px solid; vertical-align: middle; margin-right: 4px; } #legend .ro { margin-left: auto; font-family: Menlo, monospace; color: var(--ds-dim); }
+  .plotlbl { margin: 2px 0 3px 40px; }
+  #cmpbar { display: none; align-items: center; gap: 10px; margin: 0 0 3px 40px; font-family: Menlo, monospace; font-size: 11px; }
+  #cmpbar.show { display: flex; }
+  .chip { display: inline-block; padding: 1px 8px; border-radius: 9px; border: 1px solid var(--ds-border); font-size: 10.5px; } .chip.pass { background:#1f3d22; border-color: var(--ds-ok); color: var(--ds-ok); } .chip.fail { background:#4a1d1d; border-color: var(--ds-error); color:#ff8a8a; }
+  #autostrip { display: none; border-top: 1px solid var(--ds-border); background: var(--ds-surface); padding: 6px 10px; } #autostrip.show { display: block; }
+  #autostrip .hd { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
+  .alane { display: grid; grid-template-columns: 96px 80px 1fr 22px; gap: 8px; align-items: center; margin-bottom: 4px; font-family: Menlo, monospace; font-size: 10.5px; }
+  .alane canvas { width: 100%; height: 34px; } .alane .x { background: transparent; border: 0; cursor: pointer; }
+  #recbar { display: flex; gap: 8px; align-items: center; padding: 6px 10px; border-top: 1px solid var(--ds-border); background: var(--ds-surface); }
+
+  /* popovers */
+  .pop { position: fixed; z-index: 10; background: #252526; border: 1px solid #454545; border-radius: 3px; box-shadow: 0 4px 14px #000a; font-size: 11.5px; display: none; }
+  .pop.show { display: block; }
+  #ctx div { padding: 4px 16px; cursor: pointer; } #ctx div:hover { background: #04395e; } #ctx .dis { opacity: .4; pointer-events: none; }
+  #apop, #ppop { padding: 10px; width: 230px; } #ppop { width: auto; }
+  #apop h4, #ppop h4 { font-weight: normal; font-size: 11px; margin-bottom: 8px; } #apop .f { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; } #apop .f .lbl { width: 48px; }
+  #apop .acts { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
+  #ppop table { border-collapse: collapse; font-family: Menlo, monospace; font-size: 10.5px; } #ppop th, #ppop td { border: 1px solid var(--ds-border); padding: 2px 8px; text-align: right; } #ppop th:first-child, #ppop td:first-child { text-align: left; } #ppop td.chg { background:#3a2f10; color:#ffd36b; }
+</style>
+</head>
+<body>
+<div id="chrome">
+  <h1>MOCKUP · effect testing — layered: each feature lives where its object lives</h1>
+  <p>Dashed yellow outlines = new vs. today. The Scope panel is almost unchanged; parameters (automation, presets) live in the Controls Editor; builds and comparison are one segment + one menu in the Scope bar; regression lives in the Effect Tests view.
+     Try: right-click a knob (or its ⋯) → Automate…</p>
+</div>
+<div id="mock-toolbar">
+  <span class="lbl">EMULATOR</span><button id="m-run" class="on">running</button>
+  <div class="sep"></div><span class="lbl">CONDITIONALS</span>
+  <button id="m-builds">builds: 1</button><button id="m-tests">tests: some</button><button id="m-new" class="on">NEW markers</button>
+  <div class="sep"></div><span class="lbl">SCENARIO</span>
+  <button data-sc="response">1 · filter response</button><button data-sc="tail">2 · delay tail</button><button data-sc="refactor">3 · refactor check</button><button data-sc="zipper">4 · zipper hunt</button><button data-sc="ab">5 · A/B build compare</button>
+</div>
+
+<div id="stage" class="tok">
+  <div id="left">
+    <!-- Controls Editor (existing view) -->
+    <div class="view tok">
+      <h3>CONTROLS EDITOR<span class="sp"></span><span class="mono" style="color:var(--ds-ok);font-size:10px">● running</span></h3>
+      <div id="ce-tool">
+        <select id="preset" class="new" title="Presets: named snapshots of every control"></select>
+        <button class="btn new" id="pdiff" title="Compare presets">⇄</button>
+        <button class="btn">💾 layout</button>
+      </div>
+      <div id="cards"></div>
+      <div id="ce-hint">Right-click a knob (or ⋯) to automate it.</div>
+    </div>
+    <!-- Effect Tests (new native view) -->
+    <div class="view tok new" id="testview">
+      <h3>EFFECT TESTS<span class="sp"></span><span id="tcount" class="mono" style="font-size:10px;color:var(--ds-dim)"></span>
+        <button id="t-run" title="Run all">▶</button><button id="t-rec" title="Record golden from current">●</button><button id="t-upd" title="Accept current output as golden">⟳</button></h3>
+      <div id="tl"></div><div id="tdetail"></div>
+      <div id="twelcome">No effect tests yet.<br>A test stores a signal, a preset and an expected output (golden) and re-checks them after every change.<button class="btn" id="t-first">● Record first golden from current</button></div>
+    </div>
+  </div>
+
+  <!-- Scope panel -->
+  <div id="panel" class="tok">
+    <div id="status"><span><span class="dot"></span>running</span><span>48000 Hz</span><span>block 4</span><span>xruns: 0</span><span class="sp"></span><span class="caveat">host-relative · not hardware-accurate</span></div>
+    <div class="row">
+      <span class="grp"><span class="lbl">Input</span>
+        <select id="src" class="new">
+          <optgroup label="Generators"><option value="sine">Sine</option><option value="noise">Noise</option><option value="sweep">Log sweep</option><option value="impulse">Impulse</option><option value="step">Step</option><option value="silence">Silence</option><option value="twotone">Two-tone (IMD)</option></optgroup>
+          <optgroup label="External"><option value="live">Live input</option><option value="wav">WAV file…</option></optgroup>
+        </select></span>
+      <span id="srcp" class="grp"></span>
+      <span class="sp"></span>
+      <span class="seg new" id="ab" style="display:none"><button class="btn on" data-v="A">A</button><button class="btn" data-v="B">B</button><button class="btn" data-v="byp">Bypass</button></span>
+      <span class="grp new"><span class="lbl">Compare</span>
+        <select id="cmp"><option value="none">None</option><option value="dry">Dry input</option><option value="prev">Previous build</option><option value="golden">Golden: —</option></select></span>
+    </div>
+    <div id="plots">
+      <div id="legend"></div>
+      <div class="plotwrap"><canvas id="scope" width="844" height="230" style="width:844px;height:230px"></canvas></div>
+      <div id="cmpbar" class="new"><span class="lbl">Difference</span><span id="c-what"></span><span id="c-rms"></span><span id="c-chip" class="chip"></span>
+        <span class="lbl" style="margin-left:auto">tolerance</span><input type="number" id="c-tol" value="-60" step="5"/><span class="lbl">dBFS</span></div>
+      <div class="plotwrap" id="diffwrap" style="display:none"><canvas id="diff" width="844" height="56" style="width:844px;height:56px"></canvas></div>
+      <div class="plotlbl"><span class="lbl">Spectrum · log f · absolute dBFS</span></div>
+      <div class="plotwrap"><canvas id="spec" width="844" height="130" style="width:844px;height:130px"></canvas></div>
+    </div>
+    <div id="autostrip" class="new">
+      <div class="hd"><span class="lbl">Automation</span><button class="btn" id="a-play">⏸</button><label class="grp"><input type="checkbox" id="a-loop" checked/> loop</label><span id="a-time" class="mono" style="color:var(--ds-dim)"></span></div>
+      <div id="alanes"></div>
+    </div>
+    <div id="recbar"><span class="lbl">Session</span><button class="btn">● record</button><button class="btn" disabled>▶ replay</button><span class="sp"></span><span class="mono" style="color:var(--ds-dim);font-size:10.5px">existing bar — unchanged</span></div>
+  </div>
+
+  <div id="notes">
+    <h2>HOW IT STAYS UNCLUTTERED</h2>
+    <table><tr><th>Control</th><th>Visible when</th></tr>
+      <tr><td>Input · Generators</td><td>always (group inside existing menu)</td></tr>
+      <tr><td>A / B / Bypass</td><td>only after a 2nd build exists</td></tr>
+      <tr><td>Compare ▾</td><td>always (default None)</td></tr>
+      <tr><td>Difference strip + PASS/FAIL</td><td>only while a reference is chosen</td></tr>
+      <tr><td>Automation strip</td><td>only while ≥1 knob is automated</td></tr>
+      <tr><td>AUTO badge</td><td>only on automated knobs</td></tr>
+      <tr><td>Effect Tests</td><td>own view; welcome text when empty</td></tr></table>
+    <h2>NET COST ON THE SCOPE BAR</h2>
+    <ol><li>+1 always-visible control (<b>Compare ▾</b>), +1 conditional (<b>A/B/Bypass</b>).</li>
+        <li>Bypass and "dry vs wet" are references inside Compare, so they need no control of their own when there is one build.</li></ol>
+    <h2>THINGS TO JUDGE</h2>
+    <ol><li><b>Discoverability of Automate</b> — right-click is hidden; the ⋯ on hover and the hint line are the mitigations. Enough?</li>
+        <li><b>Compare vs A/B overlap</b> — "Previous build" in Compare and the A/B segment both involve two builds. Merge or keep?</li>
+        <li><b>Tests as a separate view</b> — the Scope only shows the <i>result</i> (difference strip); no test controls live in the Scope.</li>
+        <li>Golden / case storage format: see open questions in v23.</li></ol>
+  </div>
+</div>
+
+<div class="pop" id="ctx"></div>
+<div class="pop" id="apop"></div>
+<div class="pop" id="ppop"></div>
+
+<script>
+const FS = 48000, $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const SPAN = { sine:.02, noise:.02, sweep:.02, twotone:.02, silence:.02, impulse:.4, step:.4, live:.02, wav:.02 };
+const PRESETS = { clean:{cut:.75,fb:.15,mix:.5}, crunch:{cut:.45,fb:.45,mix:.8}, extreme:{cut:.15,fb:.85,mix:1} };
+const POTNAME = { cut:'cutoffPot', fb:'feedbackPot', mix:'mixPot' };
+const freshLanes = () => ({cut:{mode:'manual',from:.1,to:.9,dur:5}, fb:{mode:'manual',from:.1,to:.8,dur:5}, mix:{mode:'manual',from:0,to:1,dur:5}});
+const st = { src:'sine', p:{freq:440,amp:.5,color:'white',f0:20,f1:20000,dur:5}, builds:1, ab:'A', pots:{...PRESETS.clean}, preset:'clean', userPresets:{},
+  lanes:freshLanes(), autoPlay:false, autoT:0, loop:true, cmp:{ref:'none',tol:-60}, T:0, run:true, test:null, drift:false, dirty:true, showTests:true };
+let TESTS = [
+  {id:'t1', name:'sweep · clean', cfg:{src:'sweep',pots:PRESETS.clean,preset:'clean'}, status:'pass', res:-97.8},
+  {id:'t2', name:'impulse · clean', cfg:{src:'impulse',pots:PRESETS.clean,preset:'clean'}, status:'pass', res:-98.4},
+  {id:'t3', name:'noise · crunch', cfg:{src:'noise',pots:PRESETS.crunch,preset:'crunch'}, status:'fail', res:-31.0, drift:true},
+  {id:'t4', name:'sweep · cutoff ramp (auto)', cfg:{src:'sweep',pots:PRESETS.clean,preset:'clean',auto:{cut:{mode:'ramp',from:0,to:1,dur:5}}}, status:'pass', res:-96.3},
+];
+
+/* ---------- DSP (synthetic) ---------- */
+function rng(seed){ let s = seed>>>0 || 1; return () => (s = (s*1664525 + 1013904223)>>>0) / 4294967296; }
+function gen(T){ const N = Math.round(FS*SPAN[st.src]), x = new Float32Array(N), p = st.p, A = p.amp, r = rng(Math.floor(T*1000)+7), R = p.f1/p.f0; let pk = 0;
+  for (let i=0;i<N;i++){ const t = T+i/FS; let v = 0;
+    switch (st.src){ case 'sine': case 'live': case 'wav': v = A*Math.sin(2*Math.PI*p.freq*t); break;
+      case 'noise': { const w = r()*2-1; if (p.color==='pink'){ pk = .97*pk+.18*w; v = A*pk*2.4; } else v = A*w; break; }
+      case 'sweep': { const u = (t%p.dur)/p.dur; v = A*Math.sin(2*Math.PI*p.f0*p.dur/Math.log(R)*(Math.pow(R,u)-1)); break; }
+      case 'impulse': v = i===0 ? A*2 : 0; break; case 'step': v = i >= FS*.02 ? A : 0; break; case 'silence': v = 0; break;
+      case 'twotone': v = A*.5*(Math.sin(2*Math.PI*60*t)+Math.sin(2*Math.PI*7000*t)); break; } x[i] = v; } return x; }
+const BUILD = { A:{fc:1,g:1}, B:{fc:1.15,g:.9} };
+function proc(x, pot, b, q){ const fc = 100*Math.pow(100,pot.cut)*b.fc, a = 1-Math.exp(-2*Math.PI*fc/FS), g = pot.fb*b.g, D = Math.round(.1*FS), y = new Float32Array(x.length); let lp = 0;
+  for (let i=0;i<x.length;i++){ lp += a*(x[i]-lp); y[i] = Math.max(-1,Math.min(1,lp+g*(i>=D?y[i-D]:0))); }
+  for (let i=0;i<x.length;i++){ y[i] = x[i]*(1-pot.mix)+y[i]*pot.mix; if (q) y[i] = Math.round(y[i]*32767)/32767; } return y; }
+const isAuto = k => st.lanes[k].mode !== 'manual';
+function laneVal(k){ const L = st.lanes[k]; if (!isAuto(k) || !st.autoPlay) return st.pots[k]; const p = (st.autoT%L.dur)/L.dur;
+  return L.mode==='ramp' ? L.from+(L.to-L.from)*p : L.mode==='lfo' ? (L.from+L.to)/2+(L.to-L.from)/2*Math.sin(2*Math.PI*p) : (p<.5?L.from:L.to); }
+const effPots = () => ({cut:laneVal('cut'), fb:laneVal('fb'), mix:laneVal('mix')});
+const db = v => 20*Math.log10(Math.max(v,1e-9)), rms = a => { let s=0; for (const v of a) s+=v*v; return Math.sqrt(s/a.length); };
+function fmt(k,v){ if (k==='cut'){ const f = 100*Math.pow(100,v); return f>=1000 ? (f/1000).toFixed(2)+' kHz' : Math.round(f)+' Hz'; } return Math.round(v*100)+' %'; }
+
+/* ---------- drawing ---------- */
+const css = n => getComputedStyle($('#panel')).getPropertyValue(n).trim();
+function setup(c){ const dpr = devicePixelRatio||1, w = parseInt(c.style.width), h = parseInt(c.style.height); c.width = w*dpr; c.height = h*dpr; const g = c.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); return {g,w,h}; }
+function trace(g, arr, x0, x1, ym, ya, color, dash, lw){ g.strokeStyle = color; g.lineWidth = lw||1.4; g.setLineDash(dash||[]); g.beginPath(); const n = arr.length, W = x1-x0;
+  if (n <= 2000){ for (let i=0;i<n;i++){ const x = x0+W*i/(n-1), y = ym-ya*arr[i]; i?g.lineTo(x,y):g.moveTo(x,y); } }
+  else for (let px=0;px<W;px++){ const a = Math.floor(px*n/W), b = Math.floor((px+1)*n/W); let mn=1e9, mx=-1e9; for (let i=a;i<b;i++){ if (arr[i]<mn) mn=arr[i]; if (arr[i]>mx) mx=arr[i]; }
+    g.moveTo(x0+px, ym-ya*mx); g.lineTo(x0+px, ym-ya*mn-(mx===mn?1:0)); }
+  g.stroke(); g.setLineDash([]); }
+function drawScope(c, series, span, ylab){ const {g,w,h} = setup(c), x0 = 40, x1 = w-6, y0 = 6, y1 = h-18, ym = (y0+y1)/2, ya = (y1-y0)/2;
+  g.fillStyle = css('--ds-surface'); g.fillRect(0,0,w,h); g.font = '9px Menlo, monospace'; g.textBaseline = 'middle';
+  for (let k=-2;k<=2;k++){ const y = ym-ya*k/2; g.strokeStyle = k?css('--ds-grid'):css('--ds-grid-major'); g.beginPath(); g.moveTo(x0,y); g.lineTo(x1,y); g.stroke(); g.fillStyle = css('--ds-axis'); g.textAlign = 'right'; g.fillText((k/2*ylab).toFixed(k?2:1), x0-4, y); }
+  for (let k=0;k<=10;k++){ const x = x0+(x1-x0)*k/10; g.strokeStyle = css('--ds-grid'); g.beginPath(); g.moveTo(x,y0); g.lineTo(x,y1); g.stroke(); g.fillStyle = css('--ds-axis'); g.textAlign = 'center'; g.fillText((span*1000*k/10).toFixed(span>.1||k===0?0:1)+(k===10?' ms':''), x, h-8); }
+  series.forEach(s => trace(g, s.y, x0, x1, ym, ya/ylab, s.color, s.dash, s.w)); }
+function drawSpec(c, series){ const {g,w,h} = setup(c), x0 = 40, x1 = w-6, y0 = 6, y1 = h-16;
+  g.fillStyle = css('--ds-surface'); g.fillRect(0,0,w,h); g.font = '9px Menlo, monospace'; g.textBaseline = 'middle';
+  for (let d=0; d>=-90; d-=20){ const y = y0+(y1-y0)*(-d/90); g.strokeStyle = css('--ds-grid'); g.beginPath(); g.moveTo(x0,y); g.lineTo(x1,y); g.stroke(); g.fillStyle = css('--ds-axis'); g.textAlign = 'right'; g.fillText(d, x0-4, y); }
+  [20,100,1000,10000,20000].forEach(f => { const x = x0+(x1-x0)*Math.log(f/20)/Math.log(1000); g.strokeStyle = css('--ds-grid'); g.beginPath(); g.moveTo(x,y0); g.lineTo(x,y1); g.stroke(); g.fillStyle = css('--ds-axis'); g.textAlign = 'center'; g.fillText(f>=1000?(f/1000)+'k':f, x, h-6); });
+  series.forEach(s => { g.strokeStyle = s.color; g.lineWidth = 1.4; g.setLineDash(s.dash||[]); g.beginPath(); s.y.forEach((d,i) => { const x = x0+(x1-x0)*i/(s.y.length-1), y = y0+(y1-y0)*Math.min(1,Math.max(0,-d/90)); i?g.lineTo(x,y):g.moveTo(x,y); }); g.stroke(); g.setLineDash([]); }); }
+const WIN = (() => { const n = 1024, w = new Float32Array(n); for (let i=0;i<n;i++) w[i] = .5-.5*Math.cos(2*Math.PI*i/(n-1)); return w; })();
+function spectrum(x){ const n = 1024, off = (st.src==='impulse'||st.src==='step') ? 0 : Math.max(0,x.length-n), out = [], bins = 110; let ws = 0; for (let i=0;i<n;i++) ws += WIN[i];
+  for (let b=0;b<bins;b++){ const f = 20*Math.pow(1000,b/(bins-1)), wv = 2*Math.PI*f/FS; let re = 0, im = 0; for (let i=0;i<n;i++){ const v = (x[off+i]||0)*WIN[i]; re += v*Math.cos(wv*i); im -= v*Math.sin(wv*i); } out.push(db(2*Math.hypot(re,im)/ws)); } return out; }
+
+/* ---------- render ---------- */
+function reference(x, pots){ switch (st.cmp.ref){ case 'dry': return {y:x, name:'dry input'}; case 'prev': return st.builds===2 ? {y:proc(x,pots,BUILD[st.ab==='B'?'A':'B']), name:`build ${st.ab==='B'?'A':'B'}`} : null;
+  case 'golden': { const t = TESTS.find(t=>t.id===st.test); return t ? {y:proc(x,pots,BUILD[st.drift?'B':'A'],true), name:`golden · ${t.name}`} : null; } } return null; }
+function render(){
+  const pots = effPots(), x = gen(st.T), out = st.ab==='byp' ? x : proc(x,pots,BUILD[st.ab==='B'?'B':'A']), ref = reference(x,pots), span = SPAN[st.src];
+  const ylab = Math.max(1, Math.ceil(Math.max(...x.map(Math.abs))*1.05));
+  const S = [{y:x,color:css('--ds-in'),w:1.2},{y:out,color:css('--ds-out'),w:1.6}]; if (ref) S.push({y:ref.y,color:css('--ds-ref'),dash:[5,3],w:1.3});
+  drawScope($('#scope'), S, span, ylab);
+  $('#legend').innerHTML = `<span><i style="border-color:var(--ds-in)"></i>In</span><span><i style="border-color:var(--ds-out)"></i>Out${st.builds===2?' · '+(st.ab==='byp'?'bypass':st.ab):''}</span>` +
+    (ref?`<span><i style="border-color:var(--ds-ref);border-top-style:dashed"></i>${ref.name}</span>`:'') +
+    `<span class="ro">${st.src==='sweep'?`sweep ${Math.round(st.p.f0*Math.pow(st.p.f1/st.p.f0,(st.T%st.p.dur)/st.p.dur))} Hz · `:''}${span*1000} ms span</span>`;
+  const sp = [{y:spectrum(x),color:css('--ds-in')},{y:spectrum(out),color:css('--ds-out')}]; if (ref) sp.push({y:spectrum(ref.y),color:css('--ds-ref'),dash:[5,3]}); drawSpec($('#spec'), sp);
+  $('#cmpbar').classList.toggle('show', !!ref); $('#diffwrap').style.display = ref ? '' : 'none';
+  if (ref){ const d = new Float32Array(out.length); let pk = 0; for (let i=0;i<d.length;i++){ d[i] = out[i]-ref.y[i]; pk = Math.max(pk,Math.abs(d[i])); }
+    const r = db(rms(d)), sc = Math.max(pk*1.1,1e-6), pass = r <= st.cmp.tol, {g,w,h} = setup($('#diff'));
+    g.fillStyle = css('--ds-surface'); g.fillRect(0,0,w,h); g.strokeStyle = css('--ds-grid-major'); g.beginPath(); g.moveTo(40,h/2); g.lineTo(w-6,h/2); g.stroke();
+    g.fillStyle = css('--ds-axis'); g.font = '9px Menlo'; g.textAlign = 'right'; g.fillText('±'+sc.toExponential(0), 36, 10); trace(g, d, 40, w-6, h/2, (h/2-4)/sc, css('--ds-diff'), [], 1.2);
+    $('#c-what').textContent = 'vs ' + ref.name; $('#c-rms').textContent = `RMS ${r.toFixed(1)} dBFS · peak ${db(pk).toFixed(1)}`; const ch = $('#c-chip'); ch.textContent = pass?'PASS':'FAIL'; ch.className = 'chip '+(pass?'pass':'fail'); }
+  $$('.card').forEach(el => { const k = el.dataset.p, v = laneVal(k); el.classList.toggle('isauto', isAuto(k)); el.classList.toggle('locked', isAuto(k) && st.autoPlay); el.querySelector('input').value = v; el.querySelector('.val').textContent = fmt(k,v); });
+  const anyAuto = Object.keys(POTNAME).some(isAuto); $('#autostrip').classList.toggle('show', anyAuto);
+  if (anyAuto){ $('#a-time').textContent = st.autoPlay ? `t = ${st.autoT.toFixed(1)} s` : 'paused'; drawLanes(); }
+  st.dirty = false;
+}
+
+/* ---------- lanes / automation ---------- */
+function buildLanes(){ $('#alanes').innerHTML = Object.keys(POTNAME).filter(isAuto).map(k => `<div class="alane" data-k="${k}"><span>${POTNAME[k]}</span><span style="color:var(--ds-dim)">${st.lanes[k].mode} ${st.lanes[k].dur}s</span><canvas style="width:100%;height:34px"></canvas><button class="x" title="Stop automation">✕</button></div>`).join('');
+  $$('#alanes .x').forEach(b => b.onclick = () => { stopAuto(b.parentElement.dataset.k); }); }
+function drawLanes(){ $$('#alanes .alane').forEach(el => { const k = el.dataset.k, L = st.lanes[k], {g,w,h} = setup(el.querySelector('canvas'));
+  g.fillStyle = css('--ds-bg'); g.fillRect(0,0,w,h); g.strokeStyle = css('--ds-out'); g.lineWidth = 1.6; g.beginPath();
+  for (let px=0; px<=w; px++){ const p = px/w, v = L.mode==='ramp' ? L.from+(L.to-L.from)*p : L.mode==='lfo' ? (L.from+L.to)/2+(L.to-L.from)/2*Math.sin(2*Math.PI*p) : (p<.5?L.from:L.to), y = h-3-(h-6)*v; px?g.lineTo(px,y):g.moveTo(px,y); } g.stroke();
+  if (st.autoPlay){ const x = ((st.autoT%L.dur)/L.dur)*w; g.strokeStyle = css('--ds-warn'); g.beginPath(); g.moveTo(x,0); g.lineTo(x,h); g.stroke(); } }); }
+function stopAuto(k){ st.lanes[k].mode = 'manual'; if (!Object.keys(POTNAME).some(isAuto)) st.autoPlay = false; buildLanes(); st.dirty = true; }
+function setPlayBtn(){ $('#a-play').textContent = st.autoPlay ? '⏸' : '▶'; }
+
+/* ---------- controls editor ---------- */
+function buildCards(){ $('#cards').innerHTML = Object.keys(POTNAME).map(k => `<div class="card" data-p="${k}"><div class="top"><span>${POTNAME[k]}</span><span class="auto">AUTO</span><button class="more" title="Automate…">⋯</button></div><div class="val"></div><input type="range" min="0" max="1" step="0.001"/></div>`).join('');
+  $$('.card').forEach(el => { const k = el.dataset.p; el.querySelector('input').oninput = e => { st.pots[k] = +e.target.value; st.preset = null; syncPreset(); st.dirty = true; };
+    el.oncontextmenu = e => { e.preventDefault(); showCtx(k, e.clientX, e.clientY); }; el.querySelector('.more').onclick = e => { e.stopPropagation(); const r = e.target.getBoundingClientRect(); showCtx(k, r.left, r.bottom); }; }); }
+function showCtx(k, x, y){ const m = $('#ctx'); m.innerHTML = `<div data-a="edit">${isAuto(k)?'Edit automation…':'Automate…'}</div><div data-a="stop" class="${isAuto(k)?'':'dis'}">Stop automation</div>`;
+  m.style.left = x+'px'; m.style.top = y+'px'; m.classList.add('show');
+  m.querySelector('[data-a=edit]').onclick = () => { closePops(); openAutomate(k, x, y); }; m.querySelector('[data-a=stop]').onclick = () => { closePops(); stopAuto(k); }; }
+function openAutomate(k, x, y){ const L = st.lanes[k], a = $('#apop'), d = isAuto(k) ? L : {mode:'ramp',from:L.from,to:L.to,dur:L.dur};
+  a.innerHTML = `<h4>Automate <b>${POTNAME[k]}</b></h4><div class="f"><span class="lbl">Shape</span><select id="a-mode">${['ramp','lfo','step'].map(m=>`<option ${d.mode===m?'selected':''}>${m}</option>`).join('')}</select></div>
+    <div class="f"><span class="lbl">From</span><input type="number" id="a-from" step="0.1" min="0" max="1" value="${d.from}"/></div><div class="f"><span class="lbl">To</span><input type="number" id="a-to" step="0.1" min="0" max="1" value="${d.to}"/></div>
+    <div class="f"><span class="lbl">Time</span><input type="number" id="a-dur" step="1" min="1" value="${d.dur}"/> s</div><div class="acts"><button class="btn" id="a-cancel">Cancel</button><button class="btn on" id="a-ok">Apply</button></div>`;
+  a.style.left = Math.min(x, innerWidth-250)+'px'; a.style.top = y+'px'; a.classList.add('show');
+  $('#a-cancel').onclick = closePops; $('#a-ok').onclick = () => { Object.assign(st.lanes[k], {mode:$('#a-mode').value, from:+$('#a-from').value, to:+$('#a-to').value, dur:+$('#a-dur').value}); st.autoPlay = true; st.autoT = 0; setPlayBtn(); buildLanes(); closePops(); st.dirty = true; }; }
+function closePops(){ $$('.pop').forEach(p => p.classList.remove('show')); }
+document.addEventListener('click', e => { if (!e.target.closest('.pop') && !e.target.closest('#pdiff')) closePops(); });
+
+/* presets */
+const allP = () => ({...PRESETS, ...st.userPresets});
+function buildPreset(){ const P = allP(); $('#preset').innerHTML = Object.keys(P).map(n => `<option value="${n}" ${st.preset===n?'selected':''}>${n}</option>`).join('') + `<option value="__mod" ${st.preset?'':'selected'} hidden>(modified)</option><option value="__save">＋ Save current as…</option>`; }
+function syncPreset(){ buildPreset(); }
+$('#preset').onchange = e => { const v = e.target.value, P = allP();
+  if (v==='__save'){ const n = 'user '+(Object.keys(st.userPresets).length+1); st.userPresets[n] = {...st.pots}; st.preset = n; }
+  else { st.pots = {...P[v]}; st.preset = v; st.lanes = freshLanes(); st.autoPlay = false; buildLanes(); setPlayBtn(); }
+  buildPreset(); st.dirty = true; };
+$('#pdiff').onclick = e => { e.stopPropagation(); const P = allP(), names = Object.keys(P), base = st.preset && P[st.preset] ? st.preset : 'clean', p = $('#ppop');
+  p.innerHTML = `<h4>Compare presets</h4><table><tr><th></th>${names.map(n=>`<th>${n}</th>`).join('')}<th>current</th></tr>` +
+    Object.keys(POTNAME).map(k => `<tr><td>${POTNAME[k]}</td>${names.map(n=>`<td class="${Math.abs(P[n][k]-P[base][k])>.001?'chg':''}">${fmt(k,P[n][k])}</td>`).join('')}<td class="${Math.abs(st.pots[k]-P[base][k])>.001?'chg':''}">${fmt(k,st.pots[k])}</td></tr>`).join('') +
+    `</table><div style="color:var(--ds-dim);font-size:10px;margin-top:6px">highlighted = differs from “${base}”</div>`;
+  const r = e.target.getBoundingClientRect(); p.style.left = r.left+'px'; p.style.top = (r.bottom+4)+'px'; p.classList.add('show'); };
+
+/* ---------- source params ---------- */
+function buildSrc(){ const p = st.p, num = (id,v,s,u) => `<input type="number" id="${id}" value="${v}" step="${s}"/>${u?' '+u:''}`, dim = t => `<span class="lbl" style="text-transform:none">${t}</span>`;
+  $('#srcp').innerHTML = { sine:`<span class="lbl">Freq</span>${num('p-freq',p.freq,10,'Hz')}<span class="lbl">Amp</span>${num('p-amp',p.amp,.05)}`,
+    noise:`<span class="seg"><button class="btn ${p.color==='white'?'on':''}" data-c="white">white</button><button class="btn ${p.color==='pink'?'on':''}" data-c="pink">pink</button></span><span class="lbl">Amp</span>${num('p-amp',p.amp,.05)}`,
+    sweep:`<span class="lbl">From</span>${num('p-f0',p.f0,10,'Hz')}<span class="lbl">To</span>${num('p-f1',p.f1,100,'Hz')}<span class="lbl">Time</span>${num('p-dur',p.dur,1,'s')}<span class="lbl">Amp</span>${num('p-amp',p.amp,.05)}`,
+    impulse:`<span class="lbl">Amp</span>${num('p-amp',p.amp,.05)}${dim('single sample · 400 ms span')}`, step:`<span class="lbl">Amp</span>${num('p-amp',p.amp,.05)}${dim('step at 20 ms · 400 ms span')}`,
+    silence:dim('digital zero — noise floor / denormals'), twotone:`${dim('60 Hz + 7 kHz (IMD)')}<span class="lbl">Amp</span>${num('p-amp',p.amp,.05)}`, live:dim('unchanged (host input)'), wav:`<button class="btn">Choose file…</button>` }[st.src];
+  $$('#srcp input').forEach(i => i.onchange = () => { p[i.id.slice(2)] = +i.value; st.dirty = true; }); $$('#srcp [data-c]').forEach(b => b.onclick = () => { p.color = b.dataset.c; buildSrc(); st.dirty = true; }); }
+$('#src').onchange = e => { st.src = e.target.value; detach(); buildSrc(); st.dirty = true; };
+function detach(){ st.test = null; st.drift = false; if (st.cmp.ref==='golden') st.cmp.ref = 'none'; buildCmp(); buildTests(); }
+
+/* ---------- scope bar: A/B, Compare ---------- */
+function buildBuilds(){ $('#ab').style.display = st.builds===2 ? '' : 'none'; if (st.builds===1){ st.ab = 'A'; if (st.cmp.ref==='prev') st.cmp.ref = 'none'; } $('#m-builds').textContent = 'builds: '+st.builds; setAB(); buildCmp(); }
+function setAB(){ $$('#ab .btn').forEach(b => b.classList.toggle('on', b.dataset.v===st.ab)); }
+$$('#ab .btn').forEach(b => b.onclick = () => { st.ab = b.dataset.v; setAB(); st.dirty = true; });
+function buildCmp(){ const t = TESTS.find(t=>t.id===st.test), s = $('#cmp'); s.querySelector('[value=prev]').disabled = st.builds<2; const g = s.querySelector('[value=golden]'); g.disabled = !t; g.textContent = 'Golden: ' + (t?t.name:'— select a test'); s.value = st.cmp.ref; }
+$('#cmp').onchange = e => { st.cmp.ref = e.target.value; st.dirty = true; }; $('#c-tol').onchange = e => { st.cmp.tol = +e.target.value; st.dirty = true; };
+$('#a-play').onclick = () => { st.autoPlay = !st.autoPlay; setPlayBtn(); st.dirty = true; }; $('#a-loop').onchange = e => st.loop = e.target.checked;
+
+/* ---------- tests ---------- */
+const IC = {pass:'✓', fail:'✗', none:'○', run:'◔'};
+function buildTests(){ const has = TESTS.length>0 && st.showTests; $('#tl').style.display = has ? '' : 'none'; $('#tdetail').style.display = has ? '' : 'none'; $('#twelcome').style.display = has ? 'none' : '';
+  $('#tl').innerHTML = TESTS.map(t => `<div class="titem ${st.test===t.id?'sel':''}" data-id="${t.id}"><span class="ic ${t.status}">${IC[t.status]}</span>${t.name}<span class="res">${t.res==null?'—':t.res.toFixed(1)+' dB'}</span></div>`).join('');
+  $$('.titem').forEach(el => el.onclick = () => selectTest(el.dataset.id));
+  const n = TESTS.filter(t=>t.status==='pass').length, f = TESTS.filter(t=>t.status==='fail').length; $('#tcount').textContent = has ? `${n} ✓  ${f} ✗` : '';
+  const t = TESTS.find(t=>t.id===st.test);
+  $('#tdetail').innerHTML = !t ? 'Select a case to load its signal, preset and automation into the Scope.' : `<b>${t.name}</b><br>${t.cfg.src}${t.cfg.auto?' + automation':''} · preset ${t.cfg.preset||'custom'}<br>` +
+    (t.status==='fail' ? `<span class="f">residual ${t.res.toFixed(1)} dBFS &gt; −60 tolerance</span><br>Difference strip in the Scope shows where it diverges. Fix the code or ⟳ to accept.` : `residual ${t.res.toFixed(1)} dBFS ≤ −60 tolerance`); buildCmp(); }
+function selectTest(id){ const t = TESTS.find(t=>t.id===id); st.test = id; st.drift = !!t.drift; st.src = t.cfg.src; $('#src').value = st.src; st.pots = {...t.cfg.pots}; st.preset = t.cfg.preset || null; st.ab = 'A';
+  st.lanes = freshLanes(); st.autoPlay = false; st.autoT = 0; if (t.cfg.auto){ for (const k in t.cfg.auto) Object.assign(st.lanes[k], t.cfg.auto[k]); st.autoPlay = true; }
+  st.cmp.ref = 'golden'; buildSrc(); buildPreset(); buildLanes(); setPlayBtn(); setAB(); buildTests(); st.dirty = true; }
+function recordGolden(){ const lanes = {}; Object.keys(POTNAME).filter(isAuto).forEach(k => lanes[k] = {...st.lanes[k]});
+  const t = {id:'t'+(TESTS.length+1)+'x'+Date.now()%1000, name:`${st.src} · ${st.preset||'custom'}${Object.keys(lanes).length?' (auto)':''}`, cfg:{src:st.src,pots:{...st.pots},preset:st.preset,auto:Object.keys(lanes).length?lanes:undefined}, status:'pass', res:-98.0};
+  TESTS.push(t); st.showTests = true; $('#m-tests').textContent = 'tests: some'; st.test = t.id; st.drift = false; st.cmp.ref = 'golden'; buildTests(); st.dirty = true; }
+$('#t-rec').onclick = $('#t-first').onclick = recordGolden;
+$('#t-upd').onclick = () => { const t = TESTS.find(t=>t.id===st.test); if (!t) return; t.status = 'pass'; t.drift = false; st.drift = false; t.res = -97.9; buildTests(); st.dirty = true; };
+$('#t-run').onclick = () => { TESTS.forEach(t => t.status = 'run'); buildTests(); TESTS.forEach((t,i) => setTimeout(() => { t.status = t.drift ? 'fail' : 'pass'; buildTests(); }, 350*(i+1))); };
+
+/* ---------- mock toolbar & scenarios ---------- */
+$('#m-run').onclick = e => { st.run = !st.run; e.target.classList.toggle('on', st.run); e.target.textContent = st.run ? 'running' : 'paused'; };
+$('#m-builds').onclick = () => { st.builds = st.builds===1 ? 2 : 1; buildBuilds(); st.dirty = true; };
+$('#m-tests').onclick = e => { st.showTests = !st.showTests; if (!st.showTests){ st.test = null; if (st.cmp.ref==='golden') st.cmp.ref = 'none'; } e.target.textContent = 'tests: ' + (st.showTests ? 'some' : 'none'); buildTests(); st.dirty = true; };
+$('#m-new').onclick = e => { document.body.classList.toggle('nonew'); e.target.classList.toggle('on'); };
+function reset(){ st.test = null; st.drift = false; st.ab = 'A'; st.pots = {...PRESETS.clean}; st.preset = 'clean'; st.lanes = freshLanes(); st.autoPlay = false; st.autoT = 0; st.cmp.ref = 'none'; }
+const SC = { response(){ reset(); st.src = 'sweep'; }, tail(){ reset(); st.src = 'impulse'; st.pots = {cut:.8,fb:.6,mix:1}; st.preset = null; },
+  refactor(){ st.showTests = true; $('#m-tests').textContent = 'tests: some'; selectTest('t1'); },
+  zipper(){ reset(); st.src = 'sine'; st.p.freq = 220; st.lanes.cut = {mode:'step',from:.2,to:.9,dur:1}; st.autoPlay = true; },
+  ab(){ reset(); st.src = 'sweep'; st.builds = 2; st.cmp.ref = 'prev'; } };
+$$('[data-sc]').forEach(b => b.onclick = () => { SC[b.dataset.sc](); $('#src').value = st.src; buildSrc(); buildPreset(); buildLanes(); setPlayBtn(); buildBuilds(); buildTests(); st.dirty = true; });
+
+setInterval(() => { const periodic = !['impulse','step','silence'].includes(st.src);
+  if (st.run){ if (periodic){ st.T += .06; st.dirty = true; } if (st.autoPlay){ st.autoT += .06; if (!st.loop && st.autoT > 5){ st.autoPlay = false; setPlayBtn(); } st.dirty = true; } }
+  if (st.dirty) render(); }, 60);
+buildCards(); buildPreset(); buildSrc(); buildLanes(); buildBuilds(); buildTests(); setPlayBtn(); render();
+</script>
+</body>
+</html>
