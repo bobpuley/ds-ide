@@ -7,6 +7,7 @@ import { readThemeColor, onThemeChange } from './theme/theme-runtime';
 import { loadScopeColors } from './scope-colors';
 import { ScopeCapture, type ScopeChannel } from './scope/scope-capture';
 import { Meters, formatDb, meterPosition } from './scope/scope-meters';
+import { CHIPS, chipLabel, chipAriaLabel, isDefault, defaultState, isGroupDisabled, placePopover, type ChipDef } from './scope/scope-chips';
 import { buildCsv } from './scope/scope-export';
 import { EventLog, formatClock } from './scope/scope-events';
 import {
@@ -564,25 +565,133 @@ timeBaseEl?.addEventListener('change', () => {
   updateRateNote();
   flushScopeDraw();
 });
-function wireSegment(id: string, attr: string, onPick: (value: string) => void): void {
-  const seg = document.getElementById(id);
-  seg?.addEventListener('click', (e) => {
-    const btn = (e.target as HTMLElement).closest<HTMLElement>('.seg-btn');
-    const value = btn?.dataset[attr];
-    if (!btn || value === undefined) return;
-    seg.querySelectorAll('.seg-btn').forEach(b => b.classList.toggle('active', b === btn));
-    onPick(value);
-    flushScopeDraw();
+// FR-SCI-15: each setting is one chip; `chipState` holds the current value of every group.
+const chipState: Record<string, string> = defaultState();
+const chipEl = (chip: ChipDef): HTMLElement => el<HTMLElement>(`chip-${chip.id}`);
+
+function renderChips(): void {
+  for (const chip of CHIPS) {
+    const btn = chipEl(chip);
+    const label = chipLabel(chip, chipState);
+    const value = btn.querySelector('.chip-value');
+    if (value) value.textContent = label;
+    btn.setAttribute('aria-label', chipAriaLabel(chip, chipState));
+    btn.classList.toggle('changed', !isDefault(chip, chipState));
+  }
+}
+
+/** Set one group's value: the same state the matching segmented button used to set. */
+function applyChoice(groupId: string, value: string): void {
+  chipState[groupId] = value;
+  switch (groupId) {
+    case 'gain': gainMode = value === 'auto' ? 'auto' : (Number(value) as GainMode); break;
+    case 'unit': ampUnit = value === 'db' ? 'db' : 'lin'; break;
+    case 'edge':
+      trigMode = value === 'rise' || value === 'fall' ? value : 'free';
+      heldWindow = null;
+      syncCapture();
+      break;
+    case 'source':
+      trigSource = value === 'l' ? 'l' : 'in';
+      heldWindow = null;
+      syncCapture();
+      break;
+    case 'fscale': freqScale = value === 'lin' ? 'lin' : 'log'; flushSpectrumDraw(); break;
+    case 'lmode': levelMode = value === 'rel' ? 'rel' : 'abs'; flushSpectrumDraw(); break;
+    default: return;
+  }
+  renderChips();
+  flushScopeDraw();
+}
+
+// FR-SCI-16: one popover, rebuilt for whichever chip opens it.
+const popover = el<HTMLElement>('chip-popover');
+let openChip: ChipDef | null = null;
+
+function popoverItems(): HTMLButtonElement[] {
+  return Array.from(popover.querySelectorAll<HTMLButtonElement>('.chip-item:not(:disabled)'));
+}
+
+function renderPopover(chip: ChipDef): void {
+  popover.replaceChildren();
+  for (const group of chip.groups) {
+    const disabled = isGroupDisabled(chip, group.id, chipState);
+    if (group.title) {
+      const title = document.createElement('div');
+      title.className = 'chip-group-title';
+      title.textContent = group.title;
+      popover.appendChild(title);
+    }
+    for (const opt of group.options) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'chip-item';
+      item.setAttribute('role', 'menuitemradio');
+      item.setAttribute('aria-checked', String(chipState[group.id] === opt.value));
+      item.dataset['group'] = group.id;
+      item.dataset['value'] = opt.value;
+      item.disabled = disabled;
+      item.textContent = opt.label;
+      popover.appendChild(item);
+    }
+  }
+}
+
+function placeOpenPopover(chip: ChipDef): void {
+  const a = chipEl(chip).getBoundingClientRect();
+  const pos = placePopover(a, { width: popover.offsetWidth, height: popover.offsetHeight },
+    { width: window.innerWidth, height: window.innerHeight });
+  popover.style.left = `${pos.left}px`;
+  popover.style.top = `${pos.top}px`;
+}
+
+function closePopover(returnFocus: boolean): void {
+  if (!openChip) return;
+  const chip = openChip;
+  openChip = null;
+  popover.hidden = true;
+  chipEl(chip).setAttribute('aria-expanded', 'false');
+  if (returnFocus) chipEl(chip).focus();
+}
+
+function showPopover(chip: ChipDef): void {
+  closePopover(false);
+  openChip = chip;
+  renderPopover(chip);
+  popover.hidden = false;
+  placeOpenPopover(chip);
+  chipEl(chip).setAttribute('aria-expanded', 'true');
+  (popover.querySelector<HTMLButtonElement>('.chip-item[aria-checked="true"]:not(:disabled)') ?? popoverItems()[0])?.focus();
+}
+
+for (const chip of CHIPS) {
+  chipEl(chip).addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (openChip === chip) closePopover(true); else showPopover(chip);
   });
 }
-wireSegment('trig-seg', 'trig', v => {
-  trigMode = v === 'rise' || v === 'fall' ? v : 'free';
-  heldWindow = null;
+popover.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const item = (e.target as HTMLElement).closest<HTMLElement>('.chip-item');
+  const { group, value } = item?.dataset ?? {};
+  if (!openChip || !group || value === undefined) return;
+  applyChoice(group, value);
+  // Trigger is a two-step choice (edge, then source): it stays open and re-enables Source.
+  if (openChip.id === 'trigger' && group === 'edge') { renderPopover(openChip); placeOpenPopover(openChip); item?.focus(); }
+  else closePopover(true);
 });
-wireSegment('trigsrc-seg', 'trigsrc', v => { trigSource = v === 'l' ? 'l' : 'in'; heldWindow = null; });
-wireSegment('fscale-seg', 'fscale', v => { freqScale = v === 'lin' ? 'lin' : 'log'; flushSpectrumDraw(); });
-wireSegment('lmode-seg', 'lmode', v => { levelMode = v === 'rel' ? 'rel' : 'abs'; flushSpectrumDraw(); });
-wireSegment('gain-seg', 'gain', v => { gainMode = v === 'auto' ? 'auto' : (Number(v) as GainMode); });
+popover.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { e.preventDefault(); closePopover(true); return; }
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+  e.preventDefault();
+  const items = popoverItems();
+  const at = items.indexOf(document.activeElement as HTMLButtonElement);
+  const next = e.key === 'ArrowDown' ? at + 1 : at - 1;
+  items[(next + items.length) % items.length]?.focus();
+});
+document.addEventListener('click', () => closePopover(false));
+window.addEventListener('resize', () => closePopover(false));
+
 document.querySelectorAll<HTMLElement>('.legend-item').forEach(btn => {
   btn.addEventListener('click', () => {
     const id = btn.dataset['trace'];
@@ -592,7 +701,6 @@ document.querySelectorAll<HTMLElement>('.legend-item').forEach(btn => {
     flushScopeDraw();
   });
 });
-wireSegment('unit-seg', 'unit', v => { ampUnit = v === 'db' ? 'db' : 'lin'; });
 document.querySelectorAll<HTMLElement>('.clip-chip').forEach(chip => {
   chip.addEventListener('click', () => {
     const id = chip.dataset['clip'];
