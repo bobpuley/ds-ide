@@ -1,4 +1,4 @@
-# 01 — Input Ideas (v24)
+# 01 — Input Ideas (v25)
 
 > **v1 complete** — ds-ide 0.1.0–0.1.7 (M0–M7), all ACs green. Full v1 ideas archived in
 > [`docs/v1/01_input-ideas.md`](v1/01_input-ideas.md).
@@ -68,16 +68,8 @@
 >
 > **v23 complete** — archived to `docs/v23/` on 2026-09-30. Full v23 ideas archived in
 > [`docs/v23/01_input-ideas.md`](v23/01_input-ideas.md).
+>
+> **v24 complete** — archived to `docs/v24/` on 2026-10-03. Full v24 ideas archived in
+> [`docs/v24/01_input-ideas.md`](v24/01_input-ideas.md).
 
-## Reachability (intake 2026-10-01, source: `design_plan.md` §7 row 1 + P1-3)
-
-- **Reopen commands** — palette commands to show/focus Scope, OLED, MIDI, Controls Editor and Wiring Editor (`design_plan.md` P0-2). Closing the Scope tab today costs a full rebuild + relaunch to get it back.
-- **First-run onboarding** — `viewsWelcome` on the Controls/Wiring views (gated on `ds-ide.isDaisyProject`) plus a "Get started with Daisy Seed" walkthrough (P1-4).
-- **README/manifest lint** — README still says "Open Wiring Editor" (removed in M21); add a check that command names in docs exist in `package.json` (P2-3).
-- **Auto-save layout** — Controls Editor layout saved on drag-end (debounced) instead of only via the "💾 layout" button (P1-3).
-
-## Editor polish (intake 2026-10-01, source: user request)
-
-- **Wiring legend** — the Wiring Editor shows no key for its pin colours (`design_plan.md` P1-6).
-- **Remove the play/stop marker** from the Controls Editor header.
-- **Layout helpers in the Controls header** — an *align to grid* button, plus other relevant helpers (`design_plan.md` P2-2): auto-arrange and reset positions were chosen.
+*v25 planning not yet started. Use `/doc-creator-driver:intake` or `/doc-creator-driver:start` to begin.*

@@ -1,4 +1,4 @@
-# 05 — Development Plan (v24)
+# 05 — Development Plan (v25)
 
 > **v1 complete** — M0–M7 released (0.1.0–0.1.7), all ACs green.
 > Archived: [`docs/v1/`](v1/).
@@ -68,8 +68,11 @@
 >
 > **v23 complete** — M70–M72 released (0.21.0–0.23.0), all ACs green.
 > Archived: [`docs/v23/`](v23/).
+>
+> **v24 complete** — M73–M76 released (0.24.0–0.24.3), all ACs green.
+> Archived: [`docs/v24/`](v24/).
 
-*v24 milestones not yet planned.*
+*v25 milestones not yet planned.*
 
 ---
 
@@ -200,11 +203,11 @@ Full registry in [`docs/v22/05_dev-plan.md`](v22/05_dev-plan.md).
 M70 Scope Instrument — Display · M71 Scope Instrument — Analysis · M72 Scope Instrument — Emulator Capture.
 Full registry in [`docs/v23/05_dev-plan.md`](v23/05_dev-plan.md).
 
-### v24 (0.24.0–0.24.1) — planned
+### v24 (0.24.0–0.24.3) — archived in `docs/v24/`
 
-| ID   | Name         | Status          | Version | File                                                   |
-|------|--------------|-----------------|---------|--------------------------------------------------------|
-| M73  | Reachability | **released**    | 0.24.0  | [Milestone_M73.md](milestones/v24/Milestone_M73.md)    |
-| M74  | Editor Polish | **released** | 0.24.1  | [Milestone_M74.md](milestones/v24/Milestone_M74.md)    |
+M73 Reachability · M74 Editor Polish · M75 Scope Toolbar Popovers · M76 Input Generators.
+Full registry in [`docs/v24/05_dev-plan.md`](v24/05_dev-plan.md).
 
-Source: intake 2026-10-01 (`design_plan.md` §7 row 1 + P1-3; M74: P1-6, P2-2).
+### v25 — planned
+
+*(no milestones yet)*
