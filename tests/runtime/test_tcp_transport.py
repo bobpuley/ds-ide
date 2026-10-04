@@ -1,13 +1,15 @@
-"""Integration test — TCP loopback IPC transport + session token
-(FR-WIN-IPC-1, FR-WIN-IPC-2).
+"""Integration test — TCP loopback IPC transport, session token and graceful
+shutdown message (FR-WIN-IPC-1, FR-WIN-IPC-2, FR-WIN-IPC-3).
 
 Runs on macOS (`effect_emu --tcp`) and, unchanged, as the Windows CI smoke
 test (`effect_emu.exe`, where TCP is the only transport): build a bare
 fixture, parse the `DAISY_EMU_SOCKET:127.0.0.1:<port>` announce, connect,
 and complete the protocolVersion + status handshake after presenting the
 per-session token (written to the emulator's stdin, as the extension does).
-Connections with a wrong or missing token are closed unanswered. On POSIX it
-also checks
+Connections with a wrong or missing token are closed unanswered. A `shutdown`
+message ends the emulator with status 0 and finalizes an active recording —
+the only graceful stop on Windows, where terminating a process skips signal
+handlers. On POSIX it also checks
 the Unix-socket transport still removes its socket file at shutdown.
 
 Bare libDaisy fixture (no DaisySP) so the test never skips.
@@ -27,7 +29,7 @@ from build import cmake_build, REPO_ROOT
 from client import EmulatorClient
 
 IS_WINDOWS = os.name == "nt"
-FIXTURE   = os.path.join(REPO_ROOT, "tests/runtime/fixtures/button_bypass.cpp")
+FIXTURE   = os.path.join(REPO_ROOT, "tests/runtime/fixtures/passthrough.cpp")
 BUILD_DIR = os.path.join(REPO_ROOT, ".ds-ide/build/test-tcp-transport")
 EXE_NAME  = "effect_emu.exe" if IS_WINDOWS else "effect_emu"
 ANNOUNCE  = re.compile(r"^DAISY_EMU_SOCKET:(127\.0\.0\.1:(\d+))\s*$")
@@ -133,6 +135,48 @@ def test_tcp_handshake(exe: str) -> None:
         stop(proc)
 
 
+def wait_for_audio(client: EmulatorClient) -> bool:
+    for _ in range(400):
+        if client.recv_one().get("type") == "scope":
+            return True
+    return False
+
+
+def test_shutdown_message_over_tcp(exe: str) -> None:
+    token = secrets.token_hex(32)
+    proc = spawn_tcp(exe, token)
+    rec_path = os.path.join(tempfile.gettempdir(), f"daisy_emu_shutdown_{os.getpid()}.dsrec")
+    try:
+        address = read_announce(proc)
+        client = EmulatorClient(address, timeout=5.0)
+        hello(client, token)
+        client.recv_type("protocolVersion")
+        client.send({"type": "config", "sampleRate": 48000, "blockSize": 48})
+        client.send({"type": "sine", "freq": 440.0, "amplitude": 0.5})
+        client.send({"type": "transport", "action": "start"})
+        client.send({"type": "recordStart", "path": rec_path})
+        check(wait_for_audio(client), "audio blocks flow (scope frames arrive) before shutdown")
+
+        client.send({"type": "shutdown"})
+        try:
+            rc = proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            rc = None
+        client.close()
+        check(rc == 0, f"a shutdown message exits with status 0 (rc={rc}) (FR-WIN-IPC-3)")
+
+        content = open(rec_path, "rb").read() if os.path.isfile(rec_path) else b""
+        check(len(content) > 32 and content[:6] == b"DSREC\x00",
+              "the active recording was written")
+        check(content[-1:] == b"\xff",
+              "the recording ends with the END marker — flushed on graceful shutdown (FR-EMU-8)")
+    finally:
+        if proc.poll() is None:
+            stop(proc)
+        if os.path.isfile(rec_path):
+            os.unlink(rec_path)
+
+
 def test_tcp_requires_a_token(exe: str) -> None:
     proc = spawn_tcp(exe, None)
     try:
@@ -157,6 +201,18 @@ def test_unix_socket_removed_at_shutdown(exe: str) -> None:
         rc = proc.wait(timeout=5)
         check(rc == 0, "unix: SIGTERM still exits 0")
         check(not os.path.exists(sock), "unix: socket file is removed at shutdown")
+
+        proc = subprocess.Popen([exe, sock], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        deadline = time.time() + 10.0
+        while not os.path.exists(sock) and time.time() < deadline:
+            time.sleep(0.05)
+        client = EmulatorClient(sock, timeout=5.0)
+        client.recv_type("protocolVersion")
+        client.send({"type": "shutdown"})
+        rc = proc.wait(timeout=5)
+        client.close()
+        check(rc == 0, "unix: a shutdown message also exits 0 (FR-WIN-IPC-3)")
+        check(not os.path.exists(sock), "unix: socket file is removed after a shutdown message")
     finally:
         if proc.poll() is None:
             stop(proc)
@@ -169,6 +225,7 @@ def main() -> int:
     exe = build()
     test_tcp_handshake(exe)
     test_tcp_requires_a_token(exe)
+    test_shutdown_message_over_tcp(exe)
     if not IS_WINDOWS:
         test_unix_socket_removed_at_shutdown(exe)
     print(f"\nResult: {'all passed' if failures == 0 else 'FAILURES'}")

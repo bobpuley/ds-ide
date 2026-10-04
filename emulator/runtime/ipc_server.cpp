@@ -384,6 +384,15 @@ void dispatch(const std::string& line) {
     std::string type = json_get(line, "type");
     if (type.empty()) return;
 
+    // FR-WIN-IPC-3: graceful stop on every platform (on Windows, terminating
+    // the process skips signal handlers). main.cpp's shutdown_watcher stops
+    // audio, finalizes the recorder, flushes telemetry and exits 0 — the
+    // same path SIGTERM takes on POSIX.
+    if (type == "shutdown") {
+        g_state.shutdown.store(true);
+        return;
+    }
+
     if (type == "config") {
         auto sr = json_get(line, "sampleRate");
         auto bs = json_get(line, "blockSize");

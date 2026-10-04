@@ -84,6 +84,20 @@ describe('IpcClient', () => {
     expect(socketStub.connect).not.toHaveBeenCalled();
   });
 
+  it('sendAndClose writes the message then half-closes, so the write is not discarded (FR-WIN-IPC-3)', async () => {
+    const end = vi.fn();
+    (socketStub as unknown as Record<string, unknown>)['end'] = end;
+    const client = new IpcClient();
+    const promise = client.connect('/tmp/test.sock');
+    socketStub.emit('connect');
+    await promise;
+    client.sendAndClose({ type: 'shutdown' });
+    expect(socketStub.write).toHaveBeenLastCalledWith('{"type":"shutdown"}\n');
+    expect(end).toHaveBeenCalledOnce();
+    expect(socketStub.destroy).not.toHaveBeenCalled();
+    expect(client.connected).toBe(false);
+  });
+
   it('names the TCP address in a connect timeout (FR-WIN-IPC-1)', async () => {
     vi.useFakeTimers();
     try {

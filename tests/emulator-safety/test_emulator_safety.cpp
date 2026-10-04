@@ -220,6 +220,22 @@ static void test_session_hello_check() {
           "an empty expected token never authenticates");
 }
 
+// ---- FR-WIN-IPC-3: graceful shutdown message --------------------------------
+
+static void test_shutdown_message_requests_shutdown() {
+    std::printf("--- FR-WIN-IPC-3: shutdown message ---\n");
+    daisy_emu::g_state.shutdown.store(false);
+    daisy_emu::dispatch("{\"type\":\"shutdown\"}");
+    CHECK(daisy_emu::g_state.shutdown.load(),
+          "a shutdown message sets g_state.shutdown (the single graceful-exit path)");
+    daisy_emu::g_state.shutdown.store(false);
+}
+
+static void test_protocol_version_bumped_for_windows_transport() {
+    CHECK(daisy_emu::kProtocolVersion == 2,
+          "kProtocolVersion is 2 (shutdown message, TCP announce, session hello)");
+}
+
 static void test_spsc_queue_basic() {
     std::printf("--- AC-39: SpscIpcQueue basic ---\n");
 
@@ -1795,6 +1811,8 @@ int main() {
     test_scope_block_queue_fifo_order_across_slots();
     test_scope_block_queue_carries_config_generation_tag();
     test_session_hello_check();
+    test_shutdown_message_requests_shutdown();
+    test_protocol_version_bumped_for_windows_transport();
 
     std::printf("\nResult: %s\n", failures == 0 ? "all passed" : "FAILURES");
     return failures == 0 ? 0 : 1;

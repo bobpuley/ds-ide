@@ -8,7 +8,9 @@ namespace daisy_emu {
 // connection (see run_ipc_server()). Bump whenever the wire protocol changes
 // incompatibly — keep in sync with src/ipc/protocol-version.ts's
 // PROTOCOL_VERSION on the extension side.
-constexpr int kProtocolVersion = 1;
+// v2 (FR-WIN-IPC-1..3): TCP announce "127.0.0.1:<port>", session hello on
+// TCP, and the host-to-emulator "shutdown" message.
+constexpr int kProtocolVersion = 2;
 
 class IpcListener;
 

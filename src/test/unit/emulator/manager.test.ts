@@ -4,7 +4,7 @@ import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { EmulatorManager, workspaceRuntimeDir, killStalePid, sweepStaleSockets } from '../../../emulator/manager';
+import { EmulatorManager, workspaceRuntimeDir, killStalePid, sweepStaleSockets, clearPidIfOwned, SHUTDOWN_GRACE_MS } from '../../../emulator/manager';
 import { IpcClient } from '../../../emulator/ipc-client';
 import { PROTOCOL_VERSION } from '../../../ipc/protocol-version';
 
@@ -99,6 +99,7 @@ function makeIpcClient() {
     connect: ReturnType<typeof vi.fn>;
     send: ReturnType<typeof vi.fn>;
     disconnect: ReturnType<typeof vi.fn>;
+    sendAndClose: ReturnType<typeof vi.fn>;
     on: ReturnType<typeof vi.fn>;
     connected: boolean;
   };
@@ -117,6 +118,7 @@ function makeIpcClient() {
   }) as ReturnType<typeof vi.fn>;
   client.send       = vi.fn();
   client.disconnect = vi.fn(() => { client.connected = false; }) as ReturnType<typeof vi.fn>;
+  client.sendAndClose = vi.fn(() => { client.connected = false; }) as ReturnType<typeof vi.fn>;
   return client;
 }
 
@@ -142,6 +144,9 @@ describe('EmulatorManager', () => {
     }) as ReturnType<typeof vi.fn>;
 
     manager = new EmulatorManager({
+      // The Unix-socket fixtures in this file assume the macOS transport on any
+      // host, including the Windows CI runner (FR-WIN-IPC-1).
+      platform: 'darwin',
       spawn: spawnMock as unknown as typeof cp.spawn,
       ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
       mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
@@ -191,6 +196,7 @@ describe('EmulatorManager', () => {
     it('rejects when cmake exits non-zero', async () => {
       spawnMock = vi.fn(() => makeCmakeProcess(1)) as ReturnType<typeof vi.fn>;
       const mgr = new EmulatorManager({
+        platform: 'darwin',
         spawn: spawnMock as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
@@ -382,6 +388,7 @@ describe('EmulatorManager', () => {
     function buildManager(readFileImpl: (...args: unknown[]) => Promise<string>) {
       rmMock = vi.fn().mockResolvedValue(undefined);
       return new EmulatorManager({
+        platform: 'darwin',
         spawn: spawnMock as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
@@ -1040,9 +1047,10 @@ describe('EmulatorManager', () => {
 
       // Simulate the process staying alive (don't re-emit close)
       manager.dispose();
-      expect(ipcClientStub.disconnect).toHaveBeenCalledOnce();
-      // childProcess may already be null if close was emitted; test that disconnect was called
-      expect(ipcClientStub.disconnect).toHaveBeenCalled();
+      // FR-WIN-IPC-3: a live IPC link is closed by the shutdown message
+      // (sendAndClose) rather than an abrupt disconnect().
+      expect(ipcClientStub.sendAndClose).toHaveBeenCalledOnce();
+      expect(ipcClientStub.sendAndClose).toHaveBeenCalledWith({ type: 'shutdown' });
     });
   });
 
@@ -1087,12 +1095,15 @@ describe('EmulatorManager', () => {
       vi.restoreAllMocks();
     });
 
+    // FR-WIN-IPC-3: with a live IPC link the shutdown message goes first (see
+    // below); these cover the direct escalation used when there is none.
     it('sends SIGTERM only when the child is already gone by the first poll', async () => {
       await manager.build(
         { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
         () => undefined,
       );
       await manager.deploy(() => undefined);
+      ipcClientStub.connected = false;
 
       const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => {
         throw Object.assign(new Error('ESRCH'), { code: 'ESRCH' });
@@ -1110,6 +1121,7 @@ describe('EmulatorManager', () => {
         () => undefined,
       );
       await manager.deploy(() => undefined);
+      ipcClientStub.connected = false;
 
       const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
 
@@ -1119,6 +1131,84 @@ describe('EmulatorManager', () => {
 
       expect(killSpy).toHaveBeenCalledWith(12345, 'SIGTERM');
       expect(killSpy).toHaveBeenCalledWith(12345, 'SIGKILL');
+    });
+  });
+
+  describe('graceful shutdown message (FR-WIN-IPC-3)', () => {
+    const opts = { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' };
+    let child: ReturnType<typeof makeChildProcess>;
+
+    beforeEach(async () => {
+      spawnMock.mockImplementation((cmd: string) => {
+        if (cmd === 'cmake') return makeCmakeProcess(0);
+        child = makeChildProcess(0, '/tmp/daisy_emu_test.sock');
+        return child;
+      });
+      await manager.build(opts, () => undefined);
+      await manager.deploy(() => undefined);
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    });
+
+    it('sends shutdown over IPC first and does not signal a child that exits within the grace period', async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
+      manager.stop();
+      expect(ipcClientStub.sendAndClose).toHaveBeenCalledWith({ type: 'shutdown' });
+      expect(killSpy).not.toHaveBeenCalled();
+      child.emit('exit', 0, null);
+      await vi.advanceTimersByTimeAsync(SHUTDOWN_GRACE_MS + 1_000);
+      expect(killSpy).not.toHaveBeenCalled();
+    });
+
+    it('falls back to terminating the process when it is still alive after the grace period', async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
+      manager.stop();
+      await vi.advanceTimersByTimeAsync(SHUTDOWN_GRACE_MS - 1);
+      expect(killSpy).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(killSpy).toHaveBeenCalledWith(12345, 'SIGTERM');
+      await vi.advanceTimersByTimeAsync(500);
+      expect(killSpy).toHaveBeenCalledWith(12345, 'SIGKILL');
+    });
+
+    it('dispose() also sends shutdown first', () => {
+      vi.spyOn(process, 'kill').mockReturnValue(true);
+      manager.dispose();
+      expect(ipcClientStub.sendAndClose).toHaveBeenCalledWith({ type: 'shutdown' });
+    });
+
+    it('a debugger-attached (immediate) stop skips the message and kills at once — a paused process cannot read it', () => {
+      const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
+      manager.stop({ immediate: true });
+      expect(ipcClientStub.sendAndClose).not.toHaveBeenCalled();
+      expect(killSpy).toHaveBeenCalledWith(12345, 'SIGKILL');
+    });
+
+    it('without a live IPC link, escalates immediately as before', () => {
+      const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
+      ipcClientStub.connected = false;
+      manager.stop();
+      expect(ipcClientStub.sendAndClose).not.toHaveBeenCalled();
+      expect(killSpy).toHaveBeenCalledWith(12345, 'SIGTERM');
+    });
+  });
+
+  describe('protocol version 2 (FR-WIN-IPC-3)', () => {
+    it('is 2: the shutdown message, TCP announce and session hello changed the wire protocol', () => {
+      expect(PROTOCOL_VERSION).toBe(2);
+    });
+
+    it('an old (v1) emulator fails with the existing clear mismatch error', async () => {
+      ipcClientStub.connect = vi.fn(() => {
+        ipcClientStub.emit('message', { type: 'protocolVersion', version: 1 });
+        return Promise.resolve();
+      }) as ReturnType<typeof vi.fn>;
+      await manager.build({ projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' }, () => undefined);
+      await expect(manager.deploy(() => undefined)).rejects.toThrow(/protocol version mismatch/i);
     });
   });
 
@@ -1220,6 +1310,7 @@ describe('EmulatorManager', () => {
         return proc;
       });
       const failingManager = new EmulatorManager({
+        platform: 'darwin',
         spawn: failingSpawn as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
@@ -1268,6 +1359,7 @@ describe('EmulatorManager', () => {
         return makeChildProcess(0, '/tmp/daisy_emu_test.sock');
       });
       const flakyManager = new EmulatorManager({
+        platform: 'darwin',
         spawn: flakySpawn as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
@@ -1305,6 +1397,28 @@ describe('EmulatorManager', () => {
       const dir = workspaceRuntimeDir('/proj/.ds-ide/build');
       expect(path.dirname(dir)).toBe(os.tmpdir());
       expect(path.basename(dir)).toMatch(/^ds-ide-[0-9a-f]+$/);
+    });
+  });
+
+  describe('clearPidIfOwned() (FR-WIN-IPC-3)', () => {
+    let tmpDir: string;
+    beforeEach(async () => { tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ds-ide-pidtest-')); });
+    afterEach(async () => { await fs.promises.rm(tmpDir, { recursive: true, force: true }); });
+
+    it('removes the pid file when it still records this child', async () => {
+      await fs.promises.writeFile(path.join(tmpDir, 'emu.pid'), '222');
+      await clearPidIfOwned(tmpDir, 222);
+      await expect(fs.promises.access(path.join(tmpDir, 'emu.pid'))).rejects.toThrow();
+    });
+
+    it('leaves a pid file a newer emulator has already rewritten (old child exiting late after shutdown)', async () => {
+      await fs.promises.writeFile(path.join(tmpDir, 'emu.pid'), '333');
+      await clearPidIfOwned(tmpDir, 222);
+      expect(await fs.promises.readFile(path.join(tmpDir, 'emu.pid'), 'utf8')).toBe('333');
+    });
+
+    it('never rejects when there is no pid file', async () => {
+      await expect(clearPidIfOwned(tmpDir, 222)).resolves.toBeUndefined();
     });
   });
 
@@ -1475,7 +1589,9 @@ describe('EmulatorManager', () => {
 
       manager.stop();
       expect(manager.childPid).toBeUndefined();
-      expect(process.kill).toHaveBeenCalledWith(12345, 'SIGTERM');
+      // FR-WIN-IPC-3: the shutdown message goes first; SIGTERM is the
+      // fallback after SHUTDOWN_GRACE_MS (covered in its own describe).
+      expect(ipcClientStub.sendAndClose).toHaveBeenCalledWith({ type: 'shutdown' });
       lastChild!.emit('close', null);
 
       expect(onExit).toHaveBeenCalledWith({ pid: 12345, crashed: false });

@@ -15,6 +15,7 @@ export interface IIpcClient {
   connect(address: IpcAddress | string, timeoutMs?: number, sessionToken?: string): Promise<void>;
   send(msg: IpcMessage): void;
   disconnect(): void;
+  sendAndClose(msg: IpcMessage): void;
   on(event: 'message', listener: (msg: IpcMessage) => void): this;
   on(event: 'error', listener: (err: Error) => void): this;
   on(event: 'disconnect', listener: () => void): this;
@@ -102,6 +103,18 @@ export class IpcClient extends EventEmitter implements IIpcClient {
       return;
     }
     this.socket.write(JSON.stringify(msg) + '\n');
+  }
+
+  // FR-WIN-IPC-3: queue a final message and half-close, so the write is
+  // flushed before the socket closes (disconnect()'s destroy() can discard
+  // a write still buffered in userland). The client is unusable afterwards.
+  sendAndClose(msg: IpcMessage): void {
+    const sock = this.socket;
+    if (!sock || sock.destroyed) return;
+    this.socket = null;
+    this.partial = '';
+    sock.write(JSON.stringify(msg) + '\n');
+    sock.end();
   }
 
   disconnect(): void {

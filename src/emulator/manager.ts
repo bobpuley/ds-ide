@@ -16,6 +16,10 @@ const SOCKET_TIMEOUT_MS = 10_000;
 // stale emulator process (FR-EXT-2) or terminating the manager's own live
 // child (FR-EXT-13).
 const KILL_ESCALATION_MS = 200;
+// FR-WIN-IPC-3: how long a child gets to exit on its own after the IPC
+// shutdown message (audio stop, recorder flush, telemetry drain) before the
+// SIGTERM → SIGKILL escalation above (TerminateProcess on Windows).
+export const SHUTDOWN_GRACE_MS = 2_000;
 
 // SIGTERM first, escalating to SIGKILL only if `pid` is still alive after a
 // short grace period. Never throws — safe to call fire-and-forget.
@@ -110,6 +114,29 @@ async function writePid(buildDir: string, pid: number): Promise<void> {
 
 async function clearPid(buildDir: string): Promise<void> {
   try { await fs.promises.unlink(pidFilePath(buildDir)); } catch { /* ignore */ }
+}
+
+// FR-WIN-IPC-3: an emulator stopped via the shutdown message can exit after a
+// redeploy has already written the next emulator's PID — only clear the file
+// while it still records `pid`. Never rejects.
+export async function clearPidIfOwned(buildDir: string, pid: number): Promise<void> {
+  try {
+    const recorded = (await fs.promises.readFile(pidFilePath(buildDir), 'utf8')).trim();
+    if (recorded === String(pid)) await fs.promises.unlink(pidFilePath(buildDir));
+  } catch { /* no pid file, or already gone */ }
+}
+
+// Waits for a child that was sent the IPC shutdown message; escalates
+// (SIGTERM → SIGKILL, TerminateProcess on Windows) only if it is still
+// running after SHUTDOWN_GRACE_MS.
+async function terminateUnlessExited(child: cp.ChildProcess, pid: number): Promise<void> {
+  const exited = await new Promise<boolean>((resolve) => {
+    if (child.exitCode != null || child.signalCode != null) return resolve(true);
+    const timer = setTimeout(() => { child.off('exit', onExit); resolve(false); }, SHUTDOWN_GRACE_MS);
+    const onExit = (): void => { clearTimeout(timer); resolve(true); };
+    child.once('exit', onExit);
+  });
+  if (!exited) await escalateKill(pid);
 }
 
 export interface BuildOptions {
@@ -333,7 +360,7 @@ export class EmulatorManager extends EventEmitter {
             child.stderr?.on('data', (data: Buffer) => onOutput(data.toString('utf8').trim()));
             child.on('error', onError);
             child.on('close', (code) => {
-              void clearPid(this.buildDir);
+              if (child.pid !== undefined) void clearPidIfOwned(buildDir, child.pid);
               if (!resolved) {
                 resolved = true;
                 clearTimeout(timeout);
@@ -646,24 +673,40 @@ export class EmulatorManager extends EventEmitter {
 
   private killExisting(immediate = false): void {
     this.intentionalDisconnect = true;  // suppress the subsequent disconnect event
+    const client = this.ipcClient;
+    this.ipcClient = null;
     if (this.childProcess) {
-      const pid = this.childProcess.pid;
-      this.stoppedChildren.add(this.childProcess);
+      const child = this.childProcess;
+      const pid = child.pid;
+      this.stoppedChildren.add(child);
       this.childProcess = null;
+      if (pid && !immediate && client?.connected) {
+        // FR-WIN-IPC-3: ask the emulator to exit on its own first (on
+        // Windows, killing it skips the recorder flush entirely); terminate
+        // only if it is still running after the grace period. An `immediate`
+        // stop skips this — a debugger-paused process can't read the message.
+        client.sendAndClose({ type: 'shutdown' });
+        void terminateUnlessExited(child, pid);
+        // The pid file stays until the child's own 'close' (clearPidIfOwned):
+        // if the extension host dies mid-grace, the next session can still
+        // reclaim a wedged emulator.
+        return this.finishKill({ keepPid: true });
+      }
       // SIGTERM → wait KILL_ESCALATION_MS → SIGKILL, matching killStalePid's
       // escalation so a child that ignores/misses SIGTERM (e.g. blocked in a
       // native audio callback) is still force-terminated (FR-EXT-13).
       if (pid) void escalateKill(pid, immediate);
     }
-    if (this.ipcClient) {
-      this.ipcClient.disconnect();
-      this.ipcClient = null;
-    }
+    client?.disconnect();
+    this.finishKill();
+  }
+
+  private finishKill(opts: { keepPid?: boolean } = {}): void {
     if (this.socketPath) {
       void fs.promises.unlink(this.socketPath).catch(() => { /* ignore if already gone */ });
       this.socketPath = null;
     }
-    if (this.buildDir) void clearPid(this.buildDir);
+    if (this.buildDir && !opts.keepPid) void clearPid(this.buildDir);
   }
 
   // FR-PKG-2: <project>/.ds-ide/build persists indefinitely while emulatorSrc
