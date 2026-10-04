@@ -1,0 +1,25 @@
+# FR-WIN-BLD-1: run the TypeScript unit tests on Windows. Unit tests stub fs
+# and child_process, so a green macOS run says nothing about Windows paths.
+name: windows-ci
+
+on:
+  push:
+    branches: [feat/windows-support]
+  pull_request:
+    branches: [feat/windows-support]
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      # --ignore-scripts: postinstall rebuilds the midi native addon via a
+      # macOS-only Bash script (ported in M83). The midi shape test skips
+      # explicitly when the binding is absent off macOS.
+      - run: npm ci --ignore-scripts
+      - run: npm test
