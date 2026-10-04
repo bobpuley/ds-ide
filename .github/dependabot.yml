@@ -4,6 +4,16 @@ updates:
     directory: /
     schedule: { interval: weekly }
     open-pull-requests-limit: 5
+    groups:
+      npm-dev-deps:
+        dependency-type: development
+        update-types: [minor, patch]
+      npm-prod-deps:
+        dependency-type: production
+        update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
+    groups:
+      github-actions:
+        patterns: ["*"]
