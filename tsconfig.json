@@ -11,6 +11,7 @@
     "noImplicitOverride": true,
     "noPropertyAccessFromIndexSignature": true,
     "skipLibCheck": true,
+    "types": ["node", "mocha"],
     "incremental": true,
     "tsBuildInfoFile": "./dist/.tsbuildinfo"
   },
