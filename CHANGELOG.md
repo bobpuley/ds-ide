@@ -3,6 +3,17 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.25.0-win.1 — 2026-10-04
+
+**Windows build foundations** *(FR-WIN-BLD-1 to FR-WIN-BLD-5, M77 — pre-release on `feat/windows-support`)*
+
+- **FR-WIN-BLD-1** — New `windows-ci` GitHub Actions workflow runs the TypeScript unit tests (`vitest`) on `windows-latest` for pushes/PRs to `feat/windows-support`. The `b86d7bc` Windows test fixes were already in via #1; the vitest `vscode` alias now uses `fileURLToPath`. The only Windows skip is the explicit midi native-addon shape check.
+- **FR-WIN-BLD-2** — `wav_reader`, `session_player`, `session_recorder` and `fatfs_host` no longer include POSIX-only headers. Raw-fd I/O goes through a new `platform_file` shim (identical POSIX calls on macOS, including mode `0644`; `_wopen`/`_O_BINARY`/`_lseeki64` on Windows); file size and directory creation use `std::filesystem`.
+- **FR-WIN-BLD-3** — `SIGPIPE` handling in `main.cpp` is compiled only off Windows; SIGTERM/SIGINT shutdown is unchanged.
+- **FR-WIN-BLD-4** — `emulator/CMakeLists.txt` splits sources and libraries per platform: `ipc_server.cpp` is excluded on Windows until M78, Winsock (`ws2_32`) is linked on Windows, `libm` only off Windows, TSan is rejected on Windows and ASan there requires clang. CI configures with clang/MinGW + Ninja and builds every runtime/shim object.
+- **FR-WIN-BLD-5** — The extension builds with `cmake --build <dir> -j <N>`, pins `-G Ninja` on Windows, and runs `effect_emu.exe` on Windows (with a multi-config `Debug/` fallback).
+- Test fix: the `emulator-safety` runner now links `input_generators.cpp` (it failed to link since M76).
+
 ## 0.24.3 — 2026-10-03
 
 **Input generators** *(FR-GEN-1 to FR-GEN-5, M76)*
