@@ -53,4 +53,19 @@ describe('Windows emulator compile check (FR-WIN-BLD-2..4)', () => {
   it('compiles emulator/runtime/main.cpp for Windows (FR-WIN-BLD-3)', () => {
     expect(yml).toContain('emulator/runtime/main.cpp');
   });
+
+  it('configures the emulator CMake project with Ninja and a tracked effect fixture (FR-WIN-BLD-4)', () => {
+    expect(yml).toMatch(/mingw-w64-clang-x86_64-cmake/);
+    expect(yml).toMatch(/mingw-w64-clang-x86_64-ninja/);
+    expect(yml).toMatch(/cmake -S emulator -B [^\s]+ -G Ninja\b/);
+    expect(yml).toMatch(/-DEFFECT_SRC="\$\(cygpath -m "\$PWD"\)\/tests\/runtime\/fixtures\/passthrough\.cpp"/);
+  });
+
+  it('builds every runtime/shim object and the effect object, but not the effect_emu link (M78) (FR-WIN-BLD-4)', () => {
+    expect(yml).toMatch(/cmake --build [^\s]+ --target runtime_shim_obj effect_obj/);
+  });
+
+  it('asserts TSan configuration is rejected on Windows (FR-WIN-BLD-4)', () => {
+    expect(yml).toMatch(/-DTSAN=ON/);
+  });
 });
