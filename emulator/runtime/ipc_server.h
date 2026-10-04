@@ -1,4 +1,5 @@
 #pragma once
+#include <memory>
 #include <string>
 
 namespace daisy_emu {
@@ -9,10 +10,14 @@ namespace daisy_emu {
 // PROTOCOL_VERSION on the extension side.
 constexpr int kProtocolVersion = 1;
 
-// Bind a UNIX domain socket at socket_path, print
-// "DAISY_EMU_SOCKET:<path>" to stdout when ready, then accept and serve
-// one client at a time until g_state.shutdown is set.
-void run_ipc_server(const char* socket_path);
+class IpcListener;
+
+// Print "DAISY_EMU_SOCKET:<listener->address()>" to stdout (a socket path or
+// "127.0.0.1:<port>", FR-WIN-IPC-1), then accept and serve one client at a
+// time until g_state.shutdown is set. Takes ownership and destroys the
+// listener before returning (closing it and removing a Unix socket file):
+// the process ends with std::_Exit, so no destructor would run later.
+void run_ipc_server(std::unique_ptr<IpcListener> listener);
 
 // Exposed (non-static) for unit testing (FR-EMU-6) — otherwise only used
 // internally by ipc_server.cpp's message dispatch.

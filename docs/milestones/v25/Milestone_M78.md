@@ -1,7 +1,7 @@
 # M78 — IPC Transport & Process Lifecycle
 
 **Version:** 0.25.0-win.2
-**Status:** planned
+**Status:** in progress
 **Source:** intake session, 2026-10-04 (`multiplatform_plan.md`; 01_input-ideas.md). Branch `feat/m78-ipc-transport-lifecycle` is created from `feat/windows-support` and merged back into `feat/windows-support` at close (never `main`) — FR-WIN-GIT-1
 
 ## Goal

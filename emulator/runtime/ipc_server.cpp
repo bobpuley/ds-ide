@@ -4,10 +4,7 @@
 #include "session_recorder.h"
 #include "session_player.h"
 #include "input_generators.h"
-#include <sys/select.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <unistd.h>
+#include "ipc_transport.h"
 #include <cctype>
 #include <cerrno>
 #include <chrono>
@@ -756,75 +753,35 @@ void dispatch(const std::string& line) {
 // ---- Helper: send a line to the active client (must hold send_mutex) --------
 // Returns false on send failure (disconnect or EPIPE). AC-45.
 
-static bool send_line(int fd, const std::string& msg) {
+static bool send_line(IpcConnection& conn, const std::string& msg) {
     std::string line = msg + '\n';
-    ssize_t r = ::send(fd, line.c_str(), line.size(), 0);
-    return r > 0;
+    return conn.send(line.c_str(), line.size()) > 0;
 }
 
 // ---- Server loop ------------------------------------------------------------
 
-void run_ipc_server(const char* socket_path) {
-    ::unlink(socket_path);
-
-    int server_fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
-    if (server_fd < 0) { std::perror("[daisy-emu] socket"); return; }
-
-    // SO_NOSIGPIPE: prevent SIGPIPE when writing to a disconnected client (macOS)
-#ifdef SO_NOSIGPIPE
-    int opt = 1;
-    ::setsockopt(server_fd, SOL_SOCKET, SO_NOSIGPIPE, &opt, sizeof(opt));
-#endif
-
-    // Reject paths that would be silently truncated by strncpy (FR-QA-6).
-    if (std::strlen(socket_path) >= sizeof(sockaddr_un::sun_path)) {
-        std::fprintf(stderr, "[daisy-emu] socket path too long (max %zu bytes): %s\n",
-                     sizeof(sockaddr_un::sun_path) - 1, socket_path);
-        ::close(server_fd);
-        return;
-    }
-
-    struct sockaddr_un addr{};
-    addr.sun_family = AF_UNIX;
-    std::strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
-
-    if (::bind(server_fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
-        std::perror("[daisy-emu] bind");
-        ::close(server_fd);
-        return;
-    }
-    ::listen(server_fd, 1);
-
-    std::printf("DAISY_EMU_SOCKET:%s\n", socket_path);
+void run_ipc_server(std::unique_ptr<IpcListener> listener) {
+    std::printf("DAISY_EMU_SOCKET:%s\n", listener->address().c_str());
     std::fflush(stdout);
 
     while (!g_state.shutdown.load()) {
         // Wait up to 100 ms for an incoming connection so we can check shutdown
-        struct timeval tv{0, 100000};
-        fd_set rfds;
-        FD_ZERO(&rfds);
-        FD_SET(server_fd, &rfds);
-        if (::select(server_fd + 1, &rfds, nullptr, nullptr, &tv) <= 0) continue;
+        if (listener->waitAcceptable(100) <= 0) continue;
 
-        int client_fd = ::accept(server_fd, nullptr, nullptr);
-        if (client_fd < 0) continue;
-
-#ifdef SO_NOSIGPIPE
-        int copt = 1;
-        ::setsockopt(client_fd, SOL_SOCKET, SO_NOSIGPIPE, &copt, sizeof(copt));
-#endif
+        std::shared_ptr<IpcConnection> conn = listener->accept();
+        if (!conn) continue;
 
         // Register the IPC send function for this client.
-        // On send failure (EPIPE / disconnect) close the fd (AC-45). send_ipc is
-        // cleared below when the read loop exits after the fd is closed.
+        // On send failure (EPIPE / disconnect) mark the client dead (AC-45).
+        // The lambda shares ownership of the connection, so the socket is
+        // closed only once send_ipc is cleared below and this loop drops it.
         auto client_dead = std::make_shared<std::atomic<bool>>(false);
         {
             std::lock_guard<std::mutex> lk(g_state.send_mutex);
-            g_state.send_ipc = [client_fd, client_dead](std::string msg) {
+            g_state.send_ipc = [conn, client_dead](std::string msg) {
                 if (client_dead->load(std::memory_order_relaxed)) return;
                 std::string line = msg + '\n';
-                ssize_t r = ::send(client_fd, line.c_str(), line.size(), 0);
-                if (r <= 0) {
+                if (conn->send(line.c_str(), line.size()) <= 0) {
                     client_dead->store(true, std::memory_order_relaxed);
                 }
             };
@@ -839,31 +796,27 @@ void run_ipc_server(const char* socket_path) {
             char vbuf[64];
             std::snprintf(vbuf, sizeof(vbuf),
                 "{\"type\":\"protocolVersion\",\"version\":%d}", kProtocolVersion);
-            send_line(client_fd, vbuf);
+            send_line(*conn, vbuf);
         }
 
         // Send initial status so the client knows the runtime is alive
         {
             std::lock_guard<std::mutex> lk(g_state.send_mutex);
-            send_line(client_fd, build_status_json());
+            send_line(*conn, build_status_json());
         }
 
         // Read messages from client until disconnect, or until shutdown AND
         // the audio drain thread has finished flushing pending telemetry
-        // (FR-EMU-11) — closing client_fd/nulling send_ipc the instant
+        // (FR-EMU-11) — closing the connection/nulling send_ipc the instant
         // `shutdown` flips (rather than waiting for telemetry_drained too)
         // raced ahead of and could cut off that flush before it reached the
         // client.
         char raw[4096];
         std::string partial;
         while (!g_state.telemetry_drained.load()) {
-            struct timeval tv2{0, 50000};
-            fd_set rfds2;
-            FD_ZERO(&rfds2);
-            FD_SET(client_fd, &rfds2);
-            if (::select(client_fd + 1, &rfds2, nullptr, nullptr, &tv2) <= 0) continue;
+            if (conn->waitReadable(50) <= 0) continue;
 
-            ssize_t n = ::recv(client_fd, raw, sizeof(raw) - 1, 0);
+            const long long n = conn->recv(raw, sizeof(raw) - 1);
             if (n <= 0) break;  // disconnected
             raw[n] = '\0';
             partial.append(raw, static_cast<size_t>(n));
@@ -882,16 +835,15 @@ void run_ipc_server(const char* socket_path) {
             }
         }
 
-        // Client disconnected — clear the send function
+        // Client disconnected — clear the send function (dropping its share
+        // of the connection); `conn` going out of scope closes the socket.
         {
             std::lock_guard<std::mutex> lk(g_state.send_mutex);
             g_state.send_ipc = nullptr;
         }
-        ::close(client_fd);
     }
 
-    ::close(server_fd);
-    ::unlink(socket_path);
+    listener.reset();
 }
 
 }  // namespace daisy_emu

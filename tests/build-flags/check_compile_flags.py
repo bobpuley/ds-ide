@@ -11,9 +11,10 @@ and inspects the generated compile_commands.json to verify:
   - every runtime/shim .cpp in the tree has a compile entry (FR-WIN-BLD-4:
     the source list here is derived from the tree, so it always matches
     the CMake list on this platform)
-  - the CMake platform split: ipc_server.cpp is excluded on Windows until
-    M78, Winsock is linked on Windows, libm only off Windows, TSan is
-    rejected on Windows (FR-WIN-BLD-4)
+  - the CMake platform split: ipc_server.cpp and the TCP transport are
+    common, the Unix-socket transport is built only off Windows
+    (FR-WIN-IPC-1), Winsock is linked on Windows, libm only off Windows,
+    TSan is rejected on Windows (FR-WIN-BLD-4)
 
 This is a property of the generated build graph, not runtime behavior, so a
 compile-commands inspection is the direct way to test it (rather than timing
@@ -63,10 +64,13 @@ def check_platform_split():
     with open(CMAKELISTS) as f:
         cm = f.read()
     common = re.search(r"set\(RUNTIME_SRC\b(.*?)\)", cm, re.S)
-    check(common is not None and "ipc_server.cpp" not in common.group(1),
-          "ipc_server.cpp is not in the platform-independent RUNTIME_SRC list")
-    check(re.search(r"if\(NOT WIN32\)\s*\n\s*list\(APPEND RUNTIME_SRC\s+\"[^\"]*/runtime/ipc_server\.cpp\"\)", cm) is not None,
-          "ipc_server.cpp is appended only off Windows (ported in M78)")
+    for name in ("ipc_server.cpp", "ipc_transport_socket.cpp", "ipc_transport_tcp.cpp"):
+        check(common is not None and name in common.group(1),
+              f"{name} is in the platform-independent RUNTIME_SRC list (FR-WIN-IPC-1)")
+    check(common is not None and "ipc_transport_unix.cpp" not in common.group(1),
+          "ipc_transport_unix.cpp is not in the platform-independent RUNTIME_SRC list")
+    check(re.search(r"if\(NOT WIN32\)\s*\n\s*list\(APPEND RUNTIME_SRC\s+\"[^\"]*/runtime/ipc_transport_unix\.cpp\"\)", cm) is not None,
+          "the Unix-socket transport is appended only off Windows (FR-WIN-IPC-1)")
     check(re.search(r"if\(TSAN AND WIN32\)\s*\n\s*message\(FATAL_ERROR", cm) is not None,
           "TSan is rejected with a clear error on Windows")
     check(re.search(r"if\(WIN32\)[^\n]*\n(?:[^\n]*\n){0,4}?\s*target_link_libraries\(effect_emu PRIVATE[^)]*\bws2_32\b", cm) is not None,

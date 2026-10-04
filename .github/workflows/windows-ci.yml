@@ -24,10 +24,13 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm test
 
-  # FR-WIN-BLD-2..4: emulator sources compile under clang/MinGW. Compile-only
-  # until M78 ports ipc_server.cpp and effect_emu links.
+  # FR-WIN-BLD-2..4: emulator sources compile under clang/MinGW.
+  # FR-WIN-IPC-1: effect_emu.exe links and serves IPC over TCP loopback.
   emulator-compile:
     runs-on: windows-latest
+    env:
+      CMAKE_GENERATOR: Ninja
+      CXX: clang++
     defaults:
       run:
         shell: msys2 {0}
@@ -41,6 +44,7 @@ jobs:
             mingw-w64-clang-x86_64-clang
             mingw-w64-clang-x86_64-cmake
             mingw-w64-clang-x86_64-ninja
+            mingw-w64-clang-x86_64-python
       - name: Compile portable sources (FR-WIN-BLD-2, FR-WIN-BLD-3)
         run: |
           for src in \
@@ -59,8 +63,10 @@ jobs:
           cmake -S emulator -B build-win -G Ninja
           -DCMAKE_CXX_COMPILER=clang++
           -DEFFECT_SRC="$(cygpath -m "$PWD")/tests/runtime/fixtures/passthrough.cpp"
-      - name: Build runtime/shim and effect objects (effect_emu links in M78)
-        run: cmake --build build-win --target runtime_shim_obj effect_obj
+      - name: Build and link effect_emu (FR-WIN-IPC-1)
+        run: cmake --build build-win
+      - name: Smoke test — TCP transport handshake (FR-WIN-IPC-1)
+        run: python tests/runtime/test_tcp_transport.py
       - name: TSan is rejected on Windows
         run: |
           if cmake -S emulator -B build-tsan -G Ninja -DTSAN=ON \

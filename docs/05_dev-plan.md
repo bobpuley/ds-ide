@@ -213,7 +213,7 @@ Full registry in [`docs/v24/05_dev-plan.md`](v24/05_dev-plan.md).
 | ID  | Name                                                | Status      | Version        | File                                                |
 |-----|-----------------------------------------------------|-------------|----------------|-----------------------------------------------------|
 | M77 | Windows Build Foundations                           | **released** | 0.25.0-win.1   | [Milestone_M77.md](milestones/v25/Milestone_M77.md) |
-| M78 | IPC Transport & Process Lifecycle                   | **planned** | 0.25.0-win.2   | [Milestone_M78.md](milestones/v25/Milestone_M78.md) |
+| M78 | IPC Transport & Process Lifecycle                   | **in progress** | 0.25.0-win.2   | [Milestone_M78.md](milestones/v25/Milestone_M78.md) |
 | M79 | Audio Backend Abstraction                           | **planned** | 0.25.0-win.3   | [Milestone_M79.md](milestones/v25/Milestone_M79.md) |
 | M80 | Windows Audio Backend & Measurement Gate            | **planned** | 0.25.0-win.4   | [Milestone_M80.md](milestones/v25/Milestone_M80.md) |
 | M81 | Windows Toolchain, Debug & Flash Discovery          | **planned** | 0.25.0-win.5   | [Milestone_M81.md](milestones/v25/Milestone_M81.md) |

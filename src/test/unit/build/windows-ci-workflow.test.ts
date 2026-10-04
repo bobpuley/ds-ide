@@ -61,8 +61,15 @@ describe('Windows emulator compile check (FR-WIN-BLD-2..4)', () => {
     expect(yml).toMatch(/-DEFFECT_SRC="\$\(cygpath -m "\$PWD"\)\/tests\/runtime\/fixtures\/passthrough\.cpp"/);
   });
 
-  it('builds every runtime/shim object and the effect object, but not the effect_emu link (M78) (FR-WIN-BLD-4)', () => {
-    expect(yml).toMatch(/cmake --build [^\s]+ --target runtime_shim_obj effect_obj/);
+  it('builds and links the full effect_emu (FR-WIN-IPC-1)', () => {
+    expect(yml).toMatch(/run: cmake --build build-win\s*$/m);
+    expect(yml).not.toMatch(/--target runtime_shim_obj effect_obj/);
+  });
+
+  it('runs the TCP transport runtime test as the Windows smoke test (FR-WIN-IPC-1)', () => {
+    expect(yml).toMatch(/mingw-w64-clang-x86_64-python/);
+    expect(yml).toMatch(/CMAKE_GENERATOR:\s*Ninja/);
+    expect(yml).toMatch(/python tests\/runtime\/test_tcp_transport\.py/);
   });
 
   it('asserts TSan configuration is rejected on Windows (FR-WIN-BLD-4)', () => {
