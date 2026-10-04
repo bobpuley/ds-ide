@@ -24,7 +24,7 @@ TypeScript tests stub `fs` and `child_process`, so passing on macOS says nothing
 
 ---
 
-### [ ] refactor: remove POSIX-only includes from runtime and shim files (FR-WIN-BLD-2)
+### [x] refactor: remove POSIX-only includes from runtime and shim files (FR-WIN-BLD-2)
 
 `wav_reader.cpp`, `session_player.cpp`, `session_recorder.cpp` and `fatfs_host.cpp` include `<unistd.h>`, `<sys/stat.h>` and `<fcntl.h>` and use POSIX `mkdir(path, 0755)`/`open` flags.
 
