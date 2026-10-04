@@ -3,6 +3,16 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.25.0-win.2 — 2026-10-04
+
+**IPC transport & process lifecycle** *(FR-WIN-IPC-1 to FR-WIN-IPC-4, M78 — pre-release on `feat/windows-support`)*
+
+- **FR-WIN-IPC-1** — The emulator's IPC runs over a transport layer (`ipc_transport.h`): Unix domain socket on macOS (unchanged) and TCP loopback on `127.0.0.1` with an ephemeral port and `TCP_NODELAY` (Winsock on Windows; `effect_emu --tcp` on POSIX). The announce line carries a path or `127.0.0.1:<port>`; the extension parses it (`ipc-address.ts`, loopback only) and `IpcClient` connects either way. `effect_emu.exe` now links and serves IPC on Windows; the Windows CI runs a TCP smoke test against it.
+- **FR-WIN-IPC-2** — On TCP the extension generates a per-session token and passes it on the emulator's stdin (never the command line); the emulator closes any connection whose first line is not a valid `hello` within 2 s, before sending anything back.
+- **FR-WIN-IPC-3** — A host-to-emulator `shutdown` message stops audio, finalizes an active recording and exits 0 on every platform. Stop/dispose send it first and fall back to SIGTERM → SIGKILL (TerminateProcess on Windows) after 2 s; debugger-attached stops stay immediate. `PROTOCOL_VERSION` is now 2. A late-exiting emulator no longer clears a newer emulator's `emu.pid`.
+- **FR-WIN-IPC-4** — The stale-emulator check uses `ps` on macOS and `tasklist` on Windows, matches the executable name exactly and rejects garbled pid files. FR-WIN-IPC-4's wording was updated accordingly (macOS has no `ps`-free way to read a process name).
+- Test fixes: the OLED producer/consumer stress test no longer drops an uncounted frame (it failed ~1 run in 10); `manager.test.ts` Unix-socket fixtures pin `darwin` so they pass on the Windows runner.
+
 ## 0.25.0-win.1 — 2026-10-04
 
 **Windows build foundations** *(FR-WIN-BLD-1 to FR-WIN-BLD-5, M77 — pre-release on `feat/windows-support`)*
