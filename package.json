@@ -426,7 +426,7 @@
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^3.0.0",
-    "esbuild": "^0.21.0",
+    "esbuild": "^0.28.2",
     "tsx": "^4.23.1",
     "typescript": "^5.4.0",
     "vitest": "^1.5.0"
