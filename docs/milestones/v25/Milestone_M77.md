@@ -51,7 +51,7 @@ TypeScript tests stub `fs` and `child_process`, so passing on macOS says nothing
 
 ---
 
-### [ ] feat: split CMake sources and libraries per platform under clang/MinGW (FR-WIN-BLD-4)
+### [x] feat: split CMake sources and libraries per platform under clang/MinGW (FR-WIN-BLD-4)
 
 `core_audio_device.cpp` is listed unconditionally and CoreAudio/AudioToolbox are linked under `if(APPLE)` only; the flags are GCC/Clang-style and must keep working under clang/MinGW.
 
