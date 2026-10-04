@@ -38,7 +38,7 @@ TypeScript tests stub `fs` and `child_process`, so passing on macOS says nothing
 
 ---
 
-### [ ] fix: guard POSIX-only process setup in main.cpp (FR-WIN-BLD-3)
+### [x] fix: guard POSIX-only process setup in main.cpp (FR-WIN-BLD-3)
 
 `std::signal(SIGPIPE, SIG_IGN)` does not compile on Windows, where `SIGPIPE` is not defined.
 
