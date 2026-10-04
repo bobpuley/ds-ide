@@ -202,6 +202,71 @@ describe('EmulatorManager', () => {
     });
   });
 
+  describe('build invocation and binary path per platform (FR-WIN-BLD-5)', () => {
+    const opts = { projectRoot: '/proj', effectSrc: '/proj/effect.cpp', emulatorSrc: '/ext/emulator' };
+    const buildDir = path.join('/proj', '.ds-ide', 'build');
+    const jobs = String(Math.max(1, os.cpus().length));
+
+    function managerFor(platform: NodeJS.Platform, access?: (p: string) => Promise<void>) {
+      return new EmulatorManager({
+        spawn: spawnMock as unknown as typeof cp.spawn,
+        ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+        platform,
+        access: (access ?? (() => Promise.resolve())) as unknown as typeof fs.promises.access,
+      });
+    }
+
+    it('on macOS: configures with the default generator and builds with -j <N>', async () => {
+      await managerFor('darwin').build(opts, () => undefined);
+      const [configure, build] = spawnMock.mock.calls as [string, string[]][];
+      expect(configure![1]).toEqual(['-S', '/ext/emulator', '-B', buildDir, '-DEFFECT_SRC=/proj/effect.cpp']);
+      expect(build![1]).toEqual(['--build', buildDir, '-j', jobs]);
+    });
+
+    it('on Windows: pins the Ninja generator and builds with -j <N> (no "-- -jN")', async () => {
+      await managerFor('win32').build(opts, () => undefined);
+      const [configure, build] = spawnMock.mock.calls as [string, string[]][];
+      expect(configure![1]).toEqual(['-S', '/ext/emulator', '-B', buildDir, '-DEFFECT_SRC=/proj/effect.cpp', '-G', 'Ninja']);
+      expect(build![1]).toEqual(['--build', buildDir, '-j', jobs]);
+    });
+
+    it('on Windows: keeps DAISYSP_DIR before the generator flag', async () => {
+      await managerFor('win32').build({ ...opts, daisySpDir: '/proj/DaisySP/Source' }, () => undefined);
+      const configure = spawnMock.mock.calls[0]![1] as string[];
+      expect(configure.slice(-3)).toEqual(['-DDAISYSP_DIR=/proj/DaisySP/Source', '-G', 'Ninja']);
+    });
+
+    it('on macOS: spawns <build>/effect_emu', async () => {
+      const mgr = managerFor('darwin');
+      await mgr.build(opts, () => undefined);
+      await mgr.deploy(() => undefined);
+      expect(spawnMock.mock.calls[2]![0]).toBe(path.join(buildDir, 'effect_emu'));
+    });
+
+    it('on Windows: spawns <build>/effect_emu.exe', async () => {
+      const mgr = managerFor('win32');
+      await mgr.build(opts, () => undefined);
+      await mgr.deploy(() => undefined);
+      expect(spawnMock.mock.calls[2]![0]).toBe(path.join(buildDir, 'effect_emu.exe'));
+    });
+
+    it('falls back to a multi-config Debug/ output directory when the single-config binary is absent', async () => {
+      const single = path.join(buildDir, 'effect_emu.exe');
+      const mgr = managerFor('win32', (p) => (p === single ? Promise.reject(new Error('ENOENT')) : Promise.resolve()));
+      await mgr.build(opts, () => undefined);
+      await mgr.deploy(() => undefined);
+      expect(spawnMock.mock.calls[2]![0]).toBe(path.join(buildDir, 'Debug', 'effect_emu.exe'));
+    });
+
+    it('spawns the single-config path when neither location exists, so the error names the expected binary', async () => {
+      const mgr = managerFor('darwin', () => Promise.reject(new Error('ENOENT')));
+      await mgr.build(opts, () => undefined);
+      await mgr.deploy(() => undefined);
+      expect(spawnMock.mock.calls[2]![0]).toBe(path.join(buildDir, 'effect_emu'));
+    });
+  });
+
   describe('build() stale cache self-heal (FR-PKG-2)', () => {
     let rmMock: ReturnType<typeof vi.fn>;
 

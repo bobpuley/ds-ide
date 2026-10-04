@@ -109,6 +109,31 @@ export interface EmulatorManagerDeps {
   execFile?: typeof cp.execFile;
   readFile?: typeof fs.promises.readFile;
   rm?: typeof fs.promises.rm;
+  access?: typeof fs.promises.access;
+  platform?: NodeJS.Platform;
+}
+
+// FR-WIN-BLD-5: Ninja is pinned on Windows (no MSBuild; the toolchain is
+// clang/MinGW). Elsewhere CMake's default generator is kept as before.
+export function cmakeConfigureArgs(
+  opts: Pick<BuildOptions, 'emulatorSrc' | 'effectSrc' | 'daisySpDir'>,
+  buildDir: string,
+  platform: NodeJS.Platform,
+): string[] {
+  const args = ['-S', opts.emulatorSrc, '-B', buildDir, `-DEFFECT_SRC=${opts.effectSrc}`];
+  if (opts.daisySpDir) args.push(`-DDAISYSP_DIR=${opts.daisySpDir}`);
+  if (platform === 'win32') args.push('-G', 'Ninja');
+  return args;
+}
+
+// `cmake --build -j N` is generator-neutral; the old `-- -jN` passed the flag
+// straight to make/ninja and is invalid for other generators.
+export function cmakeBuildArgs(buildDir: string, jobs: number): string[] {
+  return ['--build', buildDir, '-j', String(Math.max(1, jobs))];
+}
+
+export function emulatorExecutableName(platform: NodeJS.Platform): string {
+  return platform === 'win32' ? 'effect_emu.exe' : 'effect_emu';
 }
 
 // FR-TRN-1: emitted once per emulator that became ready, when its process
@@ -142,6 +167,8 @@ export class EmulatorManager extends EventEmitter {
   private readonly execFile: typeof cp.execFile;
   private readonly readFile: typeof fs.promises.readFile;
   private readonly rm: typeof fs.promises.rm;
+  private readonly access: typeof fs.promises.access;
+  private readonly platform: NodeJS.Platform;
 
   constructor(deps: EmulatorManagerDeps = {}) {
     super();
@@ -151,6 +178,8 @@ export class EmulatorManager extends EventEmitter {
     this.execFile = deps.execFile ?? cp.execFile;
     this.readFile = deps.readFile ?? fs.promises.readFile;
     this.rm = deps.rm ?? fs.promises.rm;
+    this.access = deps.access ?? fs.promises.access;
+    this.platform = deps.platform ?? process.platform;
   }
 
   async build(opts: BuildOptions, onOutput: (line: string) => void, token?: CancellationToken): Promise<void> {
@@ -158,17 +187,23 @@ export class EmulatorManager extends EventEmitter {
     await this.healStaleCache(this.buildDir, opts.emulatorSrc);
     await this.mkdir(this.buildDir, { recursive: true });
 
-    const configureArgs = [
-      '-S', opts.emulatorSrc,
-      '-B', this.buildDir,
-      `-DEFFECT_SRC=${opts.effectSrc}`,
-    ];
-    if (opts.daisySpDir) {
-      configureArgs.push(`-DDAISYSP_DIR=${opts.daisySpDir}`);
-    }
+    await this.runProcess('cmake', cmakeConfigureArgs(opts, this.buildDir, this.platform), onOutput, token);
+    await this.runProcess('cmake', cmakeBuildArgs(this.buildDir, os.cpus().length), onOutput, token);
+  }
 
-    await this.runProcess('cmake', configureArgs, onOutput, token);
-    await this.runProcess('cmake', ['--build', this.buildDir, '--', `-j${os.cpus().length}`], onOutput, token);
+  // The single-config location (Makefiles/Ninja) first; a multi-config
+  // generator's default Debug/ subdirectory as a fallback. If neither exists
+  // the single-config path is returned so the spawn error names it.
+  private async resolveExecutable(buildDir: string): Promise<string> {
+    const name = emulatorExecutableName(this.platform);
+    const single = path.join(buildDir, name);
+    for (const candidate of [single, path.join(buildDir, 'Debug', name)]) {
+      try {
+        await this.access(candidate);
+        return candidate;
+      } catch { /* try the next location */ }
+    }
+    return single;
   }
 
   deploy(onOutput: (line: string) => void, token?: CancellationToken): Promise<void> {
@@ -178,7 +213,7 @@ export class EmulatorManager extends EventEmitter {
     // Prevent two simultaneous effect_emu processes: coalesce on the in-flight promise.
     if (this.deployLock) return this.deployLock;
 
-    const exePath = path.join(this.buildDir, 'effect_emu');
+    const buildDir = this.buildDir;
     // Socket lives under a per-workspace directory with a randomized filename
     // component, not a predictable global-/tmp path (FR-EXT-2).
     const runtimeDir = workspaceRuntimeDir(this.buildDir);
@@ -195,7 +230,9 @@ export class EmulatorManager extends EventEmitter {
       // and SIGTERM-first (FR-EXT-2).
       return killStalePid(this.buildDir, this.execFile)
         .catch(() => { /* ignore stale-pid errors */ })
-        .then(() => {
+        // Resolved before killExisting() so kill → spawn stays synchronous.
+        .then(() => this.resolveExecutable(buildDir))
+        .then((exePath) => {
           this.killExisting();
 
           const child = this.spawn(exePath, [socketPath], { stdio: ['ignore', 'pipe', 'pipe'] });

@@ -66,7 +66,7 @@ TypeScript tests stub `fs` and `child_process`, so passing on macOS says nothing
 
 ---
 
-### [ ] fix: build invocation and emulator binary path on Windows (FR-WIN-BLD-5)
+### [x] fix: build invocation and emulator binary path on Windows (FR-WIN-BLD-5)
 
 `manager.ts` runs `cmake --build <dir> -- -j<N>`, which is invalid for MSBuild, and looks for `effect_emu` without `.exe`.
 
