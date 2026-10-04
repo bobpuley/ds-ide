@@ -68,7 +68,7 @@ On Windows `process.kill(pid, 'SIGTERM')` is `TerminateProcess`: signal handlers
 
 ---
 
-### [ ] fix: cross-platform stale-process check (FR-WIN-IPC-4)
+### [x] fix: cross-platform stale-process check (FR-WIN-IPC-4)
 
 `isEffectEmuProcess()` shells out to `ps -p <pid> -o comm=`, which does not exist on Windows, and compares against `effect_emu` without `.exe`; a stale emulator would never be reclaimed.
 
