@@ -29,6 +29,6 @@ echo ""
 BIN="${BUILD_DIR}/test_switch3"
 "${CXX}" "${CXXFLAGS[@]}" -o "${BIN}" \
     "${TEST_SRC}" "${SHIM_SRC}/switch3.cpp" \
-    "${RUNTIME_DIR}/session_recorder.cpp" "${RUNTIME_DIR}/session_player.cpp" "${RUNTIME_DIR}/wav_reader.cpp"
+    "${RUNTIME_DIR}/session_recorder.cpp" "${RUNTIME_DIR}/platform_file.cpp" "${RUNTIME_DIR}/session_player.cpp" "${RUNTIME_DIR}/wav_reader.cpp"
 
 "${BIN}"

@@ -1,9 +1,9 @@
 #include "daisy/fatfs_host.h"
 
-#include <sys/stat.h>
-
 #include <cstring>
+#include <filesystem>
 #include <string>
+#include <system_error>
 
 namespace daisy {
 
@@ -11,10 +11,14 @@ namespace {
 
 constexpr const char* kSdRoot = "sdcard";
 
+// True when `path` is (now) a directory; false if it exists as something
+// else or cannot be created. Default permissions (FR-WIN-BLD-2: no POSIX
+// mode bits) — 0777 & ~umask, i.e. 0755 under the usual umask 022.
 bool ensure_dir(const char* path) {
-    struct stat st{};
-    if (::stat(path, &st) == 0) return S_ISDIR(st.st_mode);
-    return ::mkdir(path, 0755) == 0;
+    std::error_code ec;
+    if (std::filesystem::is_directory(path, ec)) return true;
+    if (std::filesystem::exists(path, ec)) return false;
+    return std::filesystem::create_directory(path, ec) && !ec;
 }
 
 // Rejects a path with a ".." segment — a legitimate SD-card-relative path

@@ -1,7 +1,7 @@
 # M77 — Windows Build Foundations
 
 **Version:** 0.25.0-win.1
-**Status:** planned
+**Status:** in progress
 **Source:** intake session, 2026-10-04 (`multiplatform_plan.md`; 01_input-ideas.md). Branch `feat/m77-windows-build-foundations` is created from `feat/windows-support` and merged back into `feat/windows-support` at close (never `main`) — FR-WIN-GIT-1
 
 ## Goal
@@ -10,7 +10,7 @@ The emulator and extension assume POSIX and macOS in places that stop them from 
 
 ## Sprint Tasks
 
-### [ ] chore: add Windows CI runner for TypeScript unit tests (FR-WIN-BLD-1)
+### [x] chore: add Windows CI runner for TypeScript unit tests (FR-WIN-BLD-1)
 
 TypeScript tests stub `fs` and `child_process`, so passing on macOS says nothing about Windows. The repository has no `.github/` directory today, so no CI exists yet; this task introduces the first workflow. The branch `chore/windows-compat` (`b86d7bc`, on `origin`) already contains Windows test fixes.
 
@@ -24,7 +24,7 @@ TypeScript tests stub `fs` and `child_process`, so passing on macOS says nothing
 
 ---
 
-### [ ] refactor: remove POSIX-only includes from runtime and shim files (FR-WIN-BLD-2)
+### [x] refactor: remove POSIX-only includes from runtime and shim files (FR-WIN-BLD-2)
 
 `wav_reader.cpp`, `session_player.cpp`, `session_recorder.cpp` and `fatfs_host.cpp` include `<unistd.h>`, `<sys/stat.h>` and `<fcntl.h>` and use POSIX `mkdir(path, 0755)`/`open` flags.
 
@@ -38,7 +38,7 @@ TypeScript tests stub `fs` and `child_process`, so passing on macOS says nothing
 
 ---
 
-### [ ] fix: guard POSIX-only process setup in main.cpp (FR-WIN-BLD-3)
+### [x] fix: guard POSIX-only process setup in main.cpp (FR-WIN-BLD-3)
 
 `std::signal(SIGPIPE, SIG_IGN)` does not compile on Windows, where `SIGPIPE` is not defined.
 
@@ -51,7 +51,7 @@ TypeScript tests stub `fs` and `child_process`, so passing on macOS says nothing
 
 ---
 
-### [ ] feat: split CMake sources and libraries per platform under clang/MinGW (FR-WIN-BLD-4)
+### [x] feat: split CMake sources and libraries per platform under clang/MinGW (FR-WIN-BLD-4)
 
 `core_audio_device.cpp` is listed unconditionally and CoreAudio/AudioToolbox are linked under `if(APPLE)` only; the flags are GCC/Clang-style and must keep working under clang/MinGW.
 
@@ -66,7 +66,7 @@ TypeScript tests stub `fs` and `child_process`, so passing on macOS says nothing
 
 ---
 
-### [ ] fix: build invocation and emulator binary path on Windows (FR-WIN-BLD-5)
+### [x] fix: build invocation and emulator binary path on Windows (FR-WIN-BLD-5)
 
 `manager.ts` runs `cmake --build <dir> -- -j<N>`, which is invalid for MSBuild, and looks for `effect_emu` without `.exe`.
 

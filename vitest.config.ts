@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
@@ -9,7 +10,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      vscode: new URL('./src/__mocks__/vscode.ts', import.meta.url).pathname,
+      // fileURLToPath, not URL.pathname: pathname is "/C:/..." on Windows.
+      vscode: fileURLToPath(new URL('./src/__mocks__/vscode.ts', import.meta.url)),
     },
   },
 });

@@ -30,8 +30,13 @@ extern "C" void handle_shutdown_signal(int /*sig*/) {
 }  // namespace
 
 int main(int argc, char* argv[]) {
+#ifndef _WIN32
     // Ignore SIGPIPE so writes to a disconnected socket return EPIPE, not crash.
+    // Windows has no SIGPIPE: a send() on a closed socket returns an error.
     std::signal(SIGPIPE, SIG_IGN);
+#endif
+    // SIGTERM/SIGINT exist in the Windows CRT too (SIGINT on Ctrl+C); the
+    // graceful cross-platform stop is the IPC shutdown message (FR-WIN-IPC-3).
     std::signal(SIGTERM, handle_shutdown_signal);
     std::signal(SIGINT, handle_shutdown_signal);
 

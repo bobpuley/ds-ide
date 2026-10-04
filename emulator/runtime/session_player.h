@@ -89,7 +89,7 @@ private:
     bool readBytes(void* dst, size_t n);
 
     // Pre-scan to count total blocks (for progress reporting). Reader-thread-only.
-    void countBlocks(long data_start_offset);
+    void countBlocks(long long data_start_offset);
 
     // Blocking decode of one AUDIO_BLOCK record (block_size_ frames in v1, the
     // record's own frame count in v2; stored in frames_out) plus any events

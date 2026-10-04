@@ -3,8 +3,8 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
-#include <sys/stat.h>
-#include <unistd.h>
+#include <filesystem>
+#include <system_error>
 
 namespace daisy_emu {
 
@@ -198,16 +198,19 @@ bool load_wav_file(const std::string& path, WavData& out, std::string& err) {
     std::FILE* f = std::fopen(path.c_str(), "rb");
     if (!f) { err = "cannot open file: " + path; return false; }
 
-    // Determine the file size via a checked fstat() (FR-EMU-5) rather than
-    // trusting an unchecked fseek/ftell pair — both are still used (and
-    // checked) below for the actual seeks needed to re-read from the start.
-    struct stat st{};
-    if (::fstat(::fileno(f), &st) != 0) {
+    // Determine the file size via a checked std::filesystem::file_size()
+    // (FR-EMU-5, FR-WIN-BLD-2) rather than trusting an unchecked fseek/ftell
+    // pair (ftell is 32-bit on Windows) — fseek is still used (and checked)
+    // below for the actual seeks needed to re-read from the start.
+    std::error_code size_ec;
+    const std::uintmax_t file_size =
+        std::filesystem::file_size(std::filesystem::u8path(path), size_ec);
+    if (size_ec) {
         std::fclose(f);
         err = "cannot stat file: " + path;
         return false;
     }
-    if (st.st_size <= 0) {
+    if (file_size == 0) {
         std::fclose(f);
         err = "empty file: " + path;
         return false;
@@ -217,12 +220,12 @@ bool load_wav_file(const std::string& path, WavData& out, std::string& err) {
     // a non-WAV multi-GB file must fail immediately with a bounded-memory
     // error instead of a multi-GB transient allocation.
     static constexpr long long kMaxWavFileBytes = 256LL * 1024 * 1024;  // 256 MB
-    if (static_cast<long long>(st.st_size) > kMaxWavFileBytes) {
+    if (file_size > static_cast<std::uintmax_t>(kMaxWavFileBytes)) {
         std::fclose(f);
         char buf[128];
         std::snprintf(buf, sizeof(buf),
                       "WAV file too large (%lld bytes, max %lld bytes)",
-                      static_cast<long long>(st.st_size), kMaxWavFileBytes);
+                      static_cast<long long>(file_size), kMaxWavFileBytes);
         err = buf;
         return false;
     }
@@ -251,7 +254,7 @@ bool load_wav_file(const std::string& path, WavData& out, std::string& err) {
         err = "seek failed: " + path;
         return false;
     }
-    std::vector<uint8_t> buf(static_cast<size_t>(st.st_size));
+    std::vector<uint8_t> buf(static_cast<size_t>(file_size));
     size_t read = std::fread(buf.data(), 1, buf.size(), f);
     std::fclose(f);
     if (read != buf.size()) { err = "short read: " + path; return false; }

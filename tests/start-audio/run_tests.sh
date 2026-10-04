@@ -31,6 +31,6 @@ echo ""
 BIN="${BUILD_DIR}/test_start_audio"
 "${CXX}" "${CXXFLAGS[@]}" -pthread -o "${BIN}" \
     "${TEST_SRC}" "${SHIM_SRC_DIR}/daisy_seed.cpp" "${SHIM_SRC_DIR}/led.cpp" \
-    "${RUNTIME_DIR}/session_recorder.cpp" "${RUNTIME_DIR}/session_player.cpp"
+    "${RUNTIME_DIR}/session_recorder.cpp" "${RUNTIME_DIR}/platform_file.cpp" "${RUNTIME_DIR}/session_player.cpp"
 
 "${BIN}"

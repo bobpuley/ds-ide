@@ -8,6 +8,12 @@ and inspects the generated compile_commands.json to verify:
   - the runtime/shim sources compile at -O2 -g
   - -Wextra and -Wshadow are present for BOTH the effect object and the
     runtime/shim sources
+  - every runtime/shim .cpp in the tree has a compile entry (FR-WIN-BLD-4:
+    the source list here is derived from the tree, so it always matches
+    the CMake list on this platform)
+  - the CMake platform split: ipc_server.cpp is excluded on Windows until
+    M78, Winsock is linked on Windows, libm only off Windows, TSan is
+    rejected on Windows (FR-WIN-BLD-4)
 
 This is a property of the generated build graph, not runtime behavior, so a
 compile-commands inspection is the direct way to test it (rather than timing
@@ -17,6 +23,7 @@ Exit code: 0 = all checks pass, 1 = any failure.
 """
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -27,14 +34,16 @@ EMU_DIR = os.path.join(REPO_ROOT, "emulator")
 EFFECT_SRC = os.path.join(
     REPO_ROOT, "daisy-seed-knowledge/examples/bypass/bypass.cpp")
 
-RUNTIME_BASENAMES = {
-    "main.cpp", "audio_engine.cpp", "core_audio_device.cpp",
-    "ipc_server.cpp", "wav_reader.cpp", "session_recorder.cpp",
-    "session_player.cpp",
-}
-SHIM_BASENAMES = {
-    "daisy_seed.cpp", "adc_handle.cpp", "system.cpp", "switch.cpp", "led.cpp",
-}
+CMAKELISTS = os.path.join(EMU_DIR, "CMakeLists.txt")
+
+
+def tree_sources(subdir):
+    d = os.path.join(EMU_DIR, subdir)
+    return {f for f in os.listdir(d) if f.endswith(".cpp")}
+
+
+RUNTIME_BASENAMES = tree_sources("runtime")
+SHIM_BASENAMES = tree_sources("shim/src")
 
 failures = 0
 
@@ -48,7 +57,26 @@ def check(cond, msg):
         failures += 1
 
 
+def check_platform_split():
+    """FR-WIN-BLD-4: text checks on the CMake platform branches. The Windows
+    side is exercised for real by the windows-ci emulator-compile job."""
+    with open(CMAKELISTS) as f:
+        cm = f.read()
+    common = re.search(r"set\(RUNTIME_SRC\b(.*?)\)", cm, re.S)
+    check(common is not None and "ipc_server.cpp" not in common.group(1),
+          "ipc_server.cpp is not in the platform-independent RUNTIME_SRC list")
+    check(re.search(r"if\(NOT WIN32\)\s*\n\s*list\(APPEND RUNTIME_SRC\s+\"[^\"]*/runtime/ipc_server\.cpp\"\)", cm) is not None,
+          "ipc_server.cpp is appended only off Windows (ported in M78)")
+    check(re.search(r"if\(TSAN AND WIN32\)\s*\n\s*message\(FATAL_ERROR", cm) is not None,
+          "TSan is rejected with a clear error on Windows")
+    check(re.search(r"if\(WIN32\)[^\n]*\n(?:[^\n]*\n){0,4}?\s*target_link_libraries\(effect_emu PRIVATE[^)]*\bws2_32\b", cm) is not None,
+          "Winsock (ws2_32) is linked on Windows")
+    check(re.search(r"target_link_libraries\(effect_emu PRIVATE Threads::Threads m\)", cm) is None,
+          "libm is not linked unconditionally")
+
+
 def main():
+    check_platform_split()
     build_dir = tempfile.mkdtemp()
     try:
         configure = subprocess.run(
@@ -83,9 +111,12 @@ def main():
             e for e in entries
             if os.path.basename(e["file"]) in RUNTIME_BASENAMES | SHIM_BASENAMES
         ]
-        expected_count = len(RUNTIME_BASENAMES | SHIM_BASENAMES)
-        check(len(runtime_shim_entries) == expected_count,
-              f"a compile entry exists for all {expected_count} runtime/shim sources")
+        expected = RUNTIME_BASENAMES | SHIM_BASENAMES
+        compiled = {os.path.basename(e["file"]) for e in runtime_shim_entries}
+        check(compiled == expected and len(runtime_shim_entries) == len(expected),
+              f"exactly one compile entry for each of the {len(expected)} runtime/shim sources in the tree")
+        if compiled != expected:
+            print(f"    missing from build: {sorted(expected - compiled)}", file=sys.stderr)
         for e in runtime_shim_entries:
             cmd = e["command"].split()
             name = os.path.basename(e["file"])

@@ -22,6 +22,15 @@ if(ASAN)
     add_link_options(-fsanitize=address,undefined)
 endif()
 
+# FR-WIN-BLD-4: clang/MinGW has no ThreadSanitizer runtime; ASan+UBSan
+# need clang (MinGW GCC ships no ASan runtime).
+if(TSAN AND WIN32)
+    message(FATAL_ERROR "TSAN is not supported on Windows — use -DASAN=ON or a macOS/Linux build.")
+endif()
+if(ASAN AND WIN32 AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    message(FATAL_ERROR "ASAN on Windows requires clang/MinGW (found ${CMAKE_CXX_COMPILER_ID}).")
+endif()
+
 if(TSAN)
     message(STATUS "Sanitizers: ThreadSanitizer enabled")
     add_compile_options(-fsanitize=thread -fno-omit-frame-pointer)
@@ -67,12 +76,22 @@ set(RUNTIME_SRC
     "${CMAKE_SOURCE_DIR}/runtime/main.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/audio_engine.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/core_audio_device.cpp"
-    "${CMAKE_SOURCE_DIR}/runtime/ipc_server.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/wav_reader.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/input_generators.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/session_recorder.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/session_player.cpp"
+    "${CMAKE_SOURCE_DIR}/runtime/platform_file.cpp"
 )
+
+# ---- Per-platform sources (FR-WIN-BLD-4) --------------------------------------
+# core_audio_device.cpp is listed everywhere: off Apple it compiles to the
+# no-backend stub (all start* return false) until the Windows backend (M80).
+# ipc_server.cpp is still AF_UNIX/POSIX-only; on Windows it is left out until
+# the transport port (M78), so effect_emu does not link there yet — the
+# runtime_shim_obj/effect_obj objects do build.
+if(NOT WIN32)
+    list(APPEND RUNTIME_SRC "${CMAKE_SOURCE_DIR}/runtime/ipc_server.cpp")
+endif()
 
 # DaisySP: glob all .cpp files under DAISYSP_DIR if provided.
 # DaisySP source files use bare includes ("dsp.h", "oscillator.h") that resolve
@@ -145,11 +164,18 @@ target_compile_options(effect_emu PRIVATE
 )
 
 find_package(Threads REQUIRED)
-target_link_libraries(effect_emu PRIVATE Threads::Threads m)
+target_link_libraries(effect_emu PRIVATE Threads::Threads)
 
-# CoreAudio + AudioToolbox for real-time audio I/O (macOS only)
+# ---- Per-platform libraries (FR-WIN-BLD-4) -------------------------------------
 if(APPLE)
+    # CoreAudio + AudioToolbox for real-time audio I/O
     find_library(COREAUDIO_LIB CoreAudio REQUIRED)
     find_library(AUDIOTOOLBOX_LIB AudioToolbox REQUIRED)
-    target_link_libraries(effect_emu PRIVATE ${COREAUDIO_LIB} ${AUDIOTOOLBOX_LIB})
+    target_link_libraries(effect_emu PRIVATE m ${COREAUDIO_LIB} ${AUDIOTOOLBOX_LIB})
+elseif(WIN32)
+    # Winsock for the IPC transport (M78). The audio backend's libraries are
+    # added with the RtAudio/WASAPI backend in M80.
+    target_link_libraries(effect_emu PRIVATE ws2_32)
+else()
+    target_link_libraries(effect_emu PRIVATE m)
 endif()

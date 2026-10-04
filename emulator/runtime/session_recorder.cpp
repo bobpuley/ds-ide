@@ -1,9 +1,8 @@
 #include "session_recorder.h"
+#include "platform_file.h"
 #include <chrono>
 #include <cstring>
-#include <fcntl.h>
 #include <thread>
-#include <unistd.h>
 
 namespace daisy_emu {
 
@@ -26,7 +25,7 @@ bool SessionRecorder::writeBytes(const void* data, size_t n) {
     const uint8_t* p = static_cast<const uint8_t*>(data);
     size_t written = 0;
     while (written < n) {
-        ssize_t r = ::write(fd_, p + written, n - written);
+        long long r = platform_file::write(fd_, p + written, n - written);
         if (r <= 0) return false;
         written += static_cast<size_t>(r);
     }
@@ -42,7 +41,7 @@ bool SessionRecorder::start(const std::string& path,
     // the emulator.
     if (active_.load(std::memory_order_acquire)) return false;
 
-    fd_ = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    fd_ = platform_file::open_write_trunc(path.c_str());
     if (fd_ < 0) return false;
 
     block_size_  = block_size;
@@ -72,7 +71,7 @@ bool SessionRecorder::start(const std::string& path,
     header[14] = static_cast<uint8_t>((block_size >> 16) & 0xFF);
     header[15] = static_cast<uint8_t>((block_size >> 24) & 0xFF);
 
-    if (!writeBytes(header, 16)) { ::close(fd_); fd_ = -1; return false; }
+    if (!writeBytes(header, 16)) { platform_file::close(fd_); fd_ = -1; return false; }
 
     active_.store(true, std::memory_order_release);
     // Defense-in-depth (FR-RTS-5): the active_ guard above should already
@@ -226,7 +225,7 @@ void SessionRecorder::drainLoop() {
         active_.store(false, std::memory_order_release);
     }
 
-    ::close(fd_);
+    platform_file::close(fd_);
     fd_ = -1;
 }
 

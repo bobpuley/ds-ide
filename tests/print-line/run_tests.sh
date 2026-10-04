@@ -36,7 +36,7 @@ fail=0
 BIN="${BUILD_DIR}/test_print_line"
 "${CXX}" "${RUNTIME_CXXFLAGS[@]}" -o "${BIN}" \
     "${TESTS_DIR}/test_print_line.cpp" "${SHIM_SRC_DIR}/daisy_seed.cpp" "${SHIM_SRC_DIR}/led.cpp" \
-    "${RUNTIME_DIR}/session_recorder.cpp" "${RUNTIME_DIR}/session_player.cpp"
+    "${RUNTIME_DIR}/session_recorder.cpp" "${RUNTIME_DIR}/platform_file.cpp" "${RUNTIME_DIR}/session_player.cpp"
 
 if "${BIN}"; then
     ((pass++)) || true
