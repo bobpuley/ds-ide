@@ -5,6 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { EventEmitter } from 'events';
 import { IpcClient, IpcMessage, IpcWarning, CONNECT_TIMEOUT_MS } from './ipc-client';
+import { parseAnnounce, formatIpcAddress } from './ipc-address';
 import { potControlId, buttonControlId, toggleControlId, encoderControlId, narrowControlValue, narrowControlSnapshot } from '../ipc/control-values';
 import type { ScopeCaptureRequest } from '../ipc/narrow';
 import { PROTOCOL_VERSION } from '../ipc/protocol-version';
@@ -15,6 +16,10 @@ const SOCKET_TIMEOUT_MS = 10_000;
 // stale emulator process (FR-EXT-2) or terminating the manager's own live
 // child (FR-EXT-13).
 const KILL_ESCALATION_MS = 200;
+// FR-WIN-IPC-3: how long a child gets to exit on its own after the IPC
+// shutdown message (audio stop, recorder flush, telemetry drain) before the
+// SIGTERM → SIGKILL escalation above (TerminateProcess on Windows).
+export const SHUTDOWN_GRACE_MS = 2_000;
 
 // SIGTERM first, escalating to SIGKILL only if `pid` is still alive after a
 // short grace period. Never throws — safe to call fire-and-forget.
@@ -49,26 +54,67 @@ export function workspaceRuntimeDir(buildDir: string): string {
   return path.join(os.tmpdir(), `ds-ide-${hash}`);
 }
 
+// Remove stale UNIX socket files left by a previous crashed session of
+// *this* workspace only — scoped to its own runtime directory, never a
+// global /tmp sweep that could sever another concurrently running VS Code
+// window's live emulator socket (FR-EXT-2). Unix-socket transport only: on
+// Windows the TCP transport leaves no files behind (FR-WIN-IPC-1). Never
+// rejects.
+export async function sweepStaleSockets(
+  buildDir: string,
+  platform: NodeJS.Platform,
+  fsp: Pick<typeof fs.promises, 'readdir' | 'unlink'> = fs.promises,
+): Promise<void> {
+  if (platform === 'win32') return;
+  const runtimeDir = workspaceRuntimeDir(buildDir);
+  let entries: string[];
+  try {
+    entries = await fsp.readdir(runtimeDir);
+  } catch {
+    return; // directory may not exist yet
+  }
+  await Promise.all(entries
+    .filter((entry) => entry.endsWith('.sock'))
+    .map((entry) => fsp.unlink(path.join(runtimeDir, entry)).catch(() => { /* ignore already-gone */ })));
+}
+
 // True if `pid` is currently running an effect_emu process. Used to verify
 // identity before signaling a PID recorded in emu.pid, since PIDs are reused
 // by the OS after the original process exits — e.g. across a reboot, where a
 // stale emu.pid could otherwise point at an unrelated, unrecognizable
-// process (FR-EXT-2).
-function isEffectEmuProcess(pid: number, execFileFn: typeof cp.execFile): Promise<boolean> {
+// process (FR-EXT-2). FR-WIN-IPC-4: one function, per-platform query — `ps`
+// on macOS/Linux, `tasklist` on Windows — matching the executable name
+// exactly (a suffix match would accept e.g. "my_effect_emu"). Any query
+// failure counts as "not ours", so nothing is ever signalled on doubt.
+function isEffectEmuProcess(pid: number, execFileFn: typeof cp.execFile, platform: NodeJS.Platform): Promise<boolean> {
   return new Promise((resolve) => {
+    if (platform === 'win32') {
+      execFileFn('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], (err, stdout) => {
+        if (err) { resolve(false); return; }
+        // "effect_emu.exe","424242","Console","1","12,345 K" — or an INFO line.
+        const row = /^"([^"]*)","(\d+)"/.exec(String(stdout).trim());
+        resolve(!!row && row[1]!.toLowerCase() === 'effect_emu.exe' && row[2] === String(pid));
+      });
+      return;
+    }
     execFileFn('ps', ['-p', String(pid), '-o', 'comm='], (err, stdout) => {
       if (err) { resolve(false); return; }
-      resolve(String(stdout).trim().endsWith('effect_emu'));
+      resolve(path.basename(String(stdout).trim()) === 'effect_emu');
     });
   });
 }
 
-export async function killStalePid(buildDir: string, execFileFn: typeof cp.execFile): Promise<void> {
+export async function killStalePid(
+  buildDir: string,
+  execFileFn: typeof cp.execFile,
+  platform: NodeJS.Platform = process.platform,
+): Promise<void> {
   const pidFile = pidFilePath(buildDir);
   try {
-    const text = await fs.promises.readFile(pidFile, 'utf8');
-    const pid = parseInt(text.trim(), 10);
-    if (pid > 0 && await isEffectEmuProcess(pid, execFileFn)) {
+    const text = (await fs.promises.readFile(pidFile, 'utf8')).trim();
+    // Strict: parseInt would accept "123abc" as 123 (FR-WIN-IPC-4).
+    const pid = /^\d+$/.test(text) ? Number(text) : 0;
+    if (pid > 0 && await isEffectEmuProcess(pid, execFileFn, platform)) {
       // SIGTERM first, escalating to SIGKILL only if the process is still
       // alive after a short grace period (FR-EXT-2).
       await escalateKill(pid);
@@ -85,6 +131,29 @@ async function writePid(buildDir: string, pid: number): Promise<void> {
 
 async function clearPid(buildDir: string): Promise<void> {
   try { await fs.promises.unlink(pidFilePath(buildDir)); } catch { /* ignore */ }
+}
+
+// FR-WIN-IPC-3: an emulator stopped via the shutdown message can exit after a
+// redeploy has already written the next emulator's PID — only clear the file
+// while it still records `pid`. Never rejects.
+export async function clearPidIfOwned(buildDir: string, pid: number): Promise<void> {
+  try {
+    const recorded = (await fs.promises.readFile(pidFilePath(buildDir), 'utf8')).trim();
+    if (recorded === String(pid)) await fs.promises.unlink(pidFilePath(buildDir));
+  } catch { /* no pid file, or already gone */ }
+}
+
+// Waits for a child that was sent the IPC shutdown message; escalates
+// (SIGTERM → SIGKILL, TerminateProcess on Windows) only if it is still
+// running after SHUTDOWN_GRACE_MS.
+async function terminateUnlessExited(child: cp.ChildProcess, pid: number): Promise<void> {
+  const exited = await new Promise<boolean>((resolve) => {
+    if (child.exitCode != null || child.signalCode != null) return resolve(true);
+    const timer = setTimeout(() => { child.off('exit', onExit); resolve(false); }, SHUTDOWN_GRACE_MS);
+    const onExit = (): void => { clearTimeout(timer); resolve(true); };
+    child.once('exit', onExit);
+  });
+  if (!exited) await escalateKill(pid);
 }
 
 export interface BuildOptions {
@@ -214,29 +283,46 @@ export class EmulatorManager extends EventEmitter {
     if (this.deployLock) return this.deployLock;
 
     const buildDir = this.buildDir;
+    const useTcp = this.platform === 'win32';
     // Socket lives under a per-workspace directory with a randomized filename
-    // component, not a predictable global-/tmp path (FR-EXT-2).
+    // component, not a predictable global-/tmp path (FR-EXT-2). Unix-socket
+    // transport only — Windows uses TCP loopback and has no socket file
+    // (FR-WIN-IPC-1).
     const runtimeDir = workspaceRuntimeDir(this.buildDir);
 
     // mkdir (not mkdirSync) so this doesn't block the Extension Host; the
     // deployLock below is still assigned synchronously so concurrent deploy()
     // calls coalesce onto the same promise regardless (FR-QA-EXT-7).
-    const deployPromise = this.mkdir(runtimeDir, { recursive: true, mode: 0o700 }).then(() => {
-      this.socketPath = path.join(runtimeDir, `emu-${crypto.randomBytes(4).toString('hex')}.sock`);
-      const socketPath = this.socketPath;
+    const prepared = useTcp
+      ? Promise.resolve()
+      : this.mkdir(runtimeDir, { recursive: true, mode: 0o700 }).then(() => undefined);
+    const deployPromise = prepared.then(() => {
+      this.socketPath = useTcp
+        ? null
+        : path.join(runtimeDir, `emu-${crypto.randomBytes(4).toString('hex')}.sock`);
+      const spawnArgs = this.socketPath ? [this.socketPath] : ['--tcp'];
+      // FR-WIN-IPC-2: a fresh per-session token for the TCP transport, sent
+      // over stdin (never argv) and presented by the client on connect.
+      const sessionToken = useTcp ? crypto.randomBytes(32).toString('hex') : undefined;
 
       // Kill any process left over from a previous session, waiting up to 200 ms
       // for it to exit before spawning a new one (FR-EMU-3). Identity-checked
       // and SIGTERM-first (FR-EXT-2).
-      return killStalePid(this.buildDir, this.execFile)
+      return killStalePid(this.buildDir, this.execFile, this.platform)
         .catch(() => { /* ignore stale-pid errors */ })
         // Resolved before killExisting() so kill → spawn stays synchronous.
         .then(() => this.resolveExecutable(buildDir))
         .then((exePath) => {
           this.killExisting();
 
-          const child = this.spawn(exePath, [socketPath], { stdio: ['ignore', 'pipe', 'pipe'] });
+          const child = this.spawn(exePath, spawnArgs, { stdio: [sessionToken ? 'pipe' : 'ignore', 'pipe', 'pipe'] });
           this.childProcess = child;
+          if (sessionToken) {
+            // EPIPE if the emulator died first — its exit is reported below.
+            child.stdin?.on('error', () => { /* handled via 'close' */ });
+            child.stdin?.write(`${sessionToken}\n`);
+            child.stdin?.end();
+          }
 
           return new Promise<void>((resolve, reject) => {
             let resolved = false;
@@ -273,7 +359,7 @@ export class EmulatorManager extends EventEmitter {
                   cancelSub?.dispose();
                   // Persist PID so a future session can clean up this process
                   if (child.pid !== undefined) void writePid(this.buildDir, child.pid);
-                  void this.connectIpc(match[1]!).then(resolve).catch(reject);
+                  void this.connectIpc(match[1]!, sessionToken).then(resolve).catch(reject);
                 }
               }
             };
@@ -291,7 +377,7 @@ export class EmulatorManager extends EventEmitter {
             child.stderr?.on('data', (data: Buffer) => onOutput(data.toString('utf8').trim()));
             child.on('error', onError);
             child.on('close', (code) => {
-              void clearPid(this.buildDir);
+              if (child.pid !== undefined) void clearPidIfOwned(buildDir, child.pid);
               if (!resolved) {
                 resolved = true;
                 clearTimeout(timeout);
@@ -493,7 +579,7 @@ export class EmulatorManager extends EventEmitter {
     this.ipcClient = null;
   }
 
-  private async connectIpc(socketPath: string): Promise<void> {
+  private async connectIpc(announced: string, sessionToken?: string): Promise<void> {
     this.intentionalDisconnect = false;  // new live connection — reset flag
     this.lastKnownRunning = undefined;   // fresh connection — unknown until first status
     const client = this.ipcClientFactory();
@@ -527,9 +613,12 @@ export class EmulatorManager extends EventEmitter {
     // FR-DEV-6: register the handshake listener before connect() so it can
     // never miss a message delivered synchronously with (or immediately
     // after) the connection completing.
-    const handshake = this.awaitProtocolHandshake(client, socketPath);
     try {
-      await client.connect(socketPath);
+      // FR-WIN-IPC-1: a malformed announce fails here and still kills the child.
+      const address = parseAnnounce(announced, this.platform);
+      const handshake = this.awaitProtocolHandshake(client, formatIpcAddress(address));
+      if (address.kind === 'tcp') await client.connect(address, undefined, sessionToken);
+      else await client.connect(address);
       await handshake;
     } catch (err) {
       // FR-EXT-7: the effect_emu child was already spawned before this
@@ -551,7 +640,7 @@ export class EmulatorManager extends EventEmitter {
   // missing, malformed, or doesn't match this extension's own version.
   // Reuses IpcClient's own connect-phase timeout budget rather than adding a
   // second one.
-  private awaitProtocolHandshake(client: IpcClient, socketPath: string): Promise<void> {
+  private awaitProtocolHandshake(client: IpcClient, addressLabel: string): Promise<void> {
     return new Promise((resolve, reject) => {
       let settled = false;
 
@@ -561,7 +650,7 @@ export class EmulatorManager extends EventEmitter {
         client.off('message', onMessage);
         client.disconnect();
         reject(new Error(
-          `emulator at ${socketPath} did not send a protocol version handshake within ${CONNECT_TIMEOUT_MS}ms`,
+          `emulator at ${addressLabel} did not send a protocol version handshake within ${CONNECT_TIMEOUT_MS}ms`,
         ));
       }, CONNECT_TIMEOUT_MS);
 
@@ -601,24 +690,40 @@ export class EmulatorManager extends EventEmitter {
 
   private killExisting(immediate = false): void {
     this.intentionalDisconnect = true;  // suppress the subsequent disconnect event
+    const client = this.ipcClient;
+    this.ipcClient = null;
     if (this.childProcess) {
-      const pid = this.childProcess.pid;
-      this.stoppedChildren.add(this.childProcess);
+      const child = this.childProcess;
+      const pid = child.pid;
+      this.stoppedChildren.add(child);
       this.childProcess = null;
+      if (pid && !immediate && client?.connected) {
+        // FR-WIN-IPC-3: ask the emulator to exit on its own first (on
+        // Windows, killing it skips the recorder flush entirely); terminate
+        // only if it is still running after the grace period. An `immediate`
+        // stop skips this — a debugger-paused process can't read the message.
+        client.sendAndClose({ type: 'shutdown' });
+        void terminateUnlessExited(child, pid);
+        // The pid file stays until the child's own 'close' (clearPidIfOwned):
+        // if the extension host dies mid-grace, the next session can still
+        // reclaim a wedged emulator.
+        return this.finishKill({ keepPid: true });
+      }
       // SIGTERM → wait KILL_ESCALATION_MS → SIGKILL, matching killStalePid's
       // escalation so a child that ignores/misses SIGTERM (e.g. blocked in a
       // native audio callback) is still force-terminated (FR-EXT-13).
       if (pid) void escalateKill(pid, immediate);
     }
-    if (this.ipcClient) {
-      this.ipcClient.disconnect();
-      this.ipcClient = null;
-    }
+    client?.disconnect();
+    this.finishKill();
+  }
+
+  private finishKill(opts: { keepPid?: boolean } = {}): void {
     if (this.socketPath) {
       void fs.promises.unlink(this.socketPath).catch(() => { /* ignore if already gone */ });
       this.socketPath = null;
     }
-    if (this.buildDir) void clearPid(this.buildDir);
+    if (this.buildDir && !opts.keepPid) void clearPid(this.buildDir);
   }
 
   // FR-PKG-2: <project>/.ds-ide/build persists indefinitely while emulatorSrc

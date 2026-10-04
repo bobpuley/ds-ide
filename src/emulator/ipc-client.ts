@@ -1,6 +1,7 @@
 import * as net from 'net';
 import { EventEmitter } from 'events';
 import { parseIpcMessage, IpcMessage } from '../ipc/narrow';
+import { IpcAddress, formatIpcAddress } from './ipc-address';
 
 export type { IpcMessage };
 
@@ -11,9 +12,10 @@ export interface IpcWarning {
 }
 
 export interface IIpcClient {
-  connect(socketPath: string): Promise<void>;
+  connect(address: IpcAddress | string, timeoutMs?: number, sessionToken?: string): Promise<void>;
   send(msg: IpcMessage): void;
   disconnect(): void;
+  sendAndClose(msg: IpcMessage): void;
   on(event: 'message', listener: (msg: IpcMessage) => void): this;
   on(event: 'error', listener: (err: Error) => void): this;
   on(event: 'disconnect', listener: () => void): this;
@@ -39,7 +41,16 @@ export class IpcClient extends EventEmitter implements IIpcClient {
     this.emit('warning', { message, count } satisfies IpcWarning);
   }
 
-  connect(socketPath: string, timeoutMs = CONNECT_TIMEOUT_MS): Promise<void> {
+  // FR-WIN-IPC-1: a Unix socket path (a bare string is treated as one) or a
+  // TCP loopback host:port, as parsed from the emulator's announce line.
+  // FR-WIN-IPC-2: on TCP the session token is presented as the first line,
+  // before the emulator sends anything; a Unix socket needs none.
+  connect(address: IpcAddress | string, timeoutMs = CONNECT_TIMEOUT_MS, sessionToken?: string): Promise<void> {
+    const target: IpcAddress = typeof address === 'string' ? { kind: 'unix', path: address } : address;
+    const label = formatIpcAddress(target);
+    if (target.kind === 'tcp' && !sessionToken) {
+      return Promise.reject(new Error(`IPC connect to ${label} refused: TCP requires a session token`));
+    }
     return new Promise((resolve, reject) => {
       const sock = new net.Socket();
       this.socket = sock;
@@ -50,7 +61,7 @@ export class IpcClient extends EventEmitter implements IIpcClient {
         settled = true;
         sock.destroy();
         if (this.socket === sock) this.socket = null;
-        reject(new Error(`IPC connect to ${socketPath} timed out after ${timeoutMs}ms`));
+        reject(new Error(`IPC connect to ${label} timed out after ${timeoutMs}ms`));
       }, timeoutMs);
 
       sock.once('connect', () => {
@@ -64,6 +75,9 @@ export class IpcClient extends EventEmitter implements IIpcClient {
           this.partial = '';
           this.emit('disconnect');
         });
+        if (target.kind === 'tcp') {
+          sock.write(JSON.stringify({ type: 'hello', token: sessionToken }) + '\n');
+        }
         resolve();
       });
 
@@ -73,7 +87,8 @@ export class IpcClient extends EventEmitter implements IIpcClient {
         clearTimeout(timer);
         reject(err);
       });
-      sock.connect({ path: socketPath });
+      if (target.kind === 'unix') sock.connect({ path: target.path });
+      else sock.connect({ host: target.host, port: target.port });
     });
   }
 
@@ -88,6 +103,18 @@ export class IpcClient extends EventEmitter implements IIpcClient {
       return;
     }
     this.socket.write(JSON.stringify(msg) + '\n');
+  }
+
+  // FR-WIN-IPC-3: queue a final message and half-close, so the write is
+  // flushed before the socket closes (disconnect()'s destroy() can discard
+  // a write still buffered in userland). The client is unusable afterwards.
+  sendAndClose(msg: IpcMessage): void {
+    const sock = this.socket;
+    if (!sock || sock.destroyed) return;
+    this.socket = null;
+    this.partial = '';
+    sock.write(JSON.stringify(msg) + '\n');
+    sock.end();
   }
 
   disconnect(): void {

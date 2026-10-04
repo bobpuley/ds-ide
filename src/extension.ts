@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { EmulatorManager, workspaceRuntimeDir } from './emulator/manager';
+import { EmulatorManager, sweepStaleSockets } from './emulator/manager';
 import { IpcMessage, IpcWarning } from './emulator/ipc-client';
 import { ScopePanel } from './webview/scope-panel';
 import { OledPanel } from './webview/oled-panel';
@@ -1147,22 +1147,12 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const manager = new EmulatorManager();
 
-  // Remove stale UNIX socket files left by a previous crashed session of
-  // *this* workspace only — scoped to its own runtime directory, never a
-  // global /tmp sweep that could sever another concurrently running VS Code
-  // window's live emulator socket (FR-EXT-2).
+  // Remove this workspace's stale UNIX socket files (FR-EXT-2; macOS only —
+  // FR-WIN-IPC-1).
   {
     const activeFolder = resolveActiveFolder(context.workspaceState)?.uri.fsPath;
     if (activeFolder) {
-      const buildDir = path.join(activeFolder, '.ds-ide', 'build');
-      const runtimeDir = workspaceRuntimeDir(buildDir);
-      void fs.promises.readdir(runtimeDir).then((entries) => {
-        for (const entry of entries) {
-          if (entry.endsWith('.sock')) {
-            void fs.promises.unlink(path.join(runtimeDir, entry)).catch(() => { /* ignore already-gone */ });
-          }
-        }
-      }).catch(() => { /* ignore readdir failure — directory may not exist yet */ });
+      void sweepStaleSockets(path.join(activeFolder, '.ds-ide', 'build'), process.platform);
     }
   }
 

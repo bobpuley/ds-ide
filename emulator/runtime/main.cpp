@@ -1,11 +1,15 @@
 #include "audio_engine.h"
 #include "emulator_state.h"
 #include "ipc_server.h"
+#include "ipc_transport.h"
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <csignal>
+#include <cstring>
+#include <memory>
 #include <mutex>
+#include <string>
 #include <thread>
 
 // The effect's main() is compiled with -Dmain=effect_main, renaming it here.
@@ -27,6 +31,15 @@ extern "C" void handle_shutdown_signal(int /*sig*/) {
     daisy_emu::g_state.shutdown.store(true, std::memory_order_relaxed);
 }
 
+// First stdin line, without its line ending; "" if stdin is closed/empty.
+std::string read_session_token() {
+    char buf[256];
+    if (!std::fgets(buf, sizeof(buf), stdin)) return "";
+    std::string token(buf);
+    while (!token.empty() && (token.back() == '\n' || token.back() == '\r')) token.pop_back();
+    return token;
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -40,11 +53,42 @@ int main(int argc, char* argv[]) {
     std::signal(SIGTERM, handle_shutdown_signal);
     std::signal(SIGINT, handle_shutdown_signal);
 
-    const char* socket_path = (argc > 1) ? argv[1] : "/tmp/daisy_emu.sock";
+    // FR-WIN-IPC-1: `effect_emu <socket-path>` serves a Unix domain socket
+    // (macOS, as before); `effect_emu --tcp` serves TCP loopback on an
+    // ephemeral port. Windows has no Unix-socket transport and always uses TCP.
+    const char* arg = (argc > 1) ? argv[1] : nullptr;
+    std::string err;
+    std::unique_ptr<daisy_emu::IpcListener> listener;
+#ifdef _WIN32
+    (void)arg;
+    listener = daisy_emu::make_tcp_listener(err);
+#else
+    if (arg && std::strcmp(arg, "--tcp") == 0) {
+        listener = daisy_emu::make_tcp_listener(err);
+    } else {
+        listener = daisy_emu::make_unix_listener(arg ? arg : "/tmp/daisy_emu.sock", err);
+    }
+#endif
+    if (!listener) {
+        std::fprintf(stderr, "[daisy-emu] IPC listener: %s\n", err.c_str());
+        return 1;
+    }
 
-    // IPC server runs in its own thread: binds socket, serves JSON messages.
-    std::thread ipc_thread([socket_path] {
-        daisy_emu::run_ipc_server(socket_path);
+    // FR-WIN-IPC-2: on TCP any local process could connect, so the extension
+    // passes a per-session token as the first line of stdin — never on the
+    // command line, where other processes can read it.
+    std::string session_token;
+    if (listener->kind() == daisy_emu::IpcListener::Kind::Tcp) {
+        session_token = read_session_token();
+        if (session_token.empty()) {
+            std::fprintf(stderr, "[daisy-emu] TCP transport requires a session token on stdin\n");
+            return 1;
+        }
+    }
+
+    // IPC server runs in its own thread and owns the listener from here on.
+    std::thread ipc_thread([l = std::move(listener), t = std::move(session_token)]() mutable {
+        daisy_emu::run_ipc_server(std::move(l), std::move(t));
     });
 
     // Audio engine runs in its own thread: waits for StartAudio(), then loops.

@@ -44,6 +44,7 @@ run_test "config reload (FR-EMU-7)" "test_config_reload.py"
 run_test "shutdown recording (FR-EMU-8)" "test_shutdown_recording.py"
 run_test "scope capture (FR-SCI-14b)" "test_scope_capture.py"
 run_test "input generators (FR-GEN-3)" "test_generators.py"
+run_test "TCP transport (FR-WIN-IPC-1)" "test_tcp_transport.py"
 
 echo ""
 echo "Results: ${pass} passed, ${fail} failed."

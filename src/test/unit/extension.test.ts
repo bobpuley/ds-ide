@@ -57,6 +57,7 @@ vi.mock('../../emulator/manager', () => {
     // FR-EXT-2: real implementation is a pure hash of buildDir — safe to reuse
     // directly rather than re-mocking its internals.
     workspaceRuntimeDir: (buildDir: string) => `/tmp/ds-ide-mock-${buildDir.length}`,
+    sweepStaleSockets: vi.fn(() => Promise.resolve()),
   };
 });
 

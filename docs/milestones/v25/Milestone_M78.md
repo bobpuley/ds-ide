@@ -1,7 +1,7 @@
 # M78 — IPC Transport & Process Lifecycle
 
 **Version:** 0.25.0-win.2
-**Status:** planned
+**Status:** in progress
 **Source:** intake session, 2026-10-04 (`multiplatform_plan.md`; 01_input-ideas.md). Branch `feat/m78-ipc-transport-lifecycle` is created from `feat/windows-support` and merged back into `feat/windows-support` at close (never `main`) — FR-WIN-GIT-1
 
 ## Goal
@@ -10,7 +10,7 @@ The extension and emulator talk over an `AF_UNIX` socket and manage the emulator
 
 ## Sprint Tasks
 
-### [ ] feat: transport abstraction and TCP loopback server in the emulator (FR-WIN-IPC-1)
+### [x] feat: transport abstraction and TCP loopback server in the emulator (FR-WIN-IPC-1)
 
 `ipc_server.cpp` is written directly against `<sys/socket.h>`/`<sys/un.h>`/`<unistd.h>` with `AF_UNIX`.
 
@@ -25,7 +25,7 @@ The extension and emulator talk over an `AF_UNIX` socket and manage the emulator
 
 ---
 
-### [ ] feat: transport-aware IpcClient and EmulatorManager (FR-WIN-IPC-1)
+### [x] feat: transport-aware IpcClient and EmulatorManager (FR-WIN-IPC-1)
 
 `IpcClient.connect()` and `EmulatorManager` assume the announced value is a filesystem path (and size sockets paths for the ~103-byte `AF_UNIX` limit).
 
@@ -39,7 +39,7 @@ The extension and emulator talk over an `AF_UNIX` socket and manage the emulator
 
 ---
 
-### [ ] feat: per-session token on the TCP transport (FR-WIN-IPC-2)
+### [x] feat: per-session token on the TCP transport (FR-WIN-IPC-2)
 
 Any local process could connect to a loopback TCP port; the Unix socket is protected by filesystem permissions.
 
@@ -53,7 +53,7 @@ Any local process could connect to a loopback TCP port; the Unix socket is prote
 
 ---
 
-### [ ] feat: graceful IPC shutdown message (FR-WIN-IPC-3)
+### [x] feat: graceful IPC shutdown message (FR-WIN-IPC-3)
 
 On Windows `process.kill(pid, 'SIGTERM')` is `TerminateProcess`: signal handlers never run, so the recorder/session flush (FR-EMU-8) is skipped.
 
@@ -68,13 +68,13 @@ On Windows `process.kill(pid, 'SIGTERM')` is `TerminateProcess`: signal handlers
 
 ---
 
-### [ ] fix: cross-platform stale-process check (FR-WIN-IPC-4)
+### [x] fix: cross-platform stale-process check (FR-WIN-IPC-4)
 
 `isEffectEmuProcess()` shells out to `ps -p <pid> -o comm=`, which does not exist on Windows, and compares against `effect_emu` without `.exe`; a stale emulator would never be reclaimed.
 
 **Affected files:** `src/emulator/manager.ts`, `src/test/unit/emulator/manager.test.ts`
 
 **DoD:**
-- identity of the PID in `emu.pid` is checked by a mechanism that works on macOS and Windows (including `effect_emu.exe`)
+- identity of the PID in `emu.pid` is checked by a mechanism that works on macOS and Windows (including `effect_emu.exe`): `ps` on macOS, `tasklist` on Windows (decision 2026-10-04, see FR-WIN-IPC-4)
 - an unrelated process that reused the PID is never killed
 - unit tests cover reclaim, PID reuse by another process, and a missing/garbled pid file on both platforms, and the existing macOS suites (TypeScript unit tests, emulator C++ test runners, `tests/build-flags`, runtime/functional tests) pass unchanged (FR-WIN-GIT-2)

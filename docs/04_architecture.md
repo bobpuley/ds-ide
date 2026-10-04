@@ -22,7 +22,7 @@ The process model is unchanged (VS Code extension + separate `effect_emu` native
 **2. IPC — transport abstraction (M78).**
 - C++: `ipc_server.cpp` splits socket creation/accept/IO from message handling behind a small transport layer: `AF_UNIX` (macOS, unchanged) and TCP loopback on `127.0.0.1` with `TCP_NODELAY` and Winsock (Windows). The announce line stays `DAISY_EMU_SOCKET:<value>` where the value is a path or `host:port`.
 - TypeScript: `IpcClient.connect()` takes a transport descriptor (`net.Socket.connect(path)` or `connect(port, host)`); `EmulatorManager` parses the announce value, drops the AF_UNIX path-length rationale for Windows, and sends the session token on TCP.
-- Lifecycle: a `shutdown` message gives a graceful exit on all platforms (SIGTERM remains on POSIX); the stale-process check stops using `ps`. Message shapes are otherwise unchanged; `PROTOCOL_VERSION` handling covers the new announce/message.
+- Lifecycle: a `shutdown` message gives a graceful exit on all platforms (SIGTERM remains on POSIX); the stale-process check uses a per-platform identity query behind one function (`ps` on macOS, `tasklist` on Windows; FR-WIN-IPC-4). Message shapes are otherwise unchanged; `PROTOCOL_VERSION` handling covers the new announce/message.
 
 **3. Process, build and tooling — extension side (M77, M81–M82).**
 - Build: `cmake --build -j N`, Ninja pinned on Windows, `effect_emu.exe` resolved by `EmulatorManager`; CMake chooses sources and libraries per platform under clang/MinGW.
