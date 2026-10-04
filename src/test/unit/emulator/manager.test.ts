@@ -1445,7 +1445,7 @@ describe('EmulatorManager', () => {
       const execFileMock = fakeExecFile('some_unrelated_process\n');
       const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
 
-      await killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile);
+      await killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile, 'darwin');
 
       expect(killSpy).not.toHaveBeenCalled();
     });
@@ -1460,7 +1460,7 @@ describe('EmulatorManager', () => {
         throw Object.assign(new Error('ESRCH'), { code: 'ESRCH' });
       });
 
-      await killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile);
+      await killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile, 'darwin');
 
       expect(killSpy).toHaveBeenCalledWith(424242, 'SIGTERM');
       expect(killSpy).not.toHaveBeenCalledWith(424242, 'SIGKILL');
@@ -1472,8 +1472,77 @@ describe('EmulatorManager', () => {
       const execFileMock = fakeExecFile('unrelated\n');
       vi.spyOn(process, 'kill').mockReturnValue(true);
 
-      await killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile);
+      await killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile, 'darwin');
 
+      await expect(fs.promises.access(pidFile)).rejects.toThrow();
+    });
+
+    it('macOS: queries ps for exactly that PID', async () => {
+      await fs.promises.writeFile(path.join(tmpDir, 'emu.pid'), '424242');
+      const execFileMock = fakeExecFile('effect_emu\n');
+      vi.spyOn(process, 'kill').mockImplementation(() => { throw Object.assign(new Error('ESRCH'), { code: 'ESRCH' }); });
+      await killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile, 'darwin');
+      expect(execFileMock.mock.calls[0]![0]).toBe('ps');
+      expect(execFileMock.mock.calls[0]![1]).toEqual(['-p', '424242', '-o', 'comm=']);
+    });
+
+    it('macOS: matches the executable name exactly, also as a full path (FR-WIN-IPC-4)', async () => {
+      for (const [comm, expectKill] of [
+        ['/Users/me/proj/.ds-ide/build/effect_emu\n', true],
+        ['my_effect_emu\n', false],
+        ['effect_emu_old\n', false],
+      ] as const) {
+        await fs.promises.writeFile(path.join(tmpDir, 'emu.pid'), '424242');
+        const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => { throw Object.assign(new Error('ESRCH'), { code: 'ESRCH' }); });
+        await killStalePid(tmpDir, fakeExecFile(comm) as unknown as typeof cp.execFile, 'darwin');
+        expect(killSpy.mock.calls.length > 0).toBe(expectKill);
+        killSpy.mockRestore();
+      }
+    });
+
+    it('Windows: queries tasklist for that PID and reclaims effect_emu.exe (FR-WIN-IPC-4)', async () => {
+      await fs.promises.writeFile(path.join(tmpDir, 'emu.pid'), '424242');
+      const execFileMock = fakeExecFile('"effect_emu.exe","424242","Console","1","12,345 K"\r\n');
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => { throw Object.assign(new Error('ESRCH'), { code: 'ESRCH' }); });
+      await killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile, 'win32');
+      expect(execFileMock.mock.calls[0]![0]).toBe('tasklist');
+      expect(execFileMock.mock.calls[0]![1]).toEqual(['/FI', 'PID eq 424242', '/FO', 'CSV', '/NH']);
+      expect(killSpy).toHaveBeenCalledWith(424242, 'SIGTERM');
+    });
+
+    it.each([
+      ['an unrelated process that reused the PID', '"notepad.exe","424242","Console","1","9,000 K"\r\n'],
+      ['no matching process', 'INFO: No tasks are running which match the specified criteria.\r\n'],
+      ['a row for a different PID', '"effect_emu.exe","999","Console","1","12,345 K"\r\n'],
+      ['a lookalike name', '"my_effect_emu.exe","424242","Console","1","12,345 K"\r\n'],
+    ])('Windows: never signals %s (FR-WIN-IPC-4)', async (_label, output) => {
+      const pidFile = path.join(tmpDir, 'emu.pid');
+      await fs.promises.writeFile(pidFile, '424242');
+      const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
+      await killStalePid(tmpDir, fakeExecFile(output) as unknown as typeof cp.execFile, 'win32');
+      expect(killSpy).not.toHaveBeenCalled();
+      await expect(fs.promises.access(pidFile)).rejects.toThrow();
+    });
+
+    it.each(['darwin', 'win32'] as const)('%s: a failing identity query never signals', async (platform) => {
+      await fs.promises.writeFile(path.join(tmpDir, 'emu.pid'), '424242');
+      const execFileMock = vi.fn((_c: string, _a: readonly string[], cb: (err: Error | null, stdout: string) => void) => cb(new Error('ENOENT'), ''));
+      const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
+      await killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile, platform);
+      expect(killSpy).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['darwin', 'abc'], ['darwin', '123abc'], ['darwin', '-5'], ['darwin', '0'], ['darwin', ''],
+      ['win32', 'abc'], ['win32', '123abc'], ['win32', '4.2'],
+    ] as const)('%s: a garbled pid file (%j) is cleared without querying or signalling (FR-WIN-IPC-4)', async (platform, text) => {
+      const pidFile = path.join(tmpDir, 'emu.pid');
+      await fs.promises.writeFile(pidFile, text);
+      const execFileMock = fakeExecFile('effect_emu\n');
+      const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
+      await killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile, platform);
+      expect(execFileMock).not.toHaveBeenCalled();
+      expect(killSpy).not.toHaveBeenCalled();
       await expect(fs.promises.access(pidFile)).rejects.toThrow();
     });
 
@@ -1481,7 +1550,7 @@ describe('EmulatorManager', () => {
       const execFileMock = fakeExecFile('effect_emu\n');
       const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
 
-      await expect(killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile)).resolves.toBeUndefined();
+      await expect(killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile, 'darwin')).resolves.toBeUndefined();
       expect(killSpy).not.toHaveBeenCalled();
     });
   });

@@ -177,6 +177,29 @@ def test_shutdown_message_over_tcp(exe: str) -> None:
             os.unlink(rec_path)
 
 
+def test_identity_query_matches_extension_parser(exe: str) -> None:
+    """FR-WIN-IPC-4: the extension's stale-process check parses the real OS
+    query output (manager.ts isEffectEmuProcess) — verify that format here
+    against a live emulator, on the platform this runs on."""
+    token = secrets.token_hex(32)
+    proc = spawn_tcp(exe, token)
+    try:
+        read_announce(proc)
+        if IS_WINDOWS:
+            out = subprocess.run(["tasklist", "/FI", f"PID eq {proc.pid}", "/FO", "CSV", "/NH"],
+                                 capture_output=True, text=True).stdout.strip()
+            m = re.match(r'^"([^"]*)","(\d+)"', out)
+            check(bool(m) and m.group(1).lower() == "effect_emu.exe" and m.group(2) == str(proc.pid),
+                  f"tasklist reports a live emulator as effect_emu.exe with its PID ({out[:60]!r})")
+        else:
+            out = subprocess.run(["ps", "-p", str(proc.pid), "-o", "comm="],
+                                 capture_output=True, text=True).stdout.strip()
+            check(os.path.basename(out) == "effect_emu",
+                  f"ps reports a live emulator's executable name as effect_emu ({out!r})")
+    finally:
+        stop(proc)
+
+
 def test_tcp_requires_a_token(exe: str) -> None:
     proc = spawn_tcp(exe, None)
     try:
@@ -226,6 +249,7 @@ def main() -> int:
     test_tcp_handshake(exe)
     test_tcp_requires_a_token(exe)
     test_shutdown_message_over_tcp(exe)
+    test_identity_query_matches_extension_parser(exe)
     if not IS_WINDOWS:
         test_unix_socket_removed_at_shutdown(exe)
     print(f"\nResult: {'all passed' if failures == 0 else 'FAILURES'}")

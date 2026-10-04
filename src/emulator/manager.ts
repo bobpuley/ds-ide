@@ -82,22 +82,39 @@ export async function sweepStaleSockets(
 // identity before signaling a PID recorded in emu.pid, since PIDs are reused
 // by the OS after the original process exits — e.g. across a reboot, where a
 // stale emu.pid could otherwise point at an unrelated, unrecognizable
-// process (FR-EXT-2).
-function isEffectEmuProcess(pid: number, execFileFn: typeof cp.execFile): Promise<boolean> {
+// process (FR-EXT-2). FR-WIN-IPC-4: one function, per-platform query — `ps`
+// on macOS/Linux, `tasklist` on Windows — matching the executable name
+// exactly (a suffix match would accept e.g. "my_effect_emu"). Any query
+// failure counts as "not ours", so nothing is ever signalled on doubt.
+function isEffectEmuProcess(pid: number, execFileFn: typeof cp.execFile, platform: NodeJS.Platform): Promise<boolean> {
   return new Promise((resolve) => {
+    if (platform === 'win32') {
+      execFileFn('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], (err, stdout) => {
+        if (err) { resolve(false); return; }
+        // "effect_emu.exe","424242","Console","1","12,345 K" — or an INFO line.
+        const row = /^"([^"]*)","(\d+)"/.exec(String(stdout).trim());
+        resolve(!!row && row[1]!.toLowerCase() === 'effect_emu.exe' && row[2] === String(pid));
+      });
+      return;
+    }
     execFileFn('ps', ['-p', String(pid), '-o', 'comm='], (err, stdout) => {
       if (err) { resolve(false); return; }
-      resolve(String(stdout).trim().endsWith('effect_emu'));
+      resolve(path.basename(String(stdout).trim()) === 'effect_emu');
     });
   });
 }
 
-export async function killStalePid(buildDir: string, execFileFn: typeof cp.execFile): Promise<void> {
+export async function killStalePid(
+  buildDir: string,
+  execFileFn: typeof cp.execFile,
+  platform: NodeJS.Platform = process.platform,
+): Promise<void> {
   const pidFile = pidFilePath(buildDir);
   try {
-    const text = await fs.promises.readFile(pidFile, 'utf8');
-    const pid = parseInt(text.trim(), 10);
-    if (pid > 0 && await isEffectEmuProcess(pid, execFileFn)) {
+    const text = (await fs.promises.readFile(pidFile, 'utf8')).trim();
+    // Strict: parseInt would accept "123abc" as 123 (FR-WIN-IPC-4).
+    const pid = /^\d+$/.test(text) ? Number(text) : 0;
+    if (pid > 0 && await isEffectEmuProcess(pid, execFileFn, platform)) {
       // SIGTERM first, escalating to SIGKILL only if the process is still
       // alive after a short grace period (FR-EXT-2).
       await escalateKill(pid);
@@ -291,7 +308,7 @@ export class EmulatorManager extends EventEmitter {
       // Kill any process left over from a previous session, waiting up to 200 ms
       // for it to exit before spawning a new one (FR-EMU-3). Identity-checked
       // and SIGTERM-first (FR-EXT-2).
-      return killStalePid(this.buildDir, this.execFile)
+      return killStalePid(this.buildDir, this.execFile, this.platform)
         .catch(() => { /* ignore stale-pid errors */ })
         // Resolved before killExisting() so kill → spawn stays synchronous.
         .then(() => this.resolveExecutable(buildDir))

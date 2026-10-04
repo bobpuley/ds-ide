@@ -40,7 +40,9 @@ Source: `01_input-ideas.md`, 2026-10-04; `multiplatform_plan.md`. Milestones: **
 
 **FR-WIN-IPC-3 — Graceful shutdown message.** A host-to-emulator `shutdown` message makes the emulator stop the audio engine, flush the session recorder and exit with status 0. The extension sends it first on every platform and falls back to terminating the process after a grace period. Signal handlers on POSIX keep working. `PROTOCOL_VERSION` handling for the new message/announce format is defined and tested (a new extension with an old emulator fails clearly, as today).
 
-**FR-WIN-IPC-4 — Cross-platform stale-process check.** Reclaiming a stale `effect_emu` recorded in `emu.pid` no longer shells out to `ps`: identity is checked with a mechanism that works on both platforms (including the `.exe` name), and an unrelated process that reused the PID is never killed. The stale `.sock` cleanup remains macOS-only behaviour; Windows has no equivalent files to clean.
+**FR-WIN-IPC-4 — Cross-platform stale-process check.** Reclaiming a stale `effect_emu` recorded in `emu.pid` checks the process identity through one function with a per-platform query — `ps -p <pid> -o comm=` on macOS (unchanged), `tasklist` on Windows (matching `effect_emu.exe`) — so it works on both platforms, the executable name is matched exactly (not by suffix), a garbled pid file is ignored, and an unrelated process that reused the PID is never killed. The stale `.sock` cleanup remains macOS-only behaviour; Windows has no equivalent files to clean.
+
+> Decision 2026-10-04 (M78): the original wording "no longer shells out to `ps`" was replaced — macOS has no `ps`-free way to read a PID's executable name (no `/proc`, nothing in Node), and an IPC-based identity check would leave an emulator with a dead IPC thread unreclaimed. `ps` stays on macOS; Windows uses `tasklist`.
 
 ### Audio backends (M79–M80)
 
