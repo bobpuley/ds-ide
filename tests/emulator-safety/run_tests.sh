@@ -36,7 +36,7 @@ SOURCES=(
     "${TEST_SRC}"
     "${RUNTIME_DIR}/wav_reader.cpp"
     "${RUNTIME_DIR}/session_player.cpp"
-    "${RUNTIME_DIR}/session_recorder.cpp"
+    "${RUNTIME_DIR}/session_recorder.cpp" "${RUNTIME_DIR}/platform_file.cpp"
     "${RUNTIME_DIR}/ipc_server.cpp"
     "${RUNTIME_DIR}/input_generators.cpp"
     "${SHIM_SRC}/midi_event.cpp"

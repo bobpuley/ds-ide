@@ -30,7 +30,7 @@ EFFECT_SRC = os.path.join(
 RUNTIME_BASENAMES = {
     "main.cpp", "audio_engine.cpp", "core_audio_device.cpp",
     "ipc_server.cpp", "wav_reader.cpp", "session_recorder.cpp",
-    "session_player.cpp",
+    "session_player.cpp", "platform_file.cpp",
 }
 SHIM_BASENAMES = {
     "daisy_seed.cpp", "adc_handle.cpp", "system.cpp", "switch.cpp", "led.cpp",

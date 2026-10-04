@@ -72,6 +72,7 @@ set(RUNTIME_SRC
     "${CMAKE_SOURCE_DIR}/runtime/input_generators.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/session_recorder.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/session_player.cpp"
+    "${CMAKE_SOURCE_DIR}/runtime/platform_file.cpp"
 )
 
 # DaisySP: glob all .cpp files under DAISYSP_DIR if provided.

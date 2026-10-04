@@ -23,3 +23,31 @@ jobs:
       # explicitly when the binding is absent off macOS.
       - run: npm ci --ignore-scripts
       - run: npm test
+
+  # FR-WIN-BLD-2..4: emulator sources compile under clang/MinGW. Compile-only
+  # until M78 ports ipc_server.cpp and effect_emu links.
+  emulator-compile:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANG64
+          update: false
+          install: >-
+            mingw-w64-clang-x86_64-clang
+      - name: Compile portable sources (FR-WIN-BLD-2)
+        run: |
+          for src in \
+            emulator/runtime/wav_reader.cpp \
+            emulator/runtime/session_player.cpp \
+            emulator/runtime/session_recorder.cpp \
+            emulator/runtime/platform_file.cpp \
+            emulator/shim/src/fatfs_host.cpp; do
+            echo "== $src"
+            clang++ -std=c++17 -fsyntax-only -Wall -Wextra -Wno-unused-parameter \
+              -Iemulator/runtime -Iemulator/shim/include "$src"
+          done
