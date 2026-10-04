@@ -47,3 +47,7 @@ HANDOFF.md
 examples/**/.ds-ide/
 examples/**/*.png
 .ds-ide-shim-test/
+
+# Python bytecode
+__pycache__/
+*.pyc
