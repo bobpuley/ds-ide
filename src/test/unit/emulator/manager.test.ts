@@ -4,7 +4,7 @@ import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { EmulatorManager, workspaceRuntimeDir, killStalePid } from '../../../emulator/manager';
+import { EmulatorManager, workspaceRuntimeDir, killStalePid, sweepStaleSockets } from '../../../emulator/manager';
 import { IpcClient } from '../../../emulator/ipc-client';
 import { PROTOCOL_VERSION } from '../../../ipc/protocol-version';
 
@@ -208,6 +208,12 @@ describe('EmulatorManager', () => {
     const jobs = String(Math.max(1, os.cpus().length));
 
     function managerFor(platform: NodeJS.Platform, access?: (p: string) => Promise<void>) {
+      // Windows emulators announce TCP loopback, never a socket path (FR-WIN-IPC-1).
+      if (platform === 'win32') {
+        spawnMock = vi.fn((cmd: string) =>
+          cmd === 'cmake' ? makeCmakeProcess(0) : makeChildProcess(0, '127.0.0.1:50123'),
+        ) as ReturnType<typeof vi.fn>;
+      }
       return new EmulatorManager({
         spawn: spawnMock as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
@@ -264,6 +270,64 @@ describe('EmulatorManager', () => {
       await mgr.build(opts, () => undefined);
       await mgr.deploy(() => undefined);
       expect(spawnMock.mock.calls[2]![0]).toBe(path.join(buildDir, 'effect_emu'));
+    });
+  });
+
+  describe('transport-aware deploy (FR-WIN-IPC-1)', () => {
+    const opts = { projectRoot: '/proj', effectSrc: '/proj/e.cpp', emulatorSrc: '/ext/emulator' };
+    const buildDir = path.join('/proj', '.ds-ide', 'build');
+
+    function managerAnnouncing(platform: NodeJS.Platform, announce: string) {
+      const child = { proc: null as ReturnType<typeof makeChildProcess> | null };
+      spawnMock = vi.fn((cmd: string) => {
+        if (cmd === 'cmake') return makeCmakeProcess(0);
+        child.proc = makeChildProcess(0, announce);
+        return child.proc;
+      }) as ReturnType<typeof vi.fn>;
+      const mgr = new EmulatorManager({
+        spawn: spawnMock as unknown as typeof cp.spawn,
+        ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+        access: (() => Promise.resolve()) as unknown as typeof fs.promises.access,
+        platform,
+      });
+      return { mgr, child };
+    }
+
+    it('on macOS: spawns with a socket path under the per-workspace runtime dir and connects by path', async () => {
+      const { mgr } = managerAnnouncing('darwin', '/tmp/announced.sock');
+      await mgr.build(opts, () => undefined);
+      await mgr.deploy(() => undefined);
+      const args = spawnMock.mock.calls[2]![1] as string[];
+      expect(args).toHaveLength(1);
+      expect(path.dirname(args[0]!)).toBe(workspaceRuntimeDir(buildDir));
+      expect(args[0]).toMatch(/emu-[0-9a-f]{8}\.sock$/);
+      expect(mkdirMock).toHaveBeenCalledWith(workspaceRuntimeDir(buildDir), { recursive: true, mode: 0o700 });
+      expect(ipcClientStub.connect).toHaveBeenCalledWith({ kind: 'unix', path: '/tmp/announced.sock' });
+    });
+
+    it('on Windows: spawns effect_emu --tcp, creates no socket runtime dir, connects by host:port', async () => {
+      const { mgr } = managerAnnouncing('win32', '127.0.0.1:50123');
+      await mgr.build(opts, () => undefined);
+      await mgr.deploy(() => undefined);
+      expect(spawnMock.mock.calls[2]![1]).toEqual(['--tcp']);
+      expect(mkdirMock).not.toHaveBeenCalledWith(workspaceRuntimeDir(buildDir), expect.anything());
+      expect(ipcClientStub.connect).toHaveBeenCalledWith({ kind: 'tcp', host: '127.0.0.1', port: 50123 });
+    });
+
+    it('rejects a malformed announce and kills the spawned emulator', async () => {
+      const { mgr, child } = managerAnnouncing('win32', '127.0.0.1:99999');
+      await mgr.build(opts, () => undefined);
+      await expect(mgr.deploy(() => undefined)).rejects.toThrow(/malformed emulator announce/i);
+      expect(ipcClientStub.connect).not.toHaveBeenCalled();
+      expect(child.proc!.kill).toHaveBeenCalled();
+    });
+
+    it('rejects a non-loopback TCP announce without connecting', async () => {
+      const { mgr } = managerAnnouncing('darwin', '10.0.0.5:4000');
+      await mgr.build(opts, () => undefined);
+      await expect(mgr.deploy(() => undefined)).rejects.toThrow(/loopback/i);
+      expect(ipcClientStub.connect).not.toHaveBeenCalled();
     });
   });
 
@@ -376,7 +440,7 @@ describe('EmulatorManager', () => {
         () => undefined,
       );
       await manager.deploy(() => undefined);
-      expect(ipcClientStub.connect).toHaveBeenCalledWith('/tmp/daisy_emu_test.sock');
+      expect(ipcClientStub.connect).toHaveBeenCalledWith({ kind: 'unix', path: '/tmp/daisy_emu_test.sock' });
     });
   });
 
@@ -1452,5 +1516,34 @@ describe('EmulatorManager', () => {
       manager.dispose();
       expect(manager.isConnected).toBe(false);
     });
+  });
+});
+
+describe('sweepStaleSockets() (FR-EXT-2, FR-WIN-IPC-1)', () => {
+  const buildDir = path.join('/proj', '.ds-ide', 'build');
+
+  it('on macOS: removes only *.sock files from this workspace\'s runtime dir', async () => {
+    const readdir = vi.fn().mockResolvedValue(['emu-1.sock', 'notes.txt', 'emu-2.sock']);
+    const unlink = vi.fn().mockResolvedValue(undefined);
+    await sweepStaleSockets(buildDir, 'darwin', { readdir, unlink } as never);
+    const dir = workspaceRuntimeDir(buildDir);
+    expect(readdir).toHaveBeenCalledWith(dir);
+    expect(unlink.mock.calls.map((c) => c[0])).toEqual([path.join(dir, 'emu-1.sock'), path.join(dir, 'emu-2.sock')]);
+  });
+
+  it('on Windows: does nothing — the TCP transport leaves no socket files', async () => {
+    const readdir = vi.fn().mockResolvedValue(['emu-1.sock']);
+    const unlink = vi.fn();
+    await sweepStaleSockets(buildDir, 'win32', { readdir, unlink } as never);
+    expect(readdir).not.toHaveBeenCalled();
+    expect(unlink).not.toHaveBeenCalled();
+  });
+
+  it('never rejects when the runtime dir or a file is already gone', async () => {
+    const readdir = vi.fn().mockRejectedValue(new Error('ENOENT'));
+    await expect(sweepStaleSockets(buildDir, 'darwin', { readdir, unlink: vi.fn() } as never)).resolves.toBeUndefined();
+    const readdir2 = vi.fn().mockResolvedValue(['a.sock']);
+    const unlink2 = vi.fn().mockRejectedValue(new Error('ENOENT'));
+    await expect(sweepStaleSockets(buildDir, 'darwin', { readdir: readdir2, unlink: unlink2 } as never)).resolves.toBeUndefined();
   });
 });

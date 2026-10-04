@@ -10,7 +10,7 @@ The extension and emulator talk over an `AF_UNIX` socket and manage the emulator
 
 ## Sprint Tasks
 
-### [ ] feat: transport abstraction and TCP loopback server in the emulator (FR-WIN-IPC-1)
+### [x] feat: transport abstraction and TCP loopback server in the emulator (FR-WIN-IPC-1)
 
 `ipc_server.cpp` is written directly against `<sys/socket.h>`/`<sys/un.h>`/`<unistd.h>` with `AF_UNIX`.
 
@@ -25,7 +25,7 @@ The extension and emulator talk over an `AF_UNIX` socket and manage the emulator
 
 ---
 
-### [ ] feat: transport-aware IpcClient and EmulatorManager (FR-WIN-IPC-1)
+### [x] feat: transport-aware IpcClient and EmulatorManager (FR-WIN-IPC-1)
 
 `IpcClient.connect()` and `EmulatorManager` assume the announced value is a filesystem path (and size sockets paths for the ~103-byte `AF_UNIX` limit).
 

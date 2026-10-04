@@ -1,6 +1,7 @@
 import * as net from 'net';
 import { EventEmitter } from 'events';
 import { parseIpcMessage, IpcMessage } from '../ipc/narrow';
+import { IpcAddress, formatIpcAddress } from './ipc-address';
 
 export type { IpcMessage };
 
@@ -11,7 +12,7 @@ export interface IpcWarning {
 }
 
 export interface IIpcClient {
-  connect(socketPath: string): Promise<void>;
+  connect(address: IpcAddress | string): Promise<void>;
   send(msg: IpcMessage): void;
   disconnect(): void;
   on(event: 'message', listener: (msg: IpcMessage) => void): this;
@@ -39,7 +40,11 @@ export class IpcClient extends EventEmitter implements IIpcClient {
     this.emit('warning', { message, count } satisfies IpcWarning);
   }
 
-  connect(socketPath: string, timeoutMs = CONNECT_TIMEOUT_MS): Promise<void> {
+  // FR-WIN-IPC-1: a Unix socket path (a bare string is treated as one) or a
+  // TCP loopback host:port, as parsed from the emulator's announce line.
+  connect(address: IpcAddress | string, timeoutMs = CONNECT_TIMEOUT_MS): Promise<void> {
+    const target: IpcAddress = typeof address === 'string' ? { kind: 'unix', path: address } : address;
+    const label = formatIpcAddress(target);
     return new Promise((resolve, reject) => {
       const sock = new net.Socket();
       this.socket = sock;
@@ -50,7 +55,7 @@ export class IpcClient extends EventEmitter implements IIpcClient {
         settled = true;
         sock.destroy();
         if (this.socket === sock) this.socket = null;
-        reject(new Error(`IPC connect to ${socketPath} timed out after ${timeoutMs}ms`));
+        reject(new Error(`IPC connect to ${label} timed out after ${timeoutMs}ms`));
       }, timeoutMs);
 
       sock.once('connect', () => {
@@ -73,7 +78,8 @@ export class IpcClient extends EventEmitter implements IIpcClient {
         clearTimeout(timer);
         reject(err);
       });
-      sock.connect({ path: socketPath });
+      if (target.kind === 'unix') sock.connect({ path: target.path });
+      else sock.connect({ host: target.host, port: target.port });
     });
   }
 

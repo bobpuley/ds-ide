@@ -38,6 +38,41 @@ describe('IpcClient', () => {
     await expect(promise).resolves.toBeUndefined();
   });
 
+  it('connects a Unix socket by path (string or descriptor) (FR-WIN-IPC-1)', async () => {
+    const client = new IpcClient();
+    const p1 = client.connect('/tmp/test.sock');
+    socketStub.emit('connect');
+    await p1;
+    expect(socketStub.connect).toHaveBeenLastCalledWith({ path: '/tmp/test.sock' });
+
+    socketStub = makeSocketStub();
+    vi.mocked(net.Socket).mockImplementation(() => socketStub as unknown as net.Socket);
+    const p2 = new IpcClient().connect({ kind: 'unix', path: '/tmp/other.sock' });
+    socketStub.emit('connect');
+    await p2;
+    expect(socketStub.connect).toHaveBeenLastCalledWith({ path: '/tmp/other.sock' });
+  });
+
+  it('connects TCP loopback by host and port (FR-WIN-IPC-1)', async () => {
+    const client = new IpcClient();
+    const promise = client.connect({ kind: 'tcp', host: '127.0.0.1', port: 50123 });
+    socketStub.emit('connect');
+    await expect(promise).resolves.toBeUndefined();
+    expect(socketStub.connect).toHaveBeenLastCalledWith({ host: '127.0.0.1', port: 50123 });
+  });
+
+  it('names the TCP address in a connect timeout (FR-WIN-IPC-1)', async () => {
+    vi.useFakeTimers();
+    try {
+      const promise = new IpcClient().connect({ kind: 'tcp', host: '127.0.0.1', port: 50123 }, 5_000);
+      const assertion = expect(promise).rejects.toThrow(/127\.0\.0\.1:50123 timed out/);
+      await vi.advanceTimersByTimeAsync(5_000);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('connect rejects when socket emits error before connect', async () => {
     const client = new IpcClient();
     const promise = client.connect('/tmp/test.sock');

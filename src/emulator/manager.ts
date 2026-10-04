@@ -5,6 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { EventEmitter } from 'events';
 import { IpcClient, IpcMessage, IpcWarning, CONNECT_TIMEOUT_MS } from './ipc-client';
+import { parseAnnounce, formatIpcAddress } from './ipc-address';
 import { potControlId, buttonControlId, toggleControlId, encoderControlId, narrowControlValue, narrowControlSnapshot } from '../ipc/control-values';
 import type { ScopeCaptureRequest } from '../ipc/narrow';
 import { PROTOCOL_VERSION } from '../ipc/protocol-version';
@@ -47,6 +48,30 @@ function pidFilePath(buildDir: string): string {
 export function workspaceRuntimeDir(buildDir: string): string {
   const hash = crypto.createHash('sha256').update(buildDir).digest('hex').slice(0, 10);
   return path.join(os.tmpdir(), `ds-ide-${hash}`);
+}
+
+// Remove stale UNIX socket files left by a previous crashed session of
+// *this* workspace only — scoped to its own runtime directory, never a
+// global /tmp sweep that could sever another concurrently running VS Code
+// window's live emulator socket (FR-EXT-2). Unix-socket transport only: on
+// Windows the TCP transport leaves no files behind (FR-WIN-IPC-1). Never
+// rejects.
+export async function sweepStaleSockets(
+  buildDir: string,
+  platform: NodeJS.Platform,
+  fsp: Pick<typeof fs.promises, 'readdir' | 'unlink'> = fs.promises,
+): Promise<void> {
+  if (platform === 'win32') return;
+  const runtimeDir = workspaceRuntimeDir(buildDir);
+  let entries: string[];
+  try {
+    entries = await fsp.readdir(runtimeDir);
+  } catch {
+    return; // directory may not exist yet
+  }
+  await Promise.all(entries
+    .filter((entry) => entry.endsWith('.sock'))
+    .map((entry) => fsp.unlink(path.join(runtimeDir, entry)).catch(() => { /* ignore already-gone */ })));
 }
 
 // True if `pid` is currently running an effect_emu process. Used to verify
@@ -214,16 +239,24 @@ export class EmulatorManager extends EventEmitter {
     if (this.deployLock) return this.deployLock;
 
     const buildDir = this.buildDir;
+    const useTcp = this.platform === 'win32';
     // Socket lives under a per-workspace directory with a randomized filename
-    // component, not a predictable global-/tmp path (FR-EXT-2).
+    // component, not a predictable global-/tmp path (FR-EXT-2). Unix-socket
+    // transport only — Windows uses TCP loopback and has no socket file
+    // (FR-WIN-IPC-1).
     const runtimeDir = workspaceRuntimeDir(this.buildDir);
 
     // mkdir (not mkdirSync) so this doesn't block the Extension Host; the
     // deployLock below is still assigned synchronously so concurrent deploy()
     // calls coalesce onto the same promise regardless (FR-QA-EXT-7).
-    const deployPromise = this.mkdir(runtimeDir, { recursive: true, mode: 0o700 }).then(() => {
-      this.socketPath = path.join(runtimeDir, `emu-${crypto.randomBytes(4).toString('hex')}.sock`);
-      const socketPath = this.socketPath;
+    const prepared = useTcp
+      ? Promise.resolve()
+      : this.mkdir(runtimeDir, { recursive: true, mode: 0o700 }).then(() => undefined);
+    const deployPromise = prepared.then(() => {
+      this.socketPath = useTcp
+        ? null
+        : path.join(runtimeDir, `emu-${crypto.randomBytes(4).toString('hex')}.sock`);
+      const spawnArgs = this.socketPath ? [this.socketPath] : ['--tcp'];
 
       // Kill any process left over from a previous session, waiting up to 200 ms
       // for it to exit before spawning a new one (FR-EMU-3). Identity-checked
@@ -235,7 +268,7 @@ export class EmulatorManager extends EventEmitter {
         .then((exePath) => {
           this.killExisting();
 
-          const child = this.spawn(exePath, [socketPath], { stdio: ['ignore', 'pipe', 'pipe'] });
+          const child = this.spawn(exePath, spawnArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
           this.childProcess = child;
 
           return new Promise<void>((resolve, reject) => {
@@ -493,7 +526,7 @@ export class EmulatorManager extends EventEmitter {
     this.ipcClient = null;
   }
 
-  private async connectIpc(socketPath: string): Promise<void> {
+  private async connectIpc(announced: string): Promise<void> {
     this.intentionalDisconnect = false;  // new live connection — reset flag
     this.lastKnownRunning = undefined;   // fresh connection — unknown until first status
     const client = this.ipcClientFactory();
@@ -527,9 +560,11 @@ export class EmulatorManager extends EventEmitter {
     // FR-DEV-6: register the handshake listener before connect() so it can
     // never miss a message delivered synchronously with (or immediately
     // after) the connection completing.
-    const handshake = this.awaitProtocolHandshake(client, socketPath);
     try {
-      await client.connect(socketPath);
+      // FR-WIN-IPC-1: a malformed announce fails here and still kills the child.
+      const address = parseAnnounce(announced, this.platform);
+      const handshake = this.awaitProtocolHandshake(client, formatIpcAddress(address));
+      await client.connect(address);
       await handshake;
     } catch (err) {
       // FR-EXT-7: the effect_emu child was already spawned before this
@@ -551,7 +586,7 @@ export class EmulatorManager extends EventEmitter {
   // missing, malformed, or doesn't match this extension's own version.
   // Reuses IpcClient's own connect-phase timeout budget rather than adding a
   // second one.
-  private awaitProtocolHandshake(client: IpcClient, socketPath: string): Promise<void> {
+  private awaitProtocolHandshake(client: IpcClient, addressLabel: string): Promise<void> {
     return new Promise((resolve, reject) => {
       let settled = false;
 
@@ -561,7 +596,7 @@ export class EmulatorManager extends EventEmitter {
         client.off('message', onMessage);
         client.disconnect();
         reject(new Error(
-          `emulator at ${socketPath} did not send a protocol version handshake within ${CONNECT_TIMEOUT_MS}ms`,
+          `emulator at ${addressLabel} did not send a protocol version handshake within ${CONNECT_TIMEOUT_MS}ms`,
         ));
       }, CONNECT_TIMEOUT_MS);
 
