@@ -72,4 +72,18 @@
 > **v24 complete** — archived to `docs/v24/` on 2026-10-03. Full v24 ideas archived in
 > [`docs/v24/01_input-ideas.md`](v24/01_input-ideas.md).
 
-*v25 planning not yet started. Use `/doc-creator-driver:intake` or `/doc-creator-driver:start` to begin.*
+## Ideas
+
+- **Windows support (macOS + Windows)** — make ds-ide (extension + emulator) run on Windows in
+  addition to macOS. Full survey, verified findings, decisions and priority order are in
+  `multiplatform_plan.md` (repo root, committed on `feat/windows-support`, `72be7f7`). Decisions
+  taken so far: clang/MinGW as the Windows compiler; platform-specific VSIX; Windows toolchain
+  delivered by download-on-first-use (Option C); common `AudioDevice` interface with CoreAudio kept
+  on macOS and RtAudio first on Windows (native WASAPI only if the measurement gate fails); IPC
+  moves to TCP loopback with an explicit IPC `shutdown` message.
+- **Git workflow for this work** — nothing is merged automatically into `main`. The base branch
+  for all Windows work is `feat/windows-support` (already on `origin`). Each milestone gets its
+  own branch created from `feat/windows-support`, and at milestone close that branch is merged
+  into `feat/windows-support`. The merge of `feat/windows-support` into `main` happens only at
+  the very end, once the whole Windows support is completed and tested (no regressions on macOS).
+
