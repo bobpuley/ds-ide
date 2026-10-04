@@ -31,6 +31,15 @@ extern "C" void handle_shutdown_signal(int /*sig*/) {
     daisy_emu::g_state.shutdown.store(true, std::memory_order_relaxed);
 }
 
+// First stdin line, without its line ending; "" if stdin is closed/empty.
+std::string read_session_token() {
+    char buf[256];
+    if (!std::fgets(buf, sizeof(buf), stdin)) return "";
+    std::string token(buf);
+    while (!token.empty() && (token.back() == '\n' || token.back() == '\r')) token.pop_back();
+    return token;
+}
+
 }  // namespace
 
 int main(int argc, char* argv[]) {
@@ -65,9 +74,21 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // FR-WIN-IPC-2: on TCP any local process could connect, so the extension
+    // passes a per-session token as the first line of stdin — never on the
+    // command line, where other processes can read it.
+    std::string session_token;
+    if (listener->kind() == daisy_emu::IpcListener::Kind::Tcp) {
+        session_token = read_session_token();
+        if (session_token.empty()) {
+            std::fprintf(stderr, "[daisy-emu] TCP transport requires a session token on stdin\n");
+            return 1;
+        }
+    }
+
     // IPC server runs in its own thread and owns the listener from here on.
-    std::thread ipc_thread([l = std::move(listener)]() mutable {
-        daisy_emu::run_ipc_server(std::move(l));
+    std::thread ipc_thread([l = std::move(listener), t = std::move(session_token)]() mutable {
+        daisy_emu::run_ipc_server(std::move(l), std::move(t));
     });
 
     // Audio engine runs in its own thread: waits for StartAudio(), then loops.

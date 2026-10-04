@@ -12,11 +12,13 @@ import { PROTOCOL_VERSION } from '../../../ipc/protocol-version';
 
 function makeChildProcess(exitCode = 0, socketPath?: string, exitAfterAnnounce = false) {
   const proc = new EventEmitter() as EventEmitter & {
+    stdin: EventEmitter & { write: ReturnType<typeof vi.fn>; end: ReturnType<typeof vi.fn> };
     stdout: EventEmitter & { on: ReturnType<typeof vi.fn> };
     stderr: EventEmitter & { on: ReturnType<typeof vi.fn> };
     kill: ReturnType<typeof vi.fn>;
     pid: number;
   };
+  proc.stdin = Object.assign(new EventEmitter(), { write: vi.fn(), end: vi.fn() });
   proc.kill = vi.fn();
   proc.pid  = 12345;
 
@@ -312,7 +314,50 @@ describe('EmulatorManager', () => {
       await mgr.deploy(() => undefined);
       expect(spawnMock.mock.calls[2]![1]).toEqual(['--tcp']);
       expect(mkdirMock).not.toHaveBeenCalledWith(workspaceRuntimeDir(buildDir), expect.anything());
-      expect(ipcClientStub.connect).toHaveBeenCalledWith({ kind: 'tcp', host: '127.0.0.1', port: 50123 });
+      expect(ipcClientStub.connect).toHaveBeenCalledWith({ kind: 'tcp', host: '127.0.0.1', port: 50123 }, undefined, expect.any(String));
+    });
+
+    it('on Windows: pipes a fresh 32-byte session token to stdin and hands it to the IPC client (FR-WIN-IPC-2)', async () => {
+      const { mgr, child } = managerAnnouncing('win32', '127.0.0.1:50123');
+      await mgr.build(opts, () => undefined);
+      await mgr.deploy(() => undefined);
+      const spawnOpts = spawnMock.mock.calls[2]![2] as { stdio: string[] };
+      expect(spawnOpts.stdio).toEqual(['pipe', 'pipe', 'pipe']);
+      const written = child.proc!.stdin.write.mock.calls[0]![0] as string;
+      expect(written).toMatch(/^[0-9a-f]{64}\n$/);
+      expect(child.proc!.stdin.end).toHaveBeenCalled();
+      const token = written.trim();
+      expect(ipcClientStub.connect).toHaveBeenCalledWith({ kind: 'tcp', host: '127.0.0.1', port: 50123 }, undefined, token);
+      // The token is never on the command line.
+      expect((spawnMock.mock.calls[2]![1] as string[]).join(' ')).not.toContain(token);
+    });
+
+    it('a stdin EPIPE (emulator died before reading its token) does not throw (FR-WIN-IPC-2)', async () => {
+      const { mgr, child } = managerAnnouncing('win32', '127.0.0.1:50123');
+      await mgr.build(opts, () => undefined);
+      await mgr.deploy(() => undefined);
+      expect(child.proc!.stdin.listenerCount('error')).toBeGreaterThan(0);
+      expect(() => child.proc!.stdin.emit('error', Object.assign(new Error('EPIPE'), { code: 'EPIPE' }))).not.toThrow();
+    });
+
+    it('uses a different session token on every deploy (FR-WIN-IPC-2)', async () => {
+      const first = managerAnnouncing('win32', '127.0.0.1:50123');
+      await first.mgr.build(opts, () => undefined);
+      await first.mgr.deploy(() => undefined);
+      const t1 = first.child.proc!.stdin.write.mock.calls[0]![0];
+      const second = managerAnnouncing('win32', '127.0.0.1:50124');
+      await second.mgr.build(opts, () => undefined);
+      await second.mgr.deploy(() => undefined);
+      expect(second.child.proc!.stdin.write.mock.calls[0]![0]).not.toBe(t1);
+    });
+
+    it('on macOS: stdin stays ignored and no token is sent (Unix transport unaffected)', async () => {
+      const { mgr, child } = managerAnnouncing('darwin', '/tmp/announced.sock');
+      await mgr.build(opts, () => undefined);
+      await mgr.deploy(() => undefined);
+      expect((spawnMock.mock.calls[2]![2] as { stdio: string[] }).stdio).toEqual(['ignore', 'pipe', 'pipe']);
+      expect(child.proc!.stdin.write).not.toHaveBeenCalled();
+      expect(ipcClientStub.connect).toHaveBeenCalledWith({ kind: 'unix', path: '/tmp/announced.sock' });
     });
 
     it('rejects a malformed announce and kills the spawned emulator', async () => {

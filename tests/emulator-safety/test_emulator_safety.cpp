@@ -198,6 +198,28 @@ static void test_load_wav_file_rejects_oversize_file() {
 
 // ---- AC-39: SpscIpcQueue basic SPSC correctness ----------------------------
 
+// ---- FR-WIN-IPC-2: TCP session token hello check ----------------------------
+
+static void test_session_hello_check() {
+    std::printf("--- FR-WIN-IPC-2: session token hello check ---\n");
+    using daisy_emu::check_session_hello;
+    const std::string tok = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    CHECK(check_session_hello("{\"type\":\"hello\",\"token\":\"" + tok + "\"}", tok),
+          "the right token is accepted");
+    CHECK(check_session_hello("{\"token\":\"" + tok + "\",\"type\":\"hello\"}", tok),
+          "field order does not matter");
+    CHECK(!check_session_hello("{\"type\":\"hello\",\"token\":\"" + tok.substr(1) + "x\"}", tok),
+          "a wrong token of the same length is rejected");
+    CHECK(!check_session_hello("{\"type\":\"hello\",\"token\":\"" + tok.substr(0, 10) + "\"}", tok),
+          "a token prefix is rejected");
+    CHECK(!check_session_hello("{\"type\":\"hello\"}", tok), "a hello without a token is rejected");
+    CHECK(!check_session_hello("{\"type\":\"pot\",\"token\":\"" + tok + "\"}", tok),
+          "the token is only honoured on a hello message");
+    CHECK(!check_session_hello("garbage", tok), "a non-JSON first line is rejected");
+    CHECK(!check_session_hello("{\"type\":\"hello\",\"token\":\"\"}", ""),
+          "an empty expected token never authenticates");
+}
+
 static void test_spsc_queue_basic() {
     std::printf("--- AC-39: SpscIpcQueue basic ---\n");
 
@@ -1772,6 +1794,7 @@ int main() {
     test_scope_block_queue_truncates_oversize_frame_count();
     test_scope_block_queue_fifo_order_across_slots();
     test_scope_block_queue_carries_config_generation_tag();
+    test_session_hello_check();
 
     std::printf("\nResult: %s\n", failures == 0 ? "all passed" : "FAILURES");
     return failures == 0 ? 0 : 1;

@@ -758,9 +758,45 @@ static bool send_line(IpcConnection& conn, const std::string& msg) {
     return conn.send(line.c_str(), line.size()) > 0;
 }
 
+// ---- Session token (FR-WIN-IPC-2) -------------------------------------------
+
+bool check_session_hello(const std::string& line, const std::string& expected) {
+    if (expected.empty()) return false;
+    if (json_get(line, "type") != "hello") return false;
+    const std::string got = json_get(line, "token");
+    // Constant-time over the expected length: no early exit on the first
+    // differing byte. The length itself is not secret (fixed-size hex).
+    unsigned diff = static_cast<unsigned>(got.size() ^ expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        const char g = i < got.size() ? got[i] : '\0';
+        diff |= static_cast<unsigned>(static_cast<unsigned char>(g ^ expected[i]));
+    }
+    return diff == 0;
+}
+
+// Reads the client's first line within kHelloTimeoutMs and checks it.
+// Bytes after that line are returned in `rest` for the message loop.
+static bool authenticate(IpcConnection& conn, const std::string& token, std::string& rest) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kHelloTimeoutMs);
+    std::string buf;
+    char raw[512];
+    while (buf.find('\n') == std::string::npos) {
+        const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now()).count();
+        if (left <= 0 || buf.size() > 4096) return false;
+        if (conn.waitReadable(static_cast<int>(left)) <= 0) continue;
+        const long long n = conn.recv(raw, sizeof(raw));
+        if (n <= 0) return false;
+        buf.append(raw, static_cast<size_t>(n));
+    }
+    const size_t nl = buf.find('\n');
+    rest = buf.substr(nl + 1);
+    return check_session_hello(buf.substr(0, nl), token);
+}
+
 // ---- Server loop ------------------------------------------------------------
 
-void run_ipc_server(std::unique_ptr<IpcListener> listener) {
+void run_ipc_server(std::unique_ptr<IpcListener> listener, std::string session_token) {
     std::printf("DAISY_EMU_SOCKET:%s\n", listener->address().c_str());
     std::fflush(stdout);
 
@@ -770,6 +806,13 @@ void run_ipc_server(std::unique_ptr<IpcListener> listener) {
 
         std::shared_ptr<IpcConnection> conn = listener->accept();
         if (!conn) continue;
+
+        // Bytes the client sent after its hello, handed to the read loop.
+        std::string partial;
+        if (listener->kind() == IpcListener::Kind::Tcp && !authenticate(*conn, session_token, partial)) {
+            std::fprintf(stderr, "[daisy-emu] closed an IPC connection without a valid session token\n");
+            continue;
+        }
 
         // Register the IPC send function for this client.
         // On send failure (EPIPE / disconnect) mark the client dead (AC-45).
@@ -812,8 +855,16 @@ void run_ipc_server(std::unique_ptr<IpcListener> listener) {
         // raced ahead of and could cut off that flush before it reached the
         // client.
         char raw[4096];
-        std::string partial;
         while (!g_state.telemetry_drained.load()) {
+            // Dispatch every complete line already buffered (including any
+            // the client sent right after its hello) before waiting again.
+            size_t nl;
+            while ((nl = partial.find('\n')) != std::string::npos) {
+                std::string msg = partial.substr(0, nl);
+                partial.erase(0, nl + 1);
+                if (!msg.empty()) dispatch(msg);
+            }
+
             if (conn->waitReadable(50) <= 0) continue;
 
             const long long n = conn->recv(raw, sizeof(raw) - 1);
@@ -825,13 +876,6 @@ void run_ipc_server(std::unique_ptr<IpcListener> listener) {
             if (partial.size() > 1024u * 1024u) {
                 std::fprintf(stderr, "[daisy-emu] IPC receive buffer exceeded 1 MB — disconnecting client\n");
                 break;
-            }
-
-            size_t nl;
-            while ((nl = partial.find('\n')) != std::string::npos) {
-                std::string msg = partial.substr(0, nl);
-                partial.erase(0, nl + 1);
-                if (!msg.empty()) dispatch(msg);
             }
         }
 

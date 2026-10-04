@@ -1,16 +1,22 @@
-"""Integration test — TCP loopback IPC transport (FR-WIN-IPC-1).
+"""Integration test — TCP loopback IPC transport + session token
+(FR-WIN-IPC-1, FR-WIN-IPC-2).
 
 Runs on macOS (`effect_emu --tcp`) and, unchanged, as the Windows CI smoke
 test (`effect_emu.exe`, where TCP is the only transport): build a bare
 fixture, parse the `DAISY_EMU_SOCKET:127.0.0.1:<port>` announce, connect,
-and complete the protocolVersion + status handshake. On POSIX it also checks
+and complete the protocolVersion + status handshake after presenting the
+per-session token (written to the emulator's stdin, as the extension does).
+Connections with a wrong or missing token are closed unanswered. On POSIX it
+also checks
 the Unix-socket transport still removes its socket file at shutdown.
 
 Bare libDaisy fixture (no DaisySP) so the test never skips.
 """
 import os
 import re
+import secrets
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -58,6 +64,34 @@ def read_announce(proc: subprocess.Popen, timeout: float = 10.0) -> str:
     raise TimeoutError("effect_emu did not announce a TCP address in time")
 
 
+def spawn_tcp(exe: str, token: "str | None") -> subprocess.Popen:
+    proc = subprocess.Popen([exe, "--tcp"], stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if token is not None:
+        proc.stdin.write((token + "\n").encode())
+    proc.stdin.close()
+    return proc
+
+
+def hello(client: EmulatorClient, token: str) -> None:
+    client.send({"type": "hello", "token": token})
+
+
+def rejected_without_reply(address: str, first_line: "bytes | None") -> bool:
+    """True if the server closes the connection without sending anything."""
+    host, port = address.split(":")
+    s = socket.create_connection((host, int(port)), timeout=5.0)
+    try:
+        if first_line is not None:
+            s.sendall(first_line)
+        data = s.recv(4096)
+        return data == b""
+    except (ConnectionResetError, ConnectionAbortedError):
+        return True
+    finally:
+        s.close()
+
+
 def stop(proc: subprocess.Popen) -> None:
     proc.terminate()
     try:
@@ -68,25 +102,47 @@ def stop(proc: subprocess.Popen) -> None:
 
 
 def test_tcp_handshake(exe: str) -> None:
-    proc = subprocess.Popen([exe, "--tcp"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    token = secrets.token_hex(32)
+    proc = spawn_tcp(exe, token)
     try:
         address = read_announce(proc)
         port = int(address.split(":")[1])
         check(0 < port < 65536, f"announces DAISY_EMU_SOCKET:127.0.0.1:<port> ({address})")
 
+        check(rejected_without_reply(address, b'{"type":"hello","token":"' + secrets.token_hex(32).encode() + b'"}\n'),
+              "a wrong token is closed without any reply (FR-WIN-IPC-2)")
+        check(rejected_without_reply(address, b'{"type":"status"}\n'),
+              "a first message that is not a hello is closed without any reply (FR-WIN-IPC-2)")
+        check(rejected_without_reply(address, None),
+              "a client that never presents a token is closed after the timeout (FR-WIN-IPC-2)")
+
         client = EmulatorClient(address, timeout=5.0)
+        hello(client, token)
         first = client.recv_one()
-        check(first.get("type") == "protocolVersion", "protocolVersion is the first message over TCP")
+        check(first.get("type") == "protocolVersion", "with the right token, protocolVersion is the first message")
         second = client.recv_one()
         check(second.get("type") == "status", "initial status follows over TCP")
         client.close()
 
         # A second connection after the first closes is served too.
         client = EmulatorClient(address, timeout=5.0)
+        hello(client, token)
         check(client.recv_one().get("type") == "protocolVersion", "a reconnect is served")
         client.close()
     finally:
         stop(proc)
+
+
+def test_tcp_requires_a_token(exe: str) -> None:
+    proc = spawn_tcp(exe, None)
+    try:
+        rc = proc.wait(timeout=10)
+        err = proc.stderr.read().decode(errors="replace")
+        check(rc != 0, "--tcp without a session token on stdin refuses to start (FR-WIN-IPC-2)")
+        check("token" in err.lower(), "the refusal names the missing session token")
+    finally:
+        if proc.poll() is None:
+            stop(proc)
 
 
 def test_unix_socket_removed_at_shutdown(exe: str) -> None:
@@ -112,6 +168,7 @@ def main() -> int:
     print("=== test_tcp_transport (FR-WIN-IPC-1) ===")
     exe = build()
     test_tcp_handshake(exe)
+    test_tcp_requires_a_token(exe)
     if not IS_WINDOWS:
         test_unix_socket_removed_at_shutdown(exe)
     print(f"\nResult: {'all passed' if failures == 0 else 'FAILURES'}")

@@ -257,6 +257,9 @@ export class EmulatorManager extends EventEmitter {
         ? null
         : path.join(runtimeDir, `emu-${crypto.randomBytes(4).toString('hex')}.sock`);
       const spawnArgs = this.socketPath ? [this.socketPath] : ['--tcp'];
+      // FR-WIN-IPC-2: a fresh per-session token for the TCP transport, sent
+      // over stdin (never argv) and presented by the client on connect.
+      const sessionToken = useTcp ? crypto.randomBytes(32).toString('hex') : undefined;
 
       // Kill any process left over from a previous session, waiting up to 200 ms
       // for it to exit before spawning a new one (FR-EMU-3). Identity-checked
@@ -268,8 +271,14 @@ export class EmulatorManager extends EventEmitter {
         .then((exePath) => {
           this.killExisting();
 
-          const child = this.spawn(exePath, spawnArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+          const child = this.spawn(exePath, spawnArgs, { stdio: [sessionToken ? 'pipe' : 'ignore', 'pipe', 'pipe'] });
           this.childProcess = child;
+          if (sessionToken) {
+            // EPIPE if the emulator died first — its exit is reported below.
+            child.stdin?.on('error', () => { /* handled via 'close' */ });
+            child.stdin?.write(`${sessionToken}\n`);
+            child.stdin?.end();
+          }
 
           return new Promise<void>((resolve, reject) => {
             let resolved = false;
@@ -306,7 +315,7 @@ export class EmulatorManager extends EventEmitter {
                   cancelSub?.dispose();
                   // Persist PID so a future session can clean up this process
                   if (child.pid !== undefined) void writePid(this.buildDir, child.pid);
-                  void this.connectIpc(match[1]!).then(resolve).catch(reject);
+                  void this.connectIpc(match[1]!, sessionToken).then(resolve).catch(reject);
                 }
               }
             };
@@ -526,7 +535,7 @@ export class EmulatorManager extends EventEmitter {
     this.ipcClient = null;
   }
 
-  private async connectIpc(announced: string): Promise<void> {
+  private async connectIpc(announced: string, sessionToken?: string): Promise<void> {
     this.intentionalDisconnect = false;  // new live connection — reset flag
     this.lastKnownRunning = undefined;   // fresh connection — unknown until first status
     const client = this.ipcClientFactory();
@@ -564,7 +573,8 @@ export class EmulatorManager extends EventEmitter {
       // FR-WIN-IPC-1: a malformed announce fails here and still kills the child.
       const address = parseAnnounce(announced, this.platform);
       const handshake = this.awaitProtocolHandshake(client, formatIpcAddress(address));
-      await client.connect(address);
+      if (address.kind === 'tcp') await client.connect(address, undefined, sessionToken);
+      else await client.connect(address);
       await handshake;
     } catch (err) {
       // FR-EXT-7: the effect_emu child was already spawned before this

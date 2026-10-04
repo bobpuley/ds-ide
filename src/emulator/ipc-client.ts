@@ -12,7 +12,7 @@ export interface IpcWarning {
 }
 
 export interface IIpcClient {
-  connect(address: IpcAddress | string): Promise<void>;
+  connect(address: IpcAddress | string, timeoutMs?: number, sessionToken?: string): Promise<void>;
   send(msg: IpcMessage): void;
   disconnect(): void;
   on(event: 'message', listener: (msg: IpcMessage) => void): this;
@@ -42,9 +42,14 @@ export class IpcClient extends EventEmitter implements IIpcClient {
 
   // FR-WIN-IPC-1: a Unix socket path (a bare string is treated as one) or a
   // TCP loopback host:port, as parsed from the emulator's announce line.
-  connect(address: IpcAddress | string, timeoutMs = CONNECT_TIMEOUT_MS): Promise<void> {
+  // FR-WIN-IPC-2: on TCP the session token is presented as the first line,
+  // before the emulator sends anything; a Unix socket needs none.
+  connect(address: IpcAddress | string, timeoutMs = CONNECT_TIMEOUT_MS, sessionToken?: string): Promise<void> {
     const target: IpcAddress = typeof address === 'string' ? { kind: 'unix', path: address } : address;
     const label = formatIpcAddress(target);
+    if (target.kind === 'tcp' && !sessionToken) {
+      return Promise.reject(new Error(`IPC connect to ${label} refused: TCP requires a session token`));
+    }
     return new Promise((resolve, reject) => {
       const sock = new net.Socket();
       this.socket = sock;
@@ -69,6 +74,9 @@ export class IpcClient extends EventEmitter implements IIpcClient {
           this.partial = '';
           this.emit('disconnect');
         });
+        if (target.kind === 'tcp') {
+          sock.write(JSON.stringify({ type: 'hello', token: sessionToken }) + '\n');
+        }
         resolve();
       });
 

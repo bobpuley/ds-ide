@@ -55,16 +55,39 @@ describe('IpcClient', () => {
 
   it('connects TCP loopback by host and port (FR-WIN-IPC-1)', async () => {
     const client = new IpcClient();
-    const promise = client.connect({ kind: 'tcp', host: '127.0.0.1', port: 50123 });
+    const promise = client.connect({ kind: 'tcp', host: '127.0.0.1', port: 50123 }, 5_000, 'tok');
     socketStub.emit('connect');
     await expect(promise).resolves.toBeUndefined();
     expect(socketStub.connect).toHaveBeenLastCalledWith({ host: '127.0.0.1', port: 50123 });
   });
 
+  it('on TCP, sends the session hello as the very first line (FR-WIN-IPC-2)', async () => {
+    const client = new IpcClient();
+    const promise = client.connect({ kind: 'tcp', host: '127.0.0.1', port: 50123 }, 5_000, 'ab12');
+    socketStub.emit('connect');
+    await promise;
+    expect(socketStub.write).toHaveBeenCalledTimes(1);
+    expect(socketStub.write.mock.calls[0]![0]).toBe('{"type":"hello","token":"ab12"}\n');
+  });
+
+  it('on a Unix socket, sends no hello even if a token is given (FR-WIN-IPC-2)', async () => {
+    const client = new IpcClient();
+    const promise = client.connect({ kind: 'unix', path: '/tmp/test.sock' }, 5_000, 'ab12');
+    socketStub.emit('connect');
+    await promise;
+    expect(socketStub.write).not.toHaveBeenCalled();
+  });
+
+  it('refuses a TCP connect without a session token (FR-WIN-IPC-2)', async () => {
+    await expect(new IpcClient().connect({ kind: 'tcp', host: '127.0.0.1', port: 50123 }))
+      .rejects.toThrow(/session token/i);
+    expect(socketStub.connect).not.toHaveBeenCalled();
+  });
+
   it('names the TCP address in a connect timeout (FR-WIN-IPC-1)', async () => {
     vi.useFakeTimers();
     try {
-      const promise = new IpcClient().connect({ kind: 'tcp', host: '127.0.0.1', port: 50123 }, 5_000);
+      const promise = new IpcClient().connect({ kind: 'tcp', host: '127.0.0.1', port: 50123 }, 5_000, 'tok');
       const assertion = expect(promise).rejects.toThrow(/127\.0\.0\.1:50123 timed out/);
       await vi.advanceTimersByTimeAsync(5_000);
       await assertion;

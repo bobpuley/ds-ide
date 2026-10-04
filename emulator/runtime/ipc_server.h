@@ -17,7 +17,19 @@ class IpcListener;
 // time until g_state.shutdown is set. Takes ownership and destroys the
 // listener before returning (closing it and removing a Unix socket file):
 // the process ends with std::_Exit, so no destructor would run later.
-void run_ipc_server(std::unique_ptr<IpcListener> listener);
+//
+// FR-WIN-IPC-2: on the TCP transport each client must first send
+// {"type":"hello","token":"<session_token>"}; anything else — or nothing
+// within kHelloTimeoutMs — closes the connection before a single byte is
+// sent back. The Unix-socket transport ignores the token (filesystem
+// permissions protect it).
+constexpr int kHelloTimeoutMs = 2000;
+void run_ipc_server(std::unique_ptr<IpcListener> listener, std::string session_token);
+
+// Exposed (non-static) for unit testing (FR-WIN-IPC-2). True only for a
+// hello message whose token equals `expected` (compared in constant time);
+// an empty `expected` never matches.
+bool check_session_hello(const std::string& line, const std::string& expected);
 
 // Exposed (non-static) for unit testing (FR-EMU-6) — otherwise only used
 // internally by ipc_server.cpp's message dispatch.
