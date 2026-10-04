@@ -13,10 +13,10 @@ jobs:
   unit-tests:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       # --ignore-scripts: postinstall rebuilds the midi native addon via a
       # macOS-only Bash script (ported in M83). The midi shape test skips
@@ -32,20 +32,21 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: msys2/setup-msys2@v2
         with:
           msystem: CLANG64
           update: false
           install: >-
             mingw-w64-clang-x86_64-clang
-      - name: Compile portable sources (FR-WIN-BLD-2)
+      - name: Compile portable sources (FR-WIN-BLD-2, FR-WIN-BLD-3)
         run: |
           for src in \
             emulator/runtime/wav_reader.cpp \
             emulator/runtime/session_player.cpp \
             emulator/runtime/session_recorder.cpp \
             emulator/runtime/platform_file.cpp \
+            emulator/runtime/main.cpp \
             emulator/shim/src/fatfs_host.cpp; do
             echo "== $src"
             clang++ -std=c++17 -fsyntax-only -Wall -Wextra -Wno-unused-parameter \

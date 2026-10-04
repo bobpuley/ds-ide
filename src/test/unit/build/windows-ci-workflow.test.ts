@@ -49,4 +49,8 @@ describe('Windows emulator compile check (FR-WIN-BLD-2..4)', () => {
   ])('compiles %s for Windows (FR-WIN-BLD-2)', (src) => {
     expect(yml).toContain(src);
   });
+
+  it('compiles emulator/runtime/main.cpp for Windows (FR-WIN-BLD-3)', () => {
+    expect(yml).toContain('emulator/runtime/main.cpp');
+  });
 });
