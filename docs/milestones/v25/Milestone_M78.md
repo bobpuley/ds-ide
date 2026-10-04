@@ -39,7 +39,7 @@ The extension and emulator talk over an `AF_UNIX` socket and manage the emulator
 
 ---
 
-### [ ] feat: per-session token on the TCP transport (FR-WIN-IPC-2)
+### [x] feat: per-session token on the TCP transport (FR-WIN-IPC-2)
 
 Any local process could connect to a loopback TCP port; the Unix socket is protected by filesystem permissions.
 
@@ -53,7 +53,7 @@ Any local process could connect to a loopback TCP port; the Unix socket is prote
 
 ---
 
-### [ ] feat: graceful IPC shutdown message (FR-WIN-IPC-3)
+### [x] feat: graceful IPC shutdown message (FR-WIN-IPC-3)
 
 On Windows `process.kill(pid, 'SIGTERM')` is `TerminateProcess`: signal handlers never run, so the recorder/session flush (FR-EMU-8) is skipped.
 
@@ -75,6 +75,6 @@ On Windows `process.kill(pid, 'SIGTERM')` is `TerminateProcess`: signal handlers
 **Affected files:** `src/emulator/manager.ts`, `src/test/unit/emulator/manager.test.ts`
 
 **DoD:**
-- identity of the PID in `emu.pid` is checked by a mechanism that works on macOS and Windows (including `effect_emu.exe`)
+- identity of the PID in `emu.pid` is checked by a mechanism that works on macOS and Windows (including `effect_emu.exe`): `ps` on macOS, `tasklist` on Windows (decision 2026-10-04, see FR-WIN-IPC-4)
 - an unrelated process that reused the PID is never killed
 - unit tests cover reclaim, PID reuse by another process, and a missing/garbled pid file on both platforms, and the existing macOS suites (TypeScript unit tests, emulator C++ test runners, `tests/build-flags`, runtime/functional tests) pass unchanged (FR-WIN-GIT-2)
