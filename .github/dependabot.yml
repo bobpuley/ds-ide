@@ -9,6 +9,9 @@ updates:
       - dependency-name: "@types/node"
       # Must match engines.vscode; bump together with it, manually
       - dependency-name: "@types/vscode"
+      # vitest 5 needs vite 8, which needs @types/node >=20.19 (we pin ^18)
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
     groups:
       npm-dev-deps:
         dependency-type: development
