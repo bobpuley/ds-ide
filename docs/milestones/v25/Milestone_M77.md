@@ -10,7 +10,7 @@ The emulator and extension assume POSIX and macOS in places that stop them from 
 
 ## Sprint Tasks
 
-### [ ] chore: add Windows CI runner for TypeScript unit tests (FR-WIN-BLD-1)
+### [x] chore: add Windows CI runner for TypeScript unit tests (FR-WIN-BLD-1)
 
 TypeScript tests stub `fs` and `child_process`, so passing on macOS says nothing about Windows. The repository has no `.github/` directory today, so no CI exists yet; this task introduces the first workflow. The branch `chore/windows-compat` (`b86d7bc`, on `origin`) already contains Windows test fixes.
 
