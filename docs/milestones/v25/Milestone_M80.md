@@ -1,7 +1,7 @@
 # M80 — Windows Audio Backend & Measurement Gate
 
 **Version:** 0.25.0-win.4
-**Status:** planned
+**Status:** in progress
 **Source:** intake session, 2026-10-04 (`multiplatform_plan.md`; 01_input-ideas.md). Branch `feat/m80-windows-audio-backend` is created from `feat/windows-support` and merged back into `feat/windows-support` at close (never `main`) — FR-WIN-GIT-1
 
 ## Goal
@@ -10,7 +10,7 @@ Windows has no real-time audio backend, and whether RtAudio is good enough for e
 
 ## Sprint Tasks
 
-### [ ] feat: RtAudio output-only backend for Windows (FR-WIN-AUD-5)
+### [x] feat: RtAudio output-only backend for Windows (FR-WIN-AUD-5)
 
 Output-only is the mode used for simulated audio and needs no microphone stream.
 
