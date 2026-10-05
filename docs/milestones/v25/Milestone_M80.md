@@ -38,7 +38,7 @@ Duplex needs input and output that may be on different devices with independent 
 
 ---
 
-### [ ] feat: report actual buffer size, rate and latency (FR-WIN-AUD-6)
+### [x] feat: report actual buffer size, rate and latency (FR-WIN-AUD-6)
 
 A backend may open at a different buffer size than requested (WASAPI shared has a coarser minimum period); the `realtime_unavailable` message blames only the macOS microphone permission.
 
