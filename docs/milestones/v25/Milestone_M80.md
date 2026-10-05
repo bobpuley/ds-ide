@@ -24,7 +24,7 @@ Output-only is the mode used for simulated audio and needs no microphone stream.
 
 ---
 
-### [ ] feat: RtAudio duplex backend for Windows (FR-WIN-AUD-5)
+### [x] feat: RtAudio duplex backend for Windows (FR-WIN-AUD-5)
 
 Duplex needs input and output that may be on different devices with independent clocks.
 
