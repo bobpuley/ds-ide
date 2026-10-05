@@ -109,16 +109,13 @@ struct CoreAudioDevice::Impl {
         // Build stereo-interleaved input buffer from hardware input (handles mono→stereo).
         // Use pre-allocated member buffers — no heap allocation on the RT thread (AC-38).
         const size_t frames = static_cast<size_t>(frames32);
-        if (self->in_interleaved.size() < frames * 2)
-            self->in_interleaved.assign(frames * 2, 0.f);
-        else
-            std::fill(self->in_interleaved.begin(),
-                      self->in_interleaved.begin() + static_cast<ptrdiff_t>(frames * 2), 0.f);
-        if (self->out_interleaved.size() < frames * 2)
-            self->out_interleaved.assign(frames * 2, 0.f);
-        else
-            std::fill(self->out_interleaved.begin(),
-                      self->out_interleaved.begin() + static_cast<ptrdiff_t>(frames * 2), 0.f);
+        // in_interleaved/out_interleaved were sized in start() from the same
+        // maximum as inputBufList, and frames32 is clamped to that capacity, so
+        // neither needs to grow here (FR-WIN-AUD-2).
+        std::fill(self->in_interleaved.begin(),
+                  self->in_interleaved.begin() + static_cast<ptrdiff_t>(frames * 2), 0.f);
+        std::fill(self->out_interleaved.begin(),
+                  self->out_interleaved.begin() + static_cast<ptrdiff_t>(frames * 2), 0.f);
 
         if (self->inputChannels >= 2 && self->inputBufList->mNumberBuffers >= 2) {
             const float* inL = static_cast<const float*>(self->inputBufList->mBuffers[0].mData);
@@ -180,13 +177,11 @@ struct CoreAudioDevice::Impl {
                                              UInt32                      inNumberFrames,
                                              AudioBufferList*            ioData) {
         Impl* self = static_cast<Impl*>(inRefCon);
-        const size_t frames = static_cast<size_t>(inNumberFrames);
-
-        // Grow work buffers if the hardware gives us more frames than expected.
-        if (self->silentInput.size() < frames * 2)
-            self->silentInput.assign(frames * 2, 0.f);
-        if (self->workOut.size() < frames * 2)
-            self->workOut.resize(frames * 2, 0.f);
+        // silentInput/workOut were sized in start_output_only() from the device's
+        // maximum callback size and never grow on this thread (FR-WIN-AUD-2); a
+        // larger callback is clamped and its tail zero-filled below.
+        const size_t frames = std::min(static_cast<size_t>(inNumberFrames),
+                                       self->workOut.size() / 2);
 
         uint64_t t_start = mach_absolute_time();
         self->processBlock(self->silentInput.data(), self->workOut.data(), frames);
@@ -206,10 +201,12 @@ struct CoreAudioDevice::Impl {
                 outL[i] = self->workOut[2 * i];
                 outR[i] = self->workOut[2 * i + 1];
             }
+            for (UInt32 i = static_cast<UInt32>(frames); i < inNumberFrames; ++i) { outL[i] = 0.f; outR[i] = 0.f; }
         } else if (ioData->mNumberBuffers == 1) {
             float* outMono = static_cast<float*>(ioData->mBuffers[0].mData);
             for (size_t i = 0; i < frames; ++i)
                 outMono[i] = self->workOut[2 * i];
+            for (UInt32 i = static_cast<UInt32>(frames); i < inNumberFrames; ++i) outMono[i] = 0.f;
         }
 
         return noErr;

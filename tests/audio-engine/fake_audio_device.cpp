@@ -8,6 +8,8 @@
 namespace fake_audio {
 
 FakeAudio g_fake;
+thread_local bool          t_rt_section = false;
+thread_local unsigned long t_rt_allocs  = 0;
 
 void FakeAudio::reset() {
     std::lock_guard<std::mutex> lk(m);
@@ -15,7 +17,7 @@ void FakeAudio::reset() {
     pending_xruns = 0; pending_render_errors = 0;
     latency_ms = 0.f; queried_rate = 0.f; max_callback_frames = 0;
     start_calls = 0; output_calls = 0; stop_calls = 0;
-    last_rate = 0; last_buffer = 0;
+    last_rate = 0; last_buffer = 0; last_fire_allocs = 0;
     cb = nullptr; is_running = false;
 }
 
@@ -33,7 +35,11 @@ bool FakeAudio::fire(size_t frames, float in_value, float* out_capture) {
     }
     std::vector<float> in(frames * 2, in_value);
     std::vector<float> out(frames * 2, 0.f);
+    t_rt_allocs  = 0;
+    t_rt_section = true;
     fn(in.data(), out.data(), frames);
+    t_rt_section = false;
+    last_fire_allocs = t_rt_allocs;
     if (out_capture)
         for (size_t i = 0; i < frames * 2; ++i) out_capture[i] = out[i];
     return true;

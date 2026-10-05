@@ -487,17 +487,6 @@ static void run_simulated(float sample_rate,
 
         if (!g_state.transport_running.load()) return true;
 
-        // CoreAudio may deliver more frames than we requested (hardware minimum
-        // clamping). Grow all work buffers on the fly to avoid buffer overflow.
-        if (frames * 2 > in_buf.size()) {
-            in_buf.resize(frames * 2, 0.f);
-            out_buf.resize(frames * 2, 0.f);
-            in_ch0.resize(frames, 0.f);
-            in_ch1.resize(frames, 0.f);
-            out_ch0.resize(frames, 0.f);
-            out_ch1.resize(frames, 0.f);
-        }
-
         // --- Input generation: replay (M14) / WAV (M9) / sine ---
         if (g_state.replay_active.load()) {
             // RT-safe (FR-RTS-3): popBlock only pops from a pre-filled ring —
@@ -619,13 +608,18 @@ static void run_simulated(float sample_rate,
     std::unique_ptr<AudioDevice> device_owner = make_audio_device();
     AudioDevice& device = *device_owner;
 
+    // Work buffers are sized before the stream starts (below) from the backend's
+    // maximum callback size; the callback never resizes them (FR-WIN-AUD-2). A
+    // larger callback is clamped and its tail zero-filled.
     auto ca_process = [&](const float* /*ca_in*/, float* ca_out, size_t frames) {
-        if (!process_one_block(frames)) {
+        const size_t n = std::min(frames, in_buf.size() / 2);
+        if (!process_one_block(n)) {
             std::fill(ca_out, ca_out + frames * 2, 0.f);
             return;
         }
         if (g_state.transport_running.load()) {
-            std::memcpy(ca_out, out_buf.data(), frames * 2 * sizeof(float));
+            std::memcpy(ca_out, out_buf.data(), n * 2 * sizeof(float));
+            std::fill(ca_out + n * 2, ca_out + frames * 2, 0.f);
         } else {
             std::fill(ca_out, ca_out + frames * 2, 0.f);
         }
@@ -636,6 +630,20 @@ static void run_simulated(float sample_rate,
     // the kernel scheduler and producing xrun distortion. Effects receive the
     // full hardware frame count per call, which is correct for emulation.
     const size_t hw_buf = std::max(block_size, size_t(256));
+    // Size every work buffer for the largest callback the backend can deliver
+    // before the stream starts (non-RT); the silent fallback loop below needs
+    // block_size frames, which hw_buf >= block_size already covers.
+    {
+        const size_t cap = device.maxCallbackFrames(static_cast<uint32_t>(hw_buf));
+        if (cap * 2 > in_buf.size()) {
+            in_buf.resize(cap * 2, 0.f);
+            out_buf.resize(cap * 2, 0.f);
+            in_ch0.resize(cap, 0.f);
+            in_ch1.resize(cap, 0.f);
+            out_ch0.resize(cap, 0.f);
+            out_ch1.resize(cap, 0.f);
+        }
+    }
     bool audio_started = device.start_output_only(
         static_cast<uint32_t>(sample_rate),
         static_cast<uint32_t>(hw_buf),
@@ -712,30 +720,30 @@ static void run_realtime(float sample_rate,
     // by the caller on the next entry instead of staying latched.
     uint64_t cfg_gen_seen = g_state.config_generation.load();
 
-    // State captured by the CoreAudio render callback (called on the real-time thread).
-    std::vector<float> in_buf(buffer_size * 2);
-    std::vector<float> out_buf(buffer_size * 2);
-    std::vector<float> local_in_ch0(buffer_size), local_in_ch1(buffer_size);
-    std::vector<float> local_out_ch0(buffer_size), local_out_ch1(buffer_size);
+    std::unique_ptr<AudioDevice> device_owner = make_audio_device();
+    AudioDevice& device = *device_owner;
+
+    // State captured by the render callback (called on the real-time thread).
+    // Sized up front for the largest callback the backend can deliver so the
+    // callback never allocates (FR-WIN-AUD-2).
+    const size_t capacity = device.maxCallbackFrames(buffer_size);
+    std::vector<float> in_buf(capacity * 2);
+    std::vector<float> out_buf(capacity * 2);
+    std::vector<float> local_in_ch0(capacity), local_in_ch1(capacity);
+    std::vector<float> local_out_ch0(capacity), local_out_ch1(capacity);
 
     // Xrun reporting: track last reported count.
     uint32_t last_reported_xruns = 0;
     uint32_t xrun_report_blocks  = 0;
 
-    std::unique_ptr<AudioDevice> device_owner = make_audio_device();
-    AudioDevice& device = *device_owner;
     GeneratorFeed generator_feed;
 
-    auto processBlock = [&](const float* ca_in, float* ca_out, size_t frames) {
-        // Guard against hardware delivering more frames than rt_buffer_size.
-        if (frames * 2 > in_buf.size()) {
-            in_buf.resize(frames * 2, 0.f);
-            out_buf.resize(frames * 2, 0.f);
-            local_in_ch0.resize(frames, 0.f);
-            local_in_ch1.resize(frames, 0.f);
-            local_out_ch0.resize(frames, 0.f);
-            local_out_ch1.resize(frames, 0.f);
-        }
+    auto processBlock = [&](const float* ca_in, float* ca_out, size_t frames_in) {
+        // A callback larger than the pre-sized buffers is clamped; the tail is
+        // zero-filled instead of growing the buffers on the RT thread.
+        const size_t frames = std::min(frames_in, capacity);
+        if (frames_in > frames)
+            std::fill(ca_out + frames * 2, ca_out + frames_in * 2, 0.f);
         // Copy CoreAudio input to interleaved in_buf
         std::memcpy(in_buf.data(), ca_in, frames * 2 * sizeof(float));
         // FR-GEN-3: a selected generator replaces the host input in real-time mode too.

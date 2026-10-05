@@ -39,7 +39,7 @@ No test exercises real-time mode, xruns, latency events, render errors, `sample_
 
 ---
 
-### [ ] fix: remove allocations from the real-time callbacks (FR-WIN-AUD-2)
+### [x] fix: remove allocations from the real-time callbacks (FR-WIN-AUD-2)
 
 Both render callbacks in `core_audio_device.cpp` (`silentInput.assign`, `workOut.resize`) and the `run_realtime()` `processBlock` lambda in `audio_engine.cpp` (`in_buf`/`out_buf`/`local_*` `resize`) allocate on the real-time thread.
 
