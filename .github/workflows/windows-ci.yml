@@ -67,6 +67,12 @@ jobs:
         run: cmake --build build-win
       - name: Smoke test — TCP transport handshake (FR-WIN-IPC-1)
         run: python tests/runtime/test_tcp_transport.py
+      # FR-WIN-AUD-5: the RtAudio backend built with its real WASAPI API.
+      # Runners may have no output endpoint, so a failed start must be clean.
+      - name: RtAudio backend tests (FR-WIN-AUD-5)
+        run: bash tests/rtaudio-device/run_tests.sh
+      - name: AudioDevice contract tests (FR-WIN-AUD-1, FR-WIN-AUD-5)
+        run: bash tests/core-audio-device/run_tests.sh
       - name: TSan is rejected on Windows
         run: |
           if cmake -S emulator -B build-tsan -G Ninja -DTSAN=ON \

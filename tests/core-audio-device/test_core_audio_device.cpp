@@ -1,8 +1,9 @@
 // AudioDevice contract tests (M41 / FR-QA-EMU-2, generalised in M79 / FR-WIN-AUD-1).
 //
 // The same contract is asserted for every backend: the platform backend from
-// make_audio_device() (CoreAudio on macOS, the null backend elsewhere) and the
-// fake used by the engine tests. A device cannot be copied or moved (double-free
+// make_audio_device() (CoreAudio on macOS, RtAudio on Windows), the RtAudio
+// backend built on every host (RtAudio's dummy API off Windows, M80 /
+// FR-WIN-AUD-5) and the fake used by the engine tests. A device cannot be copied or moved (double-free
 // of the driver handle), reports defaults before start, and stop() is
 // idempotent.
 //
@@ -11,6 +12,7 @@
 
 #include "audio_device.h"
 #include "fake_audio_device.h"
+#include "audio_device_rtaudio.h"
 
 #include <cstdio>
 #include <memory>
@@ -56,9 +58,11 @@ int main() {
 
     check_type_traits<AudioDevice>("AudioDevice");
     check_type_traits<fake_audio::FakeAudioDevice>("FakeAudioDevice");
+    check_type_traits<daisy_emu::RtAudioDevice>("RtAudioDevice");
 
     check_contract("platform backend (make_audio_device)", daisy_emu::make_audio_device());
     check_contract("fake backend", std::make_unique<fake_audio::FakeAudioDevice>());
+    check_contract("RtAudio backend", std::make_unique<daisy_emu::RtAudioDevice>());
 
     std::printf("\nResult: %s\n", failures == 0 ? "all passed" : "FAILURES");
     return failures == 0 ? 0 : 1;

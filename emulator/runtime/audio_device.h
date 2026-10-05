@@ -11,7 +11,8 @@ namespace daisy_emu {
 // audio_engine.cpp talks to the host audio hardware only through this
 // interface; the backend is chosen by make_audio_device() (audio_device_factory.cpp,
 // the single place that branches on the platform). Implementations: CoreAudio
-// on macOS, the no-backend NullAudioDevice everywhere else, and a fake in tests.
+// on macOS, RtAudio on Windows, the no-backend NullAudioDevice everywhere else,
+// and a fake in tests.
 //
 // Two modes:
 //   start()             — full-duplex: pulls live input, may require an input

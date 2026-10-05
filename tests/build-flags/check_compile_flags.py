@@ -11,8 +11,9 @@ and inspects the generated compile_commands.json to verify:
   - every runtime/shim .cpp in the tree has a compile entry (FR-WIN-BLD-4:
     the source list here is derived from the tree, so it always matches
     the CMake list on this platform)
-  - the CMake platform split: audio_device_factory.cpp is common and
-    core_audio_device.cpp Apple-only (FR-WIN-AUD-1), ipc_server.cpp and the TCP transport are
+  - the CMake platform split: audio_device_factory.cpp is common,
+    core_audio_device.cpp Apple-only (FR-WIN-AUD-1) and
+    audio_device_rtaudio.cpp Windows-only (FR-WIN-AUD-5), ipc_server.cpp and the TCP transport are
     common, the Unix-socket transport is built only off Windows
     (FR-WIN-IPC-1), Winsock is linked on Windows, libm only off Windows,
     TSan is rejected on Windows (FR-WIN-BLD-4)
@@ -49,6 +50,9 @@ RUNTIME_BASENAMES = tree_sources("runtime")
 # other platform builds audio_device_factory.cpp's NullAudioDevice instead.
 if sys.platform != "darwin":
     RUNTIME_BASENAMES.discard("core_audio_device.cpp")
+# FR-WIN-AUD-5: the RtAudio backend is built only on Windows.
+if sys.platform != "win32":
+    RUNTIME_BASENAMES.discard("audio_device_rtaudio.cpp")
 SHIM_BASENAMES = tree_sources("shim/src")
 
 failures = 0
@@ -78,6 +82,14 @@ def check_platform_split():
           "core_audio_device.cpp is not in the platform-independent RUNTIME_SRC list")
     check(re.search(r"if\(APPLE\)\s*\n\s*list\(APPEND RUNTIME_SRC\s+\"[^\"]*/runtime/core_audio_device\.cpp\"\)", cm) is not None,
           "the CoreAudio backend is appended only on Apple platforms (FR-WIN-AUD-1)")
+    check(common is not None and "audio_device_rtaudio.cpp" not in common.group(1),
+          "audio_device_rtaudio.cpp is not in the platform-independent RUNTIME_SRC list")
+    check(re.search(r"if\(WIN32\)\s*\n\s*list\(APPEND RUNTIME_SRC\s+\"[^\"]*/runtime/audio_device_rtaudio\.cpp\"\)", cm) is not None,
+          "the RtAudio backend is appended only on Windows (FR-WIN-AUD-5)")
+    check(re.search(r"target_compile_definitions\(rtaudio_obj PRIVATE __WINDOWS_WASAPI__\)", cm) is not None,
+          "RtAudio is built with its WASAPI API (FR-WIN-AUD-5)")
+    check(re.search(r"target_link_libraries\(effect_emu PRIVATE ws2_32[^)]*\bole32\b[^)]*\bmfplat\b", cm) is not None,
+          "COM and Media Foundation are linked on Windows for WASAPI (FR-WIN-AUD-5)")
     check(common is not None and "ipc_transport_unix.cpp" not in common.group(1),
           "ipc_transport_unix.cpp is not in the platform-independent RUNTIME_SRC list")
     check(re.search(r"if\(NOT WIN32\)\s*\n\s*list\(APPEND RUNTIME_SRC\s+\"[^\"]*/runtime/ipc_transport_unix\.cpp\"\)", cm) is not None,
