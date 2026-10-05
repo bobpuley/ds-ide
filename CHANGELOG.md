@@ -3,6 +3,15 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.25.0-win.3 — 2026-10-05
+
+**Audio backend abstraction** *(FR-WIN-AUD-1 to FR-WIN-AUD-4, M79 — pre-release on `feat/windows-support`)*
+
+- **FR-WIN-AUD-4** — New `tests/audio-engine` regression net: `run_audio_engine()` is driven end to end against a fake audio backend, covering real-time start parameters, `audioDevice` reconfiguration, transport mute, xrun / latency / `render_error` events, `sample_rate_mismatch`, the `realtime_unavailable` fallback, mode switching and the silent output-only fallback. Written green against the pre-refactor macOS code first.
+- **FR-WIN-AUD-1** — `audio_engine.cpp` now uses an abstract, non-copyable, non-movable `AudioDevice` (`audio_device.h`) obtained from `make_audio_device()`, the only place that branches on the platform. `CoreAudioDevice` is the macOS implementation (built only on Apple); other platforms get the header-only `NullAudioDevice` (all `start*` fail → existing fallbacks). The interface adds `maxCallbackFrames()`. The device contract test is backend-agnostic and runs against the platform backend and the fake.
+- **FR-WIN-AUD-2** — No heap allocation on the real-time thread: engine work buffers are sized up front from `maxCallbackFrames()` and both CoreAudio render callbacks no longer `assign`/`resize`. An oversized callback is clamped with its tail zero-filled; tests count allocations on the callback path.
+- **FR-WIN-AUD-3** — `mach_absolute_time()` / `compute_mach_ns_per_tick()` replaced by `std::chrono::steady_clock` (xrun definition unchanged). Driver-level overflow/underflow is a separate `drainDriverOverruns()` counter in the interface (0 on CoreAudio).
+
 ## 0.25.0-win.2 — 2026-10-04
 
 **IPC transport & process lifecycle** *(FR-WIN-IPC-1 to FR-WIN-IPC-4, M78 — pre-release on `feat/windows-support`)*
