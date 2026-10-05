@@ -66,6 +66,14 @@ public:
     // stream's input path.
     virtual uint32_t drainRenderErrors() = 0;
 
+    // Driver-level overflow/underflow count since the last call (resets the
+    // counter): audio the *driver* reports it dropped or had to synthesise
+    // (e.g. a Windows stream's input-overflow / output-underflow status).
+    // Deliberately separate from drainXruns(), which only measures this
+    // process's own callback CPU time. Backends with no such signal —
+    // CoreAudio — always return 0 (FR-WIN-AUD-3).
+    virtual uint32_t drainDriverOverruns() = 0;
+
     // Most recently measured round-trip latency in milliseconds (0 = unknown).
     virtual float lastLatencyMs() const = 0;
 

@@ -52,7 +52,7 @@ Both render callbacks in `core_audio_device.cpp` (`silentInput.assign`, `workOut
 
 ---
 
-### [ ] refactor: replace Mach timing with steady_clock (FR-WIN-AUD-3)
+### [x] refactor: replace Mach timing with steady_clock (FR-WIN-AUD-3)
 
 `mach_absolute_time()` and `compute_mach_ns_per_tick()` are used only for xrun detection and exist only in `core_audio_device.cpp`.
 

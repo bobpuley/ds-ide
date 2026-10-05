@@ -30,6 +30,7 @@ struct FakeAudio {
     std::atomic<bool>     output_ok{true};      // start_output_only() result
     std::atomic<uint32_t> pending_xruns{0};     // returned (and cleared) by drainXruns()
     std::atomic<uint32_t> pending_render_errors{0};
+    std::atomic<uint32_t> pending_driver_overruns{0};
     std::atomic<float>    latency_ms{0.f};
     std::atomic<float>    queried_rate{0.f};    // queriedInputSampleRate() after start()
     std::atomic<uint32_t> max_callback_frames{0}; // maxCallbackFrames() floor (0 = requested size)

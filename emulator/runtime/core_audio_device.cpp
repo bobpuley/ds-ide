@@ -3,22 +3,14 @@
 
 #include <AudioToolbox/AudioToolbox.h>
 #include <CoreAudio/CoreAudio.h>
-#include <mach/mach_time.h>
 #include <algorithm>
 #include <cstdlib>
 #include <vector>
 #include <atomic>
+#include <chrono>
 #include <functional>
 
 namespace daisy_emu {
-
-static double compute_mach_ns_per_tick() {
-    mach_timebase_info_data_t info;
-    kern_return_t kr = mach_timebase_info(&info);
-    if (kr != KERN_SUCCESS || info.denom == 0)
-        return 1.0;  // fallback: treat ticks as nanoseconds
-    return static_cast<double>(info.numer) / static_cast<double>(info.denom);
-}
 
 // Returns the maximum frame count `device` can ever be asked to deliver in a
 // single I/O cycle (queried via kAudioDevicePropertyBufferFrameSizeRange), or
@@ -36,15 +28,20 @@ static UInt32 query_max_buffer_frames(AudioDeviceID device, UInt32 fallback) {
     return maxFrames > fallback ? maxFrames : fallback;
 }
 
+// Wall-clock time (ms) a processBlock call took, measured with the portable
+// monotonic clock (FR-WIN-AUD-3). An xrun is a call that took longer than the
+// buffer duration it was asked to fill.
+using SteadyClock = std::chrono::steady_clock;
+static double elapsed_ms_since(SteadyClock::time_point t_start) {
+    return std::chrono::duration<double, std::milli>(SteadyClock::now() - t_start).count();
+}
+
 struct CoreAudioDevice::Impl {
     AudioUnit unit{nullptr};
     ProcessFn processBlock;
     uint32_t  bufferSize{256};
     uint32_t  sampleRate{48000};
     uint32_t  inputChannels{1};
-    // Stored before AudioOutputUnitStart so the RT thread reads a stable value
-    // without races against the construction thread (FR-QA-19).
-    double    mach_ns_per_tick{1.0};
 
     // Input buffer list — allocated after querying hardware format, freed in stop().
     // Null in output-only mode.
@@ -134,11 +131,9 @@ struct CoreAudioDevice::Impl {
         }
 
         // Run the effect.
-        uint64_t t_start = mach_absolute_time();
+        const auto t_start = SteadyClock::now();
         self->processBlock(self->in_interleaved.data(), self->out_interleaved.data(), frames);
-        uint64_t t_end = mach_absolute_time();
-
-        double elapsed_ms = static_cast<double>(t_end - t_start) * self->mach_ns_per_tick / 1e6;
+        const double elapsed_ms = elapsed_ms_since(t_start);
         double budget_ms  = static_cast<double>(inNumberFrames) /
                             static_cast<double>(self->sampleRate) * 1000.0;
         if (elapsed_ms > budget_ms) {
@@ -183,11 +178,9 @@ struct CoreAudioDevice::Impl {
         const size_t frames = std::min(static_cast<size_t>(inNumberFrames),
                                        self->workOut.size() / 2);
 
-        uint64_t t_start = mach_absolute_time();
+        const auto t_start = SteadyClock::now();
         self->processBlock(self->silentInput.data(), self->workOut.data(), frames);
-        uint64_t t_end = mach_absolute_time();
-
-        double elapsed_ms = static_cast<double>(t_end - t_start) * self->mach_ns_per_tick / 1e6;
+        const double elapsed_ms = elapsed_ms_since(t_start);
         double budget_ms  = static_cast<double>(inNumberFrames) /
                             static_cast<double>(self->sampleRate) * 1000.0;
         if (elapsed_ms > budget_ms)
@@ -377,8 +370,6 @@ bool CoreAudioDevice::start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn 
         stop(); return false;
     }
 
-    impl_->mach_ns_per_tick = compute_mach_ns_per_tick();
-
     // RT-callback-visible buffers were already sized above from the queried
     // maximum frame count, before this call (FR-RTS-2) — no post-start resize.
     if (AudioUnitInitialize(impl_->unit) != noErr) { stop(); return false; }
@@ -469,8 +460,6 @@ bool CoreAudioDevice::start_output_only(uint32_t sampleRate, uint32_t bufferSize
                              kAudioUnitScope_Input, 0, &cb, sizeof(cb)) != noErr) {
         stop(); return false;
     }
-
-    impl_->mach_ns_per_tick = compute_mach_ns_per_tick();
 
     // RT-callback-visible buffers were already sized above from the queried
     // maximum frame count, before this call (FR-RTS-2) — no post-start resize.

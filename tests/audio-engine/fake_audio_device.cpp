@@ -14,7 +14,7 @@ thread_local unsigned long t_rt_allocs  = 0;
 void FakeAudio::reset() {
     std::lock_guard<std::mutex> lk(m);
     duplex_ok = true; output_ok = true;
-    pending_xruns = 0; pending_render_errors = 0;
+    pending_xruns = 0; pending_render_errors = 0; pending_driver_overruns = 0;
     latency_ms = 0.f; queried_rate = 0.f; max_callback_frames = 0;
     start_calls = 0; output_calls = 0; stop_calls = 0;
     last_rate = 0; last_buffer = 0; last_fire_allocs = 0;
@@ -87,6 +87,7 @@ uint32_t FakeAudioDevice::maxCallbackFrames(uint32_t requestedBufferSize) const 
 }
 uint32_t FakeAudioDevice::drainXruns() { return g_fake.pending_xruns.exchange(0); }
 uint32_t FakeAudioDevice::drainRenderErrors() { return g_fake.pending_render_errors.exchange(0); }
+uint32_t FakeAudioDevice::drainDriverOverruns() { return g_fake.pending_driver_overruns.exchange(0); }
 float FakeAudioDevice::lastLatencyMs() const { return g_fake.latency_ms.load(); }
 float FakeAudioDevice::queriedInputSampleRate() const { return g_fake.queried_rate.load(); }
 

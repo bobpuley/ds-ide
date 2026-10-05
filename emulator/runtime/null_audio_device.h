@@ -15,6 +15,7 @@ public:
     uint32_t maxCallbackFrames(uint32_t requestedBufferSize) const override { return requestedBufferSize; }
     uint32_t drainXruns() override { return 0; }
     uint32_t drainRenderErrors() override { return 0; }
+    uint32_t drainDriverOverruns() override { return 0; }
     float lastLatencyMs() const override { return 0.f; }
     float queriedInputSampleRate() const override { return 0.f; }
 };

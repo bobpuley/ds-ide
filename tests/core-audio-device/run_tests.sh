@@ -32,6 +32,16 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     LDFLAGS+=(-framework CoreAudio -framework AudioToolbox)
 fi
 
+# FR-WIN-AUD-3: xrun timing is portable std::chrono::steady_clock; no Mach
+# timing may creep back into the CoreAudio backend.
+if grep -n "mach_absolute_time\|mach_timebase_info\|mach/mach_time\|mach_ns_per_tick" \
+        "${RUNTIME_DIR}/core_audio_device.cpp"; then
+    echo "FAIL: core_audio_device.cpp still uses Mach timing (FR-WIN-AUD-3)"
+    exit 1
+fi
+echo "  PASS  core_audio_device.cpp uses no Mach timing (FR-WIN-AUD-3)"
+echo ""
+
 BIN="${BUILD_DIR}/test_core_audio_device"
 "${CXX}" "${CXXFLAGS[@]}" -o "${BIN}" "${SOURCES[@]}" "${LDFLAGS[@]}"
 
