@@ -9,8 +9,12 @@ namespace daisy_emu {
 //
 //   start_output_only() — output-only stream on the default output device; no
 //                         input stream is opened.
-//   start()             — duplex: not implemented yet, returns false so the
-//                         engine falls back to simulated mode.
+//   start()             — duplex: default input + default output (possibly
+//                         different devices). Mono/multichannel hardware is
+//                         adapted to the stereo-interleaved ProcessFn contract.
+//
+// drainRenderErrors() is always 0: RtAudio has no per-callback input-render
+// failure; driver input overflow / output underflow go to drainDriverOverruns().
 class RtAudioDevice final : public AudioDevice {
 public:
     RtAudioDevice();
@@ -25,9 +29,12 @@ public:
     uint32_t drainRenderErrors() override { return 0; }
     uint32_t drainDriverOverruns() override;
     float lastLatencyMs() const override;
-    float queriedInputSampleRate() const override { return 0.f; }
+    float queriedInputSampleRate() const override;
 
 private:
+    bool open_and_start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn processBlock,
+                        bool duplex);
+
     struct Impl;
     std::unique_ptr<Impl> impl_;
     bool running_{false};

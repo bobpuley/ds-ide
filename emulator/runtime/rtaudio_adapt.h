@@ -47,6 +47,21 @@ inline void write_output(const float* stereo, size_t frames, float* out, unsigne
     }
 }
 
+// Converts `frames` interleaved hardware input frames of `inChannels` channels
+// to stereo-interleaved: mono is duplicated to both channels (as the CoreAudio
+// backend does), channels beyond the second are dropped.
+inline void read_input(const float* in, size_t frames, unsigned inChannels, float* stereo) {
+    if (inChannels == 2) {
+        std::copy(in, in + frames * 2, stereo);
+        return;
+    }
+    for (size_t i = 0; i < frames; ++i) {
+        const float* frame = in + i * inChannels;
+        stereo[2 * i]     = frame[0];
+        stereo[2 * i + 1] = inChannels >= 2 ? frame[1] : frame[0];
+    }
+}
+
 // Output latency in ms: the driver's reported stream latency plus one buffer.
 // RtAudio's WASAPI API stores IAudioClient::GetStreamLatency()'s REFERENCE_TIME
 // (100 ns units) as-is; every other API reports frames. 0 = unknown.
@@ -60,37 +75,44 @@ inline float stream_latency_ms(const std::string& api, long rawLatency,
     return static_cast<float>(driver_ms + buffer_ms);
 }
 
-// Output-only render path, called from the RtAudio callback thread.
+// Render path, called from the RtAudio callback thread, for output-only
+// (inChannels == 0: the effect gets zeroed input) and duplex streams.
 //
 // processBlock is never handed more than the requested buffer size: a larger
 // driver callback (ASIO may round the buffer up) is split into chunks, so the
 // engine's work buffers sized from maxCallbackFrames() always fit. All buffers
 // are allocated in prepare(); render() does not allocate (FR-WIN-AUD-2).
-class OutputRenderer {
+class StreamRenderer {
 public:
     // Not real-time safe: allocates. Call before the stream starts.
     void prepare(AudioDevice::ProcessFn processBlock, uint32_t sampleRate,
-                 uint32_t chunkFrames, unsigned outChannels) {
+                 uint32_t chunkFrames, unsigned outChannels, unsigned inChannels = 0) {
         processBlock_ = std::move(processBlock);
         sampleRate_   = sampleRate;
         chunkFrames_  = chunkFrames > 0 ? chunkFrames : 1;
         outChannels_  = outChannels > 0 ? outChannels : 1;
-        silentInput_.assign(static_cast<size_t>(chunkFrames_) * 2, 0.f);
+        inChannels_   = inChannels;
+        workIn_.assign(static_cast<size_t>(chunkFrames_) * 2, 0.f);
         workOut_.assign(static_cast<size_t>(chunkFrames_) * 2, 0.f);
         xruns_.store(0, std::memory_order_relaxed);
         driverOverruns_.store(0, std::memory_order_relaxed);
     }
 
-    // Fills `out` (interleaved, outChannels wide) with nFrames frames.
-    // `driverUnderflow` is the driver's output-underflow status for this cycle.
-    void render(float* out, size_t nFrames, bool driverUnderflow) noexcept {
+    // Fills `out` (interleaved, outChannels wide) with nFrames frames, reading
+    // `in` (interleaved, inChannels wide; ignored when inChannels == 0). The
+    // flags are the driver's output-underflow / input-overflow status.
+    void render(const float* in, float* out, size_t nFrames,
+                bool driverUnderflow, bool driverOverflow) noexcept {
         if (driverUnderflow) driverOverruns_.fetch_add(1, std::memory_order_relaxed);
+        if (driverOverflow)  driverOverruns_.fetch_add(1, std::memory_order_relaxed);
+        const bool live = in != nullptr && inChannels_ > 0;
 
         const auto t_start = std::chrono::steady_clock::now();
         for (size_t done = 0; done < nFrames;) {
             const size_t n = std::min(nFrames - done, static_cast<size_t>(chunkFrames_));
+            if (live) read_input(in + done * inChannels_, n, inChannels_, workIn_.data());
             std::fill(workOut_.begin(), workOut_.begin() + static_cast<ptrdiff_t>(n * 2), 0.f);
-            processBlock_(silentInput_.data(), workOut_.data(), n);
+            processBlock_(workIn_.data(), workOut_.data(), n);
             write_output(workOut_.data(), n, out + done * outChannels_, outChannels_);
             done += n;
         }
@@ -104,6 +126,7 @@ public:
 
     uint32_t maxChunkFrames() const { return chunkFrames_; }
     unsigned outChannels() const { return outChannels_; }
+    unsigned inChannels() const { return inChannels_; }
     uint32_t drainXruns() { return xruns_.exchange(0, std::memory_order_relaxed); }
     uint32_t drainDriverOverruns() { return driverOverruns_.exchange(0, std::memory_order_relaxed); }
 
@@ -112,8 +135,9 @@ private:
     uint32_t sampleRate_{48000};
     uint32_t chunkFrames_{256};
     unsigned outChannels_{2};
-    std::vector<float> silentInput_;  // zeroed stereo input, chunkFrames * 2
-    std::vector<float> workOut_;      // stereo output of one chunk, chunkFrames * 2
+    unsigned inChannels_{0};
+    std::vector<float> workIn_;   // stereo input of one chunk (zeros when output-only)
+    std::vector<float> workOut_;  // stereo output of one chunk
     std::atomic<uint32_t> xruns_{0};
     std::atomic<uint32_t> driverOverruns_{0};
 };

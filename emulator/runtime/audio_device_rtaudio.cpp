@@ -31,8 +31,12 @@ RtAudio::Api select_api(std::string& nameOut) {
 struct RtAudioDevice::Impl {
     std::string apiName;
     RtAudio rt;
-    rtaudio_adapt::OutputRenderer renderer;
+    rtaudio_adapt::StreamRenderer renderer;
     std::atomic<float> latencyMs{0.f};
+    // The input hardware's own rate (duplex only). RtAudio's WASAPI API
+    // resamples to the stream rate, but a differing hardware rate is still
+    // surfaced as sample_rate_mismatch, as on macOS (FR-EMU-3).
+    float inputSampleRate{0.f};
 
     explicit Impl(RtAudio::Api api, std::string name)
         : apiName(std::move(name)),
@@ -45,12 +49,15 @@ struct RtAudioDevice::Impl {
         rt.showWarnings(false);
     }
 
-    // RtAudio callback (driver thread). Interleaved float32, outChannels wide.
-    static int outputCallback(void* outputBuffer, void* /*inputBuffer*/, unsigned int nFrames,
-                              double /*streamTime*/, RtAudioStreamStatus status, void* userData) {
+    // RtAudio callback (driver thread). Interleaved float32; inputBuffer is
+    // null for an output-only stream.
+    static int callback(void* outputBuffer, void* inputBuffer, unsigned int nFrames,
+                        double /*streamTime*/, RtAudioStreamStatus status, void* userData) {
         auto* self = static_cast<Impl*>(userData);
-        self->renderer.render(static_cast<float*>(outputBuffer), nFrames,
-                              (status & RTAUDIO_OUTPUT_UNDERFLOW) != 0);
+        self->renderer.render(static_cast<const float*>(inputBuffer),
+                              static_cast<float*>(outputBuffer), nFrames,
+                              (status & RTAUDIO_OUTPUT_UNDERFLOW) != 0,
+                              (status & RTAUDIO_INPUT_OVERFLOW) != 0);
         return 0;  // keep streaming
     }
 };
@@ -61,13 +68,16 @@ RtAudioDevice::~RtAudioDevice() {
     stop();
 }
 
-bool RtAudioDevice::start(uint32_t /*sampleRate*/, uint32_t /*bufferSize*/, ProcessFn /*processBlock*/) {
-    // Duplex lands in a later M80 task; failing here makes the engine send
-    // realtime_unavailable and fall back to simulated mode.
-    return false;
+bool RtAudioDevice::start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn processBlock) {
+    return open_and_start(sampleRate, bufferSize, std::move(processBlock), /*duplex=*/true);
 }
 
 bool RtAudioDevice::start_output_only(uint32_t sampleRate, uint32_t bufferSize, ProcessFn processBlock) {
+    return open_and_start(sampleRate, bufferSize, std::move(processBlock), /*duplex=*/false);
+}
+
+bool RtAudioDevice::open_and_start(uint32_t sampleRate, uint32_t bufferSize,
+                                   ProcessFn processBlock, bool duplex) {
     if (running_) stop();
 
     std::string apiName;
@@ -75,17 +85,33 @@ bool RtAudioDevice::start_output_only(uint32_t sampleRate, uint32_t bufferSize, 
     if (api == RtAudio::UNSPECIFIED) return false;
     impl_ = std::make_unique<Impl>(api, apiName);
 
-    const unsigned int deviceId = impl_->rt.getDefaultOutputDevice();
-    if (deviceId == 0) { stop(); return false; }  // 0 = no output device
-    const RtAudio::DeviceInfo info = impl_->rt.getDeviceInfo(deviceId);
-    if (info.outputChannels == 0) { stop(); return false; }
+    // Default devices; 0 = none. Input and output may be different devices
+    // with independent clocks — RtAudio's WASAPI API runs both from one thread
+    // and resamples each side to the stream rate.
+    const unsigned int outId = impl_->rt.getDefaultOutputDevice();
+    if (outId == 0) { stop(); return false; }
+    const RtAudio::DeviceInfo outInfo = impl_->rt.getDeviceInfo(outId);
+    if (outInfo.outputChannels == 0) { stop(); return false; }
 
-    // Open at most two channels: stereo devices take L/R as-is, mono devices
-    // get the left channel (adapted in OutputRenderer).
+    // At most two channels each way: stereo hardware is used as-is, mono and
+    // multichannel hardware are adapted in StreamRenderer.
     RtAudio::StreamParameters out;
-    out.deviceId     = deviceId;
-    out.nChannels    = std::min(info.outputChannels, 2u);
-    out.firstChannel = 0;
+    out.deviceId  = outId;
+    out.nChannels = std::min(outInfo.outputChannels, 2u);
+
+    RtAudio::StreamParameters in;
+    if (duplex) {
+        const unsigned int inId = impl_->rt.getDefaultInputDevice();
+        if (inId == 0) { stop(); return false; }
+        const RtAudio::DeviceInfo inInfo = impl_->rt.getDeviceInfo(inId);
+        if (inInfo.inputChannels == 0) { stop(); return false; }
+        in.deviceId  = inId;
+        in.nChannels = std::min(inInfo.inputChannels, 2u);
+        // WASAPI fills only preferredSampleRate (the shared-mode mix rate).
+        const unsigned int hwRate = inInfo.currentSampleRate > 0 ? inInfo.currentSampleRate
+                                                                 : inInfo.preferredSampleRate;
+        impl_->inputSampleRate = static_cast<float>(hwRate);
+    }
 
     RtAudio::StreamOptions opts;
     opts.flags      = RTAUDIO_SCHEDULE_REALTIME;
@@ -93,15 +119,19 @@ bool RtAudioDevice::start_output_only(uint32_t sampleRate, uint32_t bufferSize, 
 
     // Sized for the requested buffer before the stream exists; a driver that
     // picks a larger buffer is chunked down to this size in render().
-    impl_->renderer.prepare(std::move(processBlock), sampleRate, bufferSize, out.nChannels);
+    impl_->renderer.prepare(std::move(processBlock), sampleRate, bufferSize,
+                            out.nChannels, duplex ? in.nChannels : 0);
 
     unsigned int frames = bufferSize;  // RtAudio writes back the size it opened with
-    if (impl_->rt.openStream(&out, nullptr, RTAUDIO_FLOAT32, sampleRate, &frames,
-                             &Impl::outputCallback, impl_.get(), &opts) != RTAUDIO_NO_ERROR) {
+    if (impl_->rt.openStream(&out, duplex ? &in : nullptr, RTAUDIO_FLOAT32, sampleRate, &frames,
+                             &Impl::callback, impl_.get(), &opts) != RTAUDIO_NO_ERROR) {
         stop(); return false;
     }
     if (impl_->rt.startStream() != RTAUDIO_NO_ERROR) { stop(); return false; }
 
+    // getStreamLatency() sums the output and (duplex) input sides; RtAudio
+    // opens output first, so its WASAPI API's 64-bit write into each 32-bit
+    // latency slot spills only into a field it reassigns right after.
     impl_->latencyMs.store(
         rtaudio_adapt::stream_latency_ms(impl_->apiName, impl_->rt.getStreamLatency(), frames,
                                          impl_->rt.getStreamSampleRate()),
@@ -111,7 +141,7 @@ bool RtAudioDevice::start_output_only(uint32_t sampleRate, uint32_t bufferSize, 
 }
 
 uint32_t RtAudioDevice::maxCallbackFrames(uint32_t requestedBufferSize) const {
-    // OutputRenderer splits larger driver callbacks into requested-size chunks.
+    // StreamRenderer splits larger driver callbacks into requested-size chunks.
     return requestedBufferSize;
 }
 
@@ -136,6 +166,10 @@ uint32_t RtAudioDevice::drainDriverOverruns() {
 
 float RtAudioDevice::lastLatencyMs() const {
     return impl_ ? impl_->latencyMs.load(std::memory_order_relaxed) : 0.f;
+}
+
+float RtAudioDevice::queriedInputSampleRate() const {
+    return impl_ ? impl_->inputSampleRate : 0.f;
 }
 
 }  // namespace daisy_emu
