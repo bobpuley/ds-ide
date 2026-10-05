@@ -33,6 +33,10 @@ struct RtAudioDevice::Impl {
     RtAudio rt;
     rtaudio_adapt::StreamRenderer renderer;
     std::atomic<float> latencyMs{0.f};
+    // Buffer size RtAudio opened the stream with (written back by openStream()).
+    // ASIO may round the request; RtAudio's WASAPI API keeps it and buffers
+    // internally, so the coarser device period shows up in latency instead.
+    uint32_t openedBufferFrames{0};
     // The input hardware's own rate (duplex only). RtAudio's WASAPI API
     // resamples to the stream rate, but a differing hardware rate is still
     // surfaced as sample_rate_mismatch, as on macOS (FR-EMU-3).
@@ -128,6 +132,7 @@ bool RtAudioDevice::open_and_start(uint32_t sampleRate, uint32_t bufferSize,
         stop(); return false;
     }
     if (impl_->rt.startStream() != RTAUDIO_NO_ERROR) { stop(); return false; }
+    impl_->openedBufferFrames = frames;
 
     // getStreamLatency() sums the output and (duplex) input sides; RtAudio
     // opens output first, so its WASAPI API's 64-bit write into each 32-bit
@@ -166,6 +171,10 @@ uint32_t RtAudioDevice::drainDriverOverruns() {
 
 float RtAudioDevice::lastLatencyMs() const {
     return impl_ ? impl_->latencyMs.load(std::memory_order_relaxed) : 0.f;
+}
+
+uint32_t RtAudioDevice::actualBufferFrames() const {
+    return impl_ ? impl_->openedBufferFrames : 0;
 }
 
 float RtAudioDevice::queriedInputSampleRate() const {

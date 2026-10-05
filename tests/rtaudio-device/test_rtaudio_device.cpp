@@ -152,12 +152,15 @@ static void test_device_start_output_only() {
         // Windows with an output endpoint: a real WASAPI stream is running.
         CHECK(dev.isRunning(), "a started device reports running");
         CHECK(dev.lastLatencyMs() > 0.f, "a started device reports a measured latency");
+        CHECK(dev.actualBufferFrames() > 0, "a started device reports the buffer size it opened with");
     } else {
         CHECK(!dev.isRunning(), "a failed start leaves the device stopped");
         CHECK(dev.lastLatencyMs() == 0.f, "a failed start reports no latency");
+        CHECK(dev.actualBufferFrames() == 0, "a failed start reports no buffer size");
     }
     dev.stop();
     CHECK(!dev.isRunning(), "stop() leaves the device stopped");
+    CHECK(dev.actualBufferFrames() == 0, "a stopped device reports no buffer size");
     dev.stop();
     CHECK(!dev.isRunning(), "a second stop() is a safe no-op");
 }

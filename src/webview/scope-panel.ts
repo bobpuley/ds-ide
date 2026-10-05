@@ -4,6 +4,7 @@ import { EmulatorManager } from '../emulator/manager';
 import { IpcMessage } from '../emulator/ipc-client';
 import { startAudio, stopAudio } from '../commands/transport';
 import { getBoolean, getNumber, narrowScopeCaptureRequest } from '../ipc/narrow';
+import { formatEventDetail } from './scope/scope-events';
 import { ScopeWebviewMessage } from './messages';
 import { hasKnownCommand, assertNever } from './message-guard';
 import { themeCss } from './theme/theme-css';
@@ -295,7 +296,15 @@ export class ScopePanel {
   }
 
   private postEvent(msg: IpcMessage): void {
-    this.panel?.webview.postMessage({ command: 'event', kind: msg['kind'] });
+    const detail = formatEventDetail({
+      requestedFrames: getNumber(msg, 'requestedFrames'),
+      actualFrames: getNumber(msg, 'actualFrames'),
+      engineSampleRate: getNumber(msg, 'engineSampleRate'),
+      deviceSampleRate: getNumber(msg, 'deviceSampleRate'),
+    });
+    this.panel?.webview.postMessage(
+      detail === undefined ? { command: 'event', kind: msg['kind'] } : { command: 'event', kind: msg['kind'], detail },
+    );
   }
 
   private postXrun(msg: IpcMessage): void {

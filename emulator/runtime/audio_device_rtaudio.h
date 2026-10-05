@@ -30,6 +30,7 @@ public:
     uint32_t drainDriverOverruns() override;
     float lastLatencyMs() const override;
     float queriedInputSampleRate() const override;
+    uint32_t actualBufferFrames() const override;
 
 private:
     bool open_and_start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn processBlock,

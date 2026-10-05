@@ -15,7 +15,7 @@ void FakeAudio::reset() {
     std::lock_guard<std::mutex> lk(m);
     duplex_ok = true; output_ok = true;
     pending_xruns = 0; pending_render_errors = 0; pending_driver_overruns = 0;
-    latency_ms = 0.f; queried_rate = 0.f; max_callback_frames = 0;
+    latency_ms = 0.f; queried_rate = 0.f; max_callback_frames = 0; actual_buffer = 0;
     start_calls = 0; output_calls = 0; stop_calls = 0;
     last_rate = 0; last_buffer = 0; last_fire_allocs = 0;
     cb = nullptr; is_running = false;
@@ -90,5 +90,8 @@ uint32_t FakeAudioDevice::drainRenderErrors() { return g_fake.pending_render_err
 uint32_t FakeAudioDevice::drainDriverOverruns() { return g_fake.pending_driver_overruns.exchange(0); }
 float FakeAudioDevice::lastLatencyMs() const { return g_fake.latency_ms.load(); }
 float FakeAudioDevice::queriedInputSampleRate() const { return g_fake.queried_rate.load(); }
+uint32_t FakeAudioDevice::actualBufferFrames() const {
+    return running_ ? g_fake.actual_buffer.load() : 0;
+}
 
 }  // namespace fake_audio

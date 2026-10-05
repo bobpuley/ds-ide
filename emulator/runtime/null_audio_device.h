@@ -18,6 +18,7 @@ public:
     uint32_t drainDriverOverruns() override { return 0; }
     float lastLatencyMs() const override { return 0.f; }
     float queriedInputSampleRate() const override { return 0.f; }
+    uint32_t actualBufferFrames() const override { return 0; }
 };
 
 }  // namespace daisy_emu

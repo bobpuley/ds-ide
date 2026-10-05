@@ -44,6 +44,7 @@ static void check_contract(const char* name, std::unique_ptr<AudioDevice> dev) {
     CHECK(dev->drainRenderErrors() == 0, "drainRenderErrors() is 0 before start");
     CHECK(dev->drainDriverOverruns() == 0, "drainDriverOverruns() is 0 before start");
     CHECK(dev->queriedInputSampleRate() == 0.f, "queriedInputSampleRate() is 0 before start");
+    CHECK(dev->actualBufferFrames() == 0, "actualBufferFrames() is 0 before start");
     CHECK(dev->maxCallbackFrames(256) >= 256, "maxCallbackFrames() is at least the requested size");
     CHECK(dev->maxCallbackFrames(1) >= 1, "maxCallbackFrames() honours a tiny requested size");
     dev->stop();

@@ -177,6 +177,28 @@ describe('ScopePanel', () => {
     expect(call![0]).not.toHaveProperty('evil');
   });
 
+  it('forwards a buffer_size_mismatch event with a formatted detail (FR-WIN-AUD-6)', () => {
+    panel.show();
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { postMessage: ReturnType<typeof vi.fn> };
+    };
+    (manager as unknown as EventEmitter).emit('message', {
+      type: 'event', kind: 'buffer_size_mismatch', requestedFrames: 64, actualFrames: 480,
+    });
+    expect(created.webview.postMessage).toHaveBeenCalledWith({
+      command: 'event', kind: 'buffer_size_mismatch', detail: 'requested 64 · actual 480 frames',
+    });
+  });
+
+  it('forwards an event without details as kind only (FR-WIN-AUD-6)', () => {
+    panel.show();
+    const created = webviewMock.mock.results[0]?.value as {
+      webview: { postMessage: ReturnType<typeof vi.fn> };
+    };
+    (manager as unknown as EventEmitter).emit('message', { type: 'event', kind: 'realtime_unavailable' });
+    expect(created.webview.postMessage).toHaveBeenCalledWith({ command: 'event', kind: 'realtime_unavailable' });
+  });
+
   it('dispose() cleans up the panel', () => {
     panel.show();
     const created = webviewMock.mock.results[0]?.value as { dispose: ReturnType<typeof vi.fn> };

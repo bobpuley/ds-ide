@@ -28,6 +28,19 @@ static UInt32 query_max_buffer_frames(AudioDeviceID device, UInt32 fallback) {
     return maxFrames > fallback ? maxFrames : fallback;
 }
 
+// The buffer size `device` is currently running with
+// (kAudioDevicePropertyBufferFrameSize), or 0 if unknown (FR-WIN-AUD-6).
+static uint32_t query_buffer_frames(AudioDeviceID device) {
+    if (device == kAudioDeviceUnknown) return 0;
+    UInt32 frames = 0;
+    UInt32 sz = sizeof(frames);
+    AudioObjectPropertyAddress a{kAudioDevicePropertyBufferFrameSize,
+                                 kAudioObjectPropertyScopeGlobal,
+                                 kAudioObjectPropertyElementMain};
+    if (AudioObjectGetPropertyData(device, &a, 0, nullptr, &sz, &frames) != noErr) return 0;
+    return frames;
+}
+
 // Wall-clock time (ms) a processBlock call took, measured with the portable
 // monotonic clock (FR-WIN-AUD-3). An xrun is a call that took longer than the
 // buffer duration it was asked to fill.
@@ -68,6 +81,9 @@ struct CoreAudioDevice::Impl {
     // start() only), for the caller to compare against the engine's
     // configured rate.
     double actualInputSampleRate{0.0};
+    // FR-WIN-AUD-6: the output device's buffer size read back after start;
+    // the device may clamp the requested size to its allowed range.
+    uint32_t actualBufferFrames{0};
 
     static OSStatus renderCallback(void*                       inRefCon,
                                    AudioUnitRenderActionFlags* ioActionFlags,
@@ -374,6 +390,7 @@ bool CoreAudioDevice::start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn 
     // maximum frame count, before this call (FR-RTS-2) — no post-start resize.
     if (AudioUnitInitialize(impl_->unit) != noErr) { stop(); return false; }
     if (AudioOutputUnitStart(impl_->unit) != noErr) { stop(); return false; }
+    impl_->actualBufferFrames = query_buffer_frames(defaultOutputDevice);
 
     running_ = true;
     return true;
@@ -465,6 +482,7 @@ bool CoreAudioDevice::start_output_only(uint32_t sampleRate, uint32_t bufferSize
     // maximum frame count, before this call (FR-RTS-2) — no post-start resize.
     if (AudioUnitInitialize(impl_->unit) != noErr) { stop(); return false; }
     if (AudioOutputUnitStart(impl_->unit) != noErr) { stop(); return false; }
+    impl_->actualBufferFrames = query_buffer_frames(defaultOutputDevice);
 
     running_ = true;
     return true;
@@ -520,6 +538,11 @@ uint32_t CoreAudioDevice::drainRenderErrors() {
 float CoreAudioDevice::queriedInputSampleRate() const {
     if (!impl_) return 0.f;
     return static_cast<float>(impl_->actualInputSampleRate);
+}
+
+uint32_t CoreAudioDevice::actualBufferFrames() const {
+    if (!impl_) return 0;
+    return impl_->actualBufferFrames;
 }
 
 float CoreAudioDevice::lastLatencyMs() const {
