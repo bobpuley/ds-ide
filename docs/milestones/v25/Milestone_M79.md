@@ -24,7 +24,7 @@ No test exercises real-time mode, xruns, latency events, render errors, `sample_
 
 ---
 
-### [ ] refactor: extract AudioDevice interface and factory (FR-WIN-AUD-1)
+### [x] refactor: extract AudioDevice interface and factory (FR-WIN-AUD-1)
 
 `audio_engine.cpp` is the sole consumer of `CoreAudioDevice`, through a small public surface.
 

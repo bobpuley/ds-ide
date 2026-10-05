@@ -25,6 +25,7 @@ struct FakeAudio {
     std::atomic<uint32_t> pending_render_errors{0};
     std::atomic<float>    latency_ms{0.f};
     std::atomic<float>    queried_rate{0.f};    // queriedInputSampleRate() after start()
+    std::atomic<uint32_t> max_callback_frames{0}; // maxCallbackFrames() floor (0 = requested size)
 
     // ---- Observations (fake -> test) ----------------------------------------
     std::atomic<int>      start_calls{0};

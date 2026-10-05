@@ -1,7 +1,6 @@
 #include "core_audio_device.h"
 #include <cstring>
 
-#ifdef __APPLE__
 #include <AudioToolbox/AudioToolbox.h>
 #include <CoreAudio/CoreAudio.h>
 #include <mach/mach_time.h>
@@ -485,6 +484,22 @@ bool CoreAudioDevice::start_output_only(uint32_t sampleRate, uint32_t bufferSize
     return true;
 }
 
+uint32_t CoreAudioDevice::maxCallbackFrames(uint32_t requestedBufferSize) const {
+    // Same bound start() sizes its input buffers from (FR-RTS-1): the largest
+    // frame count either default device can deliver in one I/O cycle.
+    UInt32 maxFrames = requestedBufferSize;
+    for (AudioObjectPropertySelector sel : {kAudioHardwarePropertyDefaultInputDevice,
+                                            kAudioHardwarePropertyDefaultOutputDevice}) {
+        AudioDeviceID dev = kAudioDeviceUnknown;
+        UInt32 sz = sizeof(dev);
+        AudioObjectPropertyAddress a{sel, kAudioObjectPropertyScopeGlobal,
+                                     kAudioObjectPropertyElementMain};
+        AudioObjectGetPropertyData(kAudioObjectSystemObject, &a, 0, nullptr, &sz, &dev);
+        maxFrames = query_max_buffer_frames(dev, maxFrames);
+    }
+    return maxFrames;
+}
+
 void CoreAudioDevice::stop() {
     if (impl_ && impl_->unit) {
         // AudioOutputUnitStop drains any in-flight render callbacks before returning
@@ -527,24 +542,3 @@ float CoreAudioDevice::lastLatencyMs() const {
 }
 
 } // namespace daisy_emu
-
-#else  // !__APPLE__
-
-namespace daisy_emu {
-
-CoreAudioDevice::CoreAudioDevice() {}
-CoreAudioDevice::~CoreAudioDevice() { stop(); }
-
-bool CoreAudioDevice::start(uint32_t, uint32_t, ProcessFn) { return false; }
-bool CoreAudioDevice::start_output_only(uint32_t, uint32_t, ProcessFn) { return false; }
-
-void CoreAudioDevice::stop() { running_ = false; }
-
-uint32_t CoreAudioDevice::drainXruns() { return 0; }
-uint32_t CoreAudioDevice::drainRenderErrors() { return 0; }
-float    CoreAudioDevice::lastLatencyMs() const { return 0.f; }
-float    CoreAudioDevice::queriedInputSampleRate() const { return 0.f; }
-
-} // namespace daisy_emu
-
-#endif // __APPLE__

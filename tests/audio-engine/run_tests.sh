@@ -30,7 +30,8 @@ BIN="${BUILD_DIR}/test_realtime_path"
 
 SOURCES=(
     "${TEST_DIR}/test_realtime_path.cpp"
-    "${TEST_DIR}/fake_core_audio_device.cpp"
+    "${TEST_DIR}/fake_audio_device.cpp"
+    "${TEST_DIR}/fake_audio_factory.cpp"
     "${RUNTIME_DIR}/audio_engine.cpp"
     "${RUNTIME_DIR}/wav_reader.cpp"
     "${RUNTIME_DIR}/session_player.cpp"

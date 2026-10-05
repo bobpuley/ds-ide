@@ -1,5 +1,5 @@
 #include "audio_engine.h"
-#include "core_audio_device.h"
+#include "audio_device.h"
 #include "emulator_state.h"
 #include "session_player.h"
 #include "session_recorder.h"
@@ -616,7 +616,8 @@ static void run_simulated(float sample_rate,
 
     // Try to open an output-only CoreAudio device so the effect is audible
     // from speakers without requiring microphone permission.
-    CoreAudioDevice device;
+    std::unique_ptr<AudioDevice> device_owner = make_audio_device();
+    AudioDevice& device = *device_owner;
 
     auto ca_process = [&](const float* /*ca_in*/, float* ca_out, size_t frames) {
         if (!process_one_block(frames)) {
@@ -721,7 +722,8 @@ static void run_realtime(float sample_rate,
     uint32_t last_reported_xruns = 0;
     uint32_t xrun_report_blocks  = 0;
 
-    CoreAudioDevice device;
+    std::unique_ptr<AudioDevice> device_owner = make_audio_device();
+    AudioDevice& device = *device_owner;
     GeneratorFeed generator_feed;
 
     auto processBlock = [&](const float* ca_in, float* ca_out, size_t frames) {

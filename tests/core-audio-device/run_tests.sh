@@ -1,35 +1,38 @@
 #!/usr/bin/env bash
-# CoreAudioDevice unit tests (M41 / FR-QA-EMU-2).
+# AudioDevice contract tests (M41 / FR-QA-EMU-2, generalised in M79 / FR-WIN-AUD-1).
 #
-# Compiles the safety test harness against core_audio_device.cpp and runs it.
-# macOS only (CoreAudio/AudioToolbox) — no-op pass on other platforms since
-# CoreAudioDevice compiles to no-op stubs there.
+# Compiles the contract test against the platform backend (CoreAudio on macOS,
+# the null backend elsewhere) via the real factory, plus the fake backend.
 #
-# Exit code: 0 = all pass (or skipped on non-Apple), 1 = one or more failures.
+# Exit code: 0 = all pass, 1 = one or more failures.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 RUNTIME_DIR="${REPO_ROOT}/emulator/runtime"
+ENGINE_TEST_DIR="${REPO_ROOT}/tests/audio-engine"
 TEST_SRC="${REPO_ROOT}/tests/core-audio-device/test_core_audio_device.cpp"
 BUILD_DIR="$(mktemp -d)"
 
 trap 'rm -rf "${BUILD_DIR}"' EXIT
 
 CXX="${CXX:-clang++}"
-CXXFLAGS=(-std=c++17 -O0 -g -Wall -Wextra -Wno-unused-parameter -I"${RUNTIME_DIR}")
-LDFLAGS=()
+CXXFLAGS=(-std=c++17 -O0 -g -Wall -Wextra -Wno-unused-parameter
+          -I"${RUNTIME_DIR}" -I"${ENGINE_TEST_DIR}")
+SOURCES=("${TEST_SRC}" "${ENGINE_TEST_DIR}/fake_audio_device.cpp"
+         "${RUNTIME_DIR}/audio_device_factory.cpp")
+LDFLAGS=(-pthread)
 
-echo "=== CoreAudioDevice unit tests ==="
+echo "=== AudioDevice contract tests ==="
 echo "Compiler: $(${CXX} --version | head -1)"
 echo ""
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
+    SOURCES+=("${RUNTIME_DIR}/core_audio_device.cpp")
     LDFLAGS+=(-framework CoreAudio -framework AudioToolbox)
 fi
 
 BIN="${BUILD_DIR}/test_core_audio_device"
-"${CXX}" "${CXXFLAGS[@]}" -o "${BIN}" \
-    "${TEST_SRC}" "${RUNTIME_DIR}/core_audio_device.cpp" "${LDFLAGS[@]}"
+"${CXX}" "${CXXFLAGS[@]}" -o "${BIN}" "${SOURCES[@]}" "${LDFLAGS[@]}"
 
 "${BIN}"

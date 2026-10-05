@@ -11,7 +11,8 @@ and inspects the generated compile_commands.json to verify:
   - every runtime/shim .cpp in the tree has a compile entry (FR-WIN-BLD-4:
     the source list here is derived from the tree, so it always matches
     the CMake list on this platform)
-  - the CMake platform split: ipc_server.cpp and the TCP transport are
+  - the CMake platform split: audio_device_factory.cpp is common and
+    core_audio_device.cpp Apple-only (FR-WIN-AUD-1), ipc_server.cpp and the TCP transport are
     common, the Unix-socket transport is built only off Windows
     (FR-WIN-IPC-1), Winsock is linked on Windows, libm only off Windows,
     TSan is rejected on Windows (FR-WIN-BLD-4)
@@ -44,6 +45,10 @@ def tree_sources(subdir):
 
 
 RUNTIME_BASENAMES = tree_sources("runtime")
+# FR-WIN-AUD-1: the CoreAudio backend is built only on Apple platforms; every
+# other platform builds audio_device_factory.cpp's NullAudioDevice instead.
+if sys.platform != "darwin":
+    RUNTIME_BASENAMES.discard("core_audio_device.cpp")
 SHIM_BASENAMES = tree_sources("shim/src")
 
 failures = 0
@@ -67,6 +72,12 @@ def check_platform_split():
     for name in ("ipc_server.cpp", "ipc_transport_socket.cpp", "ipc_transport_tcp.cpp"):
         check(common is not None and name in common.group(1),
               f"{name} is in the platform-independent RUNTIME_SRC list (FR-WIN-IPC-1)")
+    check(common is not None and "audio_device_factory.cpp" in common.group(1),
+          "audio_device_factory.cpp is in the platform-independent RUNTIME_SRC list (FR-WIN-AUD-1)")
+    check(common is not None and "core_audio_device.cpp" not in common.group(1),
+          "core_audio_device.cpp is not in the platform-independent RUNTIME_SRC list")
+    check(re.search(r"if\(APPLE\)\s*\n\s*list\(APPEND RUNTIME_SRC\s+\"[^\"]*/runtime/core_audio_device\.cpp\"\)", cm) is not None,
+          "the CoreAudio backend is appended only on Apple platforms (FR-WIN-AUD-1)")
     check(common is not None and "ipc_transport_unix.cpp" not in common.group(1),
           "ipc_transport_unix.cpp is not in the platform-independent RUNTIME_SRC list")
     check(re.search(r"if\(NOT WIN32\)\s*\n\s*list\(APPEND RUNTIME_SRC\s+\"[^\"]*/runtime/ipc_transport_unix\.cpp\"\)", cm) is not None,
