@@ -10,7 +10,7 @@ Real-time audio is welded to CoreAudio, allocates on the audio thread in two pla
 
 ## Sprint Tasks
 
-### [ ] test: fake AudioDevice and real-time path regression tests (FR-WIN-AUD-4)
+### [x] test: fake AudioDevice and real-time path regression tests (FR-WIN-AUD-4)
 
 No test exercises real-time mode, xruns, latency events, render errors, `sample_rate_mismatch`, the `realtime_unavailable` fallback, `rt_buffer_size` or mute-on-breakpoint mode switching end to end. These tests are written against the current macOS code before any refactor.
 
