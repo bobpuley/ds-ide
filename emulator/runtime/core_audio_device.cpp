@@ -1,25 +1,16 @@
 #include "core_audio_device.h"
 #include <cstring>
 
-#ifdef __APPLE__
 #include <AudioToolbox/AudioToolbox.h>
 #include <CoreAudio/CoreAudio.h>
-#include <mach/mach_time.h>
 #include <algorithm>
 #include <cstdlib>
 #include <vector>
 #include <atomic>
+#include <chrono>
 #include <functional>
 
 namespace daisy_emu {
-
-static double compute_mach_ns_per_tick() {
-    mach_timebase_info_data_t info;
-    kern_return_t kr = mach_timebase_info(&info);
-    if (kr != KERN_SUCCESS || info.denom == 0)
-        return 1.0;  // fallback: treat ticks as nanoseconds
-    return static_cast<double>(info.numer) / static_cast<double>(info.denom);
-}
 
 // Returns the maximum frame count `device` can ever be asked to deliver in a
 // single I/O cycle (queried via kAudioDevicePropertyBufferFrameSizeRange), or
@@ -37,15 +28,20 @@ static UInt32 query_max_buffer_frames(AudioDeviceID device, UInt32 fallback) {
     return maxFrames > fallback ? maxFrames : fallback;
 }
 
+// Wall-clock time (ms) a processBlock call took, measured with the portable
+// monotonic clock (FR-WIN-AUD-3). An xrun is a call that took longer than the
+// buffer duration it was asked to fill.
+using SteadyClock = std::chrono::steady_clock;
+static double elapsed_ms_since(SteadyClock::time_point t_start) {
+    return std::chrono::duration<double, std::milli>(SteadyClock::now() - t_start).count();
+}
+
 struct CoreAudioDevice::Impl {
     AudioUnit unit{nullptr};
     ProcessFn processBlock;
     uint32_t  bufferSize{256};
     uint32_t  sampleRate{48000};
     uint32_t  inputChannels{1};
-    // Stored before AudioOutputUnitStart so the RT thread reads a stable value
-    // without races against the construction thread (FR-QA-19).
-    double    mach_ns_per_tick{1.0};
 
     // Input buffer list — allocated after querying hardware format, freed in stop().
     // Null in output-only mode.
@@ -110,16 +106,13 @@ struct CoreAudioDevice::Impl {
         // Build stereo-interleaved input buffer from hardware input (handles mono→stereo).
         // Use pre-allocated member buffers — no heap allocation on the RT thread (AC-38).
         const size_t frames = static_cast<size_t>(frames32);
-        if (self->in_interleaved.size() < frames * 2)
-            self->in_interleaved.assign(frames * 2, 0.f);
-        else
-            std::fill(self->in_interleaved.begin(),
-                      self->in_interleaved.begin() + static_cast<ptrdiff_t>(frames * 2), 0.f);
-        if (self->out_interleaved.size() < frames * 2)
-            self->out_interleaved.assign(frames * 2, 0.f);
-        else
-            std::fill(self->out_interleaved.begin(),
-                      self->out_interleaved.begin() + static_cast<ptrdiff_t>(frames * 2), 0.f);
+        // in_interleaved/out_interleaved were sized in start() from the same
+        // maximum as inputBufList, and frames32 is clamped to that capacity, so
+        // neither needs to grow here (FR-WIN-AUD-2).
+        std::fill(self->in_interleaved.begin(),
+                  self->in_interleaved.begin() + static_cast<ptrdiff_t>(frames * 2), 0.f);
+        std::fill(self->out_interleaved.begin(),
+                  self->out_interleaved.begin() + static_cast<ptrdiff_t>(frames * 2), 0.f);
 
         if (self->inputChannels >= 2 && self->inputBufList->mNumberBuffers >= 2) {
             const float* inL = static_cast<const float*>(self->inputBufList->mBuffers[0].mData);
@@ -138,11 +131,9 @@ struct CoreAudioDevice::Impl {
         }
 
         // Run the effect.
-        uint64_t t_start = mach_absolute_time();
+        const auto t_start = SteadyClock::now();
         self->processBlock(self->in_interleaved.data(), self->out_interleaved.data(), frames);
-        uint64_t t_end = mach_absolute_time();
-
-        double elapsed_ms = static_cast<double>(t_end - t_start) * self->mach_ns_per_tick / 1e6;
+        const double elapsed_ms = elapsed_ms_since(t_start);
         double budget_ms  = static_cast<double>(inNumberFrames) /
                             static_cast<double>(self->sampleRate) * 1000.0;
         if (elapsed_ms > budget_ms) {
@@ -181,19 +172,15 @@ struct CoreAudioDevice::Impl {
                                              UInt32                      inNumberFrames,
                                              AudioBufferList*            ioData) {
         Impl* self = static_cast<Impl*>(inRefCon);
-        const size_t frames = static_cast<size_t>(inNumberFrames);
+        // silentInput/workOut were sized in start_output_only() from the device's
+        // maximum callback size and never grow on this thread (FR-WIN-AUD-2); a
+        // larger callback is clamped and its tail zero-filled below.
+        const size_t frames = std::min(static_cast<size_t>(inNumberFrames),
+                                       self->workOut.size() / 2);
 
-        // Grow work buffers if the hardware gives us more frames than expected.
-        if (self->silentInput.size() < frames * 2)
-            self->silentInput.assign(frames * 2, 0.f);
-        if (self->workOut.size() < frames * 2)
-            self->workOut.resize(frames * 2, 0.f);
-
-        uint64_t t_start = mach_absolute_time();
+        const auto t_start = SteadyClock::now();
         self->processBlock(self->silentInput.data(), self->workOut.data(), frames);
-        uint64_t t_end = mach_absolute_time();
-
-        double elapsed_ms = static_cast<double>(t_end - t_start) * self->mach_ns_per_tick / 1e6;
+        const double elapsed_ms = elapsed_ms_since(t_start);
         double budget_ms  = static_cast<double>(inNumberFrames) /
                             static_cast<double>(self->sampleRate) * 1000.0;
         if (elapsed_ms > budget_ms)
@@ -207,10 +194,12 @@ struct CoreAudioDevice::Impl {
                 outL[i] = self->workOut[2 * i];
                 outR[i] = self->workOut[2 * i + 1];
             }
+            for (UInt32 i = static_cast<UInt32>(frames); i < inNumberFrames; ++i) { outL[i] = 0.f; outR[i] = 0.f; }
         } else if (ioData->mNumberBuffers == 1) {
             float* outMono = static_cast<float*>(ioData->mBuffers[0].mData);
             for (size_t i = 0; i < frames; ++i)
                 outMono[i] = self->workOut[2 * i];
+            for (UInt32 i = static_cast<UInt32>(frames); i < inNumberFrames; ++i) outMono[i] = 0.f;
         }
 
         return noErr;
@@ -381,8 +370,6 @@ bool CoreAudioDevice::start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn 
         stop(); return false;
     }
 
-    impl_->mach_ns_per_tick = compute_mach_ns_per_tick();
-
     // RT-callback-visible buffers were already sized above from the queried
     // maximum frame count, before this call (FR-RTS-2) — no post-start resize.
     if (AudioUnitInitialize(impl_->unit) != noErr) { stop(); return false; }
@@ -474,8 +461,6 @@ bool CoreAudioDevice::start_output_only(uint32_t sampleRate, uint32_t bufferSize
         stop(); return false;
     }
 
-    impl_->mach_ns_per_tick = compute_mach_ns_per_tick();
-
     // RT-callback-visible buffers were already sized above from the queried
     // maximum frame count, before this call (FR-RTS-2) — no post-start resize.
     if (AudioUnitInitialize(impl_->unit) != noErr) { stop(); return false; }
@@ -483,6 +468,22 @@ bool CoreAudioDevice::start_output_only(uint32_t sampleRate, uint32_t bufferSize
 
     running_ = true;
     return true;
+}
+
+uint32_t CoreAudioDevice::maxCallbackFrames(uint32_t requestedBufferSize) const {
+    // Same bound start() sizes its input buffers from (FR-RTS-1): the largest
+    // frame count either default device can deliver in one I/O cycle.
+    UInt32 maxFrames = requestedBufferSize;
+    for (AudioObjectPropertySelector sel : {kAudioHardwarePropertyDefaultInputDevice,
+                                            kAudioHardwarePropertyDefaultOutputDevice}) {
+        AudioDeviceID dev = kAudioDeviceUnknown;
+        UInt32 sz = sizeof(dev);
+        AudioObjectPropertyAddress a{sel, kAudioObjectPropertyScopeGlobal,
+                                     kAudioObjectPropertyElementMain};
+        AudioObjectGetPropertyData(kAudioObjectSystemObject, &a, 0, nullptr, &sz, &dev);
+        maxFrames = query_max_buffer_frames(dev, maxFrames);
+    }
+    return maxFrames;
 }
 
 void CoreAudioDevice::stop() {
@@ -527,24 +528,3 @@ float CoreAudioDevice::lastLatencyMs() const {
 }
 
 } // namespace daisy_emu
-
-#else  // !__APPLE__
-
-namespace daisy_emu {
-
-CoreAudioDevice::CoreAudioDevice() {}
-CoreAudioDevice::~CoreAudioDevice() { stop(); }
-
-bool CoreAudioDevice::start(uint32_t, uint32_t, ProcessFn) { return false; }
-bool CoreAudioDevice::start_output_only(uint32_t, uint32_t, ProcessFn) { return false; }
-
-void CoreAudioDevice::stop() { running_ = false; }
-
-uint32_t CoreAudioDevice::drainXruns() { return 0; }
-uint32_t CoreAudioDevice::drainRenderErrors() { return 0; }
-float    CoreAudioDevice::lastLatencyMs() const { return 0.f; }
-float    CoreAudioDevice::queriedInputSampleRate() const { return 0.f; }
-
-} // namespace daisy_emu
-
-#endif // __APPLE__

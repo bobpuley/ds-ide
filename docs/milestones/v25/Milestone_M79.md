@@ -10,7 +10,7 @@ Real-time audio is welded to CoreAudio, allocates on the audio thread in two pla
 
 ## Sprint Tasks
 
-### [ ] test: fake AudioDevice and real-time path regression tests (FR-WIN-AUD-4)
+### [x] test: fake AudioDevice and real-time path regression tests (FR-WIN-AUD-4)
 
 No test exercises real-time mode, xruns, latency events, render errors, `sample_rate_mismatch`, the `realtime_unavailable` fallback, `rt_buffer_size` or mute-on-breakpoint mode switching end to end. These tests are written against the current macOS code before any refactor.
 
@@ -24,7 +24,7 @@ No test exercises real-time mode, xruns, latency events, render errors, `sample_
 
 ---
 
-### [ ] refactor: extract AudioDevice interface and factory (FR-WIN-AUD-1)
+### [x] refactor: extract AudioDevice interface and factory (FR-WIN-AUD-1)
 
 `audio_engine.cpp` is the sole consumer of `CoreAudioDevice`, through a small public surface.
 
@@ -39,7 +39,7 @@ No test exercises real-time mode, xruns, latency events, render errors, `sample_
 
 ---
 
-### [ ] fix: remove allocations from the real-time callbacks (FR-WIN-AUD-2)
+### [x] fix: remove allocations from the real-time callbacks (FR-WIN-AUD-2)
 
 Both render callbacks in `core_audio_device.cpp` (`silentInput.assign`, `workOut.resize`) and the `run_realtime()` `processBlock` lambda in `audio_engine.cpp` (`in_buf`/`out_buf`/`local_*` `resize`) allocate on the real-time thread.
 
@@ -52,7 +52,7 @@ Both render callbacks in `core_audio_device.cpp` (`silentInput.assign`, `workOut
 
 ---
 
-### [ ] refactor: replace Mach timing with steady_clock (FR-WIN-AUD-3)
+### [x] refactor: replace Mach timing with steady_clock (FR-WIN-AUD-3)
 
 `mach_absolute_time()` and `compute_mach_ns_per_tick()` are used only for xrun detection and exist only in `core_audio_device.cpp`.
 

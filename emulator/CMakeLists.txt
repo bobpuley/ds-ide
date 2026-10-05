@@ -75,7 +75,7 @@ set(SHIM_SRC
 set(RUNTIME_SRC
     "${CMAKE_SOURCE_DIR}/runtime/main.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/audio_engine.cpp"
-    "${CMAKE_SOURCE_DIR}/runtime/core_audio_device.cpp"
+    "${CMAKE_SOURCE_DIR}/runtime/audio_device_factory.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/ipc_server.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/ipc_transport_socket.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/ipc_transport_tcp.cpp"
@@ -87,13 +87,17 @@ set(RUNTIME_SRC
 )
 
 # ---- Per-platform sources (FR-WIN-BLD-4) --------------------------------------
-# core_audio_device.cpp is listed everywhere: off Apple it compiles to the
-# no-backend stub (all start* return false) until the Windows backend (M80).
+# audio_device_factory.cpp is listed everywhere (FR-WIN-AUD-1): off Apple it
+# returns the header-only no-backend NullAudioDevice (all start* return false)
+# until the Windows backend (M80); the CoreAudio backend is built only on Apple.
 # The IPC transport (FR-WIN-IPC-1): TCP loopback builds everywhere (the
 # Windows transport, testable on POSIX); the Unix-socket transport is POSIX
 # only.
 if(NOT WIN32)
     list(APPEND RUNTIME_SRC "${CMAKE_SOURCE_DIR}/runtime/ipc_transport_unix.cpp")
+endif()
+if(APPLE)
+    list(APPEND RUNTIME_SRC "${CMAKE_SOURCE_DIR}/runtime/core_audio_device.cpp")
 endif()
 
 # DaisySP: glob all .cpp files under DAISYSP_DIR if provided.

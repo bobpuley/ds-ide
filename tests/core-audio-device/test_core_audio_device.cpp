@@ -1,23 +1,22 @@
-// Unit test for FR-QA-EMU-2: CoreAudioDevice cannot be double-freed via
-// accidental copy.
+// AudioDevice contract tests (M41 / FR-QA-EMU-2, generalised in M79 / FR-WIN-AUD-1).
 //
-// Impl* had no deleted copy/move; copying a started device would yield two
-// owners of the same heap-allocated Impl and a double `delete` at scope
-// exit. Impl is now owned via std::unique_ptr<Impl> and the copy
-// constructor/assignment are explicitly deleted, so an accidental copy is a
-// compile error instead of a runtime double-free.
+// The same contract is asserted for every backend: the platform backend from
+// make_audio_device() (CoreAudio on macOS, the null backend elsewhere) and the
+// fake used by the engine tests. A device cannot be copied or moved (double-free
+// of the driver handle), reports defaults before start, and stop() is
+// idempotent.
 //
-// No audio hardware is started here — CoreAudio interaction stays untested
-// by this harness (see tests/emulator-safety, which avoids linking this
-// file for the same reason). This test only exercises type traits and
-// construct/destruct safety.
+// No audio hardware is started here — the real CoreAudio stream stays untested
+// by this harness; the engine's use of it is covered by tests/audio-engine.
 
-#include "core_audio_device.h"
+#include "audio_device.h"
+#include "fake_audio_device.h"
 
 #include <cstdio>
+#include <memory>
 #include <type_traits>
 
-using daisy_emu::CoreAudioDevice;
+using daisy_emu::AudioDevice;
 
 static int failures = 0;
 #define CHECK(cond, msg) do { \
@@ -25,31 +24,41 @@ static int failures = 0;
     else         { std::printf("  PASS  %s\n", msg); } \
 } while (0)
 
-int main() {
-    std::printf("=== CoreAudioDevice unit tests (M41 / FR-QA-EMU-2) ===\n\n");
+template <typename T>
+static void check_type_traits(const char* name) {
+    std::printf("-- %s: type traits --\n", name);
+    CHECK(!std::is_copy_constructible<T>::value, "is not copy-constructible");
+    CHECK(!std::is_copy_assignable<T>::value, "is not copy-assignable");
+    CHECK(!std::is_move_constructible<T>::value, "is not move-constructible");
+    CHECK(!std::is_move_assignable<T>::value, "is not move-assignable");
+}
 
-    CHECK(!std::is_copy_constructible<CoreAudioDevice>::value,
-          "CoreAudioDevice is not copy-constructible");
-    CHECK(!std::is_copy_assignable<CoreAudioDevice>::value,
-          "CoreAudioDevice is not copy-assignable");
-
-    // Never-started device: impl_ is null; construct/destruct must not crash.
-    {
-        CoreAudioDevice dev;
-        CHECK(!dev.isRunning(), "a freshly constructed device is not running");
-        CHECK(dev.lastLatencyMs() == 0.f, "lastLatencyMs() is 0 before start");
-        CHECK(dev.drainXruns() == 0, "drainXruns() is 0 before start");
-    }
+static void check_contract(const char* name, std::unique_ptr<AudioDevice> dev) {
+    std::printf("-- %s: lifecycle contract --\n", name);
+    CHECK(dev != nullptr, "the factory returns a device");
+    CHECK(!dev->isRunning(), "a freshly constructed device is not running");
+    CHECK(dev->lastLatencyMs() == 0.f, "lastLatencyMs() is 0 before start");
+    CHECK(dev->drainXruns() == 0, "drainXruns() is 0 before start");
+    CHECK(dev->drainRenderErrors() == 0, "drainRenderErrors() is 0 before start");
+    CHECK(dev->drainDriverOverruns() == 0, "drainDriverOverruns() is 0 before start");
+    CHECK(dev->queriedInputSampleRate() == 0.f, "queriedInputSampleRate() is 0 before start");
+    CHECK(dev->maxCallbackFrames(256) >= 256, "maxCallbackFrames() is at least the requested size");
+    CHECK(dev->maxCallbackFrames(1) >= 1, "maxCallbackFrames() honours a tiny requested size");
+    dev->stop();
+    dev->stop();
+    CHECK(!dev->isRunning(), "repeated stop() on a never-started device is a safe no-op");
+    dev.reset();
     CHECK(true, "never-started device destructs cleanly");
+}
 
-    // stop() on a never-started device must be a safe no-op (exercises the
-    // unique_ptr-based reset() path with a null impl_).
-    {
-        CoreAudioDevice dev;
-        dev.stop();
-        dev.stop();
-    }
-    CHECK(true, "repeated stop() on a never-started device does not crash");
+int main() {
+    std::printf("=== AudioDevice contract tests (M41 / FR-QA-EMU-2, M79 / FR-WIN-AUD-1) ===\n\n");
+
+    check_type_traits<AudioDevice>("AudioDevice");
+    check_type_traits<fake_audio::FakeAudioDevice>("FakeAudioDevice");
+
+    check_contract("platform backend (make_audio_device)", daisy_emu::make_audio_device());
+    check_contract("fake backend", std::make_unique<fake_audio::FakeAudioDevice>());
 
     std::printf("\nResult: %s\n", failures == 0 ? "all passed" : "FAILURES");
     return failures == 0 ? 0 : 1;
