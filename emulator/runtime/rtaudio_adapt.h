@@ -65,7 +65,7 @@ inline void read_input(const float* in, size_t frames, unsigned inChannels, floa
 // Output latency in ms: the driver's reported stream latency plus one buffer.
 // RtAudio's WASAPI API stores IAudioClient::GetStreamLatency()'s REFERENCE_TIME
 // (100 ns units) as-is; every other API reports frames. 0 = unknown.
-inline float stream_latency_ms(const std::string& api, long rawLatency,
+inline float stream_latency_ms(const std::string& api, long long rawLatency,
                                unsigned bufferFrames, unsigned sampleRate) {
     if (sampleRate == 0) return 0.f;
     const double driver_ms = api == "wasapi"
@@ -73,6 +73,30 @@ inline float stream_latency_ms(const std::string& api, long rawLatency,
         : static_cast<double>(rawLatency) * 1000.0 / sampleRate;
     const double buffer_ms = static_cast<double>(bufferFrames) * 1000.0 / sampleRate;
     return static_cast<float>(driver_ms + buffer_ms);
+}
+
+// WASAPI shared mode wakes the stream once per device period (~10 ms) and
+// RtAudio splits it into requested-size callbacks, so the period — not the
+// requested size — is the stream's effective buffer. RtAudio 6.0.1 never
+// reports it: its WASAPI latency is queried before IAudioClient::Initialize and
+// is always 0. The backend asks the endpoint for the period itself
+// (FR-WIN-AUD-6, found by the FR-WIN-AUD-7 measurement gate).
+
+// A device period in 100 ns units (REFERENCE_TIME) as frames at `sampleRate`; 0 = unknown.
+inline uint32_t period_frames(long long periodHns, uint32_t sampleRate) {
+    if (periodHns <= 0) return 0;
+    return static_cast<uint32_t>(static_cast<double>(periodHns) * sampleRate / 1e7 + 0.5);
+}
+
+// The buffer size a stream effectively runs at: the larger of what RtAudio
+// opened and the device period (0 = unknown period).
+inline uint32_t effective_buffer_frames(uint32_t openedFrames, uint32_t periodFrames) {
+    return std::max(openedFrames, periodFrames);
+}
+
+// RtAudio's WASAPI driver latency (100 ns units) if it reported one, else the device period.
+inline long long wasapi_driver_latency_hns(long long rtaudioLatency, long long periodHns) {
+    return rtaudioLatency > 0 ? rtaudioLatency : periodHns;
 }
 
 // Render path, called from the RtAudio callback thread, for output-only

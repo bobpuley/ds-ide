@@ -234,11 +234,29 @@ static void test_device_start_duplex() {
     CHECK(dev.queriedInputSampleRate() == 0.f, "a stopped device reports no input rate");
 }
 
+static void test_wasapi_shared_period() {
+    std::printf("-- WASAPI shared period (RtAudio reports no WASAPI latency) --\n");
+    // 106667 hns = 10.6667 ms = 512 frames at 48 kHz (measured on Windows 11, M80 gate).
+    CHECK(period_frames(106667, 48000) == 512, "a 10.67 ms device period is 512 frames at 48 kHz");
+    CHECK(period_frames(100000, 44100) == 441, "a 10 ms device period is 441 frames at 44.1 kHz");
+    CHECK(period_frames(0, 48000) == 0, "an unknown period is 0 frames");
+    CHECK(effective_buffer_frames(64, 512) == 512, "a request below the device period runs at the period");
+    CHECK(effective_buffer_frames(1024, 512) == 1024, "a request above the device period is kept");
+    CHECK(effective_buffer_frames(64, 0) == 64, "an unknown period keeps the opened size");
+    // RtAudio's WASAPI latency is always 0 (queried before IAudioClient::Initialize):
+    // fall back to the device period; a real driver value wins if RtAudio ever reports one.
+    CHECK(wasapi_driver_latency_hns(0, 106667) == 106667, "a zero RtAudio latency falls back to the device period");
+    CHECK(wasapi_driver_latency_hns(50000, 106667) == 50000, "a reported RtAudio latency is used as-is");
+    CHECK(std::fabs(stream_latency_ms("wasapi", wasapi_driver_latency_hns(0, 106667), 64, 48000) - 12.0f) < 0.01f,
+          "WASAPI shared at 64 frames reports period + buffer (~12 ms), not the buffer alone");
+}
+
 int main() {
     std::printf("=== RtAudio backend tests (M80 / FR-WIN-AUD-5) ===\n\n");
     test_choose_api_name();
     test_write_output();
     test_latency_ms();
+    test_wasapi_shared_period();
     test_output_renderer_chunks();
     test_output_renderer_mono();
     test_output_renderer_counters();

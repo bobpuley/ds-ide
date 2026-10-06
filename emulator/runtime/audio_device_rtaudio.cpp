@@ -3,6 +3,12 @@
 
 #include "RtAudio.h"
 
+#if defined(_WIN32) && defined(__WINDOWS_WASAPI__)
+#include <windows.h>
+#include <audioclient.h>
+#include <mmdeviceapi.h>
+#endif
+
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
@@ -26,6 +32,36 @@ RtAudio::Api select_api(std::string& nameOut) {
     return nameOut.empty() ? RtAudio::UNSPECIFIED : RtAudio::getCompiledApiByName(nameOut);
 }
 
+// The default render endpoint's shared-mode device period in 100 ns units, or
+// 0 if unknown / not WASAPI (see rtaudio_adapt.h: RtAudio never reports it).
+long long query_wasapi_shared_period_hns() {
+#if defined(_WIN32) && defined(__WINDOWS_WASAPI__)
+    const HRESULT init = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    // RPC_E_CHANGED_MODE: COM is already up in another apartment on this
+    // thread — usable, but not ours to uninitialise.
+    const bool ownsCom = SUCCEEDED(init);
+    long long period = 0;
+    IMMDeviceEnumerator* enumerator = nullptr;
+    IMMDevice*           device     = nullptr;
+    IAudioClient*        client     = nullptr;
+    if (SUCCEEDED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+                                   __uuidof(IMMDeviceEnumerator), reinterpret_cast<void**>(&enumerator))) &&
+        SUCCEEDED(enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device)) &&
+        SUCCEEDED(device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
+                                   reinterpret_cast<void**>(&client)))) {
+        REFERENCE_TIME defPeriod = 0, minPeriod = 0;
+        if (SUCCEEDED(client->GetDevicePeriod(&defPeriod, &minPeriod))) period = defPeriod;
+    }
+    if (client) client->Release();
+    if (device) device->Release();
+    if (enumerator) enumerator->Release();
+    if (ownsCom) CoUninitialize();
+    return period;
+#else
+    return 0;
+#endif
+}
+
 }  // namespace
 
 struct RtAudioDevice::Impl {
@@ -33,9 +69,10 @@ struct RtAudioDevice::Impl {
     RtAudio rt;
     rtaudio_adapt::StreamRenderer renderer;
     std::atomic<float> latencyMs{0.f};
-    // Buffer size RtAudio opened the stream with (written back by openStream()).
-    // ASIO may round the request; RtAudio's WASAPI API keeps it and buffers
-    // internally, so the coarser device period shows up in latency instead.
+    // Effective buffer size: what RtAudio opened (written back by openStream();
+    // ASIO may round the request) or, for WASAPI shared, the device period if
+    // larger — RtAudio keeps the requested callback size but wakes once per
+    // period (FR-WIN-AUD-6).
     uint32_t openedBufferFrames{0};
     // The input hardware's own rate (duplex only). RtAudio's WASAPI API
     // resamples to the stream rate, but a differing hardware rate is still
@@ -132,14 +169,22 @@ bool RtAudioDevice::open_and_start(uint32_t sampleRate, uint32_t bufferSize,
         stop(); return false;
     }
     if (impl_->rt.startStream() != RTAUDIO_NO_ERROR) { stop(); return false; }
-    impl_->openedBufferFrames = frames;
 
-    // getStreamLatency() sums the output and (duplex) input sides; RtAudio
-    // opens output first, so its WASAPI API's 64-bit write into each 32-bit
-    // latency slot spills only into a field it reassigns right after.
+    // getStreamLatency() sums the output and (duplex) input sides. For WASAPI
+    // it is always 0 (RtAudio queries it before IAudioClient::Initialize), so
+    // the endpoint's shared-mode period stands in for the driver latency.
+    const unsigned int streamRate = impl_->rt.getStreamSampleRate();
+    long long driverLatency = impl_->rt.getStreamLatency();
+    uint32_t effectiveFrames = frames;
+    if (impl_->apiName == "wasapi") {
+        const long long periodHns = query_wasapi_shared_period_hns();
+        driverLatency   = rtaudio_adapt::wasapi_driver_latency_hns(driverLatency, periodHns);
+        effectiveFrames = rtaudio_adapt::effective_buffer_frames(
+            frames, rtaudio_adapt::period_frames(periodHns, streamRate));
+    }
+    impl_->openedBufferFrames = effectiveFrames;
     impl_->latencyMs.store(
-        rtaudio_adapt::stream_latency_ms(impl_->apiName, impl_->rt.getStreamLatency(), frames,
-                                         impl_->rt.getStreamSampleRate()),
+        rtaudio_adapt::stream_latency_ms(impl_->apiName, driverLatency, frames, streamRate),
         std::memory_order_relaxed);
     running_ = true;
     return true;
