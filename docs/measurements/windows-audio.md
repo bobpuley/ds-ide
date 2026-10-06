@@ -92,6 +92,16 @@ not measured). Built with the **MSYS2 UCRT64** `clang++`, not the CLANG64 toolch
 | ASIO (RtAudio) | 128 | — | — | — | — | — | — | — | — | not measured: no ASIO SDK/device |
 | ASIO (RtAudio) | 256 | — | — | — | — | — | — | — | — | not measured: no ASIO SDK/device |
 
+> **Correction (2026-10-06):** the `reported` and `latency ms` values of the *WASAPI shared (RtAudio)* rows in
+> both tables came from a backend defect, since fixed: RtAudio 6.0.1 queries `IAudioClient::GetStreamLatency()`
+> before `Initialize()`, so its WASAPI latency is always 0 and the backend reported only its own buffer
+> (64/128/256 frames = 1.3/2.7/5.3 ms) and the request as the buffer size. The backend now asks the endpoint for
+> its shared-mode period (`IAudioClient::GetDevicePeriod`). The `effective`, interval, jitter, xrun and overrun
+> columns are measured independently of that and are unaffected.
+>
+> ⚠️ ASSUMPTION: with the fix, these rows should read `reported` = 512 and `latency ms` = 10.67 + buffer =
+> 12.0 / 13.3 / 16.0 ms (assumes `GetDevicePeriod` returns the 10.67 ms period the wakeups show). Not yet re-run.
+
 #### With `--duplex`
 
 <!-- 2026-10-06T11:03Z · MINGW64_NT-10.0-26200 · 10s per run -->
@@ -120,7 +130,10 @@ probe's; otherwise a native WASAPI milestone is added through intake):
 
 - **xruns / driver overruns:** 0 / 0 in every run (output-only and duplex, 64/128/256).
 - **Jitter:** 0.20–0.25 ms standard deviation, p99 deviation ≤ 0.74 ms — within the ~1 ms bound.
-- **Reported latency:** 1.3–5.3 ms vs 10.7 ms for the exclusive probe — within 2×.
+- **Latency:** the shared-mode wakeup period is 10.67 ms vs 5.33 ms for the exclusive probe — **exactly 2×, at
+  the rule's limit**. Corrected reported latency (period + buffer, see the correction above) is 12.0–16.0 ms vs
+  10.7 ms for the exclusive probe, ≤ 1.5×. (The originally recorded 1.3–5.3 ms was a backend defect, not a
+  measurement.)
 - **Duplex** adds no measurable cost over output-only.
 
 Caveats, so the result is not over-read:
@@ -129,8 +142,9 @@ Caveats, so the result is not over-read:
   requested 64/128/256 frames in chunks per wakeup (`reported` follows the request, `effective` does not).
   This confirms the ≈10 ms WASAPI-shared figure in `02_assumptions-and-risks.md`; exclusive mode would halve
   it (5.33 ms), but RtAudio 6.0.1 cannot do exclusive, so that gain would need a native backend.
-- The reported-latency column is each backend's own estimate and is not strictly like-for-like, so the 2×
-  comparison is weak evidence; the 10.67 ms wakeup period is the more honest latency figure.
+- The reported-latency column is each backend's own estimate and is not strictly like-for-like; the wakeup
+  period (10.67 ms shared vs 5.33 ms exclusive) is the more honest comparison, and it sits right at the 2× limit,
+  so "sufficient" is a borderline pass on latency, a clear pass on stability.
 - **ASIO was not measured** (no SDK/device), the audio endpoint was not recorded, and the Windows build used
   the UCRT64 `clang++` rather than CLANG64. A single machine and 10 s per run.
 - The exclusive probe's 10.66 ms max at a 128 request (output-only run) did not recur in the duplex run.
