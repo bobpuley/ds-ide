@@ -1,6 +1,6 @@
 # Windows audio measurement gate (M80 / FR-WIN-AUD-7)
 
-**Status:** harness ready · Windows measurements **pending** · conclusion **pending**
+**Status:** harness ready · Windows measurements **recorded** (WASAPI; ASIO not measured) · conclusion **written** (RtAudio shared sufficient)
 
 The ≈10 ms WASAPI-shared period and ≈15 ms timer figures in `02_assumptions-and-risks.md` are
 platform folklore, not measurements of this codebase. This document records measured effective
@@ -71,14 +71,68 @@ Paste each printed table below with the machine and device it was run on.
 
 ### Windows
 
-_Pending — run on the developer's Windows PC (WASAPI only; no ASIO device/SDK available, so ASIO is recorded as
-not measured)._
+Run on the developer's Windows PC (Windows 11, WASAPI only; no ASIO device/SDK available, so ASIO is recorded as
+not measured). Built with the **MSYS2 UCRT64** `clang++`, not the CLANG64 toolchain the script documents.
+
+> ⚠️ ASSUMPTION: the audio endpoint used was not recorded (the default Windows output device); note it here if it
+> matters for the conclusion.
+
+#### Output-only
+
+<!-- 2026-10-06T11:02Z · MINGW64_NT-10.0-26200 · 10s per run -->
+| backend | requested | effective | reported | interval ms | jitter ms | p99 dev ms | max ms | latency ms | xruns | driver overruns |
+|---|---|---|---|---|---|---|---|---|---|---|
+| WASAPI shared (RtAudio), output | 64 | 512 | 64 | 10.67 | 0.24 | 0.69 | 11.86 | 1.3 | 0 | 0 |
+| WASAPI shared (RtAudio), output | 128 | 512 | 128 | 10.67 | 0.24 | 0.74 | 11.47 | 2.7 | 0 | 0 |
+| WASAPI shared (RtAudio), output | 256 | 512 | 256 | 10.67 | 0.25 | 0.69 | 11.65 | 5.3 | 0 | 0 |
+| WASAPI exclusive (native probe) | 64 | 256 | 256 | 5.33 | 0.12 | 0.48 | 6.25 | 10.7 | 0 | 0 |
+| WASAPI exclusive (native probe) | 128 | 256 | 256 | 5.34 | 0.20 | 0.44 | 10.66 | 10.7 | 0 | 0 |
+| WASAPI exclusive (native probe) | 256 | 256 | 256 | 5.33 | 0.10 | 0.41 | 5.89 | 10.7 | 0 | 0 |
+| ASIO (RtAudio) | 64 | — | — | — | — | — | — | — | — | not measured: no ASIO SDK/device |
+| ASIO (RtAudio) | 128 | — | — | — | — | — | — | — | — | not measured: no ASIO SDK/device |
+| ASIO (RtAudio) | 256 | — | — | — | — | — | — | — | — | not measured: no ASIO SDK/device |
+
+#### With `--duplex`
+
+<!-- 2026-10-06T11:03Z · MINGW64_NT-10.0-26200 · 10s per run -->
+| backend | requested | effective | reported | interval ms | jitter ms | p99 dev ms | max ms | latency ms | xruns | driver overruns |
+|---|---|---|---|---|---|---|---|---|---|---|
+| WASAPI shared (RtAudio), output | 64 | 512 | 64 | 10.67 | 0.22 | 0.65 | 11.66 | 1.3 | 0 | 0 |
+| WASAPI shared (RtAudio), output | 128 | 512 | 128 | 10.67 | 0.22 | 0.66 | 11.54 | 2.7 | 0 | 0 |
+| WASAPI shared (RtAudio), output | 256 | 512 | 256 | 10.67 | 0.22 | 0.61 | 11.50 | 5.3 | 0 | 0 |
+| WASAPI shared (RtAudio), duplex | 64 | 512 | 64 | 10.67 | 0.21 | 0.57 | 11.54 | 1.3 | 0 | 0 |
+| WASAPI shared (RtAudio), duplex | 128 | 512 | 128 | 10.67 | 0.21 | 0.61 | 11.45 | 2.7 | 0 | 0 |
+| WASAPI shared (RtAudio), duplex | 256 | 512 | 256 | 10.67 | 0.20 | 0.60 | 11.42 | 5.3 | 0 | 0 |
+| WASAPI exclusive (native probe) | 64 | 256 | 256 | 5.33 | 0.11 | 0.42 | 6.00 | 10.7 | 0 | 0 |
+| WASAPI exclusive (native probe) | 128 | 256 | 256 | 5.33 | 0.10 | 0.41 | 6.06 | 10.7 | 0 | 0 |
+| WASAPI exclusive (native probe) | 256 | 256 | 256 | 5.33 | 0.11 | 0.42 | 5.97 | 10.7 | 0 | 0 |
+| ASIO (RtAudio) | 64 | — | — | — | — | — | — | — | — | not measured: no ASIO SDK/device |
+| ASIO (RtAudio) | 128 | — | — | — | — | — | — | — | — | not measured: no ASIO SDK/device |
+| ASIO (RtAudio) | 256 | — | — | — | — | — | — | — | — | not measured: no ASIO SDK/device |
 
 ## Conclusion
 
-_Pending the Windows measurements._
+**RtAudio over WASAPI shared is sufficient for v1; no native WASAPI milestone is added.**
 
-> ⚠️ ASSUMPTION: proposed decision rule, to be confirmed when the results are in — RtAudio (WASAPI shared) is
-> **sufficient** if, at the smallest request it can honour, it shows no xruns/driver overruns over the run,
-> wakeup jitter within ~1 ms, and reported latency within ~2× the native exclusive probe's; otherwise a native
-> WASAPI (exclusive-capable) backend milestone is added to the registry through intake.
+Decision rule (RtAudio shared is sufficient if, at the smallest request it can honour, it shows no
+xruns/driver overruns, wakeup jitter within ~1 ms, and reported latency within ~2× the native exclusive
+probe's; otherwise a native WASAPI milestone is added through intake):
+
+- **xruns / driver overruns:** 0 / 0 in every run (output-only and duplex, 64/128/256).
+- **Jitter:** 0.20–0.25 ms standard deviation, p99 deviation ≤ 0.74 ms — within the ~1 ms bound.
+- **Reported latency:** 1.3–5.3 ms vs 10.7 ms for the exclusive probe — within 2×.
+- **Duplex** adds no measurable cost over output-only.
+
+Caveats, so the result is not over-read:
+
+- The effective shared-mode period is **512 frames (10.67 ms) whatever the request**: RtAudio delivers the
+  requested 64/128/256 frames in chunks per wakeup (`reported` follows the request, `effective` does not).
+  This confirms the ≈10 ms WASAPI-shared figure in `02_assumptions-and-risks.md`; exclusive mode would halve
+  it (5.33 ms), but RtAudio 6.0.1 cannot do exclusive, so that gain would need a native backend.
+- The reported-latency column is each backend's own estimate and is not strictly like-for-like, so the 2×
+  comparison is weak evidence; the 10.67 ms wakeup period is the more honest latency figure.
+- **ASIO was not measured** (no SDK/device), the audio endpoint was not recorded, and the Windows build used
+  the UCRT64 `clang++` rather than CLANG64. A single machine and 10 s per run.
+- The exclusive probe's 10.66 ms max at a 128 request (output-only run) did not recur in the duplex run.
+
+Revisit (via intake) if a user needs sub-10 ms round-trip on Windows or reports glitches on other hardware.
