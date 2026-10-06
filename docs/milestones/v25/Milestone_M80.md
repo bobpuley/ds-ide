@@ -52,7 +52,7 @@ A backend may open at a different buffer size than requested (WASAPI shared has 
 
 ---
 
-### [ ] chore: Windows audio measurement gate (FR-WIN-AUD-7)
+### [x] chore: Windows audio measurement gate (FR-WIN-AUD-7)
 
 The 10 ms / 15 ms Windows figures are assumptions; the decision on a native WASAPI backend needs measurements.
 
