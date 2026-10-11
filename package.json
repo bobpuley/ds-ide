@@ -420,7 +420,7 @@
     "postinstall": "npm run rebuild:native || true"
   },
   "devDependencies": {
-    "@electron/rebuild": "^4.2.0",
+    "@electron/rebuild": "^4.2.1",
     "@types/mocha": "^10.0.10",
     "@types/node": "^18.0.0",
     "@types/vscode": "^1.85.0",
