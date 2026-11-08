@@ -10,7 +10,7 @@ import { Meters, formatDb, meterPosition } from './scope/scope-meters';
 import { CHIPS, chipLabel, chipAriaLabel, isDefault, defaultState, isGroupDisabled, placePopover, type ChipDef } from './scope/scope-chips';
 import { GENERATOR_DEFAULTS, clampParams, isGeneratorId, type GeneratorParams } from './scope/scope-generators';
 import { buildCsv } from './scope/scope-export';
-import { EventLog, formatClock } from './scope/scope-events';
+import { EventLog, formatClock, REALTIME_UNAVAILABLE_TEXT } from './scope/scope-events';
 import {
   freqPosition, freqTicks, levelToDb, dbRange, dbPosition, dbTicks, type FreqScale, type LevelMode,
 } from './scope/scope-spectrum-scale';
@@ -909,7 +909,7 @@ window.addEventListener('message', (e: MessageEvent<unknown>) => {
     if (srcEl) { srcEl.value = 'wav'; updateSourceGroups('wav'); }
   } else if (msg.command === 'event') {
     if (msg.kind === 'realtime_unavailable') {
-      eventsEl.textContent = '⚠ Live input unavailable — check microphone permission. Falling back to sine.';
+      eventsEl.textContent = REALTIME_UNAVAILABLE_TEXT;
       const srcEl = document.getElementById('audio-source-select') as HTMLSelectElement | null;
       if (srcEl) { srcEl.value = 'sine'; updateSourceGroups('sine'); }
       return;
@@ -920,7 +920,7 @@ window.addEventListener('message', (e: MessageEvent<unknown>) => {
     }
     if (typeof msg.kind === 'string') {
       activeEvents.add(msg.kind.toUpperCase());
-      logEvent(msg.kind.toUpperCase());
+      logEvent(msg.kind.toUpperCase(), typeof msg.detail === 'string' ? msg.detail : undefined);
       eventsEl.textContent = [...activeEvents].map(k => '⚠ ' + k).join('  ');
     }
   } else if (msg.command === 'xrun') {

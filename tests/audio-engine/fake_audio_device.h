@@ -21,6 +21,7 @@ public:
     uint32_t drainDriverOverruns() override;
     float lastLatencyMs() const override;
     float queriedInputSampleRate() const override;
+    uint32_t actualBufferFrames() const override;
 
 private:
     bool begin(bool ok, uint32_t sampleRate, uint32_t bufferSize, ProcessFn fn, bool output_only);

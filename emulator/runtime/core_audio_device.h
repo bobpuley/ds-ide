@@ -24,6 +24,7 @@ public:
     uint32_t drainDriverOverruns() override { return 0; }  // CoreAudio reports no driver overruns
     float lastLatencyMs() const override;
     float queriedInputSampleRate() const override;
+    uint32_t actualBufferFrames() const override;
 
 private:
     struct Impl;

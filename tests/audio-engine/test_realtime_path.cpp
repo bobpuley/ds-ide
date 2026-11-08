@@ -308,6 +308,38 @@ static void test_sample_rate_mismatch() {
     }
 }
 
+static void test_buffer_size_mismatch() {
+    std::printf("\n-- buffer_size_mismatch (FR-WIN-AUD-6) --\n");
+    {
+        Harness h(1, 128, 48000.f);
+        // Like sample_rate_mismatch: the engine reads actualBufferFrames() right
+        // after start(), so set the knob and restart via a config bump.
+        wait_for([] { return g_fake.start_calls.load() == 1; });
+        g_fake.actual_buffer = 480;
+        g_state.config_generation++;
+        h.poke();
+        CHECK(h.wait_msg("{\"type\":\"event\",\"kind\":\"buffer_size_mismatch\","
+                         "\"requestedFrames\":128,\"actualFrames\":480}"),
+              "a backend opening a different buffer size raises buffer_size_mismatch");
+    }
+    {
+        Harness h(1, 128, 48000.f);
+        wait_for([] { return g_fake.start_calls.load() == 1; });
+        g_fake.actual_buffer = 128;
+        g_state.config_generation++;
+        h.poke();
+        wait_for([] { return g_fake.start_calls.load() == 2; });
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        CHECK(!h.has("buffer_size_mismatch"), "a matching buffer size raises no buffer_size_mismatch");
+    }
+    {
+        Harness h(1, 128, 48000.f);
+        wait_for([] { return g_fake.start_calls.load() == 1; });
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        CHECK(!h.has("buffer_size_mismatch"), "an unknown actual buffer size (0) raises nothing");
+    }
+}
+
 static void test_realtime_unavailable_fallback() {
     std::printf("\n-- realtime_unavailable fallback --\n");
     Harness h(1);
@@ -377,6 +409,7 @@ int main() {
     test_xruns();
     test_latency_and_render_errors();
     test_sample_rate_mismatch();
+    test_buffer_size_mismatch();
     test_realtime_unavailable_fallback();
     test_mode_switching();
     test_simulated_silent_fallback();

@@ -8,6 +8,7 @@
 #include <vector>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <functional>
 
 namespace daisy_emu {
@@ -26,6 +27,29 @@ static UInt32 query_max_buffer_frames(AudioDeviceID device, UInt32 fallback) {
         return fallback;
     UInt32 maxFrames = static_cast<UInt32>(range.mMaximum);
     return maxFrames > fallback ? maxFrames : fallback;
+}
+
+// The buffer size `device` is currently running with, in frames at
+// `streamRate`, or 0 if unknown (FR-WIN-AUD-6). kAudioDevicePropertyBufferFrameSize
+// is in device-rate frames; when the device runs at another rate (e.g. a 16 kHz
+// Bluetooth headset) the AUHAL resamples and the callback sees proportionally
+// more frames per I/O cycle, which is what the caller compares against.
+static uint32_t query_buffer_frames(AudioDeviceID device, uint32_t streamRate) {
+    if (device == kAudioDeviceUnknown) return 0;
+    UInt32 frames = 0;
+    UInt32 sz = sizeof(frames);
+    AudioObjectPropertyAddress a{kAudioDevicePropertyBufferFrameSize,
+                                 kAudioObjectPropertyScopeGlobal,
+                                 kAudioObjectPropertyElementMain};
+    if (AudioObjectGetPropertyData(device, &a, 0, nullptr, &sz, &frames) != noErr) return 0;
+    Float64 deviceRate = 0.0;
+    sz = sizeof(deviceRate);
+    AudioObjectPropertyAddress r{kAudioDevicePropertyNominalSampleRate,
+                                 kAudioObjectPropertyScopeGlobal,
+                                 kAudioObjectPropertyElementMain};
+    if (AudioObjectGetPropertyData(device, &r, 0, nullptr, &sz, &deviceRate) != noErr || deviceRate <= 0.0)
+        return frames;
+    return static_cast<uint32_t>(std::lround(frames * static_cast<double>(streamRate) / deviceRate));
 }
 
 // Wall-clock time (ms) a processBlock call took, measured with the portable
@@ -68,6 +92,9 @@ struct CoreAudioDevice::Impl {
     // start() only), for the caller to compare against the engine's
     // configured rate.
     double actualInputSampleRate{0.0};
+    // FR-WIN-AUD-6: the output device's buffer size read back after start;
+    // the device may clamp the requested size to its allowed range.
+    uint32_t actualBufferFrames{0};
 
     static OSStatus renderCallback(void*                       inRefCon,
                                    AudioUnitRenderActionFlags* ioActionFlags,
@@ -374,6 +401,7 @@ bool CoreAudioDevice::start(uint32_t sampleRate, uint32_t bufferSize, ProcessFn 
     // maximum frame count, before this call (FR-RTS-2) — no post-start resize.
     if (AudioUnitInitialize(impl_->unit) != noErr) { stop(); return false; }
     if (AudioOutputUnitStart(impl_->unit) != noErr) { stop(); return false; }
+    impl_->actualBufferFrames = query_buffer_frames(defaultOutputDevice, sampleRate);
 
     running_ = true;
     return true;
@@ -465,6 +493,7 @@ bool CoreAudioDevice::start_output_only(uint32_t sampleRate, uint32_t bufferSize
     // maximum frame count, before this call (FR-RTS-2) — no post-start resize.
     if (AudioUnitInitialize(impl_->unit) != noErr) { stop(); return false; }
     if (AudioOutputUnitStart(impl_->unit) != noErr) { stop(); return false; }
+    impl_->actualBufferFrames = query_buffer_frames(defaultOutputDevice, sampleRate);
 
     running_ = true;
     return true;
@@ -520,6 +549,11 @@ uint32_t CoreAudioDevice::drainRenderErrors() {
 float CoreAudioDevice::queriedInputSampleRate() const {
     if (!impl_) return 0.f;
     return static_cast<float>(impl_->actualInputSampleRate);
+}
+
+uint32_t CoreAudioDevice::actualBufferFrames() const {
+    if (!impl_) return 0;
+    return impl_->actualBufferFrames;
 }
 
 float CoreAudioDevice::lastLatencyMs() const {

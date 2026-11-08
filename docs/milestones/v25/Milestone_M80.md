@@ -1,7 +1,7 @@
 # M80 — Windows Audio Backend & Measurement Gate
 
 **Version:** 0.25.0-win.4
-**Status:** planned
+**Status:** released
 **Source:** intake session, 2026-10-04 (`multiplatform_plan.md`; 01_input-ideas.md). Branch `feat/m80-windows-audio-backend` is created from `feat/windows-support` and merged back into `feat/windows-support` at close (never `main`) — FR-WIN-GIT-1
 
 ## Goal
@@ -10,7 +10,7 @@ Windows has no real-time audio backend, and whether RtAudio is good enough for e
 
 ## Sprint Tasks
 
-### [ ] feat: RtAudio output-only backend for Windows (FR-WIN-AUD-5)
+### [x] feat: RtAudio output-only backend for Windows (FR-WIN-AUD-5)
 
 Output-only is the mode used for simulated audio and needs no microphone stream.
 
@@ -24,7 +24,7 @@ Output-only is the mode used for simulated audio and needs no microphone stream.
 
 ---
 
-### [ ] feat: RtAudio duplex backend for Windows (FR-WIN-AUD-5)
+### [x] feat: RtAudio duplex backend for Windows (FR-WIN-AUD-5)
 
 Duplex needs input and output that may be on different devices with independent clocks.
 
@@ -38,7 +38,7 @@ Duplex needs input and output that may be on different devices with independent 
 
 ---
 
-### [ ] feat: report actual buffer size, rate and latency (FR-WIN-AUD-6)
+### [x] feat: report actual buffer size, rate and latency (FR-WIN-AUD-6)
 
 A backend may open at a different buffer size than requested (WASAPI shared has a coarser minimum period); the `realtime_unavailable` message blames only the macOS microphone permission.
 
@@ -52,7 +52,7 @@ A backend may open at a different buffer size than requested (WASAPI shared has 
 
 ---
 
-### [ ] chore: Windows audio measurement gate (FR-WIN-AUD-7)
+### [x] chore: Windows audio measurement gate (FR-WIN-AUD-7)
 
 The 10 ms / 15 ms Windows figures are assumptions; the decision on a native WASAPI backend needs measurements.
 

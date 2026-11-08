@@ -20,6 +20,12 @@ function getNumberArray(obj: Record<string, unknown>, key: string): number[] | u
 
 export type IpcMessage = Record<string, unknown>;
 
+// Numeric fields an emulator `event` may carry (buffer_size_mismatch,
+// sample_rate_mismatch — FR-WIN-AUD-6); everything else is dropped.
+export const EVENT_DETAIL_KEYS = [
+  'requestedFrames', 'actualFrames', 'engineSampleRate', 'deviceSampleRate',
+] as const;
+
 // FR-SCI-14c: host -> emulator capture request.
 export type ScopeCaptureRequest =
   | { action: 'arm'; source: 'in' | 'l'; edge: 'rise' | 'fall'; level: number }
@@ -91,7 +97,13 @@ const NARROWERS: Record<string, Narrower> = {
   event: (obj) => {
     const kind = getString(obj, 'kind');
     if (kind === undefined) return undefined;
-    return { type: 'event', kind };
+    // FR-WIN-AUD-6: mismatch events carry requested/actual numbers.
+    const details: Record<string, number> = {};
+    for (const key of EVENT_DETAIL_KEYS) {
+      const v = getNumber(obj, key);
+      if (v !== undefined && Number.isFinite(v)) details[key] = v;
+    }
+    return { type: 'event', kind, ...details };
   },
   xrun: (obj) => {
     const count = getNumber(obj, 'count');

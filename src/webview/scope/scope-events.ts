@@ -44,6 +44,28 @@ export class EventLog {
   }
 }
 
+/** Shown when real-time (live input) mode cannot start — on any platform (FR-WIN-AUD-6). */
+export const REALTIME_UNAVAILABLE_TEXT =
+  '⚠ Live input unavailable — no usable input/output device, or input permission denied. Falling back to sine.';
+
+export interface EventDetails {
+  requestedFrames?: number;
+  actualFrames?: number;
+  engineSampleRate?: number;
+  deviceSampleRate?: number;
+}
+
+/** History-row text for a mismatch event's numbers; undefined when it carries none (FR-WIN-AUD-6). */
+export function formatEventDetail(d: EventDetails): string | undefined {
+  if (d.requestedFrames !== undefined && d.actualFrames !== undefined) {
+    return `requested ${d.requestedFrames} · actual ${d.actualFrames} frames`;
+  }
+  if (d.engineSampleRate !== undefined && d.deviceSampleRate !== undefined) {
+    return `engine ${d.engineSampleRate} Hz · device ${d.deviceSampleRate} Hz`;
+  }
+  return undefined;
+}
+
 export function formatClock(time: number): string {
   const d = new Date(time);
   const p = (n: number): string => String(n).padStart(2, '0');

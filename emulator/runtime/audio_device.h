@@ -11,7 +11,8 @@ namespace daisy_emu {
 // audio_engine.cpp talks to the host audio hardware only through this
 // interface; the backend is chosen by make_audio_device() (audio_device_factory.cpp,
 // the single place that branches on the platform). Implementations: CoreAudio
-// on macOS, the no-backend NullAudioDevice everywhere else, and a fake in tests.
+// on macOS, RtAudio on Windows, the no-backend NullAudioDevice everywhere else,
+// and a fake in tests.
 //
 // Two modes:
 //   start()             — full-duplex: pulls live input, may require an input
@@ -82,6 +83,13 @@ public:
     // compare against the engine's configured rate and surface a
     // sample_rate_mismatch event (FR-EMU-3).
     virtual float queriedInputSampleRate() const = 0;
+
+    // The buffer size (frames) the driver actually opened the running stream
+    // with, which may differ from the requested one (e.g. WASAPI shared mode's
+    // coarser period, a device clamping to its allowed range). 0 = unknown or
+    // not running. The caller surfaces a difference as buffer_size_mismatch
+    // (FR-WIN-AUD-6); processBlock still never exceeds maxCallbackFrames().
+    virtual uint32_t actualBufferFrames() const = 0;
 };
 
 // Creates the platform's audio backend. Never returns null; when the platform

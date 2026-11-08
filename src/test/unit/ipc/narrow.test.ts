@@ -70,6 +70,21 @@ describe('parseIpcMessage (FR-IPC-2)', () => {
     expect(parseIpcMessage({ type: 'event', kind: 'nan' })).toEqual({ type: 'event', kind: 'nan' });
   });
 
+  it('keeps whitelisted numeric details on an event message (FR-WIN-AUD-6)', () => {
+    expect(parseIpcMessage({
+      type: 'event', kind: 'buffer_size_mismatch', requestedFrames: 64, actualFrames: 480,
+    })).toEqual({ type: 'event', kind: 'buffer_size_mismatch', requestedFrames: 64, actualFrames: 480 });
+    expect(parseIpcMessage({
+      type: 'event', kind: 'sample_rate_mismatch', engineSampleRate: 48000, deviceSampleRate: 44100,
+    })).toEqual({ type: 'event', kind: 'sample_rate_mismatch', engineSampleRate: 48000, deviceSampleRate: 44100 });
+  });
+
+  it('drops non-numeric, non-finite and unknown event details (FR-WIN-AUD-6)', () => {
+    expect(parseIpcMessage({
+      type: 'event', kind: 'buffer_size_mismatch', requestedFrames: '64', actualFrames: Infinity, evil: 1,
+    })).toEqual({ type: 'event', kind: 'buffer_size_mismatch' });
+  });
+
   it('rejects an event message with a non-string kind', () => {
     expect(parseIpcMessage({ type: 'event', kind: 42 })).toBeUndefined();
   });

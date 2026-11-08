@@ -850,6 +850,20 @@ static void run_realtime(float sample_rate,
         ipc_send(buf);
     }
 
+    // FR-WIN-AUD-6: the backend may have opened a different buffer size than
+    // rt_buffer_size asked for (WASAPI shared mode, a device clamping to its
+    // range) — surface it like sample_rate_mismatch. processBlock is still
+    // bounded by maxCallbackFrames(), so this is informational.
+    const uint32_t actual_buf = device.actualBufferFrames();
+    if (actual_buf > 0 && actual_buf != buffer_size) {
+        char buf[160];
+        std::snprintf(buf, sizeof(buf),
+            "{\"type\":\"event\",\"kind\":\"buffer_size_mismatch\","
+            "\"requestedFrames\":%u,\"actualFrames\":%u}",
+            static_cast<unsigned>(buffer_size), static_cast<unsigned>(actual_buf));
+        ipc_send(buf);
+    }
+
     // Block this thread until mode changes, config changes, or shutdown (FR-EMU-7)
     {
         std::unique_lock<std::mutex> lk(g_state.mode_mutex);

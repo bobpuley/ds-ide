@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { EventLog, MAX_EVENTS, COALESCE_MS, formatClock } from '../../../webview/scope/scope-events';
+import {
+  EventLog, MAX_EVENTS, COALESCE_MS, formatClock, formatEventDetail, REALTIME_UNAVAILABLE_TEXT,
+} from '../../../webview/scope/scope-events';
 
 const at = (h: number, m: number, s: number, ms = 0): number => new Date(2026, 8, 30, h, m, s, ms).getTime();
 
@@ -69,5 +71,30 @@ describe('EventLog (FR-SCI-13)', () => {
 describe('formatClock', () => {
   it('formats a time as HH:MM:SS', () => {
     expect(formatClock(at(9, 5, 3))).toBe('09:05:03');
+  });
+});
+
+describe('formatEventDetail (FR-WIN-AUD-6)', () => {
+  it('describes a buffer size mismatch as requested vs actual frames', () => {
+    expect(formatEventDetail({ requestedFrames: 64, actualFrames: 480 })).toBe('requested 64 · actual 480 frames');
+  });
+
+  it('describes a sample rate mismatch as engine vs device rate', () => {
+    expect(formatEventDetail({ engineSampleRate: 48000, deviceSampleRate: 44100 }))
+      .toBe('engine 48000 Hz · device 44100 Hz');
+  });
+
+  it('returns undefined when an event carries no complete pair of details', () => {
+    expect(formatEventDetail({})).toBeUndefined();
+    expect(formatEventDetail({ requestedFrames: 64 })).toBeUndefined();
+  });
+});
+
+describe('REALTIME_UNAVAILABLE_TEXT (FR-WIN-AUD-6)', () => {
+  it('is platform-neutral: names the device and the permission, not only the macOS microphone', () => {
+    expect(REALTIME_UNAVAILABLE_TEXT).toMatch(/device/);
+    expect(REALTIME_UNAVAILABLE_TEXT).toMatch(/permission/);
+    expect(REALTIME_UNAVAILABLE_TEXT).not.toMatch(/microphone/i);
+    expect(REALTIME_UNAVAILABLE_TEXT).toMatch(/Falling back to sine/);
   });
 });
