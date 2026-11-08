@@ -3,6 +3,15 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.25.0-win.4 — 2026-11-08
+
+**Windows audio backend & measurement gate** *(FR-WIN-AUD-5 to FR-WIN-AUD-7, M80 — pre-release on `feat/windows-support`)*
+
+- **FR-WIN-AUD-5** — RtAudio 6.0.1 (vendored without the ASIO SDK files) implements `AudioDevice` on Windows: output-only first, then duplex with mono/multichannel adaptation to the stereo-interleaved contract. Failure to open a device falls back to the silent software loop as on macOS.
+- **FR-WIN-AUD-6** — Backends report the actual buffer size (CoreAudio in stream-rate frames; WASAPI shared as its period) and latency. A requested-vs-actual mismatch raises a `buffer_size_mismatch` event whose numbers are shown in the Scope history; `sample_rate_mismatch` carries its rates the same way. The `realtime_unavailable` text is platform-neutral.
+- **FR-WIN-AUD-7** — Measurement harness (`tests/audio-measurement`) and recorded results (`docs/measurements/windows-audio.md`). Conclusion: RtAudio WASAPI shared is sufficient (≈10.67 ms period); no native WASAPI milestone. The post-fix WASAPI re-run and ASIO are deferred to M84.
+- **Tooling** — Electron ABI anchor bumped to 43.7.3 (VS Code 1.140.0) so the bundled `midi` addon matches the host again.
+
 ## 0.25.0-win.3 — 2026-10-05
 
 **Audio backend abstraction** *(FR-WIN-AUD-1 to FR-WIN-AUD-4, M79 — pre-release on `feat/windows-support`)*

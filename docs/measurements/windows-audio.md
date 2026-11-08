@@ -9,19 +9,19 @@ and concludes whether the RtAudio backend is sufficient or a native WASAPI miles
 
 ## What is measured
 
-| Column | Meaning |
-|---|---|
-| backend | the path under test (see below) |
-| requested | buffer size asked for (frames at 48 kHz): 64 / 128 / 256 |
-| effective | median frames delivered per driver wakeup — callbacks less than 0.5 ms apart are one wakeup, so a coarse device period split into requested-size chunks shows up here |
-| reported | `AudioDevice::actualBufferFrames()` (stream-rate frames; FR-WIN-AUD-6) |
-| interval ms | mean time between driver wakeups |
-| jitter ms | standard deviation of the wakeup interval |
-| p99 dev ms | 99th percentile of \|interval − mean\| |
-| max ms | longest wakeup interval |
-| latency ms | the backend's reported latency (`lastLatencyMs()`; 0 = not reported — CoreAudio output-only reports none) |
-| xruns | callbacks slower than their buffer duration (`drainXruns()`; probe: event wait timeouts) |
-| driver overruns | driver-reported underflow/overflow (`drainDriverOverruns()`; probe: `GetBuffer` failures) |
+| Column          | Meaning                                                                                                                                                               |
+|-----------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| backend         | the path under test (see below)                                                                                                                                       |
+| requested       | buffer size asked for (frames at 48 kHz): 64 / 128 / 256                                                                                                              |
+| effective       | median frames delivered per driver wakeup — callbacks less than 0.5 ms apart are one wakeup, so a coarse device period split into requested-size chunks shows up here |
+| reported        | `AudioDevice::actualBufferFrames()` (stream-rate frames; FR-WIN-AUD-6)                                                                                                |
+| interval ms     | mean time between driver wakeups                                                                                                                                      |
+| jitter ms       | standard deviation of the wakeup interval                                                                                                                             |
+| p99 dev ms      | 99th percentile of \|interval − mean\|                                                                                                                                |
+| max ms          | longest wakeup interval                                                                                                                                               |
+| latency ms      | the backend's reported latency (`lastLatencyMs()`; 0 = not reported — CoreAudio output-only reports none)                                                             |
+| xruns           | callbacks slower than their buffer duration (`drainXruns()`; probe: event wait timeouts)                                                                              |
+| driver overruns | driver-reported underflow/overflow (`drainDriverOverruns()`; probe: `GetBuffer` failures)                                                                             |
 
 Paths:
 
@@ -63,11 +63,11 @@ Paste each printed table below with the machine and device it was run on.
 > effect (AUHAL resampling 16 → 48 kHz triples the frames per wakeup). Re-run on the built-in speakers.
 
 <!-- 2026-10-05 · Darwin · Apple Silicon · Jabra Evolve 75 SE (Bluetooth, 16 kHz) · 2s per run -->
-| backend | requested | effective | reported | interval ms | jitter ms | p99 dev ms | max ms | latency ms | xruns | driver overruns |
-|---|---|---|---|---|---|---|---|---|---|---|
-| CoreAudio, output | 64 | 192 | 192 | 4.00 | 0.00 | 0.01 | 4.04 | 0.0 | 0 | 0 |
-| CoreAudio, output | 128 | 384 | 384 | 8.00 | 0.05 | 0.13 | 8.17 | 0.0 | 0 | 0 |
-| CoreAudio, output | 256 | 768 | 768 | 16.00 | 0.05 | 0.12 | 16.11 | 0.0 | 0 | 0 |
+| backend           | requested | effective | reported | interval ms | jitter ms | p99 dev ms | max ms | latency ms | xruns | driver overruns |
+|-------------------|-----------|-----------|----------|-------------|-----------|------------|--------|------------|-------|-----------------|
+| CoreAudio, output | 64        | 192       | 192      | 4.00        | 0.00      | 0.01       | 4.04   | 0.0        | 0     | 0               |
+| CoreAudio, output | 128       | 384       | 384      | 8.00        | 0.05      | 0.13       | 8.17   | 0.0        | 0     | 0               |
+| CoreAudio, output | 256       | 768       | 768      | 16.00       | 0.05      | 0.12       | 16.11  | 0.0        | 0     | 0               |
 
 ### Windows
 
@@ -80,17 +80,17 @@ not measured). Built with the **MSYS2 UCRT64** `clang++`, not the CLANG64 toolch
 #### Output-only
 
 <!-- 2026-10-06T11:02Z · MINGW64_NT-10.0-26200 · 10s per run -->
-| backend | requested | effective | reported | interval ms | jitter ms | p99 dev ms | max ms | latency ms | xruns | driver overruns |
-|---|---|---|---|---|---|---|---|---|---|---|
-| WASAPI shared (RtAudio), output | 64 | 512 | 64 | 10.67 | 0.24 | 0.69 | 11.86 | 1.3 | 0 | 0 |
-| WASAPI shared (RtAudio), output | 128 | 512 | 128 | 10.67 | 0.24 | 0.74 | 11.47 | 2.7 | 0 | 0 |
-| WASAPI shared (RtAudio), output | 256 | 512 | 256 | 10.67 | 0.25 | 0.69 | 11.65 | 5.3 | 0 | 0 |
-| WASAPI exclusive (native probe) | 64 | 256 | 256 | 5.33 | 0.12 | 0.48 | 6.25 | 10.7 | 0 | 0 |
-| WASAPI exclusive (native probe) | 128 | 256 | 256 | 5.34 | 0.20 | 0.44 | 10.66 | 10.7 | 0 | 0 |
-| WASAPI exclusive (native probe) | 256 | 256 | 256 | 5.33 | 0.10 | 0.41 | 5.89 | 10.7 | 0 | 0 |
-| ASIO (RtAudio) | 64 | — | — | — | — | — | — | — | — | not measured: no ASIO SDK/device |
-| ASIO (RtAudio) | 128 | — | — | — | — | — | — | — | — | not measured: no ASIO SDK/device |
-| ASIO (RtAudio) | 256 | — | — | — | — | — | — | — | — | not measured: no ASIO SDK/device |
+| backend                         | requested | effective | reported | interval ms | jitter ms | p99 dev ms | max ms | latency ms | xruns | driver overruns                  |
+|---------------------------------|-----------|-----------|----------|-------------|-----------|------------|--------|------------|-------|----------------------------------|
+| WASAPI shared (RtAudio), output | 64        | 512       | 64       | 10.67       | 0.24      | 0.69       | 11.86  | 1.3        | 0     | 0                                |
+| WASAPI shared (RtAudio), output | 128       | 512       | 128      | 10.67       | 0.24      | 0.74       | 11.47  | 2.7        | 0     | 0                                |
+| WASAPI shared (RtAudio), output | 256       | 512       | 256      | 10.67       | 0.25      | 0.69       | 11.65  | 5.3        | 0     | 0                                |
+| WASAPI exclusive (native probe) | 64        | 256       | 256      | 5.33        | 0.12      | 0.48       | 6.25   | 10.7       | 0     | 0                                |
+| WASAPI exclusive (native probe) | 128       | 256       | 256      | 5.34        | 0.20      | 0.44       | 10.66  | 10.7       | 0     | 0                                |
+| WASAPI exclusive (native probe) | 256       | 256       | 256      | 5.33        | 0.10      | 0.41       | 5.89   | 10.7       | 0     | 0                                |
+| ASIO (RtAudio)                  | 64        | —         | —        | —           | —         | —          | —      | —          | —     | not measured: no ASIO SDK/device |
+| ASIO (RtAudio)                  | 128       | —         | —        | —           | —         | —          | —      | —          | —     | not measured: no ASIO SDK/device |
+| ASIO (RtAudio)                  | 256       | —         | —        | —           | —         | —          | —      | —          | —     | not measured: no ASIO SDK/device |
 
 > **Correction (2026-10-06):** the `reported` and `latency ms` values of the *WASAPI shared (RtAudio)* rows in
 > both tables came from a backend defect, since fixed: RtAudio 6.0.1 queries `IAudioClient::GetStreamLatency()`
@@ -105,20 +105,20 @@ not measured). Built with the **MSYS2 UCRT64** `clang++`, not the CLANG64 toolch
 #### With `--duplex`
 
 <!-- 2026-10-06T11:03Z · MINGW64_NT-10.0-26200 · 10s per run -->
-| backend | requested | effective | reported | interval ms | jitter ms | p99 dev ms | max ms | latency ms | xruns | driver overruns |
-|---|---|---|---|---|---|---|---|---|---|---|
-| WASAPI shared (RtAudio), output | 64 | 512 | 64 | 10.67 | 0.22 | 0.65 | 11.66 | 1.3 | 0 | 0 |
-| WASAPI shared (RtAudio), output | 128 | 512 | 128 | 10.67 | 0.22 | 0.66 | 11.54 | 2.7 | 0 | 0 |
-| WASAPI shared (RtAudio), output | 256 | 512 | 256 | 10.67 | 0.22 | 0.61 | 11.50 | 5.3 | 0 | 0 |
-| WASAPI shared (RtAudio), duplex | 64 | 512 | 64 | 10.67 | 0.21 | 0.57 | 11.54 | 1.3 | 0 | 0 |
-| WASAPI shared (RtAudio), duplex | 128 | 512 | 128 | 10.67 | 0.21 | 0.61 | 11.45 | 2.7 | 0 | 0 |
-| WASAPI shared (RtAudio), duplex | 256 | 512 | 256 | 10.67 | 0.20 | 0.60 | 11.42 | 5.3 | 0 | 0 |
-| WASAPI exclusive (native probe) | 64 | 256 | 256 | 5.33 | 0.11 | 0.42 | 6.00 | 10.7 | 0 | 0 |
-| WASAPI exclusive (native probe) | 128 | 256 | 256 | 5.33 | 0.10 | 0.41 | 6.06 | 10.7 | 0 | 0 |
-| WASAPI exclusive (native probe) | 256 | 256 | 256 | 5.33 | 0.11 | 0.42 | 5.97 | 10.7 | 0 | 0 |
-| ASIO (RtAudio) | 64 | — | — | — | — | — | — | — | — | not measured: no ASIO SDK/device |
-| ASIO (RtAudio) | 128 | — | — | — | — | — | — | — | — | not measured: no ASIO SDK/device |
-| ASIO (RtAudio) | 256 | — | — | — | — | — | — | — | — | not measured: no ASIO SDK/device |
+| backend                         | requested | effective | reported | interval ms | jitter ms | p99 dev ms | max ms | latency ms | xruns | driver overruns                  |
+|---------------------------------|-----------|-----------|----------|-------------|-----------|------------|--------|------------|-------|----------------------------------|
+| WASAPI shared (RtAudio), output | 64        | 512       | 64       | 10.67       | 0.22      | 0.65       | 11.66  | 1.3        | 0     | 0                                |
+| WASAPI shared (RtAudio), output | 128       | 512       | 128      | 10.67       | 0.22      | 0.66       | 11.54  | 2.7        | 0     | 0                                |
+| WASAPI shared (RtAudio), output | 256       | 512       | 256      | 10.67       | 0.22      | 0.61       | 11.50  | 5.3        | 0     | 0                                |
+| WASAPI shared (RtAudio), duplex | 64        | 512       | 64       | 10.67       | 0.21      | 0.57       | 11.54  | 1.3        | 0     | 0                                |
+| WASAPI shared (RtAudio), duplex | 128       | 512       | 128      | 10.67       | 0.21      | 0.61       | 11.45  | 2.7        | 0     | 0                                |
+| WASAPI shared (RtAudio), duplex | 256       | 512       | 256      | 10.67       | 0.20      | 0.60       | 11.42  | 5.3        | 0     | 0                                |
+| WASAPI exclusive (native probe) | 64        | 256       | 256      | 5.33        | 0.11      | 0.42       | 6.00   | 10.7       | 0     | 0                                |
+| WASAPI exclusive (native probe) | 128       | 256       | 256      | 5.33        | 0.10      | 0.41       | 6.06   | 10.7       | 0     | 0                                |
+| WASAPI exclusive (native probe) | 256       | 256       | 256      | 5.33        | 0.11      | 0.42       | 5.97   | 10.7       | 0     | 0                                |
+| ASIO (RtAudio)                  | 64        | —         | —        | —           | —         | —          | —      | —          | —     | not measured: no ASIO SDK/device |
+| ASIO (RtAudio)                  | 128       | —         | —        | —           | —         | —          | —      | —          | —     | not measured: no ASIO SDK/device |
+| ASIO (RtAudio)                  | 256       | —         | —        | —           | —         | —          | —      | —          | —     | not measured: no ASIO SDK/device |
 
 ## Conclusion
 

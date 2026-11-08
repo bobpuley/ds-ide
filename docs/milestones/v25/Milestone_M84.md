@@ -16,6 +16,7 @@ Many Windows behaviours cannot be settled from the repository and the work has n
 
 **DoD:**
 - on a Windows machine: sample effect builds and runs; scope, FFT and controls work over TCP IPC; real-time audio and M80 measurements are repeated on the final build
+- deferred from M80 (closed without a Windows run): re-run the WASAPI-shared output-only measurement after the FR-WIN-AUD-6 period fix — `reported` should read 512 and `latency ms` ≈ 12.0 / 13.3 / 16.0 for 64 / 128 / 256 (`docs/measurements/windows-audio.md`, "Not yet re-run"); ASIO stays unmeasured unless an SDK and device are available, in which case it is recorded as deferred with that reason
 - F5 debugging works: PID attach, whether a spurious stop occurs on attach/detach, mute-on-breakpoint under the debugger, DWARF breakpoints and variables in effect code; `lldb-dap` runs standalone and `liblldb.dll` loads without a separate Python
 - Build & Flash with `dfu-util`, the MIDI bridge, and a fresh-profile install with the managed toolchain download are exercised
 - every item in `multiplatform_plan.md` §6 is closed with evidence or explicitly deferred with a reason
