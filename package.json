@@ -18,6 +18,9 @@
     "url": "https://github.com/bobpuley/ds-ide"
   },
   "homepage": "https://github.com/bobpuley/ds-ide#readme",
+  "bugs": {
+    "url": "https://github.com/bobpuley/ds-ide/issues"
+  },
   "keywords": [
     "daisy seed",
     "audio",
