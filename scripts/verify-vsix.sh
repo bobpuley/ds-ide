@@ -38,7 +38,8 @@ npm run rebuild:native
 # inline, so its runtime files must ship as real node_modules entries —
 # .vscodeignore carves the specific files needed back in from its blanket
 # node_modules/** exclusion.
-npx --yes @vscode/vsce package -o "${VSIX_PATH}"
+# Same target as `npm run package`: the release ships as a darwin-arm64 package.
+npx --yes @vscode/vsce package --target darwin-arm64 -o "${VSIX_PATH}"
 
 mkdir -p "${UNZIP_DIR}"
 unzip -q "${VSIX_PATH}" -d "${UNZIP_DIR}"
@@ -88,6 +89,22 @@ if node "${REPO_ROOT}/scripts/check-native-abi.js" \
   echo "  PASS  node_modules/midi's native addon matches Electron ${TARGET_ELECTRON_VERSION}'s ABI"
 else
   echo "  FAIL  node_modules/midi's native addon does not match Electron ${TARGET_ELECTRON_VERSION}'s ABI (see above)"
+  fail=1
+fi
+
+# Platform target: the manifest must declare darwin-arm64 and the native addon
+# must actually be an arm64 Mach-O (a universal package or an x64 addon would
+# install on machines it cannot run on).
+if grep -q 'TargetPlatform="darwin-arm64"' "${UNZIP_DIR}/extension.vsixmanifest"; then
+  echo "  PASS  package manifest targets darwin-arm64"
+else
+  echo "  FAIL  package manifest does not declare TargetPlatform=darwin-arm64"
+  fail=1
+fi
+if file "${UNZIP_DIR}/extension/node_modules/midi/build/Release/midi.node" | grep -q "arm64"; then
+  echo "  PASS  node_modules/midi's native addon is arm64"
+else
+  echo "  FAIL  node_modules/midi's native addon is not arm64"
   fail=1
 fi
 

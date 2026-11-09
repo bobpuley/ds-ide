@@ -14,6 +14,10 @@
 # Electron version at install time (see docs/02_assumptions-and-risks.md) —
 # bump that file whenever VS Code's bundled Electron major version changes.
 #
+# arm64-only: the extension is published as a darwin-arm64 package (release
+# plan, platform target), so the addon is built for arm64 explicitly — even
+# when run from a Rosetta/x64 shell, which would otherwise build an x64 addon.
+#
 # macOS-only (matches host-bridge.ts's own `platform !== 'darwin'` gate —
 # FR-DEV-18 is a macOS-only feature; 'midi' isn't guaranteed to even compile
 # cleanly elsewhere/in CI without extra system libraries e.g. ALSA on Linux).
@@ -37,4 +41,4 @@ cd "${REPO_ROOT}"
 TARGET_ELECTRON_VERSION="$(cat "${REPO_ROOT}/scripts/electron-target-version.txt")"
 
 echo "rebuild-midi-native: rebuilding 'midi' against Electron ${TARGET_ELECTRON_VERSION}'s ABI..."
-npx --yes @electron/rebuild --version "${TARGET_ELECTRON_VERSION}" -f -w midi -m "${REPO_ROOT}"
+npx --yes @electron/rebuild --version "${TARGET_ELECTRON_VERSION}" -f -w midi -m "${REPO_ROOT}" --arch arm64
