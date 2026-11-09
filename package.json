@@ -15,9 +15,9 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/daisy-ide/ds-ide"
+    "url": "https://github.com/bobpuley/ds-ide"
   },
-  "homepage": "https://github.com/daisy-ide/ds-ide#readme",
+  "homepage": "https://github.com/bobpuley/ds-ide#readme",
   "keywords": [
     "daisy seed",
     "audio",
