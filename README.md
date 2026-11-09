@@ -9,7 +9,7 @@ A VS Code extension for developing, testing, and debugging Daisy Seed audio effe
 ## Requirements
 
 - **VS Code** 1.85 or later
-- **macOS** (Apple Silicon recommended)
+- **macOS on Apple Silicon (arm64)** — Intel Macs, Linux and Windows are not supported
 - **CMake** 3.19 or later (for emulator builds)
 - A Daisy Seed C++ project with a `CMakeLists.txt`
 
@@ -137,7 +137,7 @@ The following state is persisted per workspace (not user-editable directly; mana
 
 ## Known limitations
 
-- **macOS only** — the emulator binary is compiled for macOS/Apple Silicon. Linux and Windows are not currently supported.
+- **macOS on Apple Silicon only** — the emulator is built for macOS and the extension is published as an arm64 package. Intel Macs, Linux and Windows are not currently supported.
 - **Not cycle-accurate** — the emulator runs a host compatibility layer, not an STM32 simulation. CPU and RAM budget cannot be validated against the real hardware.
 - **Audio fidelity caveat** — the emulator approximates Daisy Seed audio behavior; it is not bit-exact with the hardware output.
 
