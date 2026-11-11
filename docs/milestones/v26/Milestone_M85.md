@@ -24,7 +24,7 @@ In Restricted Mode the Controls and Wiring activity-bar icons are missing and no
 
 ---
 
-### [ ] feat: detect CMake and report it missing clearly (FR-REL-2)
+### [x] feat: detect CMake and report it missing clearly (FR-REL-2)
 
 With `cmake` not on `PATH`, Run Daisy Effect shows only "Build failed. Nothing was deployed." and a Show Problems button that opens an empty list: `runProcess` rejects with `spawn cmake ENOENT`, nothing is written to the build channel, and the Run path suppresses the generic toast.
 

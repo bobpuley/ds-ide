@@ -52,6 +52,30 @@ describe('reduceTransport()', () => {
     expect(s.problems).toBeUndefined();
   });
 
+  it('a build that failed for a specific reason keeps it, with no problem count (FR-REL-2)', () => {
+    const s = run([
+      { type: 'buildStarted', mode: 'run' },
+      { type: 'deployFailed', problems: undefined, reason: 'CMake not found.' },
+    ]);
+    expect(s.phase).toBe('buildFailed');
+    expect(s.problems).toBeUndefined();
+    expect(s.failureReason).toBe('CMake not found.');
+  });
+
+  it('a new build clears a previous failure reason (FR-REL-2)', () => {
+    const s = run([
+      { type: 'buildStarted', mode: 'run' },
+      { type: 'deployFailed', problems: undefined, reason: 'CMake not found.' },
+      { type: 'buildStarted', mode: 'run' },
+    ]);
+    expect(s.failureReason).toBeUndefined();
+  });
+
+  it('a plain failed build has no failure reason (FR-REL-2)', () => {
+    const s = run([{ type: 'buildStarted', mode: 'run' }, { type: 'deployFailed', problems: 2 }]);
+    expect(s.failureReason).toBeUndefined();
+  });
+
   it('deploy aborted (cancelled, or the emulator failed to start) → stopped', () => {
     const s = run([{ type: 'buildStarted', mode: 'run' }, { type: 'deployAborted' }]);
     expect(s.phase).toBe('stopped');

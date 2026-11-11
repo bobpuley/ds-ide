@@ -2,6 +2,9 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   detectArmToolchain,
   detectDfuUtil,
+  detectCMake,
+  CMAKE_CANDIDATES,
+  CMAKE_NOT_FOUND_MESSAGE,
   ARM_GCC_BINARY,
   ARM_GCC_CANDIDATES,
   DFU_UTIL_CANDIDATES,
@@ -117,5 +120,49 @@ describe('detectDfuUtil()', () => {
 
     const result = await detectDfuUtil(exists, exec);
     expect(result).toBe(DFU_UTIL_CANDIDATES[0]);
+  });
+});
+
+// ── detectCMake (FR-REL-2) ────────────────────────────────────────────────────
+
+describe('detectCMake()', () => {
+  it('returns the which result when cmake is on PATH (PATH wins over known locations)', async () => {
+    const exists = vi.fn(() => Promise.resolve(true));
+    const exec = vi.fn(() => Promise.resolve('/custom/bin/cmake\n'));
+
+    expect(await detectCMake(exists, exec)).toBe('/custom/bin/cmake');
+  });
+
+  it('falls back to the Homebrew location when which fails', async () => {
+    const exists = vi.fn((p: string) => Promise.resolve(p === CMAKE_CANDIDATES[0]));
+    const exec = vi.fn(() => Promise.reject(new Error()));
+
+    expect(await detectCMake(exists, exec)).toBe('/opt/homebrew/bin/cmake');
+  });
+
+  it('falls back to /usr/local/bin when only that exists', async () => {
+    const exists = vi.fn((p: string) => Promise.resolve(p === '/usr/local/bin/cmake'));
+    const exec = vi.fn(() => Promise.reject(new Error()));
+
+    expect(await detectCMake(exists, exec)).toBe('/usr/local/bin/cmake');
+  });
+
+  it('ignores a which result that does not exist on disk and keeps looking', async () => {
+    const exists = vi.fn((p: string) => Promise.resolve(p === CMAKE_CANDIDATES[0]));
+    const exec = vi.fn(() => Promise.resolve('/stale/cmake\n'));
+
+    expect(await detectCMake(exists, exec)).toBe(CMAKE_CANDIDATES[0]);
+  });
+
+  it('returns undefined when cmake is not found anywhere', async () => {
+    const exists = vi.fn(() => Promise.resolve(false));
+    const exec = vi.fn(() => Promise.reject(new Error()));
+
+    expect(await detectCMake(exists, exec)).toBeUndefined();
+  });
+
+  it('has a not-found message that names CMake and how to install it', () => {
+    expect(CMAKE_NOT_FOUND_MESSAGE).toMatch(/CMake not found/);
+    expect(CMAKE_NOT_FOUND_MESSAGE).toMatch(/brew install cmake/);
   });
 });

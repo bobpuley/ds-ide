@@ -4,7 +4,7 @@ import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { EmulatorManager, workspaceRuntimeDir, killStalePid } from '../../../emulator/manager';
+import { EmulatorManager, workspaceRuntimeDir, killStalePid, CMakeNotFoundError } from '../../../emulator/manager';
 import { IpcClient } from '../../../emulator/ipc-client';
 import { PROTOCOL_VERSION } from '../../../ipc/protocol-version';
 
@@ -140,9 +140,82 @@ describe('EmulatorManager', () => {
     }) as ReturnType<typeof vi.fn>;
 
     manager = new EmulatorManager({
+      detectCMake: async () => 'cmake',
       spawn: spawnMock as unknown as typeof cp.spawn,
       ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
       mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+    });
+  });
+
+  describe('build() CMake resolution (FR-REL-2)', () => {
+    const buildOpts = { projectRoot: '/proj', effectSrc: '/proj/effect.cpp', emulatorSrc: '/ext/emulator' };
+
+    // A failed spawn emits only 'error' — never 'close'.
+    function makeEnoentProcess() {
+      const proc = new EventEmitter() as EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; kill: () => void };
+      proc.stdout = new EventEmitter();
+      proc.stderr = new EventEmitter();
+      proc.kill = () => { /* nothing to kill */ };
+      const err = Object.assign(new Error('spawn cmake ENOENT'), { code: 'ENOENT' });
+      setTimeout(() => proc.emit('error', err), 0);
+      return proc;
+    }
+
+    it('runs the CMake that detectCMake resolved for both configure and build', async () => {
+      const spawn = vi.fn(() => makeCmakeProcess(0));
+      const mgr = new EmulatorManager({
+        detectCMake: async () => '/opt/homebrew/bin/cmake',
+        spawn: spawn as unknown as typeof cp.spawn,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+      });
+      await mgr.build(buildOpts, () => { /* ignore */ });
+      expect(spawn).toHaveBeenCalledTimes(2);
+      const calls = spawn.mock.calls as unknown as [string, string[]][];
+      expect(calls[0]![0]).toBe('/opt/homebrew/bin/cmake');
+      expect(calls[1]![0]).toBe('/opt/homebrew/bin/cmake');
+    });
+
+    it('fails with CMakeNotFoundError, spawning nothing, when no CMake is found', async () => {
+      const spawn = vi.fn();
+      const mgr = new EmulatorManager({
+        detectCMake: async () => undefined,
+        spawn: spawn as unknown as typeof cp.spawn,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+      });
+      const lines: string[] = [];
+      await expect(mgr.build(buildOpts, (l) => lines.push(l))).rejects.toBeInstanceOf(CMakeNotFoundError);
+      expect(spawn).not.toHaveBeenCalled();
+    });
+
+    it('the CMakeNotFoundError message tells the user how to fix it', async () => {
+      const mgr = new EmulatorManager({
+        detectCMake: async () => undefined,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+      });
+      await expect(mgr.build(buildOpts, () => { /* ignore */ })).rejects.toThrow(/CMake not found.*brew install cmake/);
+    });
+
+    it('maps a spawn ENOENT (CMake vanished between detection and launch) to CMakeNotFoundError', async () => {
+      const spawn = vi.fn(() => makeEnoentProcess());
+      const mgr = new EmulatorManager({
+        detectCMake: async () => '/gone/cmake',
+        spawn: spawn as unknown as typeof cp.spawn,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+      });
+      await expect(mgr.build(buildOpts, () => { /* ignore */ })).rejects.toBeInstanceOf(CMakeNotFoundError);
+    });
+
+    it('a CMake that starts and then fails keeps the plain exit-code error', async () => {
+      const spawn = vi.fn(() => makeCmakeProcess(2));
+      const mgr = new EmulatorManager({
+        detectCMake: async () => 'cmake',
+        spawn: spawn as unknown as typeof cp.spawn,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+      });
+      const err = await mgr.build(buildOpts, () => { /* ignore */ }).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(Error);
+      expect(err).not.toBeInstanceOf(CMakeNotFoundError);
+      expect((err as Error).message).toBe('cmake exited with code 2');
     });
   });
 
@@ -189,6 +262,7 @@ describe('EmulatorManager', () => {
     it('rejects when cmake exits non-zero', async () => {
       spawnMock = vi.fn(() => makeCmakeProcess(1)) as ReturnType<typeof vi.fn>;
       const mgr = new EmulatorManager({
+      detectCMake: async () => 'cmake',
         spawn: spawnMock as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
@@ -208,6 +282,7 @@ describe('EmulatorManager', () => {
     function buildManager(readFileImpl: (...args: unknown[]) => Promise<string>) {
       rmMock = vi.fn().mockResolvedValue(undefined);
       return new EmulatorManager({
+      detectCMake: async () => 'cmake',
         spawn: spawnMock as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
@@ -1046,6 +1121,7 @@ describe('EmulatorManager', () => {
         return proc;
       });
       const failingManager = new EmulatorManager({
+      detectCMake: async () => 'cmake',
         spawn: failingSpawn as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
@@ -1094,6 +1170,7 @@ describe('EmulatorManager', () => {
         return makeChildProcess(0, '/tmp/daisy_emu_test.sock');
       });
       const flakyManager = new EmulatorManager({
+      detectCMake: async () => 'cmake',
         spawn: flakySpawn as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
