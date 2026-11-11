@@ -39,7 +39,7 @@ With `cmake` not on `PATH`, Run Daisy Effect shows only "Build failed. Nothing w
 
 ---
 
-### [ ] fix: activate the extension when a Daisy project is opened (FR-REL-3)
+### [x] fix: activate the extension when a Daisy project is opened (FR-REL-3)
 
 `ds-ide.runEffect`, `debugEffect` and `stopEffect` are `enablement: ds-ide.isDaisyProject` (a disabled command is hidden from the Command Palette) and the editor-title buttons need `ds-ide.isDaisyProject && ds-ide.isEffectSource`. Both keys are set only in `activate()`, and the manifest has no `activationEvents`, so a freshly opened project shows no Run button and no Run command until another command or view activates the extension.
 

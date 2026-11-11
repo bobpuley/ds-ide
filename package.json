@@ -29,6 +29,11 @@
     "dsp"
   ],
   "main": "./dist/extension.js",
+  "activationEvents": [
+    "workspaceContains:*.cpp",
+    "workspaceContains:src/*.cpp",
+    "workspaceContains:source/*.cpp"
+  ],
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": false,

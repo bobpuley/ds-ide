@@ -208,3 +208,18 @@ describe('workspace trust (FR-REL-1)', () => {
     expect(quickstart).toMatch(/trust/i);
   });
 });
+
+describe('activation on opening a Daisy project (FR-REL-3)', () => {
+  const events: string[] = pkg.activationEvents ?? [];
+
+  it('activates when the effect source detection would find a .cpp at the root, src/ or source/', () => {
+    expect(events).toContain('workspaceContains:*.cpp');
+    expect(events).toContain('workspaceContains:src/*.cpp');
+    expect(events).toContain('workspaceContains:source/*.cpp');
+  });
+
+  it('does not activate on every startup or with a wildcard', () => {
+    expect(events).not.toContain('*');
+    expect(events).not.toContain('onStartupFinished');
+  });
+});
