@@ -192,3 +192,19 @@ describe('Daisy view in Run and Debug (FR-TRN-4)', () => {
     });
   });
 });
+
+describe('workspace trust (FR-REL-1)', () => {
+  it('declares explicitly that untrusted workspaces are not supported, with a reason', () => {
+    const cap = pkg.capabilities?.untrustedWorkspaces;
+    expect(cap).toBeDefined();
+    expect(cap.supported).toBe(false);
+    expect(typeof cap.description).toBe('string');
+    expect(cap.description.trim().length).toBeGreaterThan(20);
+  });
+
+  it('tells the user to trust the folder in the README quick start', () => {
+    const readme = fs.readFileSync(path.join(__dirname, '../../../../README.md'), 'utf8');
+    const quickstart = readme.match(/^## Quickstart[\s\S]*?(?=^## )/m)?.[0] ?? '';
+    expect(quickstart).toMatch(/trust/i);
+  });
+});

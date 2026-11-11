@@ -29,6 +29,12 @@
     "dsp"
   ],
   "main": "./dist/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Daisy IDE builds and runs the project's code (CMake, the emulator, the debugger), so it needs a trusted folder."
+    }
+  },
   "contributes": {
     "commands": [
       {

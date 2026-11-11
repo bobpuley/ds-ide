@@ -10,7 +10,7 @@ A first-time user installing the extension into a clean VS Code profile hits two
 
 ## Sprint Tasks
 
-### [ ] feat: declare workspace-trust support and document it (FR-REL-1)
+### [x] feat: declare workspace-trust support and document it (FR-REL-1)
 
 In Restricted Mode the Controls and Wiring activity-bar icons are missing and nothing says why; they appear once the folder is trusted. The manifest declares no `capabilities.untrustedWorkspaces`.
 
