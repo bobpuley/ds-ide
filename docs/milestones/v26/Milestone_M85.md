@@ -6,7 +6,7 @@
 
 ## Goal
 
-A first-time user installing the extension into a clean VS Code profile hits two silent dead ends: an untrusted folder hides the Controls and Wiring icons with no explanation, and a missing CMake fails the build with a generic message that gives no cause. After this milestone the extension declares its workspace-trust requirement and the README says to trust the folder, and a missing CMake is detected and reported with an actionable message.
+A first-time user installing the extension into a clean VS Code profile hits three silent dead ends: an untrusted folder hides the Controls and Wiring icons with no explanation, a missing CMake fails the build with a generic message that gives no cause, and the Run button and Run/Debug/Stop commands stay missing until another command activates the extension. After this milestone the extension declares its workspace-trust requirement and the README says to trust the folder, a missing CMake is detected and reported with an actionable message, and opening a Daisy project is enough to make Run available.
 
 ## Sprint Tasks
 
@@ -36,3 +36,16 @@ With `cmake` not on `PATH`, Run Daisy Effect shows only "Build failed. Nothing w
 - when no CMake is found, or `spawn` fails with `ENOENT`, the build fails with "CMake not found. Install it (`brew install cmake`) and try again." — shown by Run Daisy Effect, Build & Deploy and Build for Emulator, and also written to the build output channel
 - the buildFailed notification carries that reason instead of the generic "Build failed. Nothing was deployed." and does not offer an empty Show Problems; a CMake that starts and then fails still goes through the existing diagnostics path unchanged
 - unit tests cover the detection order, the ENOENT mapping and the notification text; the existing suites pass unchanged
+
+---
+
+### [ ] fix: activate the extension when a Daisy project is opened (FR-REL-3)
+
+`ds-ide.runEffect`, `debugEffect` and `stopEffect` are `enablement: ds-ide.isDaisyProject` (a disabled command is hidden from the Command Palette) and the editor-title buttons need `ds-ide.isDaisyProject && ds-ide.isEffectSource`. Both keys are set only in `activate()`, and the manifest has no `activationEvents`, so a freshly opened project shows no Run button and no Run command until another command or view activates the extension.
+
+**Affected files:** `package.json`, `src/test/unit/build/package-metadata.test.ts`
+
+**DoD:**
+- `package.json` declares `activationEvents` `workspaceContains:*.cpp`, `workspaceContains:src/*.cpp` and `workspaceContains:source/*.cpp` (the locations `findEffectSource` searches), and no `*` or `onStartupFinished` event
+- `package-metadata.test.ts` fails if any of those events is missing or a wildcard / `onStartupFinished` event is present
+- in a fresh VS Code profile, opening an untouched Daisy project and its effect source shows the editor-title play button and lists "Daisy IDE: Run Daisy Effect" in the Command Palette without using any other command or view first (verified by hand with the packaged `.vsix`)

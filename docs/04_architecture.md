@@ -9,3 +9,5 @@
 ## First public preview (`FR-REL-*`)
 
 No architecture impact. `FR-REL-1` is a `package.json` manifest declaration. `FR-REL-2` adds a `detectCMake()` helper beside `detectDfuUtil()` in `src/hardware/toolchain.ts` (same injectable `exists`/`exec` shape, same `which` → known-paths order) and routes `EmulatorManager.build()`'s `cmake` invocations through it; the transport state machine and the `buildFailed` flow are unchanged apart from carrying a failure reason to the notification.
+
+`FR-REL-3` is also a manifest-only change: `activationEvents` in `package.json`. `activate()` and the context keys it sets (`ds-ide.isDaisyProject`, `ds-ide.isEffectSource`) are unchanged; the events only make VS Code call it when a Daisy-shaped folder opens. No architecture impact.
