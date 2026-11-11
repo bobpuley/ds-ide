@@ -72,4 +72,9 @@
 > **v24 complete** — archived to `docs/v24/` on 2026-10-03. Full v24 ideas archived in
 > [`docs/v24/01_input-ideas.md`](v24/01_input-ideas.md).
 
-*v25 planning not yet started. Use `/doc-creator-driver:intake` or `/doc-creator-driver:start` to begin.*
+## First public preview — findings from the fresh-profile test (2026-11-11)
+
+Source: fresh-install test of the `darwin-arm64` package in a clean VS Code profile; tracked in `docs/release_plan.md`.
+
+- **Workspace trust.** In Restricted Mode (an untrusted folder, which is every first-time user's first state) the Controls Editor and Wiring Editor activity-bar icons are missing, with no explanation. They appear once the folder is trusted. `package.json` declares no `capabilities.untrustedWorkspaces`, and the README does not mention trusting the folder. Request: declare workspace-trust support explicitly and add a "trust the folder" line to the README quick start.
+- **Missing CMake.** With `cmake` not on `PATH`, **Run Daisy Effect** shows only "Build failed. Nothing was deployed." with a **Show Problems** button that opens an empty list. The real cause (`spawn cmake ENOENT`) is dropped. Expected: a clear "CMake not found" message with an install hint (and the cause written to the build output channel). `cmake` is also spawned by plain name from `PATH` only, whereas `dfu-util` and the ARM toolchain fall back to known install paths.
