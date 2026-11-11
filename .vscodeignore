@@ -69,7 +69,10 @@ Seed_pinout.csv
 devices-list.md
 design_plan*.md
 multiplatform_plan.md
-img.png
+# Stray screenshots dropped in the repo root; only media/ images (icon and the
+# README screenshots) ship. vsce applies `!` re-includes after excludes.
+*.png
+!media/*.png
 # graphify knowledge graphs are local, regenerable dev tooling (gitignored).
 graphify-out-extension/**
 **/graphify-out/**
