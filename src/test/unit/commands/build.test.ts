@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as vscode from 'vscode';
 import { findEffectSource, EffectSourceOutsideWorkspaceError } from '../../../commands/find-effect-source';
 import { buildForEmulator, detectDaisySP } from '../../../commands/build';
-import { EmulatorManager } from '../../../emulator/manager';
+import { EmulatorManager, CMakeNotFoundError } from '../../../emulator/manager';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -272,5 +272,52 @@ describe('buildForEmulator honors ds-ide.effectSource (FR-EXT-10)', () => {
       expect.anything(),
       undefined,
     );
+  });
+});
+
+describe('buildForEmulator when CMake is missing (FR-REL-2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [
+      { uri: { fsPath: '/proj' } },
+    ];
+    vi.mocked(fs.promises.readdir).mockResolvedValue(['effect.cpp'] as never);
+    vi.mocked(fs.promises.stat).mockRejectedValue(new Error('ENOENT'));
+  });
+
+  const missingCMake = (): EmulatorManager =>
+    ({ build: vi.fn().mockRejectedValue(new CMakeNotFoundError()) }) as unknown as EmulatorManager;
+
+  it('writes the cause to the build output channel', async () => {
+    const channel = makeChannel();
+    await buildForEmulator(missingCMake(), '/ext', undefined, channel, makeWorkspaceState());
+    expect(channel.appendLine).toHaveBeenCalledWith(expect.stringMatching(/CMake not found.*brew install cmake/));
+  });
+
+  it('shows the specific message in the build-failed toast', async () => {
+    const ok = await buildForEmulator(missingCMake(), '/ext', undefined, makeChannel(), makeWorkspaceState());
+    expect(ok).toBe(false);
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringMatching(/CMake not found.*brew install cmake/));
+  });
+
+  it('on the transport path (no generic toast) it reports the reason to the caller instead of toasting', async () => {
+    const onFailureReason = vi.fn();
+    const ok = await buildForEmulator(
+      missingCMake(), '/ext', undefined, makeChannel(), makeWorkspaceState(), undefined,
+      { genericFailureToast: false, onFailureReason },
+    );
+    expect(ok).toBe(false);
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+    expect(onFailureReason).toHaveBeenCalledWith(expect.stringMatching(/CMake not found.*brew install cmake/));
+  });
+
+  it('an ordinary build failure reports no reason to the caller', async () => {
+    const onFailureReason = vi.fn();
+    const manager = { build: vi.fn().mockRejectedValue(new Error('boom')) } as unknown as EmulatorManager;
+    await buildForEmulator(
+      manager, '/ext', undefined, makeChannel(), makeWorkspaceState(), undefined,
+      { genericFailureToast: false, onFailureReason },
+    );
+    expect(onFailureReason).not.toHaveBeenCalled();
   });
 });

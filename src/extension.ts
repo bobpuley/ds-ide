@@ -445,13 +445,18 @@ class DeployCoordinator {
   ): Promise<boolean> {
     if (opts.build) {
       this.transport.dispatch({ type: 'buildStarted', mode });
+      let failureReason: string | undefined;
       const ok = await buildForEmulator(
         this.manager, this.extensionPath, this.diagnostics, this.buildChannel, this.workspaceState, token,
-        { genericFailureToast: false },
+        { genericFailureToast: false, onFailureReason: (reason) => { failureReason = reason; } },
       );
       if (!ok) {
         if (!token.isCancellationRequested) {
-          this.transport.dispatch({ type: 'deployFailed', problems: countErrors(this.diagnostics) });
+          this.transport.dispatch({
+            type: 'deployFailed',
+            problems: failureReason ? undefined : countErrors(this.diagnostics),
+            ...(failureReason ? { reason: failureReason } : {}),
+          });
         }
         return false;
       }

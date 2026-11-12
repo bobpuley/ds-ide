@@ -13,6 +13,19 @@ export const ARM_GCC_INSTALL_HINT =
   'Install the ARM embedded toolchain: brew install arm-none-eabi-gcc  ' +
   'or download from developer.arm.com/downloads/-/arm-gnu-toolchain-downloads';
 
+export const CMAKE_BINARY = 'cmake';
+
+export const CMAKE_CANDIDATES = [
+  '/opt/homebrew/bin/cmake',  // Homebrew on Apple Silicon
+  '/usr/local/bin/cmake',     // Homebrew on Intel / manual
+];
+
+export const CMAKE_INSTALL_HINT = 'Install CMake: brew install cmake';
+
+// FR-REL-2: shown when the emulator build cannot find (or start) CMake.
+export const CMAKE_NOT_FOUND_MESSAGE =
+  'CMake not found. Install it (brew install cmake) and try again.';
+
 export const DFU_UTIL_BINARY = 'dfu-util';
 
 export const DFU_UTIL_CANDIDATES = [
@@ -75,6 +88,24 @@ export async function detectDfuUtil(
   } catch { /* not on PATH */ }
 
   for (const p of DFU_UTIL_CANDIDATES) {
+    if (await exists(p)) return p;
+  }
+  return undefined;
+}
+
+// Detect cmake (FR-REL-2). Detection order: which → known paths, so a CMake
+// the user already put on PATH always wins and the known locations only cover
+// an editor started without the shell's PATH (e.g. launched from the Dock).
+export async function detectCMake(
+  exists: Exists = defaultExists,
+  exec: Exec = defaultExec,
+): Promise<string | undefined> {
+  try {
+    const result = (await exec('which', [CMAKE_BINARY])).trim();
+    if (result && await exists(result)) return result;
+  } catch { /* not on PATH */ }
+
+  for (const p of CMAKE_CANDIDATES) {
     if (await exists(p)) return p;
   }
   return undefined;

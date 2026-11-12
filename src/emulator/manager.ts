@@ -8,6 +8,7 @@ import { IpcClient, IpcMessage, IpcWarning, CONNECT_TIMEOUT_MS } from './ipc-cli
 import { potControlId, buttonControlId, toggleControlId, encoderControlId, narrowControlValue, narrowControlSnapshot } from '../ipc/control-values';
 import type { ScopeCaptureRequest } from '../ipc/narrow';
 import { PROTOCOL_VERSION } from '../ipc/protocol-version';
+import { detectCMake, CMAKE_NOT_FOUND_MESSAGE } from '../hardware/toolchain';
 import type { GeneratorId, GeneratorParams } from '../webview/scope/scope-generators';
 
 const SOCKET_TIMEOUT_MS = 10_000;
@@ -102,7 +103,22 @@ export interface CancellationToken {
   onCancellationRequested(listener: () => void): { dispose(): void };
 }
 
+// FR-REL-2: CMake could not be found (or could not be started). Distinct from
+// a CMake that ran and failed, which is a build error reported through the
+// diagnostics path.
+export class CMakeNotFoundError extends Error {
+  constructor() {
+    super(CMAKE_NOT_FOUND_MESSAGE);
+    this.name = 'CMakeNotFoundError';
+  }
+}
+
+function isSpawnNotFound(err: unknown): boolean {
+  return err instanceof Error && (err as NodeJS.ErrnoException).code === 'ENOENT';
+}
+
 export interface EmulatorManagerDeps {
+  detectCMake?: () => Promise<string | undefined>;
   spawn?: typeof cp.spawn;
   ipcClientFactory?: () => IpcClient;
   mkdir?: typeof fs.promises.mkdir;
@@ -142,6 +158,7 @@ export class EmulatorManager extends EventEmitter {
   private readonly execFile: typeof cp.execFile;
   private readonly readFile: typeof fs.promises.readFile;
   private readonly rm: typeof fs.promises.rm;
+  private readonly detectCMake: () => Promise<string | undefined>;
 
   constructor(deps: EmulatorManagerDeps = {}) {
     super();
@@ -151,9 +168,15 @@ export class EmulatorManager extends EventEmitter {
     this.execFile = deps.execFile ?? cp.execFile;
     this.readFile = deps.readFile ?? fs.promises.readFile;
     this.rm = deps.rm ?? fs.promises.rm;
+    this.detectCMake = deps.detectCMake ?? (() => detectCMake());
   }
 
   async build(opts: BuildOptions, onOutput: (line: string) => void, token?: CancellationToken): Promise<void> {
+    // FR-REL-2: resolve CMake first, so a missing one fails before the build
+    // directory is touched.
+    const cmake = await this.detectCMake();
+    if (!cmake) throw new CMakeNotFoundError();
+
     this.buildDir = path.join(opts.projectRoot, '.ds-ide', 'build');
     await this.healStaleCache(this.buildDir, opts.emulatorSrc);
     await this.mkdir(this.buildDir, { recursive: true });
@@ -167,8 +190,23 @@ export class EmulatorManager extends EventEmitter {
       configureArgs.push(`-DDAISYSP_DIR=${opts.daisySpDir}`);
     }
 
-    await this.runProcess('cmake', configureArgs, onOutput, token);
-    await this.runProcess('cmake', ['--build', this.buildDir, '--', `-j${os.cpus().length}`], onOutput, token);
+    await this.runCMake(cmake, configureArgs, onOutput, token);
+    await this.runCMake(cmake, ['--build', this.buildDir, '--', `-j${os.cpus().length}`], onOutput, token);
+  }
+
+  // A spawn that fails with ENOENT means the resolved CMake is gone (removed
+  // or moved after detection) — the same "not found" the user has to fix.
+  private async runCMake(
+    cmake: string,
+    args: string[],
+    onOutput: (line: string) => void,
+    token?: CancellationToken,
+  ): Promise<void> {
+    try {
+      await this.runProcess(cmake, args, onOutput, token);
+    } catch (err) {
+      throw isSpawnNotFound(err) ? new CMakeNotFoundError() : err;
+    }
   }
 
   deploy(onOutput: (line: string) => void, token?: CancellationToken): Promise<void> {

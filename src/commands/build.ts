@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { EmulatorManager, BuildOptions } from '../emulator/manager';
+import { EmulatorManager, BuildOptions, CMakeNotFoundError } from '../emulator/manager';
 import { parseBuildLine, applyDiagnostics, ParsedDiagnostic } from '../diagnostics/build-diagnostics';
 import { detectNonPortableSymbol } from '../diagnostics/non-portable';
 import { resolveConfiguredEffectSource } from './find-effect-source';
@@ -17,7 +17,10 @@ export async function buildForEmulator(
   // FR-TRN-6: the run / debug / restart path reports a failed build through
   // its own "Build failed with N problems" notification, so it turns off the
   // generic toast here. The specific non-portable-symbol diagnosis stays.
-  toasts: { genericFailureToast?: boolean } = {},
+  // FR-REL-2: `onFailureReason` receives a specific, user-actionable cause
+  // (e.g. CMake not found) so the transport's notification can show it
+  // instead of the generic "Build failed" and an empty Problems list.
+  toasts: { genericFailureToast?: boolean; onFailureReason?: (reason: string) => void } = {},
 ): Promise<boolean> {
   const folder = resolveActiveFolder(workspaceState);
   if (!folder) {
@@ -68,6 +71,16 @@ export async function buildForEmulator(
     return true;
   } catch (err) {
     if (diagnostics) applyDiagnostics(diagnostics, parsed, projectRoot);
+    if (err instanceof CMakeNotFoundError) {
+      // No compiler output exists for this failure, so the channel would
+      // otherwise stay empty.
+      channel.appendLine(err.message);
+      toasts.onFailureReason?.(err.message);
+      if (toasts.genericFailureToast !== false) {
+        void vscode.window.showErrorMessage(`ds-ide: build failed — ${err.message}`);
+      }
+      return false;
+    }
     const nonPortable = detectNonPortableSymbol(rawLines);
     if (nonPortable.length > 0) {
       void vscode.window.showErrorMessage(

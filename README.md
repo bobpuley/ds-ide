@@ -37,6 +37,7 @@ npm run package
 ## Quickstart
 
 1. Open your Daisy Seed project folder in VS Code
+   — when VS Code asks whether you trust the authors of the folder, choose **Yes, I trust the authors**: Daisy IDE builds and runs your project's code, so it stays inactive in an untrusted (Restricted Mode) window
 2. `Cmd+Shift+P` → **Daisy IDE: Build for Emulator** — compiles the project as a native desktop binary
 3. **Daisy IDE: Deploy to Emulator** — launches the emulator process
 4. **Daisy IDE: Start Audio** — begins audio processing; the Scope panel opens automatically
