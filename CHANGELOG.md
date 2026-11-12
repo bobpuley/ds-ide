@@ -3,6 +3,15 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.24.4 — 2026-11-12
+
+**First-run experience fixes** *(FR-REL-1 to FR-REL-3, M85)*
+
+- **FR-REL-1** — The extension declares `capabilities.untrustedWorkspaces` (`supported: false`) with an explanation, so Restricted Mode shows why Daisy IDE is disabled instead of silently hiding the Controls/Wiring icons. The README quick start tells users to trust the folder.
+- **FR-REL-2** — A missing CMake is detected (`which`, then `/opt/homebrew/bin` and `/usr/local/bin`) and reported as "CMake not found. Install it (brew install cmake) and try again." in the notification and the build output, instead of a bare "Build failed" with an empty Problems list.
+- **FR-REL-3** — The extension activates when a folder containing a Daisy project (`*.cpp`, `src/*.cpp`, `source/*.cpp`) is opened, so Run Daisy Effect and the editor play button are available without first using another Daisy command.
+- Packaging: `darwin-arm64` target, trimmed `.vscodeignore`, third-party notices for node-midi/RtMidi, repository and bugs URLs, Electron pin 43.7.3.
+
 ## 0.24.3 — 2026-10-03
 
 **Input generators** *(FR-GEN-1 to FR-GEN-5, M76)*

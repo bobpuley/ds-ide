@@ -1,7 +1,7 @@
 # M85 — First-Run Experience Fixes
 
 **Version:** 0.24.4
-**Status:** in progress
+**Status:** released
 **Source:** intake session, 2026-11-11 (fresh-profile install test for the first public preview; `docs/release_plan.md`)
 
 ## Goal
