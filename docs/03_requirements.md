@@ -33,3 +33,5 @@ Source: `01_input-ideas.md`, 2026-11-13. Milestone: **M86**.
 **FR-EXM-6 — `controls-sd-logger`.** The `controls-tour` controls plus an SD card: each user action on a control is appended to a log file on the card. The README says where the file appears on the host and how to read it.
 
 **FR-EXM-7 — Examples index and guard test.** `examples/README.md` lists the examples in a suggested learning order with one line each. A unit test over `examples/*` fails when an example lacks a `README.md`, a `CMakeLists.txt`, a `controllers.yaml` or a `ds-ide:controls` block, when a name matches `m\d+`, or when the directory listing differs from the index.
+
+**FR-EXM-8 — The emulated SD card is `<project>/sdcard/`.** The emulator process is started with the project folder (the one the effect was built from) as its working directory, so the FatFs shim's `sdcard/` is `<project>/sdcard/` regardless of how VS Code was launched, and it is the folder the Controls Editor's SD viewer reads. The shim also provides `f_sync` (flush to the card without closing), so a line an effect writes is visible in the viewer at once. A project that never mounts the card gets no `sdcard/` folder.

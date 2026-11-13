@@ -68,6 +68,20 @@ Everything under `examples/` ships in the `.vsix`, and today it is milestone-nam
 
 ---
 
+### [x] fix: start the emulator in the project folder so the SD card is <project>/sdcard/ (FR-EXM-8)
+
+The FatFs shim resolves `sdcard/` against the emulator's working directory, and `deploy()` spawns it without a `cwd`, so the card lands wherever VS Code was started (or fails to mount when that is `/`), not in the folder the SD viewer reads. The shim also lacks `f_sync`.
+
+**Affected files:** `src/emulator/manager.ts`, `src/test/unit/emulator/manager.test.ts`, `emulator/shim/include/daisy/fatfs_host.h`, `emulator/shim/src/fatfs_host.cpp`, `tests/fatfs-shim/test_fatfs.cpp`
+
+**DoD:**
+- `build()` records the project root and `deploy()` spawns `effect_emu` with `{ cwd: <project root> }`; a unit test fails without it
+- running the emulator from `/` and from an unrelated folder both put the card at `<project>/sdcard/` (checked with the real binary)
+- `f_sync` exists in the shim, with a test that bytes are readable before `f_close`
+- `npm test`, the FatFs shim suite and the runtime suite pass
+
+---
+
 ### [ ] feat: add the controls-sd-logger example (FR-EXM-6)
 
 **Affected files:** `examples/controls-sd-logger/` (`controls_sd_logger.cpp`, `CMakeLists.txt`, `controllers.yaml`, `README.md`)

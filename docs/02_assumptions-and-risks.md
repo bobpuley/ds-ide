@@ -32,3 +32,7 @@
 > ⚠️ ASSUMPTION: the SD card shim (`fatfs_host.cpp`) maps the mount onto a host directory so a file the example writes can be found and opened by the user. The exact host location is confirmed when the SD example is built and then stated in its README.
 
 > ⚠️ RISK: shipped examples are only useful if they build. An example that rots (a shim or convention change breaks it) is a poor first impression for a preview. Mitigation: a unit test guards the structural conventions of every example (FR-EXM-7) and each example is built once by hand before release; an automated build of every example in CI is not added here.
+
+> ⚠️ ASSUMPTION: the project folder the build used (`opts.projectRoot`) is the same folder the SD viewer reads (`<workspace folder>/sdcard/`) — one active workspace folder at a time, as for every other per-project path in the extension. Verified against `readSdCardEntries` in `extension.ts`.
+
+> ⚠️ ASSUMPTION: giving the emulator the project folder as its working directory does not disturb any other relative path it opens; the extension passes absolute paths for the socket and for WAV/recording files. Checked by running the emulator, runtime and extension suites after the change.

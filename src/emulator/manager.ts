@@ -141,6 +141,9 @@ export class EmulatorManager extends EventEmitter {
   private readonly stoppedChildren = new WeakSet<cp.ChildProcess>();
   private ipcClient: IpcClient | null = null;
   private buildDir = '';
+  // FR-EXM-8: the folder the effect was built from; the emulator runs in it so
+  // its virtual SD card (a relative `sdcard/`) is <project>/sdcard/.
+  private projectRoot = '';
   private socketPath: string | null = null;
   // Set to true before intentional kills (redeploy/dispose) so the disconnect
   // event is not forwarded to callers as an unexpected crash.
@@ -177,6 +180,7 @@ export class EmulatorManager extends EventEmitter {
     const cmake = await this.detectCMake();
     if (!cmake) throw new CMakeNotFoundError();
 
+    this.projectRoot = opts.projectRoot;
     this.buildDir = path.join(opts.projectRoot, '.ds-ide', 'build');
     await this.healStaleCache(this.buildDir, opts.emulatorSrc);
     await this.mkdir(this.buildDir, { recursive: true });
@@ -236,7 +240,10 @@ export class EmulatorManager extends EventEmitter {
         .then(() => {
           this.killExisting();
 
-          const child = this.spawn(exePath, [socketPath], { stdio: ['ignore', 'pipe', 'pipe'] });
+          const child = this.spawn(exePath, [socketPath], {
+            cwd: this.projectRoot || undefined,
+            stdio: ['ignore', 'pipe', 'pipe'],
+          });
           this.childProcess = child;
 
           return new Promise<void>((resolve, reject) => {

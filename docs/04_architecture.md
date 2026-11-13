@@ -14,3 +14,5 @@ No architecture impact. `FR-REL-1` is a `package.json` manifest declaration. `FR
 ## First public preview — curated examples (2026-11-13)
 
 No architecture impact (FR-EXM-1 to FR-EXM-7). `detectDaisySP` gains one more candidate path (the extension's own `vendor/DaisySP/Source`) and receives the extension path as a parameter; the build pipeline, emulator and IPC are unchanged.
+
+FR-EXM-8 (same intake): `EmulatorManager` records the project root at build time and spawns `effect_emu` with it as `cwd`; the FatFs host shim gains `f_sync`. No new component, message or file format.
