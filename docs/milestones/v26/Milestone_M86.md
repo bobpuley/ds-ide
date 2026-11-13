@@ -93,7 +93,7 @@ The FatFs shim resolves `sdcard/` against the emulator's working directory, and 
 
 ---
 
-### [ ] feat: add the examples index and the guard test (FR-EXM-7)
+### [x] feat: add the examples index and the guard test (FR-EXM-7)
 
 **Affected files:** `examples/README.md`, `src/test/unit/build/examples.test.ts`
 
