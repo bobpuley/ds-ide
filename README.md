@@ -14,29 +14,35 @@ It replaces the slow loop of compile, flash, plug in an instrument and listen wi
 
 ## Requirements
 
-- **VS Code** 1.85 or later
-- **macOS on Apple Silicon (arm64)** — Intel Macs, Linux and Windows are not supported
-- **CMake** 3.19 or later (for emulator builds)
-- A Daisy Seed C++ project with a `CMakeLists.txt`
+**To build and run effects on the emulator** (everything except flashing hardware):
 
-Physical Daisy Seed hardware is **not required** for development or debugging. It is only needed when using the hardware build and flash commands.
+- **macOS on Apple Silicon (arm64)**. Intel Macs, Linux and Windows are not supported yet.
+- **VS Code** 1.85 or later (tested on 1.140).
+- **CMake** 3.20 or later: `brew install cmake`.
+- **Xcode Command Line Tools**: `xcode-select --install`. They provide the C++ compiler the emulator build uses and `lldb-dap`, the debugger.
+
+**Only to build for and flash a real Daisy Seed** (optional):
+
+- The **Arm GNU toolchain**: `brew install arm-none-eabi-gcc`.
+- **dfu-util**: `brew install dfu-util`.
+- A Daisy Seed board and a USB cable.
+- A libDaisy-style project with a `Makefile` (see [Limitations](#limitations)).
+
+You do not need a Daisy Seed to write, run, listen to or debug an effect.
 
 ---
 
 ## Installation
 
-Install the `.vsix` package directly from VS Code:
-
-1. Open the Command Palette (`Cmd+Shift+P`)
-2. Run **Extensions: Install from VSIX…**
-3. Select the `ds-ide-<version>.vsix` file
-
-To build the `.vsix` yourself:
+**From the Marketplace.** Search for **Daisy Seed IDE** in the Extensions view and choose **Install Pre-Release Version**, or run:
 
 ```sh
-npm install
-npm run package
+code --install-extension daisy-ide.ds-ide --pre-release
 ```
+
+**From a `.vsix` file.** Open the Command Palette (`Cmd+Shift+P`), run **Extensions: Install from VSIX…** and select the `ds-ide-darwin-arm64-<version>.vsix` file.
+
+**Trust the folder.** When you open a project, VS Code asks whether you trust the authors of the folder. Choose **Yes, I trust the authors**. Daisy IDE builds and runs your project's code, so it stays inactive, and its editors stay hidden, in an untrusted (Restricted Mode) window.
 
 ---
 

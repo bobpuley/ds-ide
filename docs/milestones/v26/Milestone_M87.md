@@ -20,14 +20,14 @@ The README is the Marketplace page and the first thing a visitor reads, and it s
 
 ---
 
-### [ ] docs: real requirements and Marketplace-first installation (FR-DOC-2)
+### [x] docs: real requirements and Marketplace-first installation (FR-DOC-2)
 
-**Affected files:** `README.md`
+**Affected files:** `README.md`, `src/test/unit/build/readme-links.test.ts`
 
 **DoD:**
 - requirements list VS Code, macOS arm64, CMake, the Xcode Command Line Tools, and (hardware commands only) the Arm GNU toolchain, `dfu-util` and a physical Daisy Seed, each marked required or optional
 - installation shows the Marketplace route (pre-release) first and the `.vsix` route second; the trust-the-folder line is kept
-- the `package-metadata.test.ts` CMake minimum agrees with the README's
+- the README's CMake minimum agrees with `emulator/CMakeLists.txt` (checked by `readme-links.test.ts`; it said 3.19 while the build needs 3.20)
 
 ---
 

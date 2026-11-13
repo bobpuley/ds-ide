@@ -77,3 +77,13 @@ describe('README links and images (FR-DOC-6)', () => {
     });
   });
 });
+
+describe('README prerequisites agree with the build (FR-DOC-2)', () => {
+  it('states the same minimum CMake version as emulator/CMakeLists.txt', () => {
+    const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+    const cmakeLists = fs.readFileSync(path.join(root, 'emulator/CMakeLists.txt'), 'utf8');
+    const required = cmakeLists.match(/cmake_minimum_required\(VERSION\s+([\d.]+)/)![1];
+    const stated = readme.match(/\*\*CMake\*\*\s+([\d.]+)/)?.[1];
+    expect(stated).toBe(required);
+  });
+});
