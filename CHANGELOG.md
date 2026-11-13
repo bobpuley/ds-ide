@@ -3,6 +3,19 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.24.6 — 2026-11-13
+
+**README polish** *(FR-DOC-1 to FR-DOC-7, M87)*
+
+- **FR-DOC-1** — The README opens with what Daisy IDE is, a visible preview notice and the platform scope (macOS, Apple Silicon only).
+- **FR-DOC-2** — Real requirements, split into what the emulator needs (CMake 3.20 or later, Xcode Command Line Tools) and what only hardware needs (Arm toolchain, dfu-util, a board); installation shows the Marketplace pre-release route first. The README said CMake 3.19 while the build needs 3.20; a test now keeps them equal.
+- **FR-DOC-3** — The quick start is built on the examples and **Run Daisy Effect**, with a second path through **Create New Effect Project**; the old Build, Deploy, Start Audio sequence is a note.
+- **FR-DOC-4** — Features and editor sections describe what shipped: Scope and spectrum, input generators, record and replay, the full device set, MIDI, OLED and SD card panels, debugging with **Debug Daisy Effect**, hardware build and flash, and the three settings. A new Examples section links the five examples. The doc-command lint now accepts command titles containing `&`.
+- **FR-DOC-5** — Known issues (the intermittent window close after opening a folder, with what to send; Deploy needing a build from the same session) and Limitations (Apple Silicon only, not cycle-accurate, hardware build needs a `Makefile`, OLED pixels only, encoder click).
+- **FR-DOC-6** — A unit test fails when a README link or image points at a missing file, an image is not under `media/`, or an in-page anchor has no heading. The three README screenshots are refreshed.
+- **FR-DOC-7** — Developer content moved to a new `CONTRIBUTING.md`; the README has a Feedback section pointing at the GitHub issues page and saying what to include.
+- **Chore** — An example's emulated SD card (`examples/**/sdcard/`) is ignored by git and left out of the package.
+
 ## 0.24.5 — 2026-11-13
 
 **Example curation** *(FR-EXM-1 to FR-EXM-9, M86)*

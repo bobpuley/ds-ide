@@ -208,13 +208,13 @@ Full registry in [`docs/v23/05_dev-plan.md`](v23/05_dev-plan.md).
 M73 Reachability · M74 Editor Polish · M75 Scope Toolbar Popovers · M76 Input Generators.
 Full registry in [`docs/v24/05_dev-plan.md`](v24/05_dev-plan.md).
 
-### v26 (0.24.4–0.24.6) — planned
+### v26 (0.24.4–0.24.6) — released
 
 | ID  | Name                          | Status          | Version | File                                                |
 |-----|-------------------------------|-----------------|---------|-----------------------------------------------------|
 | M85 | First-Run Experience Fixes    | **released**    | 0.24.4  | [Milestone_M85.md](milestones/v26/Milestone_M85.md) |
 | M86 | Example Curation              | **released**    | 0.24.5  | [Milestone_M86.md](milestones/v26/Milestone_M86.md) |
-| M87 | README Polish                 | **in progress** | 0.24.6  | [Milestone_M87.md](milestones/v26/Milestone_M87.md) |
+| M87 | README Polish                 | **released**    | 0.24.6  | [Milestone_M87.md](milestones/v26/Milestone_M87.md) |
 
 Source: intake session, 2026-11-11 (fresh-profile install test for the first public preview; see `docs/release_plan.md`). Numbered M85/v26 because the parked Windows work on `feat/windows-support` already uses v25 and M77–M84.
 

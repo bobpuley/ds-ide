@@ -1,7 +1,7 @@
 # M87 — README Polish
 
 **Version:** 0.24.6
-**Status:** in progress
+**Status:** released
 **Source:** intake session, 2026-11-13 (first public preview; `docs/release_plan.md`)
 
 ## Goal
