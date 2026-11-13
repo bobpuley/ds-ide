@@ -1,7 +1,7 @@
 # M86 — Example Curation
 
 **Version:** 0.24.5
-**Status:** in progress
+**Status:** released
 **Source:** intake session, 2026-11-13 (first public preview; `docs/release_plan.md`)
 
 ## Goal

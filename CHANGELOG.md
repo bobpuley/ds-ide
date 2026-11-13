@@ -3,6 +3,19 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.24.5 — 2026-11-13
+
+**Example curation** *(FR-EXM-1 to FR-EXM-9, M86)*
+
+- **FR-EXM-1** — A project with no DaisySP of its own now builds against the extension's bundled `vendor/DaisySP`; a project's own copy still wins. A plain copy of a DaisySP example no longer fails with `'daisysp.h' file not found`.
+- **FR-EXM-2** — The milestone-named demos are gone. `examples/` holds five meaningfully named, standalone examples, each with a README (what it shows, how to run it, what to try, what you learn): `tremolo-filter` (now also documents breakpoint debugging), `controls-tour`, `midi-synth`, `midi-synth-oled`, `controls-sd-logger`.
+- **FR-EXM-3** — `controls-tour`: pot, button, toggle, LED, RGB LED and encoder in plain libDaisy, each wired to something you can hear or see.
+- **FR-EXM-4 / FR-EXM-5** — `midi-synth` plays a DaisySP oscillator from the MIDI panel's keyboard with Control Change #1 selecting the waveform; `midi-synth-oled` adds an OLED that draws the selected waveform as a pixel shape.
+- **FR-EXM-6** — `controls-sd-logger` logs every control action to `actions.txt` on the SD card, through a lock-free queue so the audio callback never touches the card. The FatFs host shim gains `f_sync`.
+- **FR-EXM-7** — `examples/README.md` lists the examples in learning order, and a unit test fails when an example lacks a README, `CMakeLists.txt`, `controllers.yaml` or a `ds-ide:controls` block, has a milestone-style name, or is missing from the index.
+- **FR-EXM-8** *(fix)* — The emulator now starts in the project folder, so its virtual SD card is `<project>/sdcard/` whichever way VS Code was launched. Before, the card landed in VS Code's working directory (or failed to mount when that was `/`), and the SD viewer, which reads `<project>/sdcard/`, never saw it.
+- **FR-EXM-9** *(fix)* — The SD viewer follows the card: it refreshes about once a second while the card is enabled, re-reads an expanded file whose size changed, always re-reads on Refresh, and a long preview scrolls. Before, a preview was cached on first open and never updated.
+
 ## 0.24.4 — 2026-11-12
 
 **First-run experience fixes** *(FR-REL-1 to FR-REL-3, M85)*
