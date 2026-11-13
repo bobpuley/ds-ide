@@ -57,7 +57,7 @@ Everything under `examples/` ships in the `.vsix`, and today it is milestone-nam
 
 ---
 
-### [ ] feat: add the midi-synth-oled example (FR-EXM-5)
+### [x] feat: add the midi-synth-oled example (FR-EXM-5)
 
 **Affected files:** `examples/midi-synth-oled/` (`midi_synth_oled.cpp`, `CMakeLists.txt`, `controllers.yaml`, `README.md`)
 

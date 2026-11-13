@@ -1,0 +1,8 @@
+controllers:
+  - id: volumePot
+    label: Volume
+    adc_channel: 0
+    range: [0, 1]
+    taper: linear
+    default: 0.7
+    editor_pos: [20, 20]
