@@ -24,7 +24,7 @@ Everything under `examples/` ships in the `.vsix`, and today it is milestone-nam
 
 ---
 
-### [ ] feat: replace the milestone demos and document tremolo-filter (FR-EXM-2)
+### [x] feat: replace the milestone demos and document tremolo-filter (FR-EXM-2)
 
 **Affected files:** `examples/` (remove `m10-demo`, `m13-demo`, `m16-demo`, `m16b-demo`, `m17-demo`), `examples/showcases/tremolo-filter/` (moved to `examples/tremolo-filter/`, README added), `.vscodeignore`, references to the old paths
 

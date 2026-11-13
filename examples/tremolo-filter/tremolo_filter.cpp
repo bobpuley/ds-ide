@@ -1,23 +1,5 @@
-// Showcase — Tremolo + Resonant Filter
-//
-// Demonstrates the full ds-ide workflow for someone evaluating the tool:
-//
-//   STEP 1 — Open "Controls Editor" in the sidebar BEFORE building.
-//            Design mode shows the 4 pots, bypass button, and beat LED on the
-//            canvas.  Drag them, inspect their pin assignments, open the
-//            Wiring Editor to see every control mapped to the Daisy Seed pinout.
-//
-//   STEP 2 — "Build for Emulator", then "Deploy & Start".
-//            Controls Editor auto-switches to run mode.
-//
-//   STEP 3 — Interact and watch three things change at once:
-//            · Rate pot  → LFO frequency changes — scope ripple speeds up/slows
-//                          down AND the beat LED blinks at exactly the same rate.
-//            · Depth pot → tremolo depth — ripple amplitude grows or collapses.
-//            · Cutoff pot → filter cutoff — scope waveform brightens or darkens.
-//            · Res pot    → resonance — push past 0.8 for audible self-resonance.
-//            · Bypass btn → toggle — freezes the tremolo, LED goes solid, dry
-//                           sine passes through untouched.
+// Tremolo + Resonant Filter — a complete DaisySP effect with four pots, a bypass
+// button and a beat LED. See README.md for how to run, tweak and debug it.
 //
 // Pin map (reflected in controllers.yaml and the Wiring Editor):
 //   D15  A0  ch0  Rate pot      LFO frequency 0.1–10 Hz
