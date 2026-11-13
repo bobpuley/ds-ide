@@ -10,7 +10,7 @@ The README is the Marketplace page and the first thing a visitor reads, and it s
 
 ## Sprint Tasks
 
-### [ ] docs: preview notice and positioning at the top of the README (FR-DOC-1)
+### [x] docs: preview notice and positioning at the top of the README (FR-DOC-1)
 
 **Affected files:** `README.md`
 

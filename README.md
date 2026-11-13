@@ -1,6 +1,12 @@
 # Daisy Seed IDE
 
-A VS Code extension for developing, testing, and debugging Daisy Seed audio effects **without requiring physical hardware** during the development cycle. It replaces the slow hardware-dependent loop (compile → deploy to device → connect instrument → test) with a faster software-only workflow (compile → deploy to emulator → test → debug).
+Write, run and debug [Daisy Seed](https://electro-smith.com/products/daisy-seed) audio effects in VS Code, **without the hardware**. Build your C++ effect as a native program, play audio through it, turn virtual knobs, watch the waveform and spectrum, and stop at a breakpoint inside the audio callback. Flash it to a real Daisy Seed when you are ready.
+
+It replaces the slow loop of compile, flash, plug in an instrument and listen with a fast one: edit, run, listen, adjust.
+
+> **Preview release.** Daisy IDE is in early access. It works, but expect rough edges, some UI changes between versions, and a few known issues (see [Known issues](#known-issues) and [Limitations](#limitations)). Feedback is the reason this preview exists: please [tell us what you find](#feedback).
+>
+> **macOS on Apple Silicon only** for now.
 
 ![Scope panel and Controls Editor showing a live tremolo effect](media/screenshot-overview.png)
 
