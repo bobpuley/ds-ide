@@ -48,3 +48,21 @@
 > ⚠️ ASSUMPTION: the extension-host crash is described in the README only as what has been observed: it was seen in the Extension Development Host after a folder open, and not reproduced in the installed build over a few folder switches in a clean profile. The README must not claim it cannot happen in the installed build, nor that it always does.
 
 > ⚠️ RISK: a README that names commands, settings or limits by hand drifts from the extension. Mitigation: a unit test checks that every relative link and image in the README resolves to a file that exists and, for images, that the file is shipped; command names are taken from `package.json` `contributes.commands` when the text is written.
+
+## First public preview — licensing (2026-11-13)
+
+> ⚠️ ASSUMPTION: PolyForm Shield 1.0.0 matches the intended line. It permits any use except providing a product that competes with the software (making it available to others in a commercial product or service that substitutes for it or offers substantially similar functionality). Developing, building and selling effects with the IDE is therefore free, as is a company's internal use; a commercial agreement is for competing, redistribution or hosting uses. Confirmed by the owner on 2026-11-13.
+
+> ⚠️ ASSUMPTION: no version of Daisy IDE has been distributed to anyone under GPL-3.0 or MIT (the repository is private, nothing is pushed, packages were built locally), so there is no earlier public grant to honour. To be re-confirmed before the repository is made public.
+
+> ⚠️ ASSUMPTION: the owner holds the copyright in everything in the repository except the lines from PR #1 (`kefflash`, test-only). Dependency-bump commits by a bot carry no copyright. The git author names "Marco Pugliese" and "bobpuley" are the same person.
+
+> ⚠️ RISK: PR #1 was contributed to a repository whose `LICENSE` is GPL-3.0, so under GitHub's terms it is licensed GPL-3.0, which does not allow relicensing to a more restrictive licence. Until the contributor consents in writing, or the lines are rewritten, the repository must not be made public under Shield.
+
+> ⚠️ RISK: Shield is source-available, not open source (not OSI-approved); some users and distribution channels avoid such licences. Accepted by the owner. The Marketplace accepts any licence and shows the SPDX identifier.
+
+> ⚠️ RISK: the bundled MIT components (DaisySP, node-midi, RtMidi, bindings, file-uri-to-path) keep their own licences; their notices must stay in `LICENSES.md` and the package. The `libDaisy` compatibility layer re-implements libDaisy's API; any code copied from libDaisy keeps its MIT notice.
+
+> ⚠️ RISK: this is not legal advice. The commercial agreement template and the licence choice should get a lawyer's review before the first agreement is signed.
+
+> ⚠️ RISK: the GitHub issues page is public, so a commercial enquiry opened there is visible to everyone. Mitigation: a dedicated issue template tells people not to post confidential details, and the owner moves the conversation to a private channel.

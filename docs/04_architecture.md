@@ -22,3 +22,7 @@ FR-EXM-9 (same intake): webview-only change in `sd-card-panel.ts` plus pure help
 ## First public preview — README polish (2026-11-13)
 
 No architecture impact (FR-DOC-1 to FR-DOC-7): documentation, one new `CONTRIBUTING.md`, and a unit test over the README's links. No extension code changes.
+
+## First public preview — licensing (2026-11-13)
+
+No architecture impact (FR-LIC-1 to FR-LIC-6): `LICENSE`, `package.json` metadata, `LICENSES.md`, the README, `CONTRIBUTING.md`, an issue template under `.github/`, and one unit test. No extension or emulator code changes.

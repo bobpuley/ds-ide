@@ -55,3 +55,19 @@ Source: `01_input-ideas.md`, 2026-11-13. Milestone: **M87**.
 **FR-DOC-6 — Screenshots and a link guard.** The README references only screenshots that exist in `media/`. The screenshots still to be taken are listed, with the file name the README will use, in the milestone file for the owner to add; until a file exists the README does not reference it. A unit test fails when a relative link or image in the README points at a missing file or at an image the package does not ship.
 
 **FR-DOC-7 — A user-facing README only.** Developer content (building the `.vsix`, running the test suites) moves to a `CONTRIBUTING.md` that the README links to. A **Feedback** section says where to report problems (the GitHub issues URL from `package.json` `bugs`) and what to include; issue templates are a separate item.
+
+## First public preview — licensing, `FR-LIC-*` (intake 2026-11-13)
+
+Source: `01_input-ideas.md`, 2026-11-13. Milestone: **M88**.
+
+**FR-LIC-1 — The project is licensed under PolyForm Shield 1.0.0.** `LICENSE` is the official PolyForm Shield 1.0.0 text, unmodified, followed by the `Required Notice:` line naming the copyright holder (confirmed by the owner when the task is done). `package.json` `license` is the SPDX identifier `PolyForm-Shield-1.0.0`. `LICENSES.md`'s opening section states the same licence for ds-ide and keeps every third-party notice. The GPL-3.0 text and the MIT claims are gone.
+
+**FR-LIC-2 — The licence statements cannot drift.** A unit test fails when `LICENSE` is not the Shield text with a Required Notice, when `package.json` `license` is not `PolyForm-Shield-1.0.0`, when `LICENSES.md` names a different licence for ds-ide, or when the README's licence section names one.
+
+**FR-LIC-3 — The README explains the licence in plain words.** The License section says, in a few sentences: you may use Daisy IDE for anything, including developing and selling your own effects and products; what you build with it, your source and your binaries, belongs to you; you may not use it to provide a product that competes with it, and doing so needs a commercial agreement; the bundled third-party components keep their licences (link to `LICENSES.md`). It links to `LICENSE`, says the text there governs, and says how to ask about a commercial agreement. It does not give legal advice.
+
+**FR-LIC-4 — A route for commercial agreements.** The README points to the GitHub issues page for commercial enquiries, through a dedicated issue template ("Commercial licence enquiry") that tells people not to post confidential details and asks how to reach them. The route is written in the README and the template, not in `LICENSE`, so it can change without touching the licence.
+
+**FR-LIC-5 — Terms for contributions.** `CONTRIBUTING.md` says that a contribution is licensed under the project's licence and that the contributor also grants the maintainer the right to license it under other terms, including commercial ones, so the owner can keep offering commercial agreements. It names the licence and links to `LICENSE`.
+
+**FR-LIC-6 — The outside contribution is resolved.** PR #1 (`kefflash`, `a397e28`, test-only Windows fixes) is either covered by the contributor's written consent to relicensing (the link recorded in `LICENSES.md`), or its lines are rewritten by the owner so none remain. Making the repository public waits on this.

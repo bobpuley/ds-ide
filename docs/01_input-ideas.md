@@ -96,3 +96,10 @@ Source: owner request while working through `docs/release_plan.md` (fresh-instal
 Source: owner request while working through `docs/release_plan.md` ("let's do the README polish").
 
 - **README polish.** The README is the Marketplace page and the first thing a visitor to the repo reads. It still describes an early version (pots and buttons only; the old Build → Deploy → Start Audio flow; install from a `.vsix` only; no MIDI, OLED, SD card, encoder, toggle, RGB LED or input generators; no examples; no known issues; developer-only sections mixed in). Bring it up to date for the first public preview: a preview notice, what it is, prerequisites, quick start, features, known issues and limits, where to send feedback. Screenshots: keep the existing three and list the ones still to take (the owner takes them).
+
+## First public preview — licensing (2026-11-13)
+
+Source: owner request while working through `docs/release_plan.md` (how to fix the images access issue led to reviewing the licence).
+
+- **Relicense the project.** Change the licence to one that allows everything for non-commercial use, with commercial use needing an agreement with the owner. After discussion the owner chose the line "only the IDE itself is restricted": anyone may use Daisy IDE for anything, including developing and selling their own effects, but selling, bundling, hosting or otherwise competing with the IDE itself needs a commercial agreement. Licence chosen: **PolyForm Shield 1.0.0**. Contact route for commercial agreements: the GitHub issues page (with a dedicated issue template), kept in the README rather than in the licence text.
+- **Finding that prompted the work.** The repo's `LICENSE` file is GPL-3.0 (from the initial commit) while `package.json` and `LICENSES.md` say MIT; and one outside contribution exists (PR #1, test-only, Windows test fixes), which GitHub's terms license under the repository's licence, GPL-3.0.
