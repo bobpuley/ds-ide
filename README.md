@@ -58,6 +58,10 @@ The extension ships five small examples in its `examples/` folder, starting with
 4. The **Scope** opens with the waveform and spectrum. Open the **Controls Editor** from the Activity Bar and turn the pots, press the Bypass button, and watch the output change.
 5. Stop with **Daisy IDE: Stop Daisy Effect**.
 
+![The play button at the top right of the editor, with its menu: Run Daisy Effect, Debug Daisy Effect, Build & Flash to Daisy Seed](media/screenshot-run-button.png)
+
+The arrow next to the play button opens a menu with **Run Daisy Effect**, **Debug Daisy Effect** and **Build & Flash to Daisy Seed**.
+
 ### Start your own effect
 
 Run **Daisy IDE: Create New Effect Project** (or press the button in the Daisy view). Give it a name and a location, and it creates a working effect with DaisySP included and opens it. Then click the play button, as above. The **Get started with Daisy Seed** walkthrough on the Welcome page covers the same path.

@@ -75,7 +75,7 @@ The README is the Marketplace page and the first thing a visitor reads, and it s
 - the README references only screenshots that exist in `media/`
 - the screenshots still to be taken are listed below for the owner; each is added to the README when its file exists
 
-**Screenshots (owner):** taken and in the README: `media/screenshot-controls-oled.png`, `screenshot-midi-panel.png`, `screenshot-oled-panel.png`, `screenshot-sd-viewer.png`, plus the three retaken originals. **Still to take:** `media/screenshot-run-button.png`, the editor's play button on an example, for the quick start (the README references it only once the file exists).
+**Screenshots (owner):** taken and in the README: `media/screenshot-controls-oled.png`, `screenshot-midi-panel.png`, `screenshot-oled-panel.png`, `screenshot-sd-viewer.png`, plus the three retaken originals. `media/screenshot-run-button.png` (the editor's play button and its menu) was added afterwards and is in the quick start.
 
 ---
 
