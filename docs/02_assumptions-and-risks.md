@@ -36,3 +36,7 @@
 > ⚠️ ASSUMPTION: the project folder the build used (`opts.projectRoot`) is the same folder the SD viewer reads (`<workspace folder>/sdcard/`) — one active workspace folder at a time, as for every other per-project path in the extension. Verified against `readSdCardEntries` in `extension.ts`.
 
 > ⚠️ ASSUMPTION: giving the emulator the project folder as its working directory does not disturb any other relative path it opens; the extension passes absolute paths for the socket and for WAV/recording files. Checked by running the emulator, runtime and extension suites after the change.
+
+> ⚠️ ASSUMPTION: polling the host about once a second for the card's listing (one `readdir` plus a `stat` per root-level file) is cheap enough to run while an SD card peripheral is enabled and the Controls Editor is visible; it stops when the card is not enabled or the view is hidden, and it only re-renders when the listing actually changed (so the user's scroll position is not reset).
+
+> ⚠️ ASSUMPTION: a size change is a reliable signal that a file's content changed. An overwrite with exactly the same size is picked up by the Refresh button, which always re-reads the expanded file.

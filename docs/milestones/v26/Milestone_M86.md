@@ -93,6 +93,21 @@ The FatFs shim resolves `sdcard/` against the emulator's working directory, and 
 
 ---
 
+### [x] fix: keep the SD viewer's listing and preview current (FR-EXM-9)
+
+Found in the manual test: the SD Card section caches a file's preview the first time it is opened and never re-reads it, so a log that grows while the effect runs shows stale content; nothing refreshes the listing while the effect runs, and the Refresh button keeps the cached preview.
+
+**Affected files:** `src/webview/sd-viewer.ts`, `src/webview/controls/sd-card-panel.ts`, `src/sidebar/controls-editor-panel.ts`, `src/test/unit/webview/sd-viewer.test.ts`
+
+**DoD:**
+- pure helpers decide whether two listings differ and which previews went stale (size changed); unit tests fail without them
+- the viewer polls `sdRefresh` about once a second while the card is enabled and the view is visible, and re-renders only when the listing changed
+- an expanded file whose size changed re-requests its preview and keeps showing the old text until the new arrives; Refresh always re-reads the expanded file; a non-expanded file's cached preview is dropped on a size change
+- a preview taller than its box scrolls inside it
+- checked by hand with `controls-sd-logger`: open `actions.txt` in the viewer first, then move controls, and the preview follows
+
+---
+
 ### [x] feat: add the examples index and the guard test (FR-EXM-7)
 
 **Affected files:** `examples/README.md`, `src/test/unit/build/examples.test.ts`

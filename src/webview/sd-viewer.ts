@@ -27,3 +27,15 @@ export function formatSdSize(bytes: number): string {
 export function sortSdEntries(entries: readonly SdEntry[]): SdEntry[] {
   return [...entries].sort((a, b) => a.name.localeCompare(b.name));
 }
+
+/** Same names and sizes in the same order — used to skip a re-render (and so keep the user's scroll position) when nothing changed (FR-EXM-9). */
+export function sdListingsEqual(a: readonly SdEntry[], b: readonly SdEntry[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((e, i) => e.name === b[i]!.name && e.size === b[i]!.size);
+}
+
+/** Files present in both listings whose size changed: their cached preview no longer matches the file (FR-EXM-9). */
+export function sdStalePreviews(prev: readonly SdEntry[], next: readonly SdEntry[]): string[] {
+  const before = new Map(prev.map(e => [e.name, e.size]));
+  return next.filter(e => before.has(e.name) && before.get(e.name) !== e.size).map(e => e.name);
+}
