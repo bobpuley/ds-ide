@@ -66,7 +66,7 @@ The README is the Marketplace page and the first thing a visitor reads, and it s
 
 ---
 
-### [ ] test: README links and images resolve to shipped files (FR-DOC-6)
+### [x] test: README links and images resolve to shipped files (FR-DOC-6)
 
 **Affected files:** `src/test/unit/build/readme-links.test.ts`, `README.md`, this file
 
