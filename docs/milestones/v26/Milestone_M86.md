@@ -10,7 +10,7 @@ Everything under `examples/` ships in the `.vsix`, and today it is milestone-nam
 
 ## Sprint Tasks
 
-### [ ] feat: fall back to the bundled DaisySP when the project has none (FR-EXM-1)
+### [x] feat: fall back to the bundled DaisySP when the project has none (FR-EXM-1)
 
 `detectDaisySP` only looks inside the project, so an example (or any hand-made project) that includes `daisysp.h` fails with `'daisysp.h' file not found` unless DaisySP was copied in by hand.
 
