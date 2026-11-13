@@ -48,12 +48,21 @@ code --install-extension daisy-ide.ds-ide --pre-release
 
 ## Quickstart
 
-1. Open your Daisy Seed project folder in VS Code
-   — when VS Code asks whether you trust the authors of the folder, choose **Yes, I trust the authors**: Daisy IDE builds and runs your project's code, so it stays inactive in an untrusted (Restricted Mode) window
-2. `Cmd+Shift+P` → **Daisy IDE: Build for Emulator** — compiles the project as a native desktop binary
-3. **Daisy IDE: Deploy to Emulator** — launches the emulator process
-4. **Daisy IDE: Start Audio** — begins audio processing; the Scope panel opens automatically
-5. Interact with virtual potentiometers and buttons in the scope panel; observe the output waveform and spectrum
+### Try an example
+
+The extension ships five small examples in its `examples/` folder, starting with `tremolo-filter`, an effect with four pots, a bypass button and a beat LED. They are also in the [repository](https://github.com/bobpuley/ds-ide/tree/main/examples), and [`examples/README.md`](examples/README.md) says which to try in what order.
+
+1. Copy the `tremolo-filter` folder somewhere you can edit it (builds write a `.ds-ide/` folder into the project). In an installed extension it is in `~/.vscode/extensions/daisy-ide.ds-ide-<version>/examples/`.
+2. Open that folder in VS Code (**File > Open Folder**) and trust it when asked.
+3. Open `tremolo_filter.cpp` and click the **play button** at the top right of the editor, or run **Daisy IDE: Run Daisy Effect** from the Command Palette (`Cmd+Shift+P`). It builds the effect, starts the emulator and plays. The first build takes a little longer because it compiles DaisySP.
+4. The **Scope** opens with the waveform and spectrum. Open the **Controls Editor** from the Activity Bar and turn the pots, press the Bypass button, and watch the output change.
+5. Stop with **Daisy IDE: Stop Daisy Effect**.
+
+### Start your own effect
+
+Run **Daisy IDE: Create New Effect Project** (or press the button in the Daisy view). Give it a name and a location, and it creates a working effect with DaisySP included and opens it. Then click the play button, as above. The **Get started with Daisy Seed** walkthrough on the Welcome page covers the same path.
+
+Run Daisy Effect does three things in one go. If you prefer the steps one at a time, they are also commands: **Daisy IDE: Build for Emulator**, **Daisy IDE: Deploy to Emulator** and **Daisy IDE: Start Audio**.
 
 ---
 

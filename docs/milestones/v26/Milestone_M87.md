@@ -31,7 +31,7 @@ The README is the Marketplace page and the first thing a visitor reads, and it s
 
 ---
 
-### [ ] docs: quick start built on the examples and Run Daisy Effect (FR-DOC-3)
+### [x] docs: quick start built on the examples and Run Daisy Effect (FR-DOC-3)
 
 **Affected files:** `README.md`
 
