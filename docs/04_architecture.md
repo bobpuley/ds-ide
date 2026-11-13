@@ -18,3 +18,7 @@ No architecture impact (FR-EXM-1 to FR-EXM-7). `detectDaisySP` gains one more ca
 FR-EXM-8 (same intake): `EmulatorManager` records the project root at build time and spawns `effect_emu` with it as `cwd`; the FatFs host shim gains `f_sync`. No new component, message or file format.
 
 FR-EXM-9 (same intake): webview-only change in `sd-card-panel.ts` plus pure helpers in `sd-viewer.ts` (listing comparison, which previews went stale); the existing `sdRefresh`/`sdPreview` messages are reused, no new message or host code.
+
+## First public preview — README polish (2026-11-13)
+
+No architecture impact (FR-DOC-1 to FR-DOC-7): documentation, one new `CONTRIBUTING.md`, and a unit test over the README's links. No extension code changes.

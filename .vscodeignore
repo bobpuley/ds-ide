@@ -46,6 +46,7 @@ tests/**
 # stray local .ds-ide/ build cache alone added ~89 MB to the package).
 .ds-ide/**
 examples/**/.ds-ide/**
+examples/**/sdcard/**
 examples/**/*.png
 .ds-ide-shim-test/**
 .idea/**

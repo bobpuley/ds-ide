@@ -40,3 +40,11 @@
 > ⚠️ ASSUMPTION: polling the host about once a second for the card's listing (one `readdir` plus a `stat` per root-level file) is cheap enough to run while an SD card peripheral is enabled and the Controls Editor is visible; it stops when the card is not enabled or the view is hidden, and it only re-renders when the listing actually changed (so the user's scroll position is not reset).
 
 > ⚠️ ASSUMPTION: a size change is a reliable signal that a file's content changed. An overwrite with exactly the same size is picked up by the Refresh button, which always re-reads the expanded file.
+
+## First public preview — README polish (2026-11-13)
+
+> ⚠️ ASSUMPTION: relative image and link paths in the README resolve on the Marketplace because `package.json` `repository` points at the GitHub repo (`https://github.com/bobpuley/ds-ide`); `vsce` rewrites them to that repository's raw URLs. The repository is private today, so images will be broken on the Marketplace until it is made public. Only `media/*.png` is shipped in the package, which is what the README may reference.
+
+> ⚠️ ASSUMPTION: the extension-host crash is described in the README only as what has been observed: it was seen in the Extension Development Host after a folder open, and not reproduced in the installed build over a few folder switches in a clean profile. The README must not claim it cannot happen in the installed build, nor that it always does.
+
+> ⚠️ RISK: a README that names commands, settings or limits by hand drifts from the extension. Mitigation: a unit test checks that every relative link and image in the README resolves to a file that exists and, for images, that the file is shipped; command names are taken from `package.json` `contributes.commands` when the text is written.
