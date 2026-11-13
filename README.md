@@ -189,11 +189,22 @@ These settings go in `.vscode/settings.json` (or the Settings UI):
 
 ---
 
-## Known limitations
+## Known issues
 
-- **macOS on Apple Silicon only** — the emulator is built for macOS and the extension is published as an arm64 package. Intel Macs, Linux and Windows are not currently supported.
-- **Not cycle-accurate** — the emulator runs a host compatibility layer, not an STM32 simulation. CPU and RAM budget cannot be validated against the real hardware.
-- **Audio fidelity caveat** — the emulator approximates Daisy Seed audio behavior; it is not bit-exact with the hardware output.
+This is a preview, so some rough edges are known:
+
+- **The VS Code window can occasionally close right after you open a folder.** It was seen a few seconds after VS Code reloaded for a newly opened folder, with `Extension host … crashed with code 6` in VS Code's log. It was seen while running the extension from source in a development host, and it was not reproduced in an installed copy over a few folder switches, but it is not fixed. If it happens, reopen the folder and carry on. To help track it down, send us the lines containing `crashed with code` from `~/Library/Application Support/Code/logs/<date>/…/main.log` (see [Feedback](#feedback)).
+- **Deploy to Emulator needs a build from the same session.** Right after you open a window, **Daisy IDE: Deploy to Emulator** says "Build before deploying", even if an earlier build exists. Use **Daisy IDE: Run Daisy Effect**, which always builds first.
+
+---
+
+## Limitations
+
+- **macOS on Apple Silicon only.** The emulator is built for macOS and the extension is published as an arm64 package. Intel Macs, Linux and Windows are not supported yet.
+- **Not cycle-accurate.** The emulator runs your code natively against a libDaisy compatibility layer; it is not an STM32 simulation. CPU and RAM budgets cannot be validated against real hardware, and audio is close to, but not bit-exact with, what the board produces. A libDaisy API the compatibility layer does not provide will fail to build in the emulator.
+- **Hardware build and flash need a libDaisy-style project.** **Build for Hardware** runs your project's `Makefile`. **Create New Effect Project** and the examples set up the emulator build only (a `CMakeLists.txt`), so on those projects Build for Hardware stops with "No targets specified and no makefile found". Add a `Makefile` as in the libDaisy examples, then build and flash.
+- **The OLED draws pixels only.** The emulator's display supports `Fill`, `DrawPixel` and `Update`. There is no `WriteString`, no fonts and no line or rectangle helpers, so code that uses them does not build in the emulator yet.
+- **The encoder's push-button cannot be pressed from the Controls Editor.** Turning an encoder works; its click is not available in the emulator yet.
 
 ---
 

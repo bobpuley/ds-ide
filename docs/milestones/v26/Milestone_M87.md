@@ -56,7 +56,7 @@ The README is the Marketplace page and the first thing a visitor reads, and it s
 
 ---
 
-### [ ] docs: known issues and limitations (FR-DOC-5)
+### [x] docs: known issues and limitations (FR-DOC-5)
 
 **Affected files:** `README.md`
 
