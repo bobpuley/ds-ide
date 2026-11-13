@@ -46,7 +46,7 @@ Everything under `examples/` ships in the `.vsix`, and today it is milestone-nam
 
 ---
 
-### [ ] feat: add the midi-synth example (FR-EXM-4)
+### [x] feat: add the midi-synth example (FR-EXM-4)
 
 **Affected files:** `examples/midi-synth/` (`midi_synth.cpp`, `CMakeLists.txt`, `controllers.yaml`, `README.md`)
 
