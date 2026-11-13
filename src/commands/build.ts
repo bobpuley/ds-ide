@@ -42,7 +42,7 @@ export async function buildForEmulator(
     return false;
   }
 
-  const daisySpDir = await detectDaisySP(projectRoot);
+  const daisySpDir = await detectDaisySP(projectRoot, extensionPath);
   const emulatorSrc = path.join(extensionPath, 'emulator');
 
   const opts: BuildOptions = { projectRoot, effectSrc, emulatorSrc };
@@ -95,13 +95,20 @@ export async function buildForEmulator(
   }
 }
 
-export async function detectDaisySP(projectRoot: string): Promise<string | undefined> {
+/**
+ * Resolves the DaisySP include directory (FR-EXM-1): the project's own copy
+ * first, then the extension's bundled `vendor/DaisySP/Source` (it ships in the
+ * package for the New Effect wizard), so a plain copy of an example — or any
+ * hand-made project — builds without DaisySP being copied in by hand.
+ */
+export async function detectDaisySP(projectRoot: string, extensionPath?: string): Promise<string | undefined> {
   const candidates = [
     path.join(projectRoot, 'DaisySP', 'Source'),
     path.join(projectRoot, 'DaisySP', 'src'),
     path.join(projectRoot, 'daisysp', 'Source'),
     path.join(projectRoot, 'daisysp', 'src'),
   ];
+  if (extensionPath) candidates.push(path.join(extensionPath, 'vendor', 'DaisySP', 'Source'));
   for (const p of candidates) {
     try {
       const stat = await fs.promises.stat(p);

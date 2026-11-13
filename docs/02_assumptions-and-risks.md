@@ -20,3 +20,23 @@
 > ⚠️ ASSUMPTION: the `workspaceContains` file checks are cheap enough to run in every window that has a `.cpp` at those locations; the extension also activates in non-Daisy C++ projects, where `activate()` leaves `ds-ide.isDaisyProject` false and shows nothing. Check "Developer: Show Running Extensions" for the activation time.
 
 *Other v25 bets and risks to be defined during planning.*
+
+## First public preview — curated examples (2026-11-13)
+
+> ⚠️ ASSUMPTION: the bundled `vendor/DaisySP/Source` is always present in an installed extension (it ships in the `.vsix` today for the New Effect wizard), so falling back to it never points the build at a missing path. A project's own `DaisySP/Source` (or `daisysp/…`) still wins.
+
+> ⚠️ ASSUMPTION: the OLED host shim supports pixel primitives only (`Fill`, `DrawPixel`, `Update`; no `WriteString`, no fonts), so the OLED example conveys the selected waveform with a drawn pixel shape, not text. Showing text is a separate, larger feature (vendoring libDaisy's font tables) and is out of scope here.
+
+> ⚠️ ASSUMPTION: the emulator's on-screen MIDI keyboard and its Control Change sender are enough to exercise the MIDI example without a hardware controller (`midi-panel.ts` sends notes, Program Change and Control Change).
+
+> ⚠️ ASSUMPTION: the SD card shim (`fatfs_host.cpp`) maps the mount onto a host directory so a file the example writes can be found and opened by the user. The exact host location is confirmed when the SD example is built and then stated in its README.
+
+> ⚠️ RISK: shipped examples are only useful if they build. An example that rots (a shim or convention change breaks it) is a poor first impression for a preview. Mitigation: a unit test guards the structural conventions of every example (FR-EXM-7) and each example is built once by hand before release; an automated build of every example in CI is not added here.
+
+> ⚠️ ASSUMPTION: the project folder the build used (`opts.projectRoot`) is the same folder the SD viewer reads (`<workspace folder>/sdcard/`) — one active workspace folder at a time, as for every other per-project path in the extension. Verified against `readSdCardEntries` in `extension.ts`.
+
+> ⚠️ ASSUMPTION: giving the emulator the project folder as its working directory does not disturb any other relative path it opens; the extension passes absolute paths for the socket and for WAV/recording files. Checked by running the emulator, runtime and extension suites after the change.
+
+> ⚠️ ASSUMPTION: polling the host about once a second for the card's listing (one `readdir` plus a `stat` per root-level file) is cheap enough to run while an SD card peripheral is enabled and the Controls Editor is visible; it stops when the card is not enabled or the view is hidden, and it only re-renders when the listing actually changed (so the user's scroll position is not reset).
+
+> ⚠️ ASSUMPTION: a size change is a reliable signal that a file's content changed. An overwrite with exactly the same size is picked up by the Refresh button, which always re-reads the expanded file.

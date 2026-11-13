@@ -118,6 +118,37 @@ describe('detectDaisySP', () => {
     vi.mocked(fs.promises.stat).mockRejectedValue(new Error('ENOENT'));
     expect(await detectDaisySP('/proj')).toBeUndefined();
   });
+
+  describe('bundled fallback (FR-EXM-1)', () => {
+    const bundled = path.join('/ext', 'vendor', 'DaisySP', 'Source');
+    const isDir = { isDirectory: () => true } as fs.Stats;
+
+    it('falls back to the extension\'s bundled DaisySP when the project has none', async () => {
+      vi.mocked(fs.promises.stat).mockImplementation((p) =>
+        String(p) === bundled ? Promise.resolve(isDir) : Promise.reject(new Error('ENOENT')));
+      expect(await detectDaisySP('/proj', '/ext')).toBe(bundled);
+    });
+
+    it('prefers the project\'s own copy over the bundled one', async () => {
+      vi.mocked(fs.promises.stat).mockResolvedValue(isDir);
+      expect(await detectDaisySP('/proj', '/ext')).toBe(path.join('/proj', 'DaisySP', 'Source'));
+    });
+
+    it('returns undefined when neither exists', async () => {
+      vi.mocked(fs.promises.stat).mockRejectedValue(new Error('ENOENT'));
+      expect(await detectDaisySP('/proj', '/ext')).toBeUndefined();
+    });
+
+    it('buildForEmulator passes the bundled DaisySP to the build when the project has none', async () => {
+      (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [{ uri: { fsPath: '/proj' } }];
+      vi.mocked(fs.promises.readdir).mockResolvedValue(['effect.cpp'] as never);
+      vi.mocked(fs.promises.stat).mockImplementation((p) =>
+        String(p) === bundled ? Promise.resolve(isDir) : Promise.reject(new Error('ENOENT')));
+      const build = vi.fn().mockResolvedValue(undefined);
+      await buildForEmulator({ build } as unknown as EmulatorManager, '/ext', undefined, makeChannel(), makeWorkspaceState());
+      expect(build.mock.calls[0]![0]).toMatchObject({ daisySpDir: bundled });
+    });
+  });
 });
 
 describe('buildForEmulator success notification (FR-UX-2)', () => {

@@ -91,6 +91,11 @@ FRESULT f_lseek(FIL* fp, uint32_t ofs) {
     return std::fseek(fp->handle, static_cast<long>(ofs), SEEK_SET) == 0 ? FR_OK : FR_DISK_ERR;
 }
 
+FRESULT f_sync(FIL* fp) {
+    if (!fp || !fp->handle) return FR_INVALID_PARAMETER;
+    return std::fflush(fp->handle) == 0 ? FR_OK : FR_DISK_ERR;
+}
+
 FRESULT f_close(FIL* fp) {
     if (!fp || !fp->handle) return FR_INVALID_PARAMETER;
     const int rc = std::fclose(fp->handle);

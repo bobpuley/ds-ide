@@ -380,6 +380,16 @@ describe('EmulatorManager', () => {
       expect(lastCall[0]).toContain('effect_emu');
     });
 
+    it('starts effect_emu in the project folder so its SD card is <project>/sdcard/ (FR-EXM-8)', async () => {
+      await manager.build(
+        { projectRoot: '/proj', effectSrc: '/proj/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      const emuCall = spawnMock.mock.calls[2] as [string, string[], { cwd?: string }];
+      expect(emuCall[2].cwd).toBe('/proj');
+    });
+
     it('connects IPC client after socket path is announced', async () => {
       await manager.build(
         { projectRoot: '/proj', effectSrc: '/proj/e.cpp', emulatorSrc: '/ext/emulator' },
