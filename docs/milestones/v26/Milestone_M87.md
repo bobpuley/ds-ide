@@ -44,15 +44,15 @@ The README is the Marketplace page and the first thing a visitor reads, and it s
 
 ---
 
-### [ ] docs: features and editor sections match the shipped extension (FR-DOC-4)
+### [x] docs: features and editor sections match the shipped extension (FR-DOC-4)
 
-**Affected files:** `README.md`
+**Affected files:** `README.md`, `scripts/check-doc-commands.js`, `src/test/unit/scripts/check-doc-commands.test.ts`
 
 **DoD:**
 - the feature list covers the Scope and spectrum, input generators and WAV/mic input, session record and replay, the full device set (pot, button, toggle, LED, RGB LED, encoder, SD card, OLED, MIDI USB/TRS) with its panels and viewers, breakpoint debugging, hardware build and DFU flash
 - the Wiring Editor, Controls Editor and Debugging sections say what they do today (no pots-and-buttons-only wording)
 - an **Examples** section has one line per example and links to `examples/README.md`
-- every command name used appears in `package.json` `contributes.commands`
+- every command name used appears in `package.json` `contributes.commands`; the doc-command lint now accepts titles containing `&` (**Build & Flash to Daisy Seed**), with a test
 
 ---
 
