@@ -84,9 +84,9 @@ The README is the Marketplace page and the first thing a visitor reads, and it s
 
 ---
 
-### [ ] docs: move developer content out and add a feedback section (FR-DOC-7)
+### [x] docs: move developer content out and add a feedback section (FR-DOC-7)
 
-**Affected files:** `README.md`, `CONTRIBUTING.md`
+**Affected files:** `README.md`, `CONTRIBUTING.md`, `src/test/unit/build/readme-links.test.ts` (an in-page anchor guard)
 
 **DoD:**
 - building the `.vsix` and running the test suites move from the README to a new `CONTRIBUTING.md`, which the README links to

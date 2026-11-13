@@ -87,3 +87,18 @@ describe('README prerequisites agree with the build (FR-DOC-2)', () => {
     expect(stated).toBe(required);
   });
 });
+
+describe('README in-page anchors (FR-DOC-6)', () => {
+  // GitHub and the Marketplace build an anchor from a heading: lower-case,
+  // punctuation dropped, spaces to hyphens.
+  const slug = (h: string): string =>
+    h.toLowerCase().replace(/[`*]/g, '').replace(/[^a-z0-9 -]/g, '').replace(/ /g, '-');
+
+  it('every #anchor link points at a heading in the README', () => {
+    const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+    const headings = new Set(readme.split('\n').filter(l => /^#{1,6} /.test(l)).map(l => slug(l.replace(/^#+ /, ''))));
+    const used = [...readme.matchAll(/\]\(#([^)]+)\)/g)].map(m => m[1]!);
+    expect(used.length).toBeGreaterThan(0);
+    expect(used.filter(a => !headings.has(a))).toEqual([]);
+  });
+});

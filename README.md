@@ -181,14 +181,6 @@ These settings go in `.vscode/settings.json` (or the Settings UI):
 
 ---
 
-## Testing
-
-- **`npm test`** — vitest unit suite (mocked `vscode` module). Fast, runs on every `npm run lint`-adjacent check; this is the suite to run while iterating.
-- **`npm run test:e2e`** — functional/e2e suite (`@vscode/test-cli` + `@vscode/test-electron`). Builds the extension, then launches a real VS Code Extension Development Host and exercises real activation, real `vscode.commands` dispatch, and real IPC round-trips — things the mocked unit suite can't prove. Slower (downloads a real VS Code build on first run) and **not** part of `npm test` or `npm run lint` — run it explicitly before a release, or when changing activation/command-registration/IPC-boundary code. Specs live in `src/test/e2e/`.
-- **`src/test/manual/manual-tests.html`** — hand-run checklist for cases neither automated suite can cover (real audio I/O, hardware build/flash, webview rendering).
-
----
-
 ## Known issues
 
 This is a preview, so some rough edges are known:
@@ -205,6 +197,19 @@ This is a preview, so some rough edges are known:
 - **Hardware build and flash need a libDaisy-style project.** **Build for Hardware** runs your project's `Makefile`. **Create New Effect Project** and the examples set up the emulator build only (a `CMakeLists.txt`), so on those projects Build for Hardware stops with "No targets specified and no makefile found". Add a `Makefile` as in the libDaisy examples, then build and flash.
 - **The OLED draws pixels only.** The emulator's display supports `Fill`, `DrawPixel` and `Update`. There is no `WriteString`, no fonts and no line or rectangle helpers, so code that uses them does not build in the emulator yet.
 - **The encoder's push-button cannot be pressed from the Controls Editor.** Turning an encoder works; its click is not available in the emulator yet.
+
+---
+
+## Feedback
+
+This is a preview, and your reports shape what comes next. To report a problem or suggest something, [open an issue](https://github.com/bobpuley/ds-ide/issues). It helps to include:
+
+- the extension version and your VS Code and macOS versions;
+- what you did, what you expected and what happened (a screenshot of the Scope or editor helps);
+- the example or project you used, and the output of **Daisy IDE: Show Emulator Output** if a build or run failed;
+- for a window that closed on its own, the `crashed with code` lines from VS Code's `main.log` (see [Known issues](#known-issues)).
+
+If you want to build the extension from source or send a change, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
