@@ -75,12 +75,7 @@ The README is the Marketplace page and the first thing a visitor reads, and it s
 - the README references only screenshots that exist in `media/`
 - the screenshots still to be taken are listed below for the owner; each is added to the README when its file exists
 
-**Screenshots still to take (owner), file names to use in `media/`:**
-- `screenshot-midi-panel.png` — MIDI panel with the keyboard and the CC sender (from `midi-synth`)
-- `screenshot-oled.png` — the OLED panel showing a waveform shape (from `midi-synth-oled`)
-- `screenshot-sd-viewer.png` — the SD Card section listing `actions.txt` with its preview (from `controls-sd-logger`)
-- `screenshot-run-button.png` — the editor's play button on an example (for the quick start)
-- the three existing screenshots (`screenshot-overview.png`, `screenshot-controls-design.png`, `screenshot-wiring-editor.png`) should be checked against the current UI and retaken if they differ
+**Screenshots (owner):** taken and in the README: `media/screenshot-controls-oled.png`, `screenshot-midi-panel.png`, `screenshot-oled-panel.png`, `screenshot-sd-viewer.png`, plus the three retaken originals. **Still to take:** `media/screenshot-run-button.png`, the editor's play button on an example, for the quick start (the README references it only once the file exists).
 
 ---
 

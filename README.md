@@ -138,13 +138,23 @@ Open it from the Activity Bar, or with **Daisy IDE: Focus Controls Editor**. It 
 
 The editor reads the `ds-ide:controls` block in your effect source and the labels, ranges and positions in `controllers.yaml` (see [Code conventions](#appendix-code-conventions)). If it finds no block, a banner offers to open the Wiring Editor. When an SD card is switched on, an **SD Card** section lists the files in your project's `sdcard/` folder and previews text files, and an OLED can be shown in place.
 
+![The OLED preview inside the Controls Editor, drawing a sine wave](media/screenshot-controls-oled.png)
+
 ---
 
 ## MIDI, OLED and SD card
 
 - **MIDI**: **Daisy IDE: Show MIDI Panel** opens an on-screen keyboard that plays notes into your effect, a sender for Program Change and Control Change messages, and a monitor of what was received and sent.
+
+  ![The MIDI panel with the on-screen keyboard and the Program Change and Control Change senders](media/screenshot-midi-panel.png)
+
 - **OLED**: **Daisy IDE: Show OLED Display** shows the 128 by 64 display your effect draws on. The emulator's display supports single pixels only (see [Limitations](#limitations)).
-- **SD card**: the emulated card is the `sdcard/` folder in your project. Files your effect writes appear there, and in the Controls Editor's SD Card section.
+
+  ![The OLED panel showing a sine wave drawn by an example](media/screenshot-oled-panel.png)
+
+- **SD card**: the emulated card is the `sdcard/` folder in your project. Files your effect writes appear there, and in the Controls Editor's SD Card section, which follows the card while the effect runs.
+
+  ![The SD Card section of the Controls Editor previewing actions.txt](media/screenshot-sd-viewer.png)
 
 ---
 
