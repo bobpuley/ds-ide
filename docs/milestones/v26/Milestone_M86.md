@@ -82,7 +82,7 @@ The FatFs shim resolves `sdcard/` against the emulator's working directory, and 
 
 ---
 
-### [ ] feat: add the controls-sd-logger example (FR-EXM-6)
+### [x] feat: add the controls-sd-logger example (FR-EXM-6)
 
 **Affected files:** `examples/controls-sd-logger/` (`controls_sd_logger.cpp`, `CMakeLists.txt`, `controllers.yaml`, `README.md`)
 
