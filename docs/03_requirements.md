@@ -71,3 +71,41 @@ Source: `01_input-ideas.md`, 2026-11-13. Milestone: **M88**.
 **FR-LIC-5 — Terms for contributions.** `CONTRIBUTING.md` says that a contribution is licensed under the project's licence and that the contributor also grants the maintainer the right to license it under other terms, including commercial ones, so the owner can keep offering commercial agreements. It names the licence and links to `LICENSE`.
 
 **FR-LIC-6 — The outside contribution is resolved.** PR #1 (`kefflash`, `a397e28`, test-only Windows fixes) is either covered by the contributor's written consent to relicensing (the link recorded in `LICENSES.md`), or its lines are rewritten by the owner so none remain. Making the repository public waits on this.
+
+## First public preview — remaining release work (intake 2026-11-14)
+
+Source: `01_input-ideas.md`, 2026-11-14. Milestones: **M89**, **M90**, **M91**.
+
+### M89 — First-run polish, part two: `FR-PRE-*`
+
+**FR-PRE-1 — Emulator-side prerequisites say what is missing.** When the emulator build needs a C++ compiler and none is available (no Xcode Command Line Tools), the build stops before running CMake with "Xcode Command Line Tools not found. Run `xcode-select --install` and try again." When **Debug Daisy Effect** needs `lldb-dap` and it is not found (`PATH`, then the Xcode toolchain), the debug start stops with a message naming the same install command. Both show in the notification and the output channel, with no empty Show Problems button, as FR-REL-2 does for CMake.
+
+**FR-PRE-2 — Hardware-side prerequisites are verified.** With the Arm toolchain missing, **Build for Hardware** shows the existing install hint ("Install the ARM embedded toolchain: brew install arm-none-eabi-gcc ..."); with `dfu-util` missing, **Flash to Daisy Seed** shows its hint. Both are triggered for real with a minimal `PATH` (until now they were only read in code), and each has a unit test of the detection and the message.
+
+**FR-PRE-3 — Build for Hardware checks for a `Makefile`.** Before running `make`, the extension looks for a `Makefile` in the project root. If there is none it does not run `make` and says: "No Makefile in this project. Build for Hardware needs a libDaisy-style project; see Limitations in the README." The message appears in the notification and the output channel.
+
+**FR-PRE-4 — Deploy after a restart works or explains itself.** **Deploy to Emulator** in a fresh window uses an existing build in `<project>/.ds-ide/build/` when there is one, instead of failing with "Build before deploying". When there is none, it says: "Nothing built yet. Run Daisy IDE: Run Daisy Effect, or Build for Emulator first." The Scope and Controls Editor open only after a successful deploy, not before a failure.
+
+**FR-PRE-5 — `engines.vscode` matches what was tested.** `package.json` `engines.vscode` is `^1.140.0`, the README's requirement says "VS Code 1.140 or later" (the "tested on" aside goes away), and a unit test keeps the two equal. `CONTRIBUTING.md` says that a VS Code update that changes Electron means updating the pin, rebuilding the native addon and revisiting `engines`. With the native addon unable to load, the extension still starts and the on-screen MIDI keyboard works; this is verified.
+
+### M90 — Marketplace readiness: `FR-MKT-*`
+
+**FR-MKT-1 — Package metadata fit for the Marketplace.** `package.json` has `"preview": true`; a `displayName` and a one-sentence `description` that say what it does; categories and keywords chosen for discovery (Daisy Seed, Electro-Smith, libDaisy, DaisySP, audio, DSP, emulator, MIDI); a `galleryBanner`; and an `icon` that is a PNG of at least 128 by 128 pixels (the current `media/ds-ide-icon.png` is 624 bytes). A unit test checks the icon's size, the `preview` flag, that the version has no semver pre-release suffix, and that the description is short.
+
+**FR-MKT-2 — Issue templates.** `.github/ISSUE_TEMPLATE/` has a bug report form (version, macOS and VS Code versions, steps, expected and actual, the output channel's text, the `crashed with code` lines for a closed window) and a feature request form, and `config.yml` lists the three templates (the commercial licence enquiry comes from FR-LIC-4) and points questions to the README. Blank issues stay allowed.
+
+**FR-MKT-3 — A pre-publish check of the packaged README's links.** A script (`npm run check:published-links`) extracts every absolute URL from the packaged README and from `repository`, `bugs` and `homepage`, requests each one anonymously, and fails listing any that do not answer 200 (after redirects). It needs the network, so it is not part of `npm test`; it fails while the repository is private and passes once it is public. Its use is written in `CONTRIBUTING.md`.
+
+**FR-MKT-4 — Make the repository public (owner checklist).** Before the switch: the licence is settled and PR #1 resolved (M88); the history and tracked files are reviewed for secrets and private material (a scanner run and a read of what is tracked); the GitHub repository has its description, topics and Issues enabled; `main` and the tags are pushed. After: `npm run check:published-links` passes.
+
+**FR-MKT-5 — Tidy the repository before it is public.** The untracked clutter at the repository root (`design_plan*.md`, stray screenshots such as `img.png`) is deleted by the owner, moved or ignored; the committed `__pycache__/*.pyc` files under `tests/runtime/` are untracked and ignored; the `controls-sd-logger/controllers.yaml` layout left by running the example in place is kept or discarded.
+
+### M91 — First public preview release: `FR-RLS-*`
+
+**FR-RLS-1 — Version and changelog.** `package.json` `version` is `0.25.0` and `CHANGELOG.md` opens with `## 0.25.0`, a user-facing summary of the first public preview (the existing test enforces that they agree).
+
+**FR-RLS-2 — Full verification on the release commit.** `npm run lint`, `npm test`, `npm run test:e2e`, the emulator C++ runners (`tests/*/run_*.sh`), `tests/runtime/build_and_test.sh`, `npm run package` and `npm run verify:package` all pass; the built `.vsix` is installed in a clean profile and the README's quick start is walked through; the extension-host crash soak (open and close example folders about ten times, watching VS Code's `main.log` for `crashed with code`) is run and its result recorded.
+
+**FR-RLS-3 — Tag and push.** An annotated tag `0.25.0` is created on the release commit after the suites pass, then `main` and all pending tags are pushed.
+
+**FR-RLS-4 — Publish, guided.** Step by step with the owner: create the Marketplace publisher `daisy-ide` and the authentication the Marketplace currently requires; publish the built package with `vsce publish --pre-release`; verify the Marketplace page (README, images, licence, version, Preview badge) and install from the Marketplace in a clean profile; decide whether to also publish to Open VSX; announce the preview and where to send feedback.
