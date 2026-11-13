@@ -35,7 +35,7 @@ Everything under `examples/` ships in the `.vsix`, and today it is milestone-nam
 
 ---
 
-### [ ] feat: add the controls-tour example (FR-EXM-3)
+### [x] feat: add the controls-tour example (FR-EXM-3)
 
 **Affected files:** `examples/controls-tour/` (`controls_tour.cpp`, `CMakeLists.txt`, `controllers.yaml`, `README.md`)
 
