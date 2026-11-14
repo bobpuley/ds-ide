@@ -1,7 +1,7 @@
 # M90 — Marketplace Readiness
 
 **Version:** 0.24.9
-**Status:** planned
+**Status:** in progress
 **Source:** intake session, 2026-11-14 (first public preview; `docs/release_plan.md`)
 
 ## Goal
@@ -10,7 +10,7 @@ The extension works and the README is ready, but the package metadata has never 
 
 ## Sprint Tasks
 
-### [ ] chore: package metadata fit for the Marketplace (FR-MKT-1)
+### [x] chore: package metadata fit for the Marketplace (FR-MKT-1)
 
 **Affected files:** `package.json`, `media/ds-ide-icon.png`, `src/test/unit/build/package-metadata.test.ts`
 
