@@ -2,7 +2,7 @@
   "name": "ds-ide",
   "displayName": "Daisy Seed IDE",
   "description": "Develop, test and debug Daisy Seed audio effects in VS Code, without hardware: an emulator with scope, controls, MIDI, OLED and SD card.",
-  "version": "0.24.8",
+  "version": "0.24.9",
   "publisher": "daisy-ide",
   "license": "PolyForm-Shield-1.0.0",
   "icon": "media/ds-ide-icon.png",

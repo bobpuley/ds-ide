@@ -3,6 +3,16 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.24.9 — 2026-11-14
+
+**Marketplace readiness** *(FR-MKT-1 to FR-MKT-5, M90)*
+
+- **FR-MKT-1** — The package is flagged as a preview, with a one-sentence description, categories, Daisy-specific keywords (Electro-Smith, libDaisy, DaisySP, MIDI and more) and a dark gallery banner; tests keep the icon at 128 x 128 or larger and the version free of a pre-release suffix.
+- **FR-MKT-2** — Issue forms for bug reports (versions, steps, output, the `crashed with code` lines) and feature requests; `config.yml` points questions to the README.
+- **FR-MKT-3** — `npm run check:published-links` requests, anonymously, every URL the published README contains (the screenshots and relative links as vsce rewrites them) and fails on any that does not answer 200.
+- **FR-MKT-5** — The committed `.pyc` files are untracked and the root clutter is gone.
+- **FR-MKT-4** — The repository is public; its history was scanned and no secrets were found, and the published links all resolve.
+
 ## 0.24.8 — 2026-11-14
 
 **First-run polish II** *(FR-PRE-1 to FR-PRE-5, M89)*
