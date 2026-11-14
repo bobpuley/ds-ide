@@ -38,4 +38,8 @@ describe('publish workflow (FR-RLS-4)', () => {
     expect(wf).toContain('if: ${{ !inputs.dry_run }}');
     expect(wf.indexOf('!inputs.dry_run')).toBeLessThan(wf.indexOf('vsce publish'));
   });
+
+  it('runs in the Production environment, as the Marketplace policy requires', () => {
+    expect(wf).toMatch(/^    environment: Production$/m);
+  });
 });

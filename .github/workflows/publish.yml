@@ -4,7 +4,8 @@
 # dry_run on to check that the whole pipeline works without publishing. It uses
 # Trusted Publishing (OIDC): no token or secret is stored anywhere. The matching
 # policy is set up on the Marketplace publisher page (Trusted Publishing:
-# repository owner, repository, and this workflow's filename, `publish.yml`).
+# repository owner, repository, this workflow's filename `publish.yml`, and the
+# environment `Production`, which the job below declares).
 #
 # The package is built on an Apple Silicon runner, because it ships a native
 # addon built for Electron and is published for darwin-arm64 only. Every
@@ -31,6 +32,8 @@ permissions:
 jobs:
   publish:
     runs-on: macos-latest
+    # Must equal the Environment of the Trusted Publishing policy exactly.
+    environment: Production
     steps:
       - uses: actions/checkout@v7
         with:
