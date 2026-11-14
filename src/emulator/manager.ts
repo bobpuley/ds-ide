@@ -181,7 +181,10 @@ export class EmulatorManager extends EventEmitter {
 
   constructor(deps: EmulatorManagerDeps = {}) {
     super();
-    this.spawn = deps.spawn ?? cp.spawn;
+    // Looked up at call time, not captured here: the extension activates when a
+    // Daisy project opens, so anything that replaces child_process.spawn later
+    // (the e2e specs' process-boundary stub) must still be seen.
+    this.spawn = deps.spawn ?? (((...args: Parameters<typeof cp.spawn>) => (cp.spawn as (...a: unknown[]) => cp.ChildProcess)(...args)) as typeof cp.spawn);
     this.ipcClientFactory = deps.ipcClientFactory ?? (() => new IpcClient());
     this.mkdir = deps.mkdir ?? fs.promises.mkdir;
     this.execFile = deps.execFile ?? cp.execFile;
