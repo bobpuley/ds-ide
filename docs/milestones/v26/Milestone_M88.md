@@ -22,7 +22,7 @@ The repository's licence files contradict each other: `LICENSE` is GPL-3.0 while
 
 ---
 
-### [ ] test: the licence statements agree (FR-LIC-2)
+### [x] test: the licence statements agree (FR-LIC-2)
 
 **Affected files:** `src/test/unit/build/licence.test.ts`
 
