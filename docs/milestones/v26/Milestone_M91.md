@@ -1,7 +1,7 @@
 # M91 — First Public Preview Release
 
 **Version:** 0.25.0
-**Status:** planned
+**Status:** in progress
 **Source:** intake session, 2026-11-14 (first public preview; `docs/release_plan.md`)
 
 ## Goal
@@ -10,7 +10,7 @@ Everything the first public preview needs is built (M85 to M90); this milestone 
 
 ## Sprint Tasks
 
-### [ ] chore: version 0.25.0 and the changelog (FR-RLS-1)
+### [x] chore: version 0.25.0 and the changelog (FR-RLS-1)
 
 **Affected files:** `package.json`, `CHANGELOG.md`
 
