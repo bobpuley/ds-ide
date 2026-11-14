@@ -1,7 +1,7 @@
 # M90 — Marketplace Readiness
 
 **Version:** 0.24.9
-**Status:** planned
+**Status:** released
 **Source:** intake session, 2026-11-14 (first public preview; `docs/release_plan.md`)
 
 ## Goal
@@ -10,7 +10,7 @@ The extension works and the README is ready, but the package metadata has never 
 
 ## Sprint Tasks
 
-### [ ] chore: package metadata fit for the Marketplace (FR-MKT-1)
+### [x] chore: package metadata fit for the Marketplace (FR-MKT-1)
 
 **Affected files:** `package.json`, `media/ds-ide-icon.png`, `src/test/unit/build/package-metadata.test.ts`
 
@@ -22,7 +22,7 @@ The extension works and the README is ready, but the package metadata has never 
 
 ---
 
-### [ ] docs: issue templates for bug reports and feature requests (FR-MKT-2)
+### [x] docs: issue templates for bug reports and feature requests (FR-MKT-2)
 
 **Affected files:** `.github/ISSUE_TEMPLATE/bug-report.yml`, `.github/ISSUE_TEMPLATE/feature-request.yml`, `.github/ISSUE_TEMPLATE/config.yml`
 
@@ -34,7 +34,7 @@ The extension works and the README is ready, but the package metadata has never 
 
 ---
 
-### [ ] feat: a pre-publish check of the packaged README's links (FR-MKT-3)
+### [x] feat: a pre-publish check of the packaged README's links (FR-MKT-3)
 
 **Affected files:** `scripts/check-published-links.js`, `package.json`, `src/test/unit/scripts/check-published-links.test.ts`, `CONTRIBUTING.md`
 
@@ -46,7 +46,7 @@ The extension works and the README is ready, but the package metadata has never 
 
 ---
 
-### [ ] chore: tidy the repository before it is public (FR-MKT-5)
+### [x] chore: tidy the repository before it is public (FR-MKT-5)
 
 Owner task for the deletions: list the files, the owner removes them.
 
@@ -60,7 +60,7 @@ Owner task for the deletions: list the files, the owner removes them.
 
 ---
 
-### [ ] chore: make the repository public (FR-MKT-4)
+### [x] chore: make the repository public (FR-MKT-4)
 
 Owner task: visibility changes are made by the owner, step by step.
 
@@ -69,3 +69,5 @@ Owner task: visibility changes are made by the owner, step by step.
 **DoD:**
 - before the switch: M88 is released and PR #1 resolved; the history and tracked files are reviewed for secrets and private material (a scanner run and a read of what is tracked); the repository has its description, topics and Issues enabled; `main` and all tags are pushed
 - after the switch: `npm run check:published-links` passes and the README's images load anonymously
+
+> Pre-switch review (2026-11-14, no scanner installed, so a pattern scan of all history plus a read of tracked files): no API keys, tokens, private keys or `.env`-style files were ever committed, and no blob over 5 MB. Found and left for the owner to decide: the owner's Git author email appears in 705 commits and a third party's personal email in one commit on the pushed `feat/windows-support` branch (both become public with the repository); one docs file names a local home directory path.

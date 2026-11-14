@@ -31,6 +31,8 @@ npm run verify:package     # checks the package contents, the target platform an
 
 The package contains a native addon (`midi.node`) that must match the Electron version inside VS Code. The version is pinned in `scripts/electron-target-version.txt`; after a VS Code update that changes Electron, update the pin, run `npm run rebuild:native` and revisit `engines.vscode` in `package.json` (it names the VS Code version the addon was built and tested for, currently 1.140).
 
+Before publishing, run `npm run check:published-links`. It requests every URL the published README will contain (including the screenshots, which vsce points at the repository) anonymously and fails on any that does not answer 200. It needs network and a public repository, so it is not part of `npm test`.
+
 ## Tests
 
 - **`npm test`**: the vitest unit suite (the `vscode` module is mocked). Fast; run it while you work. `npm run lint` type-checks the extension and the webviews and checks that the README and walkthrough only name commands that exist.
