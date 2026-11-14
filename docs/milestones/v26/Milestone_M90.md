@@ -69,3 +69,5 @@ Owner task: visibility changes are made by the owner, step by step.
 **DoD:**
 - before the switch: M88 is released and PR #1 resolved; the history and tracked files are reviewed for secrets and private material (a scanner run and a read of what is tracked); the repository has its description, topics and Issues enabled; `main` and all tags are pushed
 - after the switch: `npm run check:published-links` passes and the README's images load anonymously
+
+> Pre-switch review (2026-11-14, no scanner installed, so a pattern scan of all history plus a read of tracked files): no API keys, tokens, private keys or `.env`-style files were ever committed, and no blob over 5 MB. Found and left for the owner to decide: the owner's Git author email appears in 705 commits and a third party's personal email in one commit on the pushed `feat/windows-support` branch (both become public with the repository); one docs file names a local home directory path.
