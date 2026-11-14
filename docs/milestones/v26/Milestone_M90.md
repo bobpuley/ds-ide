@@ -34,7 +34,7 @@ The extension works and the README is ready, but the package metadata has never 
 
 ---
 
-### [ ] feat: a pre-publish check of the packaged README's links (FR-MKT-3)
+### [x] feat: a pre-publish check of the packaged README's links (FR-MKT-3)
 
 **Affected files:** `scripts/check-published-links.js`, `package.json`, `src/test/unit/scripts/check-published-links.test.ts`, `CONTRIBUTING.md`
 
