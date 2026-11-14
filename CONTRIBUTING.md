@@ -41,3 +41,12 @@ The package contains a native addon (`midi.node`) that must match the Electron v
 ## Project documents
 
 The design lives in `docs/`: requirements in `03_requirements.md`, architecture in `04_architecture.md`, and the milestone plan in `05_dev-plan.md`. `CHANGELOG.md` records every release.
+
+## Licence of contributions
+
+Daisy IDE is licensed under the [PolyForm Shield License 1.0.0](LICENSE). By submitting a contribution (a pull request, a patch, or any other code or text) you agree that:
+
+- it is licensed under that same licence, and
+- you also grant the maintainer the right to license your contribution under other terms, including commercial ones.
+
+You confirm that you wrote it, or have the right to submit it under these terms.

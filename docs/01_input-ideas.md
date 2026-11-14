@@ -96,3 +96,19 @@ Source: owner request while working through `docs/release_plan.md` (fresh-instal
 Source: owner request while working through `docs/release_plan.md` ("let's do the README polish").
 
 - **README polish.** The README is the Marketplace page and the first thing a visitor to the repo reads. It still describes an early version (pots and buttons only; the old Build → Deploy → Start Audio flow; install from a `.vsix` only; no MIDI, OLED, SD card, encoder, toggle, RGB LED or input generators; no examples; no known issues; developer-only sections mixed in). Bring it up to date for the first public preview: a preview notice, what it is, prerequisites, quick start, features, known issues and limits, where to send feedback. Screenshots: keep the existing three and list the ones still to take (the owner takes them).
+
+## First public preview — licensing (2026-11-13)
+
+Source: owner request while working through `docs/release_plan.md` (how to fix the images access issue led to reviewing the licence).
+
+- **Relicense the project.** Change the licence to one that allows everything for non-commercial use, with commercial use needing an agreement with the owner. After discussion the owner chose the line "only the IDE itself is restricted": anyone may use Daisy IDE for anything, including developing and selling their own effects, but selling, bundling, hosting or otherwise competing with the IDE itself needs a commercial agreement. Licence chosen: **PolyForm Shield 1.0.0**. Contact route for commercial agreements: the GitHub issues page (with a dedicated issue template), kept in the README rather than in the licence text.
+- **Finding that prompted the work.** The repo's `LICENSE` file is GPL-3.0 (from the initial commit) while `package.json` and `LICENSES.md` say MIT; and one outside contribution exists (PR #1, test-only, Windows test fixes), which GitHub's terms license under the repository's licence, GPL-3.0.
+
+## First public preview — remaining release work (2026-11-14)
+
+Source: `docs/release_plan.md`, the items still open after M85 to M88, grouped by the owner's request to "move forward with the intake of the remaining tasks needed for the release".
+
+- **First-run polish, part two.** Missing-prerequisite checks that give a clear, actionable message instead of a silent or cryptic failure (C++ compiler / Xcode Command Line Tools, `lldb-dap`, Arm toolchain, `dfu-util`); a `Makefile` pre-check for Build for Hardware, which today fails with "No targets specified and no makefile found"; Deploy to Emulator right after opening a window failing with "Build before deploying" although a build exists; `engines.vscode` claiming `^1.85.0` when only 1.140 has been exercised (and the native MIDI addon is built for that Electron).
+- **Marketplace readiness.** Review the package metadata (display name, description, categories, keywords, icon, gallery banner, `preview` flag); write issue templates; a pre-publish check that every URL in the packaged README resolves anonymously; a checklist for making the repository public; tidy the repository before it is public.
+- **The release itself.** Version `0.25.0` with `"preview": true` (owner decision, 2026-11-14: odd minor for a Marketplace pre-release); changelog; the full verification on the release commit including the e2e and emulator suites and a clean-profile walk-through; tag and push; guided publish (publisher account, token, `vsce publish --pre-release`, verify, Open VSX decision, announce).
+- **Decisions taken in this intake.** Keep both command sets (the legacy step-by-step commands and Run, Debug, Stop Daisy Effect), documented in the README: no code change. The "missing DaisySP" UX item is superseded by FR-EXM-1 (the bundled fallback removes the case it was for) and is not scheduled.

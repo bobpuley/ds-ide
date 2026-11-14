@@ -22,3 +22,13 @@ FR-EXM-9 (same intake): webview-only change in `sd-card-panel.ts` plus pure help
 ## First public preview — README polish (2026-11-13)
 
 No architecture impact (FR-DOC-1 to FR-DOC-7): documentation, one new `CONTRIBUTING.md`, and a unit test over the README's links. No extension code changes.
+
+## First public preview — licensing (2026-11-13)
+
+No architecture impact (FR-LIC-1 to FR-LIC-6): `LICENSE`, `package.json` metadata, `LICENSES.md`, the README, `CONTRIBUTING.md`, an issue template under `.github/`, and one unit test. No extension or emulator code changes.
+
+## First public preview — remaining release work (2026-11-14)
+
+- **M89 (FR-PRE-1 to FR-PRE-5):** prerequisite detection extends `src/hardware/toolchain.ts` (compiler / Xcode CLT, `lldb-dap`) and the existing messages for the Arm toolchain and `dfu-util`; a `Makefile` pre-check in the hardware build command; `EmulatorManager.deploy` can resolve the build directory from the active project instead of only from memory; `package.json` `engines`. No new component, message or IPC type.
+- **M90 (FR-MKT-1 to FR-MKT-5):** package metadata, an icon asset, issue templates under `.github/`, and one Node script (`scripts/check-published-links.js`). No extension or emulator code.
+- **M91 (FR-RLS-1 to FR-RLS-4):** version and changelog, verification and publishing. No code.
