@@ -36,9 +36,11 @@ export async function flashToHardware(
 
   const dfuUtil = await detectDfuUtil();
   if (!dfuUtil) {
-    void vscode.window.showErrorMessage(
-      `ds-ide: dfu-util not found. ${DFU_UTIL_INSTALL_HINT}`,
-    );
+    // FR-PRE-2: the cause also goes to the output channel, not only a toast.
+    const msg = `dfu-util not found. ${DFU_UTIL_INSTALL_HINT}`;
+    outputChannel.show();
+    outputChannel.appendLine(msg);
+    void vscode.window.showErrorMessage(`ds-ide: ${msg}`);
     return;
   }
 

@@ -95,12 +95,14 @@ describe('flashToHardware()', () => {
   it('shows error and skips flash when dfu-util is not found', async () => {
     (detectDfuUtil as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
     const deps = makeFlashDeps(0);
+    const channel = makeChannel();
 
-    await flashToHardware('/project', makeChannel(), deps);
+    await flashToHardware('/project', channel, deps);
 
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-      expect.stringContaining('dfu-util not found'),
+      expect.stringMatching(/dfu-util not found.*brew install dfu-util/),
     );
+    expect(channel.appendLine).toHaveBeenCalledWith(expect.stringMatching(/dfu-util not found.*brew install dfu-util/));
     expect(deps.spawn).not.toHaveBeenCalled();
   });
 

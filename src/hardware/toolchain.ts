@@ -38,6 +38,10 @@ export const LLDB_DAP_NOT_FOUND_MESSAGE =
 
 const CLT_DEVELOPER_DIR = '/Library/Developer/CommandLineTools';
 
+// FR-PRE-3: shown when Build for Hardware finds no Makefile in the project root.
+export const NO_MAKEFILE_MESSAGE =
+  'No Makefile in this project. Build for Hardware needs a libDaisy-style project; see Limitations in the README.';
+
 export const DFU_UTIL_BINARY = 'dfu-util';
 
 export const DFU_UTIL_CANDIDATES = [

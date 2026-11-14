@@ -7,6 +7,7 @@ import { buildForHardware } from '../../../commands/hardware-build';
 vi.mock('../../../hardware/toolchain', () => ({
   detectArmToolchain: vi.fn().mockResolvedValue('/opt/homebrew/bin/arm-none-eabi-gcc'),
   ARM_GCC_INSTALL_HINT: 'brew install arm-none-eabi-gcc',
+  NO_MAKEFILE_MESSAGE: 'No Makefile in this project. Build for Hardware needs a libDaisy-style project; see Limitations in the README.',
 }));
 
 import { detectArmToolchain } from '../../../hardware/toolchain';
@@ -52,7 +53,7 @@ describe('buildForHardware()', () => {
 
   it('shows success message when make exits with code 0', async () => {
     const spawn = makeSpawn(0);
-    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { makefileExists: async () => true, spawn });
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
       expect.stringContaining('hardware build succeeded'),
     );
@@ -60,29 +61,54 @@ describe('buildForHardware()', () => {
 
   it('shows error message when make exits with non-zero code', async () => {
     const spawn = makeSpawn(2);
-    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { makefileExists: async () => true, spawn });
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('hardware build failed'),
     );
   });
 
   it('reports success / failure as its result so Build & Flash can stop on a failed build (FR-TRN-3)', async () => {
-    expect(await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn: makeSpawn(0) })).toBe(true);
-    expect(await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn: makeSpawn(2) })).toBe(false);
+    expect(await buildForHardware('/project', makeDiagnostics(), makeChannel(), { makefileExists: async () => true, spawn: makeSpawn(0) })).toBe(true);
+    expect(await buildForHardware('/project', makeDiagnostics(), makeChannel(), { makefileExists: async () => true, spawn: makeSpawn(2) })).toBe(false);
     (detectArmToolchain as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
-    expect(await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn: makeSpawn(0) })).toBe(false);
+    expect(await buildForHardware('/project', makeDiagnostics(), makeChannel(), { makefileExists: async () => true, spawn: makeSpawn(0) })).toBe(false);
   });
 
   it('shows error and skips make when toolchain is not found', async () => {
     (detectArmToolchain as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
     const spawn = makeSpawn(0);
 
-    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { makefileExists: async () => true, spawn });
 
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('arm-none-eabi-gcc not found'),
     );
     expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it('names the install hint in the notification and the output channel when the toolchain is missing (FR-PRE-2)', async () => {
+    (detectArmToolchain as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
+    const channel = makeChannel();
+    await buildForHardware('/project', makeDiagnostics(), channel, { makefileExists: async () => true, spawn: makeSpawn(0) });
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('brew install arm-none-eabi-gcc'));
+    expect(channel.appendLine).toHaveBeenCalledWith(expect.stringContaining('brew install arm-none-eabi-gcc'));
+  });
+
+  it('does not run make and says so when the project has no Makefile (FR-PRE-3)', async () => {
+    const spawn = makeSpawn(0);
+    const channel = makeChannel();
+    const ok = await buildForHardware('/project', makeDiagnostics(), channel, { makefileExists: async () => false, spawn });
+    expect(ok).toBe(false);
+    expect(spawn).not.toHaveBeenCalled();
+    const msg = 'No Makefile in this project. Build for Hardware needs a libDaisy-style project; see Limitations in the README.';
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining(msg));
+    expect(channel.appendLine).toHaveBeenCalledWith(msg);
+  });
+
+  it('looks for the Makefile in the project root (FR-PRE-3)', async () => {
+    const makefileExists = vi.fn(async () => true);
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { makefileExists, spawn: makeSpawn(0) });
+    expect(makefileExists).toHaveBeenCalledWith('/project');
   });
 
   it('applies diagnostics after a failed build', async () => {
@@ -101,7 +127,7 @@ describe('buildForHardware()', () => {
     }) as unknown as typeof import('child_process').spawn;
 
     const diagnostics = makeDiagnostics();
-    await buildForHardware('/project', diagnostics, makeChannel(), { spawn });
+    await buildForHardware('/project', diagnostics, makeChannel(), { makefileExists: async () => true, spawn });
 
     expect(diagnostics.clear).toHaveBeenCalled();
     expect(diagnostics.set).toHaveBeenCalled();
@@ -112,13 +138,13 @@ describe('buildForHardware()', () => {
       get: vi.fn((key: string) => key === 'armToolchainPath' ? '/custom/bin' : undefined),
     });
     const spawn = makeSpawn(0);
-    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { makefileExists: async () => true, spawn });
     expect(detectArmToolchain).toHaveBeenCalledWith('/custom/bin');
   });
 
   it('invokes make in the project root', async () => {
     const spawn = makeSpawn(0);
-    await buildForHardware('/my/project', makeDiagnostics(), makeChannel(), { spawn });
+    await buildForHardware('/my/project', makeDiagnostics(), makeChannel(), { makefileExists: async () => true, spawn });
     const call = (spawn as ReturnType<typeof vi.fn>).mock.calls[0]!;
     expect(call[0]).toBe('make');
     expect((call[2] as { cwd: string }).cwd).toBe('/my/project');
@@ -127,7 +153,7 @@ describe('buildForHardware()', () => {
   it('reuses the passed-in channel instead of creating a fallback', async () => {
     const spawn = makeSpawn(0);
     const channel = makeChannel();
-    await buildForHardware('/project', makeDiagnostics(), channel, { spawn });
+    await buildForHardware('/project', makeDiagnostics(), channel, { makefileExists: async () => true, spawn });
     expect(vscode.window.createOutputChannel).not.toHaveBeenCalled();
     expect(channel.show).toHaveBeenCalled();
   });
@@ -151,7 +177,7 @@ describe('buildForHardware()', () => {
     }) as unknown as typeof import('child_process').spawn;
 
     const source = new vscode.CancellationTokenSource();
-    const resultPromise = buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn }, source.token);
+    const resultPromise = buildForHardware('/project', makeDiagnostics(), makeChannel(), { makefileExists: async () => true, spawn }, source.token);
     await spawned; // wait until runMake has spawned + wired the cancellation listener
     source.cancel();
     await resultPromise;
@@ -170,7 +196,7 @@ describe('buildForHardware()', () => {
     ].join('\n');
     const spawn = makeSpawn(0, regionOutput);
     const channel = makeChannel();
-    await buildForHardware('/project', makeDiagnostics(), channel, { spawn });
+    await buildForHardware('/project', makeDiagnostics(), channel, { makefileExists: async () => true, spawn });
 
     const lines = (channel.appendLine as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
     expect(lines.some((l: string) => l.includes('Memory region usage'))).toBe(true);
@@ -184,7 +210,7 @@ describe('buildForHardware()', () => {
       '       FLASH:        100 KB       128 KB     78.13%',
     ].join('\n');
     const spawn = makeSpawn(0, regionOutput);
-    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { makefileExists: async () => true, spawn });
 
     expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
       expect.stringContaining('FLASH'),
@@ -197,7 +223,7 @@ describe('buildForHardware()', () => {
       '       FLASH:         10 KB       128 KB      7.81%',
     ].join('\n');
     const spawn = makeSpawn(0, regionOutput);
-    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { makefileExists: async () => true, spawn });
 
     expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
   });
@@ -208,7 +234,7 @@ describe('buildForHardware()', () => {
       "arm-none-eabi-ld: region `FLASH' overflowed by 1234 bytes",
     ].join('\n');
     const spawn = makeSpawn(1, overflowOutput);
-    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { makefileExists: async () => true, spawn });
 
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringMatching(/FLASH.*overflowed by 1234 bytes/),
@@ -218,7 +244,7 @@ describe('buildForHardware()', () => {
   it('shows a fallback overflow message when the precise pattern does not match (FR-HW-5b)', async () => {
     const overflowOutput = 'arm-none-eabi-ld: some future wording that mentions the region overflowed differently';
     const spawn = makeSpawn(1, overflowOutput);
-    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { makefileExists: async () => true, spawn });
 
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining("couldn't be parsed precisely"),
@@ -234,7 +260,7 @@ describe('buildForHardware()', () => {
       '       SDRAM:         10 MB        64 MB     15.63%',
     ].join('\n');
     const spawn = makeSpawn(0, regionOutput);
-    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { makefileExists: async () => true, spawn });
 
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('SDRAM'),
@@ -250,7 +276,7 @@ describe('buildForHardware()', () => {
       '       SDRAM:         10 MB        64 MB     15.63%',
     ].join('\n');
     const spawn = makeSpawn(0, regionOutput);
-    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { makefileExists: async () => true, spawn });
 
     expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
     expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
@@ -265,7 +291,7 @@ describe('buildForHardware()', () => {
       '       SDRAM:          0 GB        64 MB      0.00%',
     ].join('\n');
     const spawn = makeSpawn(0, regionOutput);
-    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { makefileExists: async () => true, spawn });
 
     expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
   });
@@ -277,7 +303,7 @@ describe('buildForHardware()', () => {
       '       SDRAM:         10 MB        64 MB     15.63%',
     ].join('\n');
     const spawn = makeSpawn(0, regionOutput);
-    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { makefileExists: async () => true, spawn });
 
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('SDRAM'),
@@ -299,7 +325,7 @@ describe('buildForHardware()', () => {
     );
 
     const spawn = makeSpawn(0);
-    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { makefileExists: async () => true, spawn });
 
     expect(vscode.window.showQuickPick).toHaveBeenCalledOnce();
     expect(update).toHaveBeenCalledWith('hardwareVariant', '65mb-sdram', vscode.ConfigurationTarget.WorkspaceFolder);
@@ -316,7 +342,7 @@ describe('buildForHardware()', () => {
     });
 
     const spawn = makeSpawn(0);
-    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { makefileExists: async () => true, spawn });
 
     expect(vscode.window.showQuickPick).not.toHaveBeenCalled();
   });
@@ -334,7 +360,7 @@ describe('buildForHardware()', () => {
     (vscode.window.showQuickPick as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
 
     const spawn = makeSpawn(0);
-    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { spawn });
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { makefileExists: async () => true, spawn });
 
     expect(update).not.toHaveBeenCalled();
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
@@ -360,7 +386,7 @@ describe('buildForHardware()', () => {
     }) as unknown as typeof import('child_process').spawn;
 
     const diagnostics = makeDiagnostics();
-    await buildForHardware('/project', diagnostics, makeChannel(), { spawn });
+    await buildForHardware('/project', diagnostics, makeChannel(), { makefileExists: async () => true, spawn });
 
     expect(diagnostics.set).toHaveBeenCalled();
     const setCall = (diagnostics.set as ReturnType<typeof vi.fn>).mock.calls[0];

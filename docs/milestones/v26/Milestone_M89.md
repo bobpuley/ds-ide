@@ -22,7 +22,7 @@ A first-time user still meets four rough edges that M85 did not cover: a missing
 
 ---
 
-### [ ] feat: verify the Arm toolchain and dfu-util messages for real (FR-PRE-2)
+### [x] feat: verify the Arm toolchain and dfu-util messages for real (FR-PRE-2)
 
 **Affected files:** `src/hardware/toolchain.ts`, `src/commands/hardware-build.ts`, `src/commands/dfu-flash.ts`, `src/test/unit/hardware/toolchain.test.ts`, `src/test/unit/commands/`
 
@@ -33,7 +33,7 @@ A first-time user still meets four rough edges that M85 did not cover: a missing
 
 ---
 
-### [ ] feat: Build for Hardware checks for a Makefile first (FR-PRE-3)
+### [x] feat: Build for Hardware checks for a Makefile first (FR-PRE-3)
 
 **Affected files:** `src/commands/hardware-build.ts`, `src/test/unit/commands/hardware-build.test.ts`
 
