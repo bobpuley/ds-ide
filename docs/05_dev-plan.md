@@ -1,4 +1,6 @@
-# 05 — Development Plan (v25)
+> **v26 complete** — archived to `docs/v26/` on 2026-11-14. This file now seeds v27 planning.
+
+# 05 — Development Plan (v27)
 
 > **v1 complete** — M0–M7 released (0.1.0–0.1.7), all ACs green.
 > Archived: [`docs/v1/`](v1/).
@@ -71,8 +73,11 @@
 >
 > **v24 complete** — M73–M76 released (0.24.0–0.24.3), all ACs green.
 > Archived: [`docs/v24/`](v24/).
+>
+> **v26 complete** — M85–M91 released (0.24.4–0.25.0), all ACs green.
+> Archived: [`docs/v26/`](v26/).
 
-*v25 milestones not yet planned.*
+*v27 milestones not yet planned.*
 
 ---
 
@@ -208,24 +213,11 @@ Full registry in [`docs/v23/05_dev-plan.md`](v23/05_dev-plan.md).
 M73 Reachability · M74 Editor Polish · M75 Scope Toolbar Popovers · M76 Input Generators.
 Full registry in [`docs/v24/05_dev-plan.md`](v24/05_dev-plan.md).
 
-### v26 (0.24.4–0.25.0) — released
+### v26 (0.24.4–0.25.0) — archived in `docs/v26/`
 
-| ID  | Name                          | Status       | Version  | File                                                 |
-|-----|-------------------------------|--------------|----------|------------------------------------------------------|
-| M85 | First-Run Experience Fixes    | **released** | 0.24.4   | [Milestone_M85.md](milestones/v26/Milestone_M85.md)  |
-| M86 | Example Curation              | **released** | 0.24.5   | [Milestone_M86.md](milestones/v26/Milestone_M86.md)  |
-| M87 | README Polish                 | **released** | 0.24.6   | [Milestone_M87.md](milestones/v26/Milestone_M87.md)  |
-| M88 | Licensing                     | **released** | 0.24.7   | [Milestone_M88.md](milestones/v26/Milestone_M88.md)  |
-| M89 | First-Run Polish II           | **released** | 0.24.8   | [Milestone_M89.md](milestones/v26/Milestone_M89.md)  |
-| M90 | Marketplace Readiness         | **released** | 0.24.9   | [Milestone_M90.md](milestones/v26/Milestone_M90.md)  |
-| M91 | First Public Preview Release  | **released** | 0.25.0   | [Milestone_M91.md](milestones/v26/Milestone_M91.md)  |
+M85 First-Run Experience Fixes · M86 Example Curation · M87 README Polish · M88 Licensing · M89 First-Run Polish II · M90 Marketplace Readiness · M91 First Public Preview Release.
+Full registry in [`docs/v26/05_dev-plan.md`](v26/05_dev-plan.md).
 
-Source: intake session, 2026-11-11 (fresh-profile install test for the first public preview; see `docs/release_plan.md`). Numbered M85/v26 because the parked Windows work on `feat/windows-support` already uses v25 and M77–M84.
+### v27 (TBD) — planned
 
-M86 source: intake session, 2026-11-13 (curating the shipped examples for the first public preview; see `docs/release_plan.md`). Same effort as M85, so it joins v26 as a patch version.
-
-M87 source: intake session, 2026-11-13 (README polish for the first public preview; see `docs/release_plan.md`). Same effort as M85/M86, so it joins v26 as a patch version.
-
-M88 source: intake session, 2026-11-13 (relicense to PolyForm Shield 1.0.0 before the repository is made public; see `docs/release_plan.md`). Same effort as M85 to M87, so it joins v26 as a patch version.
-
-M89 to M91 source: intake session, 2026-11-14 (the remaining first-public-preview work from `docs/release_plan.md`). M91 is the release itself: version `0.25.0` (a Marketplace pre-release, `"preview": true`).
+*(no milestones yet)*
