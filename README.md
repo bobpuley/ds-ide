@@ -334,4 +334,10 @@ Validation errors in `controllers.yaml` are reported as VS Code diagnostics in t
 
 ## License
 
-MIT
+Daisy IDE is source-available under the [PolyForm Shield License 1.0.0](LICENSE).
+
+- **Use it for anything**, including developing and selling your own effects. What you build with it belongs to you.
+- **You may not use it to provide a product that competes with Daisy IDE** itself, for example by redistributing or hosting it as your own tool. That needs a commercial agreement: open a ["Commercial licence enquiry"](https://github.com/bobpuley/ds-ide/issues/new?template=commercial-licence.yml) issue (please keep confidential details out of it).
+- Third-party components keep their own licences, listed in [LICENSES.md](LICENSES.md).
+
+The text in [LICENSE](LICENSE) is what governs; this summary is not legal advice.

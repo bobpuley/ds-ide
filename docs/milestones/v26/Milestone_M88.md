@@ -32,7 +32,7 @@ The repository's licence files contradict each other: `LICENSE` is GPL-3.0 while
 
 ---
 
-### [ ] docs: explain the licence in plain words in the README (FR-LIC-3)
+### [x] docs: explain the licence in plain words in the README (FR-LIC-3)
 
 **Affected files:** `README.md`
 
