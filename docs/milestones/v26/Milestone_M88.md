@@ -65,7 +65,7 @@ The repository's licence files contradict each other: `LICENSE` is GPL-3.0 while
 
 ---
 
-### [ ] chore: resolve the outside contribution, PR #1 (FR-LIC-6)
+### [x] chore: resolve the outside contribution, PR #1 (FR-LIC-6)
 
 PR #1 (`kefflash`, `a397e28`, test-only Windows fixes) was contributed to a repository licensed GPL-3.0, so it is GPL-3.0 and cannot be relicensed without the contributor's consent. Owner task.
 
@@ -74,3 +74,5 @@ PR #1 (`kefflash`, `a397e28`, test-only Windows fixes) was contributed to a repo
 **DoD:**
 - either the contributor's written consent to relicensing under PolyForm Shield 1.0.0 is obtained (a comment on PR #1 is enough) and its link recorded in `LICENSES.md`, or the owner rewrites the affected lines so none of the contributor's remain, and a commit says so
 - the repository is not made public until this is done
+
+> Resolution (2026-11-14): the owner decided no consent is needed (the contribution is a small, test-only change which they reviewed and merged themselves) and accepts the residual risk that the contributor keeps copyright in those lines under GPL-3.0. Not legal advice; a lawyer's review (see FR-LIC-5) should cover it.
