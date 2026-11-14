@@ -10,7 +10,7 @@ The repository's licence files contradict each other: `LICENSE` is GPL-3.0 while
 
 ## Sprint Tasks
 
-### [ ] docs: adopt PolyForm Shield 1.0.0 in LICENSE, package.json and LICENSES.md (FR-LIC-1)
+### [x] docs: adopt PolyForm Shield 1.0.0 in LICENSE, package.json and LICENSES.md (FR-LIC-1)
 
 **Affected files:** `LICENSE`, `package.json`, `LICENSES.md`
 
@@ -60,6 +60,8 @@ The repository's licence files contradict each other: `LICENSE` is GPL-3.0 while
 **DoD:**
 - `CONTRIBUTING.md` says a contribution is licensed under the project's licence (named, linked to `LICENSE`) and that the contributor also grants the maintainer the right to license it under other terms, including commercial ones
 - the wording is short and plain, and the milestone notes it should get a lawyer's review
+
+> Note: the contribution wording, and the commercial terms behind the Shield licence, are not legal advice; have a lawyer review them before relying on them.
 
 ---
 

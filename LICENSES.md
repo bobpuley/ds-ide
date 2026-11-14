@@ -6,7 +6,9 @@ This file tracks the licenses of components bundled with or used by ds-ide.
 
 ## ds-ide (this project)
 
-MIT License — Copyright (c) Daisy IDE contributors.
+**License:** PolyForm Shield License 1.0.0 (SPDX: `PolyForm-Shield-1.0.0`)  
+**Copyright:** Marco Pugliese  
+**Text:** see [LICENSE](LICENSE)
 
 ---
 
