@@ -31,7 +31,7 @@ Everything the first public preview needs is built (M85 to M90); this milestone 
 
 ---
 
-### [ ] chore: tag 0.25.0 and push (FR-RLS-3)
+### [x] chore: tag 0.25.0 and push (FR-RLS-3)
 
 **Affected files:** none (git)
 
