@@ -3,6 +3,17 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.24.7 — 2026-11-14
+
+**Licensing** *(FR-LIC-1 to FR-LIC-6, M88)*
+
+- **FR-LIC-1** — Daisy IDE is now licensed under the PolyForm Shield License 1.0.0 everywhere: `LICENSE` (the official text plus a `Required Notice:` line), `package.json` and `LICENSES.md`. Before, `LICENSE` said GPL-3.0 while the metadata said MIT.
+- **FR-LIC-2** — A test keeps `LICENSE`, `package.json`, `LICENSES.md`, the README and `CONTRIBUTING.md` in agreement.
+- **FR-LIC-3** — The README's License section says in plain words: use it for anything, what you build is yours, competing with the IDE needs a commercial agreement.
+- **FR-LIC-4** — A "Commercial licence enquiry" issue template is the route for such agreements.
+- **FR-LIC-5** — `CONTRIBUTING.md` sets the terms for contributions.
+- **FR-LIC-6** — The one outside contribution (PR #1, test-only) was settled by the owner's decision; see the M88 milestone note.
+
 ## 0.24.6 — 2026-11-13
 
 **README polish** *(FR-DOC-1 to FR-DOC-7, M87)*
