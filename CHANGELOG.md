@@ -3,6 +3,16 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.24.8 — 2026-11-14
+
+**First-run polish II** *(FR-PRE-1 to FR-PRE-5, M89)*
+
+- **FR-PRE-1** — Without the Xcode Command Line Tools the emulator build stops with "Xcode Command Line Tools not found. Run `xcode-select --install` and try again." (notification and output channel, no empty Show Problems button). The `lldb-dap` message names the same command.
+- **FR-PRE-2** — The missing Arm toolchain and missing `dfu-util` hints now also appear in the output channel, not only in a notification.
+- **FR-PRE-3** — **Build for Hardware** checks for a `Makefile` first and says "No Makefile in this project. Build for Hardware needs a libDaisy-style project; see Limitations in the README." instead of letting `make` fail.
+- **FR-PRE-4** — **Deploy to Emulator** in a fresh window uses the project's existing build, or says "Nothing built yet. Run Daisy IDE: Run Daisy Effect, or Build for Emulator first." The Scope and Controls Editor now open only after a successful deploy.
+- **FR-PRE-5** — `engines.vscode` is `^1.140.0` (the version the native MIDI addon was built and tested for), matching the README; a test keeps them equal. With the addon unable to load, the on-screen MIDI keyboard keeps working (now covered by a test).
+
 ## 0.24.7 — 2026-11-14
 
 **Licensing** *(FR-LIC-1 to FR-LIC-6, M88)*
