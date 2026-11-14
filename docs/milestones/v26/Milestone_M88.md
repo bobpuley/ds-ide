@@ -53,7 +53,7 @@ The repository's licence files contradict each other: `LICENSE` is GPL-3.0 while
 
 ---
 
-### [ ] docs: terms for contributions (FR-LIC-5)
+### [x] docs: terms for contributions (FR-LIC-5)
 
 **Affected files:** `CONTRIBUTING.md`
 
