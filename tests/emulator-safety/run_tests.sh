@@ -38,6 +38,7 @@ SOURCES=(
     "${RUNTIME_DIR}/session_player.cpp"
     "${RUNTIME_DIR}/session_recorder.cpp"
     "${RUNTIME_DIR}/ipc_server.cpp"
+    "${RUNTIME_DIR}/input_generators.cpp"
     "${SHIM_SRC}/midi_event.cpp"
     "${SHIM_SRC}/midi_usb_handler.cpp"
     "${SHIM_SRC}/midi_uart_handler.cpp"
