@@ -1,7 +1,7 @@
 # M91 — First Public Preview Release
 
 **Version:** 0.25.0
-**Status:** in progress
+**Status:** released
 **Source:** intake session, 2026-11-14 (first public preview; `docs/release_plan.md`)
 
 ## Goal
@@ -41,7 +41,7 @@ Everything the first public preview needs is built (M85 to M90); this milestone 
 
 ---
 
-### [ ] chore: publish the preview, guided (FR-RLS-4)
+### [x] chore: publish the preview, guided (FR-RLS-4)
 
 Owner task, one step at a time with a check after each; the assistant does not publish.
 
@@ -55,3 +55,7 @@ Owner task, one step at a time with a check after each; the assistant does not p
 - the preview is announced, with where to send feedback
 
 > Verification record (2026-11-14, release commit `9c2795a`, VSIX `ds-ide-darwin-arm64-0.25.0.vsix`): `npm run lint`, `npm test` (103 files, 1819 tests), `npm run test:e2e` (4 passing), all 19 emulator runners (`tests/*/run_*.sh`, `tests/runtime/build_and_test.sh`), `npm run package` and `npm run verify:package` pass. The run found and fixed three defects, none introduced by M89 except the fixture `Makefile`: the emulator-safety runner did not link `input_generators.cpp`; `EmulatorManager` captured `child_process.spawn` at construction, so the e2e stub was never seen once the extension activated on folder open; and the e2e spec expected the bare `cmake` command after M85 resolved its full path. Clean-profile walk-through (VSIX installed in a fresh profile, `controls-tour`, `midi-synth-oled`, `controls-sd-logger`, Preview tag on the details page) and the crash soak (about ten open/close cycles of the example folders): all fine, no `crashed with code` lines.
+
+> Publish record (2026-11-14): published from the manual `publish` workflow with Trusted Publishing (OIDC, environment `Production`, no stored token; the classic PAT route was skipped because Azure DevOps retires global PATs on 2026-12-01) as `daisy-ide.ds-ide` v0.25.0 (darwin-arm64, pre-release). The tag `0.25.0` was moved once, before publishing, from `64c691b` to `925e698` so that it includes the `node-abi` dev-dependency fix the first CI run found (a dry run on `main` was green first). Verified: the Marketplace page (README and images, PolyForm Shield, version, Preview badge) and an install from the Marketplace into a clean profile. Open VSX decision: not for the first preview; recorded in `docs/01_input-ideas.md` and `docs/02_assumptions-and-risks.md`, to be revisited after feedback.
+
+> Announcement (owner follow-up, 2026-11-14): a draft exists; the owner announces on LinkedIn first and checks for Daisy Seed communities (Electro-Smith forum, Discord) afterwards. Not a release blocker.

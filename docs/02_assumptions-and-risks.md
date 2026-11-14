@@ -84,3 +84,7 @@
 > ⚠️ RISK: making the repository public cannot be undone in practice (copies, forks, caches), so the history and tracked files are reviewed for secrets and private material before the switch, and the licence and the outside contribution (M88) are settled first.
 
 > ⚠️ RISK: publishing to the Marketplace and making the repository public are outward-facing actions. They are done by the owner, step by step, with a verification after each; the assistant does not publish or change repository visibility.
+
+> ⚠️ ASSUMPTION: the first preview is published to the Visual Studio Marketplace only (owner decision, 2026-11-14), not to Open VSX. Forks such as VSCodium and Cursor bundle other Electron versions than VS Code 1.140, so the native `midi` addon (built for Electron 43.7.3) would not load there (the extension degrades gracefully, but host MIDI would be missing), and `engines.vscode` is tied to VS Code's own versions. Revisit after the preview feedback.
+
+> ⚠️ ASSUMPTION: releases are published from the manual `publish` GitHub Actions workflow with Trusted Publishing (OIDC) under the `Production` environment, with no stored token; the Marketplace policy for publisher `daisy-ide` must keep matching the repository owner, repository, workflow file name `publish.yml` and environment name exactly.
