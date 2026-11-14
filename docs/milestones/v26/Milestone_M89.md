@@ -1,7 +1,7 @@
 # M89 — First-Run Polish II
 
 **Version:** 0.24.8
-**Status:** in progress
+**Status:** released
 **Source:** intake session, 2026-11-14 (first public preview; `docs/release_plan.md`)
 
 ## Goal

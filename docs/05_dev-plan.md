@@ -216,7 +216,7 @@ Full registry in [`docs/v24/05_dev-plan.md`](v24/05_dev-plan.md).
 | M86 | Example Curation              | **released**  | 0.24.5  | [Milestone_M86.md](milestones/v26/Milestone_M86.md) |
 | M87 | README Polish                 | **released**  | 0.24.6  | [Milestone_M87.md](milestones/v26/Milestone_M87.md) |
 | M88 | Licensing                     | **released**  | 0.24.7  | [Milestone_M88.md](milestones/v26/Milestone_M88.md) |
-| M89 | First-Run Polish II           | in progress | 0.24.8  | [Milestone_M89.md](milestones/v26/Milestone_M89.md) |
+| M89 | First-Run Polish II           | released | 0.24.8  | [Milestone_M89.md](milestones/v26/Milestone_M89.md) |
 | M90 | Marketplace Readiness         | planned       | 0.24.9  | [Milestone_M90.md](milestones/v26/Milestone_M90.md) |
 | M91 | First Public Preview Release  | planned       | 0.25.0  | [Milestone_M91.md](milestones/v26/Milestone_M91.md) |
 
