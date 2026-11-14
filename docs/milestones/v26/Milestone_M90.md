@@ -46,7 +46,7 @@ The extension works and the README is ready, but the package metadata has never 
 
 ---
 
-### [ ] chore: tidy the repository before it is public (FR-MKT-5)
+### [x] chore: tidy the repository before it is public (FR-MKT-5)
 
 Owner task for the deletions: list the files, the owner removes them.
 
