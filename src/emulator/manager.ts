@@ -121,6 +121,10 @@ export class CompilerNotFoundError extends Error {
   }
 }
 
+// FR-PRE-4: shown when Deploy finds no build to deploy.
+export const NOTHING_BUILT_MESSAGE =
+  'Nothing built yet. Run Daisy IDE: Run Daisy Effect, or Build for Emulator first.';
+
 function isSpawnNotFound(err: unknown): boolean {
   return err instanceof Error && (err as NodeJS.ErrnoException).code === 'ENOENT';
 }
@@ -134,6 +138,7 @@ export interface EmulatorManagerDeps {
   execFile?: typeof cp.execFile;
   readFile?: typeof fs.promises.readFile;
   rm?: typeof fs.promises.rm;
+  access?: typeof fs.promises.access;
 }
 
 // FR-TRN-1: emitted once per emulator that became ready, when its process
@@ -170,6 +175,7 @@ export class EmulatorManager extends EventEmitter {
   private readonly execFile: typeof cp.execFile;
   private readonly readFile: typeof fs.promises.readFile;
   private readonly rm: typeof fs.promises.rm;
+  private readonly access: typeof fs.promises.access;
   private readonly detectCMake: () => Promise<string | undefined>;
   private readonly detectCompiler: () => Promise<string | undefined>;
 
@@ -181,6 +187,7 @@ export class EmulatorManager extends EventEmitter {
     this.execFile = deps.execFile ?? cp.execFile;
     this.readFile = deps.readFile ?? fs.promises.readFile;
     this.rm = deps.rm ?? fs.promises.rm;
+    this.access = deps.access ?? fs.promises.access;
     this.detectCMake = deps.detectCMake ?? (() => detectCMake());
     this.detectCompiler = deps.detectCompiler ?? (() => detectCxxCompiler());
   }
@@ -226,9 +233,24 @@ export class EmulatorManager extends EventEmitter {
     }
   }
 
+  // FR-PRE-4: a fresh window has built nothing itself, but the project may hold
+  // a build from an earlier session. Uses it when it exists (or when this
+  // session already built this project); never another project's build.
+  async adoptExistingBuild(projectRoot: string): Promise<boolean> {
+    const buildDir = path.join(projectRoot, '.ds-ide', 'build');
+    try {
+      await this.access(path.join(buildDir, 'effect_emu'));
+    } catch {
+      return this.buildDir !== '' && this.projectRoot === projectRoot;
+    }
+    this.projectRoot = projectRoot;
+    this.buildDir = buildDir;
+    return true;
+  }
+
   deploy(onOutput: (line: string) => void, token?: CancellationToken): Promise<void> {
     if (!this.buildDir) {
-      return Promise.reject(new Error('Build before deploying'));
+      return Promise.reject(new Error(NOTHING_BUILT_MESSAGE));
     }
     // Prevent two simultaneous effect_emu processes: coalesce on the in-flight promise.
     if (this.deployLock) return this.deployLock;

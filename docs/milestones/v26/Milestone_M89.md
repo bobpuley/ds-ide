@@ -44,7 +44,7 @@ A first-time user still meets four rough edges that M85 did not cover: a missing
 
 ---
 
-### [ ] fix: Deploy to Emulator works, or explains itself, after a restart (FR-PRE-4)
+### [x] fix: Deploy to Emulator works, or explains itself, after a restart (FR-PRE-4)
 
 **Affected files:** `src/emulator/manager.ts`, `src/extension.ts`, `src/test/unit/emulator/manager.test.ts`, `src/test/unit/extension.test.ts`
 

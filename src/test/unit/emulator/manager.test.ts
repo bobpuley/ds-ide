@@ -386,8 +386,48 @@ describe('EmulatorManager', () => {
   });
 
   describe('deploy()', () => {
-    it('throws if build was never called', async () => {
-      await expect(manager.deploy(() => undefined)).rejects.toThrow('Build before deploying');
+    it('throws if build was never called, saying what to do (FR-PRE-4)', async () => {
+      await expect(manager.deploy(() => undefined)).rejects.toThrow(
+        'Nothing built yet. Run Daisy IDE: Run Daisy Effect, or Build for Emulator first.');
+    });
+
+    describe('adoptExistingBuild() (FR-PRE-4)', () => {
+      const exeAt = (root: string): string => `${root}/.ds-ide/build/effect_emu`;
+      const mgrWithExes = (...exes: string[]): EmulatorManager => new EmulatorManager({
+        detectCMake: async () => 'cmake',
+        detectCompiler: async () => '/usr/bin/clang++',
+        spawn: spawnMock as unknown as typeof cp.spawn,
+        ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+        access: (async (p: string) => { if (!exes.includes(p)) throw new Error('ENOENT'); }) as unknown as typeof fs.promises.access,
+      });
+
+      it('uses <project>/.ds-ide/build/effect_emu from an earlier session, so deploy works in a fresh window', async () => {
+        const m = mgrWithExes(exeAt('/proj'));
+        expect(await m.adoptExistingBuild('/proj')).toBe(true);
+        await m.deploy(() => undefined);
+        const emuCall = spawnMock.mock.calls.find((c) => String(c[0]).endsWith('effect_emu'))!;
+        expect(emuCall[0]).toBe(exeAt('/proj'));
+        expect(emuCall[2].cwd).toBe('/proj');
+      });
+
+      it('reports false, and deploy still refuses, when no build exists for the project', async () => {
+        const m = mgrWithExes();
+        expect(await m.adoptExistingBuild('/proj')).toBe(false);
+        await expect(m.deploy(() => undefined)).rejects.toThrow(/Nothing built yet/);
+      });
+
+      it("does not deploy another project's build", async () => {
+        const m = mgrWithExes();
+        await m.build({ projectRoot: '/a', effectSrc: '/a/e.cpp', emulatorSrc: '/ext/emulator' }, () => undefined);
+        expect(await m.adoptExistingBuild('/b')).toBe(false);
+      });
+
+      it('keeps this session\'s own build of the project', async () => {
+        const m = mgrWithExes();
+        await m.build({ projectRoot: '/a', effectSrc: '/a/e.cpp', emulatorSrc: '/ext/emulator' }, () => undefined);
+        expect(await m.adoptExistingBuild('/a')).toBe(true);
+      });
     });
 
     it('spawns effect_emu after a successful build', async () => {
