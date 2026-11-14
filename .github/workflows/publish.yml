@@ -1,6 +1,7 @@
 # Publishes a tagged release to the Visual Studio Marketplace (FR-RLS-4).
 #
-# Manual only: run it from the Actions tab and give the tag to publish. It uses
+# Manual only: run it from the Actions tab and give the tag to publish. Leave
+# dry_run on to check that the whole pipeline works without publishing. It uses
 # Trusted Publishing (OIDC): no token or secret is stored anywhere. The matching
 # policy is set up on the Marketplace publisher page (Trusted Publishing:
 # repository owner, repository, and this workflow's filename, `publish.yml`).
@@ -14,9 +15,14 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to publish, for example 0.25.0
+        description: Release tag to publish, for example 0.25.0 (a branch name such as main works for a dry run)
         required: true
         type: string
+      dry_run:
+        description: Build, test and verify only; do not publish
+        required: true
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -39,4 +45,5 @@ jobs:
       - run: npm test
       - run: npm run package -- --pre-release
       - run: npm run verify:package
-      - run: npx vsce publish --oidc --packagePath ds-ide-darwin-arm64-*.vsix
+      - if: ${{ !inputs.dry_run }}
+        run: npx vsce publish --oidc --packagePath ds-ide-darwin-arm64-*.vsix

@@ -32,4 +32,10 @@ describe('publish workflow (FR-RLS-4)', () => {
     expect(wf.indexOf('verify:package')).toBeGreaterThan(-1);
     expect(wf.indexOf('verify:package')).toBeLessThan(wf.indexOf('vsce publish'));
   });
+
+  it('has a dry run that skips only the publish step, and it defaults to on', () => {
+    expect(wf).toMatch(/dry_run:[\s\S]*?default: true/);
+    expect(wf).toContain('if: ${{ !inputs.dry_run }}');
+    expect(wf.indexOf('!inputs.dry_run')).toBeLessThan(wf.indexOf('vsce publish'));
+  });
 });
