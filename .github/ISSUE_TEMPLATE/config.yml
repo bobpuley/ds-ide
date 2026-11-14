@@ -1,1 +1,5 @@
 blank_issues_enabled: true
+contact_links:
+  - name: Questions about using Daisy IDE
+    url: https://github.com/bobpuley/ds-ide#readme
+    about: The README covers the quick start, the examples, known issues and limitations.

@@ -22,7 +22,7 @@ The extension works and the README is ready, but the package metadata has never 
 
 ---
 
-### [ ] docs: issue templates for bug reports and feature requests (FR-MKT-2)
+### [x] docs: issue templates for bug reports and feature requests (FR-MKT-2)
 
 **Affected files:** `.github/ISSUE_TEMPLATE/bug-report.yml`, `.github/ISSUE_TEMPLATE/feature-request.yml`, `.github/ISSUE_TEMPLATE/config.yml`
 
