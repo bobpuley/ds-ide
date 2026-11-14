@@ -20,7 +20,7 @@ Everything the first public preview needs is built (M85 to M90); this milestone 
 
 ---
 
-### [ ] test: full verification on the release commit (FR-RLS-2)
+### [x] test: full verification on the release commit (FR-RLS-2)
 
 **Affected files:** none (verification); results recorded in this file
 
@@ -53,3 +53,5 @@ Owner task, one step at a time with a check after each; the assistant does not p
 - the Marketplace page is verified (README and images, licence, version, Preview badge) and the extension is installed from the Marketplace in a clean profile
 - the Open VSX decision is made and recorded
 - the preview is announced, with where to send feedback
+
+> Verification record (2026-11-14, release commit `9c2795a`, VSIX `ds-ide-darwin-arm64-0.25.0.vsix`): `npm run lint`, `npm test` (103 files, 1819 tests), `npm run test:e2e` (4 passing), all 19 emulator runners (`tests/*/run_*.sh`, `tests/runtime/build_and_test.sh`), `npm run package` and `npm run verify:package` pass. The run found and fixed three defects, none introduced by M89 except the fixture `Makefile`: the emulator-safety runner did not link `input_generators.cpp`; `EmulatorManager` captured `child_process.spawn` at construction, so the e2e stub was never seen once the extension activated on folder open; and the e2e spec expected the bare `cmake` command after M85 resolved its full path. Clean-profile walk-through (VSIX installed in a fresh profile, `controls-tour`, `midi-synth-oled`, `controls-sd-logger`, Preview tag on the details page) and the crash soak (about ten open/close cycles of the example folders): all fine, no `crashed with code` lines.
