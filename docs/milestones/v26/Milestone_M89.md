@@ -56,7 +56,7 @@ A first-time user still meets four rough edges that M85 did not cover: a missing
 
 ---
 
-### [ ] chore: set engines.vscode to the tested version and check the MIDI addon failing to load (FR-PRE-5)
+### [x] chore: set engines.vscode to the tested version and check the MIDI addon failing to load (FR-PRE-5)
 
 **Affected files:** `package.json`, `README.md`, `CONTRIBUTING.md`, `src/test/unit/build/package-metadata.test.ts`, `src/midi/`
 

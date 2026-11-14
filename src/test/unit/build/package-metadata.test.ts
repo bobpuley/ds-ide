@@ -12,6 +12,14 @@ describe('package.json marketplace metadata (FR-QA-EXT-6)', () => {
     expect(pkg.version).toBe(latest);
   });
 
+  it('engines.vscode is the tested version, and the README and CONTRIBUTING say the same (FR-PRE-5)', () => {
+    expect(pkg.engines.vscode).toBe('^1.140.0');
+    const readme = fs.readFileSync(path.join(__dirname, '../../../../README.md'), 'utf8');
+    expect(readme).toContain('**VS Code** 1.140 or later');
+    const contributing = fs.readFileSync(path.join(__dirname, '../../../../CONTRIBUTING.md'), 'utf8');
+    expect(contributing).toMatch(/engines/);
+  });
+
   it('every viewsWelcome command exists in contributes.commands (FR-RCH-2)', () => {
     const ids = new Set((pkg.contributes?.commands ?? []).map((c: { command: string }) => c.command));
     const welcome = pkg.contributes?.viewsWelcome ?? [];

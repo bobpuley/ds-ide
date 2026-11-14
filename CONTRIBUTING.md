@@ -29,7 +29,7 @@ npm run package            # builds, rebuilds the native midi addon for Electron
 npm run verify:package     # checks the package contents, the target platform and the native addon's ABI
 ```
 
-The package contains a native addon (`midi.node`) that must match the Electron version inside VS Code. The version is pinned in `scripts/electron-target-version.txt`; after a VS Code update that changes Electron, update the pin and run `npm run rebuild:native`.
+The package contains a native addon (`midi.node`) that must match the Electron version inside VS Code. The version is pinned in `scripts/electron-target-version.txt`; after a VS Code update that changes Electron, update the pin, run `npm run rebuild:native` and revisit `engines.vscode` in `package.json` (it names the VS Code version the addon was built and tested for, currently 1.140).
 
 ## Tests
 
