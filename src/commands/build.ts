@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { EmulatorManager, BuildOptions, CMakeNotFoundError } from '../emulator/manager';
+import { EmulatorManager, BuildOptions, CMakeNotFoundError, CompilerNotFoundError } from '../emulator/manager';
 import { parseBuildLine, applyDiagnostics, ParsedDiagnostic } from '../diagnostics/build-diagnostics';
 import { detectNonPortableSymbol } from '../diagnostics/non-portable';
 import { resolveConfiguredEffectSource } from './find-effect-source';
@@ -71,7 +71,7 @@ export async function buildForEmulator(
     return true;
   } catch (err) {
     if (diagnostics) applyDiagnostics(diagnostics, parsed, projectRoot);
-    if (err instanceof CMakeNotFoundError) {
+    if (err instanceof CMakeNotFoundError || err instanceof CompilerNotFoundError) {
       // No compiler output exists for this failure, so the channel would
       // otherwise stay empty.
       channel.appendLine(err.message);

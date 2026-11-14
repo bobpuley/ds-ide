@@ -1,7 +1,7 @@
 # M89 — First-Run Polish II
 
 **Version:** 0.24.8
-**Status:** planned
+**Status:** in progress
 **Source:** intake session, 2026-11-14 (first public preview; `docs/release_plan.md`)
 
 ## Goal
@@ -10,7 +10,7 @@ A first-time user still meets four rough edges that M85 did not cover: a missing
 
 ## Sprint Tasks
 
-### [ ] feat: say what is missing when the compiler or lldb-dap is not found (FR-PRE-1)
+### [x] feat: say what is missing when the compiler or lldb-dap is not found (FR-PRE-1)
 
 **Affected files:** `src/hardware/toolchain.ts`, `src/emulator/manager.ts`, `src/commands/build.ts`, `src/debug/` (the lldb-dap launch path), `src/test/unit/hardware/toolchain.test.ts`, `src/test/unit/emulator/manager.test.ts`, `src/test/unit/debug/`
 

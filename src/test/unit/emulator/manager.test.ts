@@ -4,7 +4,7 @@ import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { EmulatorManager, workspaceRuntimeDir, killStalePid, CMakeNotFoundError } from '../../../emulator/manager';
+import { EmulatorManager, workspaceRuntimeDir, killStalePid, CMakeNotFoundError, CompilerNotFoundError } from '../../../emulator/manager';
 import { IpcClient } from '../../../emulator/ipc-client';
 import { PROTOCOL_VERSION } from '../../../ipc/protocol-version';
 
@@ -141,6 +141,7 @@ describe('EmulatorManager', () => {
 
     manager = new EmulatorManager({
       detectCMake: async () => 'cmake',
+      detectCompiler: async () => '/usr/bin/clang++',
       spawn: spawnMock as unknown as typeof cp.spawn,
       ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
       mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
@@ -165,6 +166,7 @@ describe('EmulatorManager', () => {
       const spawn = vi.fn(() => makeCmakeProcess(0));
       const mgr = new EmulatorManager({
         detectCMake: async () => '/opt/homebrew/bin/cmake',
+        detectCompiler: async () => '/usr/bin/clang++',
         spawn: spawn as unknown as typeof cp.spawn,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
       });
@@ -179,6 +181,7 @@ describe('EmulatorManager', () => {
       const spawn = vi.fn();
       const mgr = new EmulatorManager({
         detectCMake: async () => undefined,
+        detectCompiler: async () => '/usr/bin/clang++',
         spawn: spawn as unknown as typeof cp.spawn,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
       });
@@ -187,9 +190,24 @@ describe('EmulatorManager', () => {
       expect(spawn).not.toHaveBeenCalled();
     });
 
+    it('fails with CompilerNotFoundError, before CMake, when no C++ compiler is found (FR-PRE-1)', async () => {
+      const spawn = vi.fn();
+      const mgr = new EmulatorManager({
+        detectCMake: async () => 'cmake',
+        detectCompiler: async () => undefined,
+        spawn: spawn as unknown as typeof cp.spawn,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+      });
+      const err = await mgr.build(buildOpts, () => { /* ignore */ }).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(CompilerNotFoundError);
+      expect((err as Error).message).toBe('Xcode Command Line Tools not found. Run `xcode-select --install` and try again.');
+      expect(spawn).not.toHaveBeenCalled();
+    });
+
     it('the CMakeNotFoundError message tells the user how to fix it', async () => {
       const mgr = new EmulatorManager({
         detectCMake: async () => undefined,
+        detectCompiler: async () => '/usr/bin/clang++',
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
       });
       await expect(mgr.build(buildOpts, () => { /* ignore */ })).rejects.toThrow(/CMake not found.*brew install cmake/);
@@ -199,6 +217,7 @@ describe('EmulatorManager', () => {
       const spawn = vi.fn(() => makeEnoentProcess());
       const mgr = new EmulatorManager({
         detectCMake: async () => '/gone/cmake',
+        detectCompiler: async () => '/usr/bin/clang++',
         spawn: spawn as unknown as typeof cp.spawn,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
       });
@@ -209,6 +228,7 @@ describe('EmulatorManager', () => {
       const spawn = vi.fn(() => makeCmakeProcess(2));
       const mgr = new EmulatorManager({
         detectCMake: async () => 'cmake',
+        detectCompiler: async () => '/usr/bin/clang++',
         spawn: spawn as unknown as typeof cp.spawn,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
       });
@@ -263,6 +283,7 @@ describe('EmulatorManager', () => {
       spawnMock = vi.fn(() => makeCmakeProcess(1)) as ReturnType<typeof vi.fn>;
       const mgr = new EmulatorManager({
       detectCMake: async () => 'cmake',
+      detectCompiler: async () => '/usr/bin/clang++',
         spawn: spawnMock as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
@@ -283,6 +304,7 @@ describe('EmulatorManager', () => {
       rmMock = vi.fn().mockResolvedValue(undefined);
       return new EmulatorManager({
       detectCMake: async () => 'cmake',
+      detectCompiler: async () => '/usr/bin/clang++',
         spawn: spawnMock as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
@@ -1132,6 +1154,7 @@ describe('EmulatorManager', () => {
       });
       const failingManager = new EmulatorManager({
       detectCMake: async () => 'cmake',
+      detectCompiler: async () => '/usr/bin/clang++',
         spawn: failingSpawn as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
@@ -1181,6 +1204,7 @@ describe('EmulatorManager', () => {
       });
       const flakyManager = new EmulatorManager({
       detectCMake: async () => 'cmake',
+      detectCompiler: async () => '/usr/bin/clang++',
         spawn: flakySpawn as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,

@@ -116,7 +116,7 @@ describe('DaisyDebugAdapterFactory', () => {
     const descriptor = await factory.createDebugAdapterDescriptor({} as vscode.DebugSession);
     expect(descriptor).toBeUndefined();
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-      expect.stringContaining('lldb-dap not found'),
+      expect.stringMatching(/lldb-dap not found.*xcode-select --install/),
     );
   });
 });

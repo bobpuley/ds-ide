@@ -3,6 +3,9 @@ import {
   detectArmToolchain,
   detectDfuUtil,
   detectCMake,
+  detectCxxCompiler,
+  CXX_COMPILER_NOT_FOUND_MESSAGE,
+  LLDB_DAP_NOT_FOUND_MESSAGE,
   CMAKE_CANDIDATES,
   CMAKE_NOT_FOUND_MESSAGE,
   ARM_GCC_BINARY,
@@ -164,5 +167,41 @@ describe('detectCMake()', () => {
   it('has a not-found message that names CMake and how to install it', () => {
     expect(CMAKE_NOT_FOUND_MESSAGE).toMatch(/CMake not found/);
     expect(CMAKE_NOT_FOUND_MESSAGE).toMatch(/brew install cmake/);
+  });
+});
+
+// ── detectCxxCompiler (FR-PRE-1) ──────────────────────────────────────────────
+
+describe('detectCxxCompiler()', () => {
+  const CLT = '/Library/Developer/CommandLineTools';
+
+  it('returns the compiler inside the developer directory xcode-select reports', async () => {
+    const exec = vi.fn((cmd: string) => cmd === 'xcode-select' ? Promise.resolve(`${CLT}\n`) : Promise.reject(new Error()));
+    const exists = vi.fn((p: string) => Promise.resolve(p === `${CLT}/usr/bin/clang++`));
+    expect(await detectCxxCompiler(exists, exec)).toBe(`${CLT}/usr/bin/clang++`);
+  });
+
+  it('is not fooled by the /usr/bin/clang++ stub that exists without the Command Line Tools', async () => {
+    const exec = vi.fn(() => Promise.reject(new Error('xcode-select: error: no developer tools were found')));
+    const exists = vi.fn((p: string) => Promise.resolve(p === '/usr/bin/clang++'));
+    expect(await detectCxxCompiler(exists, exec)).toBeUndefined();
+  });
+
+  it('falls back to the known Command Line Tools location when xcode-select cannot be run', async () => {
+    const exec = vi.fn(() => Promise.reject(new Error()));
+    const exists = vi.fn((p: string) => Promise.resolve(p === `${CLT}/usr/bin/clang++`));
+    expect(await detectCxxCompiler(exists, exec)).toBe(`${CLT}/usr/bin/clang++`);
+  });
+
+  it('returns undefined when no compiler is found anywhere', async () => {
+    const exec = vi.fn(() => Promise.reject(new Error()));
+    const exists = vi.fn(() => Promise.resolve(false));
+    expect(await detectCxxCompiler(exists, exec)).toBeUndefined();
+  });
+
+  it('has not-found messages that name xcode-select --install', () => {
+    expect(CXX_COMPILER_NOT_FOUND_MESSAGE).toBe(
+      'Xcode Command Line Tools not found. Run `xcode-select --install` and try again.');
+    expect(LLDB_DAP_NOT_FOUND_MESSAGE).toMatch(/lldb-dap not found.*xcode-select --install/);
   });
 });

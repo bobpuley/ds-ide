@@ -56,6 +56,7 @@ vi.mock('../../emulator/manager', () => {
     EmulatorManager: MockEmulatorManager,
     // FR-REL-2: build.ts narrows on this class (`instanceof`).
     CMakeNotFoundError: class CMakeNotFoundError extends Error {},
+    CompilerNotFoundError: class CompilerNotFoundError extends Error {},
     // FR-EXT-2: real implementation is a pure hash of buildDir — safe to reuse
     // directly rather than re-mocking its internals.
     workspaceRuntimeDir: (buildDir: string) => `/tmp/ds-ide-mock-${buildDir.length}`,
