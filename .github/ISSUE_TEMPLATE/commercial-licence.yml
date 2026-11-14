@@ -1,0 +1,28 @@
+name: Commercial licence enquiry
+description: Ask about a commercial agreement for Daisy IDE (competing or redistributing use).
+title: "Commercial licence enquiry"
+labels: ["licensing"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Daisy IDE is free to use, including for developing and selling your own effects.
+        A commercial agreement is only needed to provide a product that competes with Daisy IDE itself
+        (see the License section of the README).
+
+        **This issue is public. Do not post confidential details, prices or personal data.**
+        Say how you would like to be reached and the maintainer will follow up.
+  - type: textarea
+    id: use
+    attributes:
+      label: What would you like to do with Daisy IDE?
+      description: In general terms only.
+    validations:
+      required: true
+  - type: input
+    id: contact
+    attributes:
+      label: How should the maintainer reach you?
+      description: For example a GitHub handle, or a company contact page. Avoid posting a private email address.
+    validations:
+      required: true

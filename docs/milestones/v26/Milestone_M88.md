@@ -42,7 +42,7 @@ The repository's licence files contradict each other: `LICENSE` is GPL-3.0 while
 
 ---
 
-### [ ] docs: a route for commercial agreements (FR-LIC-4)
+### [x] docs: a route for commercial agreements (FR-LIC-4)
 
 **Affected files:** `.github/ISSUE_TEMPLATE/commercial-licence.yml`, `.github/ISSUE_TEMPLATE/config.yml`, `README.md`
 
