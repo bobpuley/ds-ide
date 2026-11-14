@@ -1,7 +1,8 @@
 import * as cp from 'child_process';
+import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { detectArmToolchain, ARM_GCC_INSTALL_HINT } from '../hardware/toolchain';
+import { detectArmToolchain, ARM_GCC_INSTALL_HINT, NO_MAKEFILE_MESSAGE } from '../hardware/toolchain';
 import { createLineSplitter } from '../hardware/line-buffer';
 import { parseBuildLine, applyDiagnostics, ParsedDiagnostic } from '../diagnostics/build-diagnostics';
 import {
@@ -13,7 +14,16 @@ import { promptHardwareVariant } from '../hardware/hardware-variant-prompt';
 
 export interface HardwareBuildDeps {
   spawn?: typeof cp.spawn;
+  // FR-PRE-3: whether the project root holds a Makefile; overridable for tests.
+  makefileExists?: (projectRoot: string) => Promise<boolean>;
 }
+
+const defaultMakefileExists = async (projectRoot: string): Promise<boolean> => {
+  for (const name of ['Makefile', 'makefile', 'GNUmakefile']) {
+    try { await fs.promises.access(`${projectRoot}/${name}`); return true; } catch { /* try next */ }
+  }
+  return false;
+};
 
 // FR-HW-5b: heads-up threshold before a region hard-overflows the next build.
 const NEAR_LIMIT_PCT = 75;
@@ -30,18 +40,29 @@ export async function buildForHardware(
   token?: vscode.CancellationToken,
 ): Promise<boolean> {
   const spawnFn = deps.spawn ?? cp.spawn;
+  const channel = outputChannel;
+
+  // FR-PRE-3: without a Makefile `make` only says "No targets specified and no
+  // makefile found" — say what that means for this project instead.
+  if (!await (deps.makefileExists ?? defaultMakefileExists)(projectRoot)) {
+    channel.show();
+    channel.appendLine(NO_MAKEFILE_MESSAGE);
+    void vscode.window.showErrorMessage(`ds-ide: ${NO_MAKEFILE_MESSAGE}`);
+    return false;
+  }
 
   const configuredPath = vscode.workspace.getConfiguration('ds-ide').get<string>('armToolchainPath');
   const gccPath = await detectArmToolchain(configuredPath ?? undefined);
 
   if (!gccPath) {
-    void vscode.window.showErrorMessage(
-      `ds-ide: arm-none-eabi-gcc not found. ${ARM_GCC_INSTALL_HINT}`,
-    );
+    // FR-PRE-2: the cause also goes to the output channel, not only a toast.
+    const msg = `arm-none-eabi-gcc not found. ${ARM_GCC_INSTALL_HINT}`;
+    channel.show();
+    channel.appendLine(msg);
+    void vscode.window.showErrorMessage(`ds-ide: ${msg}`);
     return false;
   }
 
-  const channel = outputChannel;
   channel.show();
 
   const hardwareVariant = await resolveHardwareVariant(projectRoot);

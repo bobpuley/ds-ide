@@ -17,7 +17,7 @@ It replaces the slow loop of compile, flash, plug in an instrument and listen wi
 **To build and run effects on the emulator** (everything except flashing hardware):
 
 - **macOS on Apple Silicon (arm64)**. Intel Macs, Linux and Windows are not supported yet.
-- **VS Code** 1.85 or later (tested on 1.140).
+- **VS Code** 1.140 or later.
 - **CMake** 3.20 or later: `brew install cmake`.
 - **Xcode Command Line Tools**: `xcode-select --install`. They provide the C++ compiler the emulator build uses and `lldb-dap`, the debugger.
 

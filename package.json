@@ -7,7 +7,7 @@
   "license": "PolyForm-Shield-1.0.0",
   "icon": "media/ds-ide-icon.png",
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.140.0"
   },
   "categories": [
     "Other",

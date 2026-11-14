@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as vscode from 'vscode';
 import { findEffectSource, EffectSourceOutsideWorkspaceError } from '../../../commands/find-effect-source';
 import { buildForEmulator, detectDaisySP } from '../../../commands/build';
-import { EmulatorManager, CMakeNotFoundError } from '../../../emulator/manager';
+import { EmulatorManager, CMakeNotFoundError, CompilerNotFoundError } from '../../../emulator/manager';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -350,5 +350,29 @@ describe('buildForEmulator when CMake is missing (FR-REL-2)', () => {
       { genericFailureToast: false, onFailureReason },
     );
     expect(onFailureReason).not.toHaveBeenCalled();
+  });
+});
+
+describe('buildForEmulator when the C++ compiler is missing (FR-PRE-1)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (vscode.workspace as unknown as Record<string, unknown>)['workspaceFolders'] = [
+      { uri: { fsPath: '/proj' } },
+    ];
+    vi.mocked(fs.promises.readdir).mockResolvedValue(['effect.cpp'] as never);
+    vi.mocked(fs.promises.stat).mockRejectedValue(new Error('ENOENT'));
+  });
+
+  const missingCompiler = (): EmulatorManager =>
+    ({ build: vi.fn().mockRejectedValue(new CompilerNotFoundError()) }) as unknown as EmulatorManager;
+
+  it('writes the cause to the output channel and toasts it, with no Show Problems button', async () => {
+    const channel = makeChannel();
+    const ok = await buildForEmulator(missingCompiler(), '/ext', undefined, channel, makeWorkspaceState());
+    expect(ok).toBe(false);
+    expect(channel.appendLine).toHaveBeenCalledWith(expect.stringContaining('xcode-select --install'));
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(vscode.window.showErrorMessage).mock.calls[0]).toHaveLength(1);
+    expect(vi.mocked(vscode.window.showErrorMessage).mock.calls[0]![0]).toMatch(/xcode-select --install/);
   });
 });

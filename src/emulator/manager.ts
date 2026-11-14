@@ -8,7 +8,7 @@ import { IpcClient, IpcMessage, IpcWarning, CONNECT_TIMEOUT_MS } from './ipc-cli
 import { potControlId, buttonControlId, toggleControlId, encoderControlId, narrowControlValue, narrowControlSnapshot } from '../ipc/control-values';
 import type { ScopeCaptureRequest } from '../ipc/narrow';
 import { PROTOCOL_VERSION } from '../ipc/protocol-version';
-import { detectCMake, CMAKE_NOT_FOUND_MESSAGE } from '../hardware/toolchain';
+import { detectCMake, detectCxxCompiler, CMAKE_NOT_FOUND_MESSAGE, CXX_COMPILER_NOT_FOUND_MESSAGE } from '../hardware/toolchain';
 import type { GeneratorId, GeneratorParams } from '../webview/scope/scope-generators';
 
 const SOCKET_TIMEOUT_MS = 10_000;
@@ -113,18 +113,32 @@ export class CMakeNotFoundError extends Error {
   }
 }
 
+// FR-PRE-1: no C++ compiler (the Xcode Command Line Tools are not installed).
+export class CompilerNotFoundError extends Error {
+  constructor() {
+    super(CXX_COMPILER_NOT_FOUND_MESSAGE);
+    this.name = 'CompilerNotFoundError';
+  }
+}
+
+// FR-PRE-4: shown when Deploy finds no build to deploy.
+export const NOTHING_BUILT_MESSAGE =
+  'Nothing built yet. Run Daisy IDE: Run Daisy Effect, or Build for Emulator first.';
+
 function isSpawnNotFound(err: unknown): boolean {
   return err instanceof Error && (err as NodeJS.ErrnoException).code === 'ENOENT';
 }
 
 export interface EmulatorManagerDeps {
   detectCMake?: () => Promise<string | undefined>;
+  detectCompiler?: () => Promise<string | undefined>;
   spawn?: typeof cp.spawn;
   ipcClientFactory?: () => IpcClient;
   mkdir?: typeof fs.promises.mkdir;
   execFile?: typeof cp.execFile;
   readFile?: typeof fs.promises.readFile;
   rm?: typeof fs.promises.rm;
+  access?: typeof fs.promises.access;
 }
 
 // FR-TRN-1: emitted once per emulator that became ready, when its process
@@ -161,7 +175,9 @@ export class EmulatorManager extends EventEmitter {
   private readonly execFile: typeof cp.execFile;
   private readonly readFile: typeof fs.promises.readFile;
   private readonly rm: typeof fs.promises.rm;
+  private readonly access: typeof fs.promises.access;
   private readonly detectCMake: () => Promise<string | undefined>;
+  private readonly detectCompiler: () => Promise<string | undefined>;
 
   constructor(deps: EmulatorManagerDeps = {}) {
     super();
@@ -171,7 +187,9 @@ export class EmulatorManager extends EventEmitter {
     this.execFile = deps.execFile ?? cp.execFile;
     this.readFile = deps.readFile ?? fs.promises.readFile;
     this.rm = deps.rm ?? fs.promises.rm;
+    this.access = deps.access ?? fs.promises.access;
     this.detectCMake = deps.detectCMake ?? (() => detectCMake());
+    this.detectCompiler = deps.detectCompiler ?? (() => detectCxxCompiler());
   }
 
   async build(opts: BuildOptions, onOutput: (line: string) => void, token?: CancellationToken): Promise<void> {
@@ -179,6 +197,8 @@ export class EmulatorManager extends EventEmitter {
     // directory is touched.
     const cmake = await this.detectCMake();
     if (!cmake) throw new CMakeNotFoundError();
+    // FR-PRE-1: and a compiler, so CMake does not fail with a cryptic message.
+    if (!await this.detectCompiler()) throw new CompilerNotFoundError();
 
     this.projectRoot = opts.projectRoot;
     this.buildDir = path.join(opts.projectRoot, '.ds-ide', 'build');
@@ -213,9 +233,24 @@ export class EmulatorManager extends EventEmitter {
     }
   }
 
+  // FR-PRE-4: a fresh window has built nothing itself, but the project may hold
+  // a build from an earlier session. Uses it when it exists (or when this
+  // session already built this project); never another project's build.
+  async adoptExistingBuild(projectRoot: string): Promise<boolean> {
+    const buildDir = path.join(projectRoot, '.ds-ide', 'build');
+    try {
+      await this.access(path.join(buildDir, 'effect_emu'));
+    } catch {
+      return this.buildDir !== '' && this.projectRoot === projectRoot;
+    }
+    this.projectRoot = projectRoot;
+    this.buildDir = buildDir;
+    return true;
+  }
+
   deploy(onOutput: (line: string) => void, token?: CancellationToken): Promise<void> {
     if (!this.buildDir) {
-      return Promise.reject(new Error('Build before deploying'));
+      return Promise.reject(new Error(NOTHING_BUILT_MESSAGE));
     }
     // Prevent two simultaneous effect_emu processes: coalesce on the in-flight promise.
     if (this.deployLock) return this.deployLock;

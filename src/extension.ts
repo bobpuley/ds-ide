@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { EmulatorManager, workspaceRuntimeDir } from './emulator/manager';
+import { EmulatorManager, workspaceRuntimeDir, NOTHING_BUILT_MESSAGE } from './emulator/manager';
 import { IpcMessage, IpcWarning } from './emulator/ipc-client';
 import { ScopePanel } from './webview/scope-panel';
 import { OledPanel } from './webview/oled-panel';
@@ -461,6 +461,16 @@ class DeployCoordinator {
         return false;
       }
     }
+    // FR-PRE-4: without a build of its own in this window, use the project's
+    // existing one, or say what to do — never "Build before deploying".
+    if (!opts.build) {
+      const root = resolveActiveFolder(this.workspaceState)?.uri.fsPath ?? '';
+      if (!await this.manager.adoptExistingBuild(root)) {
+        this.emulatorChannel.appendLine(NOTHING_BUILT_MESSAGE);
+        void vscode.window.showErrorMessage(`ds-ide: ${NOTHING_BUILT_MESSAGE}`);
+        return false;
+      }
+    }
     this.transport.dispatch({ type: 'deployStarted', mode });
     const cfg = await this.loadControllerConfig();
     this.potStore.setDefaults(cfg.pots);
@@ -496,14 +506,17 @@ class DeployCoordinator {
       return true;
     }
 
+    // FR-PRE-4: the viewers open only once the emulator is up, so a failed
+    // deploy leaves nothing behind. The Controls Editor caches what is posted
+    // to it, so the data is loaded up front and replayed when it appears.
+    this.controlsProvider.loadEditor(cfg);
+    if (controlsConfig) this.controlsProvider.postControlsConfig(controlsConfig);
+    const deployed = await deployToEmulator(this.manager, this.emulatorChannel, token);
+    if (!deployed) return false;
     this.scopePanel.show(this.session.sineState, this.session.audioSourceState, this.session.generatorState);
     void this.showOledIfEnabled();
     void this.showMidiIfEnabled();
-    this.controlsProvider.loadEditor(cfg);
-    if (controlsConfig) this.controlsProvider.postControlsConfig(controlsConfig);
     void vscode.commands.executeCommand('workbench.view.extension.ds-ide-controls');
-    const deployed = await deployToEmulator(this.manager, this.emulatorChannel, token);
-    if (!deployed) return false;
     this.sendPostDeployState();
     this.transport.dispatch({ type: 'deploySucceeded' });
     return true;

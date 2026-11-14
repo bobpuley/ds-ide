@@ -26,6 +26,22 @@ export const CMAKE_INSTALL_HINT = 'Install CMake: brew install cmake';
 export const CMAKE_NOT_FOUND_MESSAGE =
   'CMake not found. Install it (brew install cmake) and try again.';
 
+// FR-PRE-1: shown when the emulator build finds no C++ compiler. On macOS that
+// is the Xcode Command Line Tools; /usr/bin/clang++ exists as a stub without
+// them, so it cannot be used as evidence of a compiler.
+export const CXX_COMPILER_NOT_FOUND_MESSAGE =
+  'Xcode Command Line Tools not found. Run `xcode-select --install` and try again.';
+
+// FR-PRE-1: shown when Debug Daisy Effect cannot find lldb-dap.
+export const LLDB_DAP_NOT_FOUND_MESSAGE =
+  'ds-ide: lldb-dap not found. Install Xcode Command Line Tools: xcode-select --install';
+
+const CLT_DEVELOPER_DIR = '/Library/Developer/CommandLineTools';
+
+// FR-PRE-3: shown when Build for Hardware finds no Makefile in the project root.
+export const NO_MAKEFILE_MESSAGE =
+  'No Makefile in this project. Build for Hardware needs a libDaisy-style project; see Limitations in the README.';
+
 export const DFU_UTIL_BINARY = 'dfu-util';
 
 export const DFU_UTIL_CANDIDATES = [
@@ -107,6 +123,28 @@ export async function detectCMake(
 
   for (const p of CMAKE_CANDIDATES) {
     if (await exists(p)) return p;
+  }
+  return undefined;
+}
+
+// Detect a C++ compiler (FR-PRE-1). Detection order: the developer directory
+// `xcode-select -p` reports, then the known Command Line Tools location. The
+// compiler is looked up inside that directory rather than via `which`, because
+// a bare macOS has /usr/bin/clang++ as an installer stub.
+export async function detectCxxCompiler(
+  exists: Exists = defaultExists,
+  exec: Exec = defaultExec,
+): Promise<string | undefined> {
+  const dirs: string[] = [];
+  try {
+    const dir = (await exec('xcode-select', ['-p'])).trim();
+    if (dir) dirs.push(dir);
+  } catch { /* no developer tools selected */ }
+  dirs.push(CLT_DEVELOPER_DIR);
+
+  for (const dir of dirs) {
+    const candidate = `${dir.replace(/\/$/, '')}/usr/bin/clang++`;
+    if (await exists(candidate)) return candidate;
   }
   return undefined;
 }

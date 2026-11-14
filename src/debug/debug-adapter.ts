@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as cp from 'child_process';
 import * as vscode from 'vscode';
+import { LLDB_DAP_NOT_FOUND_MESSAGE } from '../hardware/toolchain';
 
 const LLDB_DAP_CANDIDATES = [
   '/Library/Developer/CommandLineTools/usr/bin/lldb-dap',
@@ -64,9 +65,7 @@ export class DaisyDebugAdapterFactory implements vscode.DebugAdapterDescriptorFa
   ): Promise<vscode.DebugAdapterDescriptor | undefined> {
     const lldbDap = await this._findLldbDap();
     if (!lldbDap) {
-      void vscode.window.showErrorMessage(
-        'ds-ide: lldb-dap not found. Install Xcode Command Line Tools: xcode-select --install',
-      );
+      void vscode.window.showErrorMessage(LLDB_DAP_NOT_FOUND_MESSAGE);
       return undefined;
     }
     return new vscode.DebugAdapterInlineImplementation(new FilteringLldbDapAdapter(lldbDap));

@@ -1,7 +1,7 @@
 # M89 — First-Run Polish II
 
 **Version:** 0.24.8
-**Status:** planned
+**Status:** released
 **Source:** intake session, 2026-11-14 (first public preview; `docs/release_plan.md`)
 
 ## Goal
@@ -10,7 +10,7 @@ A first-time user still meets four rough edges that M85 did not cover: a missing
 
 ## Sprint Tasks
 
-### [ ] feat: say what is missing when the compiler or lldb-dap is not found (FR-PRE-1)
+### [x] feat: say what is missing when the compiler or lldb-dap is not found (FR-PRE-1)
 
 **Affected files:** `src/hardware/toolchain.ts`, `src/emulator/manager.ts`, `src/commands/build.ts`, `src/debug/` (the lldb-dap launch path), `src/test/unit/hardware/toolchain.test.ts`, `src/test/unit/emulator/manager.test.ts`, `src/test/unit/debug/`
 
@@ -22,7 +22,7 @@ A first-time user still meets four rough edges that M85 did not cover: a missing
 
 ---
 
-### [ ] feat: verify the Arm toolchain and dfu-util messages for real (FR-PRE-2)
+### [x] feat: verify the Arm toolchain and dfu-util messages for real (FR-PRE-2)
 
 **Affected files:** `src/hardware/toolchain.ts`, `src/commands/hardware-build.ts`, `src/commands/dfu-flash.ts`, `src/test/unit/hardware/toolchain.test.ts`, `src/test/unit/commands/`
 
@@ -33,7 +33,7 @@ A first-time user still meets four rough edges that M85 did not cover: a missing
 
 ---
 
-### [ ] feat: Build for Hardware checks for a Makefile first (FR-PRE-3)
+### [x] feat: Build for Hardware checks for a Makefile first (FR-PRE-3)
 
 **Affected files:** `src/commands/hardware-build.ts`, `src/test/unit/commands/hardware-build.test.ts`
 
@@ -44,7 +44,7 @@ A first-time user still meets four rough edges that M85 did not cover: a missing
 
 ---
 
-### [ ] fix: Deploy to Emulator works, or explains itself, after a restart (FR-PRE-4)
+### [x] fix: Deploy to Emulator works, or explains itself, after a restart (FR-PRE-4)
 
 **Affected files:** `src/emulator/manager.ts`, `src/extension.ts`, `src/test/unit/emulator/manager.test.ts`, `src/test/unit/extension.test.ts`
 
@@ -56,7 +56,7 @@ A first-time user still meets four rough edges that M85 did not cover: a missing
 
 ---
 
-### [ ] chore: set engines.vscode to the tested version and check the MIDI addon failing to load (FR-PRE-5)
+### [x] chore: set engines.vscode to the tested version and check the MIDI addon failing to load (FR-PRE-5)
 
 **Affected files:** `package.json`, `README.md`, `CONTRIBUTING.md`, `src/test/unit/build/package-metadata.test.ts`, `src/midi/`
 
