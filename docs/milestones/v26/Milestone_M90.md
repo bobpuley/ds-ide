@@ -1,7 +1,7 @@
 # M90 — Marketplace Readiness
 
 **Version:** 0.24.9
-**Status:** in progress
+**Status:** released
 **Source:** intake session, 2026-11-14 (first public preview; `docs/release_plan.md`)
 
 ## Goal
@@ -60,7 +60,7 @@ Owner task for the deletions: list the files, the owner removes them.
 
 ---
 
-### [ ] chore: make the repository public (FR-MKT-4)
+### [x] chore: make the repository public (FR-MKT-4)
 
 Owner task: visibility changes are made by the owner, step by step.
 
