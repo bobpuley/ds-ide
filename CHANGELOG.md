@@ -3,6 +3,19 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.25.0 — 2026-11-14
+
+**First public preview** *(M85 to M91)*
+
+Daisy IDE lets you write, run and debug Daisy Seed audio effects in VS Code without a board: your effect is compiled for your Mac and runs in an emulator with a scope, virtual pots, buttons, toggles, LEDs and encoders, a MIDI keyboard and monitor, an OLED viewer and a virtual SD card. Building for the real Daisy Seed and flashing it over DFU is there too.
+
+This is a **preview**: it is published as a Marketplace pre-release, runs on **macOS with Apple Silicon only**, and has [known issues and limitations](README.md#known-issues) listed in the README. Windows support is planned for a later release.
+
+- Five examples (controls, MIDI, OLED, SD card, a tremolo-filter effect) that open and run with one click on **Run Daisy Effect**.
+- A rewritten README, clear messages when CMake, the Xcode Command Line Tools, the Arm toolchain or `dfu-util` are missing, and a Deploy that works after a restart.
+- Licensed under the PolyForm Shield License 1.0.0: free to use, including for your own effects; competing products need a commercial agreement.
+- **Feedback:** please open an issue at https://github.com/bobpuley/ds-ide/issues (bug report, feature request) using the forms provided.
+
 ## 0.24.9 — 2026-11-14
 
 **Marketplace readiness** *(FR-MKT-1 to FR-MKT-5, M90)*
