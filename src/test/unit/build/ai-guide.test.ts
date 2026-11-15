@@ -20,6 +20,11 @@ function codeBlocks(text: string, lang: string): string[] {
   return out;
 }
 
+/** The README section "Working with an AI coding agent", up to the next "## " heading. */
+function readmeAgentSection(readme: string): string {
+  return readme.match(/^## Working with an AI coding agent[\s\S]*?(?=^## |(?![\s\S]))/m)?.[0] ?? '';
+}
+
 // FR-AIG-2: the guide states rules the code enforces elsewhere. Each test ties
 // one of those statements to the code, so a change on either side fails here.
 describe('AI agent guide stays true to the product (FR-AIG-2)', () => {
@@ -130,5 +135,18 @@ describe('AI agent guide ships in the package (FR-AIG-2)', () => {
 
   it('is required by verify-vsix.sh', () => {
     expect(read('scripts/verify-vsix.sh')).toContain('check "ai/DAISY_IDE_AI_GUIDE.md"');
+  });
+});
+
+// FR-AIG-5: the README tells humans about it.
+describe('README documents the AI guide (FR-AIG-5)', () => {
+  it('has a "Working with an AI coding agent" section naming the guide, the command and the agent files', () => {
+    const section = readmeAgentSection(read('README.md'));
+    expect(section).not.toBe('');
+    expect(section).toContain('DAISY_IDE_AI_GUIDE.md');
+    expect(section).toContain('Add AI Guide to Project');
+    expect(section).toContain('AGENTS.md');
+    expect(section).toContain('CLAUDE.md');
+    expect(section).toMatch(/append/i);
   });
 });

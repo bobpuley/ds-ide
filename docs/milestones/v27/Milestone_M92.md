@@ -58,7 +58,7 @@ The conventions are spread across the README appendix, the wizard templates and 
 
 ---
 
-### [ ] docs: document the guide for humans (FR-AIG-5)
+### [x] docs: document the guide for humans (FR-AIG-5)
 
 **Affected files:** `README.md`, `CHANGELOG.md`, `src/test/unit/build/ai-guide.test.ts`
 
