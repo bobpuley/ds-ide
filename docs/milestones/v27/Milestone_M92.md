@@ -23,7 +23,7 @@ The conventions are spread across the README appendix, the wizard templates and 
 
 ---
 
-### [ ] test: keep the guide true to the product (FR-AIG-2)
+### [x] test: keep the guide true to the product (FR-AIG-2)
 
 **Affected files:** `src/test/unit/build/ai-guide.test.ts`, `scripts/verify-vsix.sh`, `package.json`
 
