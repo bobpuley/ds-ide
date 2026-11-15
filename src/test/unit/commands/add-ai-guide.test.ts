@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   AGENT_FILES,
   GUIDE_FILE,
@@ -270,5 +272,32 @@ describe('addAiGuideToProject (FR-AIG-4)', () => {
     const msg = showInfo.mock.calls.map((c) => String(c[0])).join('\n');
     expect(msg).toContain(GUIDE_FILE);
     expect(msg).toContain('CLAUDE.md');
+  });
+});
+
+describe('the command is contributed and registered (FR-AIG-4)', () => {
+  const root = path.join(__dirname, '../../../..');
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+
+  it('is declared with a title the README names', () => {
+    const cmd = pkg.contributes.commands.find((c: { command: string }) => c.command === 'ds-ide.addAiGuide');
+    expect(cmd).toBeDefined();
+    expect(cmd.title).toBe('Add AI Guide to Project');
+    expect(cmd.category).toBe('Daisy IDE');
+  });
+
+  it('is reachable from the Daisy view menu and not hidden from the Command Palette', () => {
+    const inView = pkg.contributes.menus['view/title'].some(
+      (m: { command: string; when: string }) => m.command === 'ds-ide.addAiGuide' && m.when.includes('ds-ide.daisyView'),
+    );
+    expect(inView).toBe(true);
+    const palette: { command: string; when?: string }[] = pkg.contributes.menus.commandPalette ?? [];
+    expect(palette.find(m => m.command === 'ds-ide.addAiGuide')).toBeUndefined();
+  });
+
+  it('is registered by the extension', () => {
+    const src = fs.readFileSync(path.join(root, 'src/extension.ts'), 'utf8');
+    expect(src).toContain("registerCommand('ds-ide.addAiGuide'");
+    expect(src).toContain('addAiGuideToProject(extensionPath, workspaceState)');
   });
 });

@@ -45,7 +45,7 @@ The conventions are spread across the README appendix, the wizard templates and 
 
 ---
 
-### [ ] feat: add the "Add AI Guide to Project" command (FR-AIG-4)
+### [x] feat: add the "Add AI Guide to Project" command (FR-AIG-4)
 
 **Affected files:** `src/commands/add-ai-guide.ts`, `src/extension.ts`, `package.json`, `src/test/unit/commands/add-ai-guide.test.ts`
 

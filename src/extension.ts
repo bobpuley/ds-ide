@@ -41,6 +41,7 @@ import { SdEntry, sortSdEntries, SD_PREVIEW_MAX_BYTES } from './webview/sd-viewe
 import { ControlsViewProvider } from './sidebar/controls-editor-panel';
 import { WiringViewProvider } from './sidebar/wiring-editor-panel';
 import { createEffectProject } from './commands/create-effect-project';
+import { addAiGuideToProject } from './commands/add-ai-guide';
 import * as os from 'os';
 import { getString } from './ipc/narrow';
 // FR-EXT-10: the resolution/error-handling wrapper is shared with the build
@@ -1038,6 +1039,8 @@ function registerCommands(deps: CommandDeps): vscode.Disposable[] {
     vscode.commands.registerCommand('ds-ide.focusWiring', () =>
       vscode.commands.executeCommand('ds-ide.wiringEditor.focus')),
     vscode.commands.registerCommand('ds-ide.createNewEffectProject', () => createEffectProject(extensionPath)),
+    // FR-AIG-4: copy the AI agent guide into the project and point agent files at it.
+    vscode.commands.registerCommand('ds-ide.addAiGuide', () => addAiGuideToProject(extensionPath, workspaceState)),
     vscode.commands.registerCommand('ds-ide.selectActiveFolder', async () => {
       const chosen = await promptSelectActiveFolder(workspaceState);
       if (chosen) void initViewsFromProject();
