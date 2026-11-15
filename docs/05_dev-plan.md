@@ -77,7 +77,7 @@
 > **v26 complete** — M85–M91 released (0.24.4–0.25.0), all ACs green.
 > Archived: [`docs/v26/`](v26/).
 
-*v27 milestones not yet planned.*
+*v27 in planning: M92 AI Agent Guide.*
 
 ---
 
@@ -218,6 +218,10 @@ Full registry in [`docs/v24/05_dev-plan.md`](v24/05_dev-plan.md).
 M85 First-Run Experience Fixes · M86 Example Curation · M87 README Polish · M88 Licensing · M89 First-Run Polish II · M90 Marketplace Readiness · M91 First Public Preview Release.
 Full registry in [`docs/v26/05_dev-plan.md`](v26/05_dev-plan.md).
 
-### v27 (TBD) — planned
+### v27 (0.25.1) — planned
 
-*(no milestones yet)*
+| ID  | Name           | Status      | Version | File                                                |
+|-----|----------------|-------------|---------|-----------------------------------------------------|
+| M92 | AI Agent Guide | **in progress** | 0.25.1  | [Milestone_M92.md](milestones/v27/Milestone_M92.md) |
+
+M92 source: intake session, 2026-11-15 (an AI-oriented conventions file for developers who work with coding agents).

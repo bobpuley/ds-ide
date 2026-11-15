@@ -77,4 +77,6 @@
 > **v26 complete** — ds-ide 0.24.4–0.25.0 (M85–M91), the first public preview, all ACs green. Full v26 ideas archived in
 > [`docs/v26/01_input-ideas.md`](v26/01_input-ideas.md).
 
-*v27 planning not yet started. Use `/doc-creator-driver:intake` or `/doc-creator-driver:start` to begin.*
+## v27 ideas
+
+- **AI-agent guideline file (feature, 2026-11-15):** let's add to the extension an exclusive AI oriented file (txt, md, or whatever is best) that explains the conventions to follow in order to develop, or adapt an already written, effect so it is compatible with the IDE. Most devs are now using claude/copilot/openai/deepseek/etc, so a guideline specifically designed for the agent would be useful.
