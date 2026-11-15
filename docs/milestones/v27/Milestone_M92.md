@@ -34,7 +34,7 @@ The conventions are spread across the README appendix, the wizard templates and 
 
 ---
 
-### [ ] feat: add the guide and AGENTS.md to new projects (FR-AIG-3)
+### [x] feat: add the guide and AGENTS.md to new projects (FR-AIG-3)
 
 **Affected files:** `src/commands/add-ai-guide.ts`, `src/commands/create-effect-project.ts`, `src/test/unit/commands/create-effect-project.test.ts`
 

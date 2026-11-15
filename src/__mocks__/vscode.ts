@@ -125,6 +125,7 @@ const workspace = {
     createDirectory: vi.fn(async () => undefined),
     stat: vi.fn(async () => { throw Object.assign(new Error('ENOENT'), { code: 'FileNotFound' }); }),
     copy: vi.fn(async () => undefined),
+    readFile: vi.fn(async (): Promise<Uint8Array> => new Uint8Array()),
   },
 };
 

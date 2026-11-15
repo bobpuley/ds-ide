@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { promptHardwareVariant } from '../hardware/hardware-variant-prompt';
+import { scaffoldAiFiles } from './add-ai-guide';
 
 function validateName(name: string): string | undefined {
   if (!name || name.trim().length === 0) return 'Name cannot be empty';
@@ -151,6 +152,10 @@ export async function createEffectProject(extensionPath: string): Promise<void> 
     void vscode.window.showErrorMessage(`ds-ide: failed to scaffold project: ${String(err)}`);
     return;
   }
+
+  // FR-AIG-3: the AI agent guide and an AGENTS.md pointing at it. Failing here
+  // only warns — the project is already scaffolded.
+  await scaffoldAiFiles(extensionPath, projectUri);
 
   try {
     await vscode.commands.executeCommand('vscode.openFolder', projectUri, { forceNewWindow: false });
