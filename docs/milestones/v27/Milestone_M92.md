@@ -10,7 +10,7 @@ A developer who asks a coding agent to write or adapt a Daisy effect gets code t
 
 ## Sprint Tasks
 
-### [ ] feat: write the AI agent guide (FR-AIG-1)
+### [x] feat: write the AI agent guide (FR-AIG-1)
 
 The conventions are spread across the README appendix, the wizard templates and the code. An agent needs them in one imperative document.
 
