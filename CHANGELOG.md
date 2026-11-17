@@ -3,6 +3,16 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.25.1 — 2026-11-17
+
+**AI agent guide** *(M92)*
+
+- New `DAISY_IDE_AI_GUIDE.md`, shipped with the extension and written for coding agents (Claude Code, Copilot, Codex, Cursor and others): the `ds-ide:` code conventions, `controllers.yaml`, what the emulator supports, and a checklist for adapting an existing effect.
+- **Create New Effect Project** now adds the guide and an `AGENTS.md` that points to it.
+- New command **Daisy IDE: Add AI Guide to Project**: copies the guide into the current project and, for the agent files it finds (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.cursorrules`, `.windsurfrules`, `.clinerules`), appends a one-line pointer to the ones you choose. It never rewrites existing content and a second run changes nothing.
+- A test keeps the guide in step with the product (markers, control kinds, `controllers.yaml` fields and ranges), and the package check fails if the guide is missing from the VSIX.
+- Fix: the Controls and Wiring editors now refresh when the effect source or `controllers.yaml` changes on disk outside the VS Code editor (a coding agent, git, a terminal), instead of keeping the old state until a window reload.
+
 ## 0.25.0 — 2026-11-14
 
 **First public preview** *(M85 to M91)*
