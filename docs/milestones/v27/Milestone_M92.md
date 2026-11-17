@@ -1,7 +1,7 @@
 # M92 — AI Agent Guide
 
 **Version:** 0.25.1
-**Status:** in progress
+**Status:** released
 **Source:** intake session, 2026-11-15 (an AI-oriented conventions file for developers who work with coding agents)
 
 ## Goal
