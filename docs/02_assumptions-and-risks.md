@@ -26,4 +26,6 @@
 
 > **Risk — guide too long for an agent's context.** A long file is read less reliably and costs tokens on every request. Mitigation: target a few hundred lines, rules first, reference tables last; the guide links to the README for human-oriented explanations instead of repeating them.
 
+> **Assumption disproved (M92 manual test, 2026-11-17):** "the editors refresh on every change of the effect source" held only for saves made in the VS Code editor (`onDidSaveTextDocument`). A coding agent edits the file on disk, VS Code reloads the buffer without a save event, and both editors kept showing the old state. Replaced by a file watcher on the project's effect source and `controllers.yaml` (FR-AIG-6).
+
 *Other v27 bets and risks to be defined during planning.*

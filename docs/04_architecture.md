@@ -28,4 +28,6 @@
 
 **Verification.** `ai-guide.test.ts` (FR-AIG-2: content vs product facts and size budget), `add-ai-guide.test.ts` (helpers and handler with fakes), wizard test extended, `verify:package` extended to require the file in the VSIX.
 
+**Refresh on external changes (FR-AIG-6).** New module `src/workspace/project-watcher.ts`: a `FileSystemWatcher` on `**/{*.cpp,controllers.yaml}`, filtered by `isProjectFile` (root, `src/`, `source/`, the configured effect source), debounced, serialised (one refresh at a time, one more if events arrived meanwhile), calling the existing `initViewsFromProject()`. Registered in `activate()` next to the save listener, which stays for saves made in the editor.
+
 **Trade-offs considered.** Writing per-vendor files (`CLAUDE.md`, Copilot instructions) from one source was rejected: more files to keep in step and a higher chance of overwriting user content. A pointer line to one guide keeps a single source of truth.

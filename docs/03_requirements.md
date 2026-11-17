@@ -25,10 +25,13 @@ Source: `01_input-ideas.md`, 2026-11-15. Milestone: **M92**. Decisions (owner, 2
 
 **FR-AIG-5 — Documented for humans.** The README gains a short section "Working with an AI coding agent" that says what the guide is, how it reaches a project (wizard and command), which agent files the command recognises, and that the command only appends a marked line. `CHANGELOG.md` records the feature. The Marketplace description and keywords are unchanged unless the owner asks.
 
+**FR-AIG-6 — Editors follow changes made outside VS Code.** When the project's effect source (the `.cpp` in the root, `src/` or `source/`, or the file set by `ds-ide.effectSource`) or its `controllers.yaml` is created, changed or deleted by anything other than a save in the VS Code editor — a coding agent, git, a command run in a terminal — the Controls Editor, the Wiring Editor, the peripheral state (SD card, OLED) and the Daisy-project context (`ds-ide.isDaisyProject`, status items) are refreshed from disk without reloading the window. A burst of events is coalesced into one refresh (about 300 ms after the last), a refresh never overlaps another, and a failing refresh does not stop the watcher. Vendored and generated code (`DaisySP/`, `.ds-ide/`) does not trigger it. The existing save listener stays.
+
 **Acceptance criteria**
 
 - AC-AIG-1: the VSIX contains `DAISY_IDE_AI_GUIDE.md`, and the guide test (FR-AIG-2) passes.
 - AC-AIG-2: a project created by the wizard contains `DAISY_IDE_AI_GUIDE.md` and an `AGENTS.md` that names it.
 - AC-AIG-3: on a project with a `CLAUDE.md` and a `.github/copilot-instructions.md`, the command offers both, appends the marked line to the ones picked, and a second run changes nothing.
 - AC-AIG-4: on a project with no agent file, the command offers to create `AGENTS.md`; declining leaves only the guide copied.
+- AC-AIG-6: with the Controls and Wiring editors open, rewriting the effect source on disk (for example `echo >> effect.cpp` from a terminal, or an agent edit) so its `ds-ide:controls` block declares a control makes that control appear in both editors without a reload.
 - AC-AIG-5: manual check with two different agents (one is Claude Code): each, given only the pointer and the guide, adapts a sample bare-libDaisy effect that then builds and runs in the emulator with its controls detected.

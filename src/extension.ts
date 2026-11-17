@@ -56,6 +56,7 @@ import { detectBoard } from './hardware/board-detect';
 import { TransportStatusItems } from './transport/status-items';
 import { DaisyViewProvider, DAISY_VIEW_ID, formatAudioDetail, withViewProgress } from './views/daisy-view';
 import { resolveActiveFolder, promptSelectActiveFolder } from './workspace/active-folder';
+import { createProjectFileWatcher } from './workspace/project-watcher';
 
 const FIDELITY_CAVEAT =
   'Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget.';
@@ -1459,6 +1460,14 @@ export function activate(context: vscode.ExtensionContext): void {
     wiringProvider, controlsProvider,
   });
 
+  // FR-AIG-6: changes made outside the VS Code editor (a coding agent, git, a
+  // terminal) do not fire onDidSaveTextDocument, so watch the files on disk.
+  const projectFileWatcher = createProjectFileWatcher({
+    getActiveFolder: () => resolveActiveFolder(context.workspaceState)?.uri.fsPath,
+    getEffectSource: () => effectSourcePath,
+    refresh: initViewsFromProject,
+  });
+
   // Registered after the listeners above so theirs run first.
   const transportEventDisposables = wireTransportEvents(transport, {
     emulator: manager,
@@ -1504,6 +1513,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }))),
     vscode.debug.registerDebugConfigurationProvider(DS_IDE_DEBUG_TYPE, runConfigProvider),
     saveListener,
+    projectFileWatcher,
     ...commandDisposables,
     { dispose: () => {
       manager?.dispose(); scopePanel?.dispose(); oledPanel?.dispose(); midiPanel?.dispose();

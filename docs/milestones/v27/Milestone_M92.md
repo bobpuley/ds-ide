@@ -66,3 +66,17 @@ The conventions are spread across the README appendix, the wizard templates and 
 - The README has a "Working with an AI coding agent" section covering the guide, the wizard and the command, the recognised agent files, and the append-only behaviour.
 - A test checks that the README section exists and names `DAISY_IDE_AI_GUIDE.md`.
 - `CHANGELOG.md` records the feature under the release version.
+
+---
+
+### [x] fix: refresh the editors when the project changes outside VS Code (FR-AIG-6)
+
+Found in the M92 manual test: after a coding agent rewrote the effect source, the Controls and Wiring editors kept the old state, because they refresh only on `onDidSaveTextDocument`, which does not fire for edits made on disk.
+
+**Affected files:** `src/workspace/project-watcher.ts`, `src/extension.ts`, `src/__mocks__/vscode.ts`, `src/test/unit/workspace/project-watcher.test.ts`
+
+**DoD:**
+- A watcher on the effect source and `controllers.yaml` of the active folder calls `initViewsFromProject()` after a create, change or delete made outside the editor.
+- Events are debounced and serialised; files under `DaisySP/` or `.ds-ide/`, other folders and other file types do not trigger a refresh.
+- A failing refresh is logged and the watcher keeps working; disposing the watcher cancels a pending refresh.
+- Unit tests cover the filter, the debounce, the serialisation, the failure path and disposal.

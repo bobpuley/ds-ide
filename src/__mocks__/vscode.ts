@@ -117,6 +117,12 @@ const workspace = {
   })),
   applyEdit: vi.fn(async () => true),
   onDidSaveTextDocument: vi.fn((_cb: (doc: { uri: { fsPath: string } }) => void) => ({ dispose: vi.fn() })),
+  createFileSystemWatcher: vi.fn((_glob: string) => ({
+    onDidChange: vi.fn((_cb: (uri: { fsPath: string }) => void) => ({ dispose: vi.fn() })),
+    onDidCreate: vi.fn((_cb: (uri: { fsPath: string }) => void) => ({ dispose: vi.fn() })),
+    onDidDelete: vi.fn((_cb: (uri: { fsPath: string }) => void) => ({ dispose: vi.fn() })),
+    dispose: vi.fn(),
+  })),
   getWorkspaceFolder: vi.fn((uri: { fsPath: string }): MockWorkspaceFolder | undefined =>
     findContainingFolder(workspace.workspaceFolders, uri),
   ),
