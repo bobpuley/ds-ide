@@ -183,6 +183,17 @@ The hardware build needs a libDaisy-style project with a `Makefile` (see [Limita
 
 ---
 
+## Working with an AI coding agent
+
+If you use an AI coding agent (Claude Code, Copilot, Codex, Cursor and others) to write or adapt effects, give it the Daisy IDE guide. [`DAISY_IDE_AI_GUIDE.md`](ai/DAISY_IDE_AI_GUIDE.md) is written for the agent, not for you: it lists the code conventions the IDE depends on (the `ds-ide:` blocks in the effect source, `controllers.yaml`), which libDaisy and DaisySP APIs the emulator supports, and a checklist for adapting an existing effect.
+
+- **New projects.** **Daisy IDE: Create New Effect Project** adds `DAISY_IDE_AI_GUIDE.md` and an `AGENTS.md` that points to it.
+- **Existing projects.** Run **Daisy IDE: Add AI Guide to Project**. It copies the guide into the project folder, then looks for the agent files that are already there (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.cursorrules`, `.windsurfrules`, `.clinerules`) and lets you choose which ones get a one-line pointer to the guide. If there is none, it offers to create `AGENTS.md`.
+
+The command only appends one marked line to the files you pick. It never rewrites what is in them, and running it again changes nothing. It asks before replacing a `DAISY_IDE_AI_GUIDE.md` you have edited. The guide describes this release of Daisy IDE; run the command again after an update to refresh it.
+
+---
+
 ## Configuration
 
 These settings go in `.vscode/settings.json` (or the Settings UI):

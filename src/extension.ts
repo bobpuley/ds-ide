@@ -41,6 +41,7 @@ import { SdEntry, sortSdEntries, SD_PREVIEW_MAX_BYTES } from './webview/sd-viewe
 import { ControlsViewProvider } from './sidebar/controls-editor-panel';
 import { WiringViewProvider } from './sidebar/wiring-editor-panel';
 import { createEffectProject } from './commands/create-effect-project';
+import { addAiGuideToProject } from './commands/add-ai-guide';
 import * as os from 'os';
 import { getString } from './ipc/narrow';
 // FR-EXT-10: the resolution/error-handling wrapper is shared with the build
@@ -55,6 +56,7 @@ import { detectBoard } from './hardware/board-detect';
 import { TransportStatusItems } from './transport/status-items';
 import { DaisyViewProvider, DAISY_VIEW_ID, formatAudioDetail, withViewProgress } from './views/daisy-view';
 import { resolveActiveFolder, promptSelectActiveFolder } from './workspace/active-folder';
+import { createProjectFileWatcher } from './workspace/project-watcher';
 
 const FIDELITY_CAVEAT =
   'Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget.';
@@ -1038,6 +1040,8 @@ function registerCommands(deps: CommandDeps): vscode.Disposable[] {
     vscode.commands.registerCommand('ds-ide.focusWiring', () =>
       vscode.commands.executeCommand('ds-ide.wiringEditor.focus')),
     vscode.commands.registerCommand('ds-ide.createNewEffectProject', () => createEffectProject(extensionPath)),
+    // FR-AIG-4: copy the AI agent guide into the project and point agent files at it.
+    vscode.commands.registerCommand('ds-ide.addAiGuide', () => addAiGuideToProject(extensionPath, workspaceState)),
     vscode.commands.registerCommand('ds-ide.selectActiveFolder', async () => {
       const chosen = await promptSelectActiveFolder(workspaceState);
       if (chosen) void initViewsFromProject();
@@ -1456,6 +1460,14 @@ export function activate(context: vscode.ExtensionContext): void {
     wiringProvider, controlsProvider,
   });
 
+  // FR-AIG-6: changes made outside the VS Code editor (a coding agent, git, a
+  // terminal) do not fire onDidSaveTextDocument, so watch the files on disk.
+  const projectFileWatcher = createProjectFileWatcher({
+    getActiveFolder: () => resolveActiveFolder(context.workspaceState)?.uri.fsPath,
+    getEffectSource: () => effectSourcePath,
+    refresh: initViewsFromProject,
+  });
+
   // Registered after the listeners above so theirs run first.
   const transportEventDisposables = wireTransportEvents(transport, {
     emulator: manager,
@@ -1501,6 +1513,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }))),
     vscode.debug.registerDebugConfigurationProvider(DS_IDE_DEBUG_TYPE, runConfigProvider),
     saveListener,
+    projectFileWatcher,
     ...commandDisposables,
     { dispose: () => {
       manager?.dispose(); scopePanel?.dispose(); oledPanel?.dispose(); midiPanel?.dispose();

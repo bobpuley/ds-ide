@@ -187,6 +187,11 @@
         "title": "Show Daisy View",
         "category": "Daisy IDE",
         "icon": "$(circuit-board)"
+      },
+      {
+        "command": "ds-ide.addAiGuide",
+        "title": "Add AI Guide to Project",
+        "category": "Daisy IDE"
       }
     ],
     "keybindings": [
@@ -234,6 +239,11 @@
         }
       ],
       "view/title": [
+        {
+          "command": "ds-ide.addAiGuide",
+          "when": "view == ds-ide.daisyView",
+          "group": "9_tools@1"
+        },
         {
           "command": "ds-ide.runEffect",
           "when": "view == ds-ide.daisyView && ds-ide.transportPhase =~ /^(stopped|buildFailed|crashed)$/",

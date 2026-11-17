@@ -58,6 +58,10 @@ check() {
 check "emulator/CMakeLists.txt"
 check "dist/extension.js"
 
+# FR-AIG-2: the AI agent guide is read at run time by the "Add AI Guide to Project"
+# command and the new-project wizard; .vscodeignore must not exclude it.
+check "ai/DAISY_IDE_AI_GUIDE.md"
+
 # FR-PKG-3: the vendored DaisySP core (Source/) and its MIT LICENSE must be
 # present — createEffectProject() copies Source/ into every new project.
 check "vendor/DaisySP/Source/daisysp.h"
