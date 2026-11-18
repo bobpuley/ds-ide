@@ -1348,7 +1348,11 @@ export function activate(context: vscode.ExtensionContext): void {
   // FR-TRN-7: board detection is on demand only — here, on Refresh, and
   // before Build & Flash. No background polling.
   async function refreshBoard(): Promise<BoardInfo | null> {
-    const board = await detectBoard();
+    // FR-WIN-TCH-3: on Windows, a board that is present but cannot be opened
+    // (no WinUSB driver) is explained rather than reading as "no board".
+    const board = await detectBoard({
+      onDiagnostic: (message) => { void vscode.window.showWarningMessage(`ds-ide: ${message}`); },
+    });
     transport.dispatch(board ? { type: 'boardDetected', board } : { type: 'boardNotDetected' });
     return board;
   }

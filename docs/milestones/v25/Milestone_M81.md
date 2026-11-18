@@ -10,7 +10,7 @@ Tool discovery, the hardware build and the debugger lookup are macOS-specific (H
 
 ## Sprint Tasks
 
-### [ ] refactor: single cross-platform tool lookup module (FR-WIN-TCH-5)
+### [x] refactor: single cross-platform tool lookup module (FR-WIN-TCH-5)
 
 `toolchain.ts` and `debug-adapter.ts` each hard-code macOS paths and call `which`/`xcrun`.
 
@@ -24,7 +24,7 @@ Tool discovery, the hardware build and the debugger lookup are macOS-specific (H
 
 ---
 
-### [ ] feat: Windows discovery of arm-none-eabi-gcc, dfu-util and make (FR-WIN-TCH-1)
+### [x] feat: Windows discovery of arm-none-eabi-gcc, dfu-util and make (FR-WIN-TCH-1)
 
 Candidate lists contain only Homebrew and `/usr` paths; install hints mention only Homebrew.
 
@@ -37,7 +37,7 @@ Candidate lists contain only Homebrew and `/usr` paths; install hints mention on
 
 ---
 
-### [ ] fix: hardware build PATH and make availability on Windows (FR-WIN-TCH-2)
+### [x] fix: hardware build PATH and make availability on Windows (FR-WIN-TCH-2)
 
 `buildEnv()` prefixes PATH with a hard-coded `:`; `make` is spawned by name and is absent on stock Windows.
 
@@ -51,7 +51,7 @@ Candidate lists contain only Homebrew and `/usr` paths; install hints mention on
 
 ---
 
-### [ ] feat: dfu-util on Windows: WinUSB diagnostic (FR-WIN-TCH-3)
+### [x] feat: dfu-util on Windows: WinUSB diagnostic (FR-WIN-TCH-3)
 
 `dfu-util` on Windows needs a WinUSB driver bound to the DFU device (typically via Zadig).
 
@@ -64,7 +64,7 @@ Candidate lists contain only Homebrew and `/usr` paths; install hints mention on
 
 ---
 
-### [ ] feat: per-platform lldb-dap resolver (FR-WIN-DBG-1)
+### [x] feat: per-platform lldb-dap resolver (FR-WIN-DBG-1)
 
 `lldb-dap` discovery uses `xcrun --find`, Xcode paths and `which`; its error says to run `xcode-select --install`.
 

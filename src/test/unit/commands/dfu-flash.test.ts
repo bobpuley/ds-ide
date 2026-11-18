@@ -9,7 +9,7 @@ type StatFn = typeof import('fs').promises.stat;
 
 vi.mock('../../../hardware/toolchain', () => ({
   detectDfuUtil: vi.fn().mockResolvedValue('/opt/homebrew/bin/dfu-util'),
-  DFU_UTIL_INSTALL_HINT: 'brew install dfu-util',
+  dfuUtilInstallHint: (platform?: string) => (platform === 'win32' ? 'WIN-DFU-HINT' : 'brew install dfu-util'),
 }));
 
 import { detectDfuUtil } from '../../../hardware/toolchain';
@@ -94,7 +94,7 @@ describe('flashToHardware()', () => {
 
   it('shows error and skips flash when dfu-util is not found', async () => {
     (detectDfuUtil as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
-    const deps = makeFlashDeps(0);
+    const deps = { ...makeFlashDeps(0), platform: 'darwin' as const };
     const channel = makeChannel();
 
     await flashToHardware('/project', channel, deps);
@@ -260,5 +260,49 @@ describe('findHardwareBin()', () => {
     }));
     const result = await findHardwareBin('/project', readdir as unknown as ReaddirFn, stat as unknown as StatFn);
     expect(result).toMatch(/new\.bin$/);
+  });
+});
+
+// ── Windows: WinUSB driver missing (FR-WIN-TCH-3) ────────────────────────────
+
+describe('flashToHardware() — WinUSB driver missing (FR-WIN-TCH-3)', () => {
+  const CANNOT_OPEN = [
+    'Cannot open DFU device 0483:df11 found on devnum 2 (LIBUSB_ERROR_NOT_SUPPORTED)',
+    'No DFU capable USB device available',
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (detectDfuUtil as ReturnType<typeof vi.fn>).mockResolvedValue('C:\\dfu-util\\dfu-util.exe');
+  });
+
+  it('on Windows, names the missing WinUSB driver and Zadig instead of only the exit code', async () => {
+    const deps = { ...makeFlashDeps(74, CANNOT_OPEN), confirmBootloader: false, platform: 'win32' as const };
+    await flashToHardware('/project', makeChannel(), deps);
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('WinUSB'));
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('Zadig'));
+  });
+
+  it('on macOS/Linux the same output keeps the generic failure message', async () => {
+    const deps = { ...makeFlashDeps(74, CANNOT_OPEN), confirmBootloader: false, platform: 'darwin' as const };
+    await flashToHardware('/project', makeChannel(), deps);
+    const shown = (vscode.window.showErrorMessage as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0])).join('\n');
+    expect(shown).toContain('dfu-util exited with code 74');
+    expect(shown).not.toContain('WinUSB');
+  });
+
+  it('on Windows an ordinary failure is not blamed on the driver', async () => {
+    const deps = { ...makeFlashDeps(2, ['Error during download']), confirmBootloader: false, platform: 'win32' as const };
+    await flashToHardware('/project', makeChannel(), deps);
+    const shown = (vscode.window.showErrorMessage as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0])).join('\n');
+    expect(shown).toContain('dfu-util exited with code 2');
+    expect(shown).not.toContain('WinUSB');
+  });
+
+  it('uses the install hint of the platform when dfu-util is missing', async () => {
+    (detectDfuUtil as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
+    const channel = makeChannel();
+    await flashToHardware('/project', channel, { ...makeFlashDeps(0), platform: 'win32' as const });
+    expect(channel.appendLine).toHaveBeenCalledWith(expect.stringContaining('WIN-DFU-HINT'));
   });
 });

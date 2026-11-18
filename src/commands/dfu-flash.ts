@@ -2,7 +2,8 @@ import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { detectDfuUtil, DFU_UTIL_INSTALL_HINT } from '../hardware/toolchain';
+import { detectDfuUtil, dfuUtilInstallHint } from '../hardware/toolchain';
+import { findUnopenableDfuDevice, winusbDriverMessage } from '../hardware/board-detect';
 import { createLineSplitter } from '../hardware/line-buffer';
 
 export interface DfuFlashDeps {
@@ -12,6 +13,8 @@ export interface DfuFlashDeps {
   // FR-TRN-7: Build & Flash has already detected the board in DFU mode and
   // had the user confirm, so it turns off this command's own BOOT/RESET prompt.
   confirmBootloader?: boolean;
+  // FR-WIN-TCH-3: defaults to the host platform; overridable for tests.
+  platform?: NodeJS.Platform;
 }
 
 // Daisy Seed DFU flash address (internal flash start).
@@ -22,6 +25,8 @@ const DAISY_DFU_ADDRESS = '0x08000000:leave';
 // disconnects before dfu-util can read back the final USB status — not a
 // real failure. Confirmed against those versions; re-verify if this trips
 // on a dfu-util release outside that range.
+// ⚠️ Not yet verified against a Windows dfu-util build (FR-WIN-TCH-3): the
+// special case is kept as is there until it is exercised on hardware (M84).
 const DFU_LEAVE_QUIRK_EXIT_CODE = 74;
 
 export async function flashToHardware(
@@ -33,11 +38,12 @@ export async function flashToHardware(
   const spawnFn = deps.spawn ?? cp.spawn;
   const readdir = deps.readdir ?? fs.promises.readdir;
   const stat = deps.stat ?? fs.promises.stat;
+  const platform = deps.platform ?? process.platform;
 
   const dfuUtil = await detectDfuUtil();
   if (!dfuUtil) {
     // FR-PRE-2: the cause also goes to the output channel, not only a toast.
-    const msg = `dfu-util not found. ${DFU_UTIL_INSTALL_HINT}`;
+    const msg = `dfu-util not found. ${dfuUtilInstallHint(platform)}`;
     outputChannel.show();
     outputChannel.appendLine(msg);
     void vscode.window.showErrorMessage(`ds-ide: ${msg}`);
@@ -66,7 +72,7 @@ export async function flashToHardware(
   channel.appendLine(`Flashing ${path.basename(binPath)} …`);
 
   try {
-    await runDfuUtil(dfuUtil, binPath, spawnFn, (line) => channel.appendLine(line), token);
+    await runDfuUtil(dfuUtil, binPath, spawnFn, (line) => channel.appendLine(line), platform, token);
     void vscode.window.showInformationMessage('ds-ide: flash succeeded — Daisy Seed is running your effect');
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -112,6 +118,7 @@ function runDfuUtil(
   binPath: string,
   spawnFn: typeof cp.spawn,
   onOutput: (line: string) => void,
+  platform: NodeJS.Platform,
   token?: vscode.CancellationToken,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -119,12 +126,16 @@ function runDfuUtil(
     const proc = spawnFn(dfuUtil, args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
     let downloadSucceeded = false;
+    // FR-WIN-TCH-3: a board that enumerates but cannot be opened (no WinUSB
+    // driver bound) is named as such instead of as a bare exit code.
+    let unopenableDevice: string | undefined;
 
     const handleLine = (line: string): void => {
       onOutput(line);
       if (line.includes('File downloaded successfully')) {
         downloadSucceeded = true;
       }
+      unopenableDevice ??= findUnopenableDfuDevice(line);
     };
     const stdoutSplitter = createLineSplitter(handleLine);
     const stderrSplitter = createLineSplitter(handleLine);
@@ -148,6 +159,8 @@ function runDfuUtil(
       // overrides an unrecognized exit code on its own.
       if (code === 0 || (code === DFU_LEAVE_QUIRK_EXIT_CODE && downloadSucceeded)) {
         resolve();
+      } else if (platform === 'win32' && unopenableDevice) {
+        reject(new Error(winusbDriverMessage(unopenableDevice)));
       } else {
         reject(new Error(`dfu-util exited with code ${code ?? 'null'}`));
       }

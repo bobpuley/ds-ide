@@ -50,6 +50,9 @@ compile_example "Osc"    "${EXAMPLES_DIR}/Osc/Osc.cpp"
 # --- block/non-interleaved (v1.1, compile-only check here; runtime at M7) ---
 compile_example "inout"  "${EXAMPLES_DIR}/inout/InOut.cpp"
 
+# --- header parity checks (no external corpus needed) ---
+compile_example "stdlib-parity" "${REPO_ROOT}/tests/shim-compile/checks/stdlib_parity.cpp"
+
 echo ""
 echo "Results: ${pass} passed, ${fail} failed."
 [[ "${fail}" -eq 0 ]]

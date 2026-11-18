@@ -149,6 +149,11 @@ set(DAISYSP_SRC "")
 set(DAISYSP_INCLUDE_DIRS "")
 if(DAISYSP_DIR AND EXISTS "${DAISYSP_DIR}")
     file(GLOB_RECURSE DAISYSP_SRC "${DAISYSP_DIR}/*.cpp")
+    # DaisySP's Utility/dsp.h uses RAND_MAX without including <cstdlib>: real
+    # libDaisy supplies it transitively, macOS headers happen to as well, and
+    # MinGW's libc++ does not. Force it in for DaisySP's own sources so the
+    # vendored tree stays untouched (the effect itself gets it from daisy_seed.h).
+    set_source_files_properties(${DAISYSP_SRC} PROPERTIES COMPILE_OPTIONS "-include;cstdlib")
     # Root dir
     list(APPEND DAISYSP_INCLUDE_DIRS "${DAISYSP_DIR}")
     # All immediate sub-directories (Control/, Utility/, Synthesis/, etc.)

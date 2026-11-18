@@ -513,7 +513,22 @@ path above and as the natural **first implementation step**; C is then layered o
    point, §1.2)?
 5. **Does the ARM `Makefile` build (libDaisy + project) work with the Windows toolchain and
    `make`?** Not in the emulator scope but needed for "Build & Flash" parity.
+   **Answered 2026-11-18 (M81, Windows 10 x64):** yes, with no change to the `Makefile`. DaisyExamples
+   (libDaisy + DaisySP, unmodified) built with xPack `arm-none-eabi-gcc` 15.2.1 and MSYS2
+   `make` 4.4.1 (`C:\msys64\usr\bin`, a Cygwin build): `make` in `libDaisy` (about 50 s, `-j8`),
+   `make` in `DaisySP`, then plain `make` in `seed/Blink` produced `Blink.elf` / `Blink.bin`
+   (68 796 B) and the `Memory region` table the extension parses. The environment was the one
+   `buildEnv()` builds (compiler directory, then make's directory, in front of the system `PATH`);
+   both tools were found by the extension's own lookup (xPack and MSYS2 known locations).
+   MSYS2 has no `arm-none-eabi-gcc` package, so the Windows install hint names the Arm GNU
+   Toolchain installer and xPack instead. Not exercised: the Arm GNU Toolchain installer location
+   (found only by listing a versioned directory).
 6. **dfu-util Windows exit code / WinUSB behaviour** (§3.1 item 11).
+   **Partly handled in M81, still unverified:** when the board enumerates without a WinUSB driver
+   the extension now says so and points to Zadig (detection and flash). That relies on dfu-util's
+   `Cannot open DFU device <id>` line, which is dfu-util's own wording but has not been captured
+   on a Windows machine, and the exit-code-74 `:leave` special case is unchanged and unverified
+   on Windows. Both need a Windows `dfu-util` and a Daisy Seed (M84).
 7. **Toolchain delivery on Windows** — `effect_emu` cannot be prebuilt (it embeds the user's
    effect), so a clang/MinGW + CMake + Ninja toolchain is always required on the user's
    machine. Decision: download-on-first-use (Option C), see §4.2.

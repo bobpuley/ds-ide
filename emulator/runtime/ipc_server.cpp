@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>   // std::strtof — not pulled in transitively by MinGW's libc++
 #include <cstring>
 #include <string>
 #include <thread>

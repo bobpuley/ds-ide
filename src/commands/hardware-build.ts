@@ -2,7 +2,9 @@ import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { detectArmToolchain, ARM_GCC_INSTALL_HINT, NO_MAKEFILE_MESSAGE } from '../hardware/toolchain';
+import {
+  detectArmToolchain, detectMake, armGccInstallHint, makeInstallHint, NO_MAKEFILE_MESSAGE,
+} from '../hardware/toolchain';
 import { createLineSplitter } from '../hardware/line-buffer';
 import { parseBuildLine, applyDiagnostics, ParsedDiagnostic } from '../diagnostics/build-diagnostics';
 import {
@@ -16,6 +18,12 @@ export interface HardwareBuildDeps {
   spawn?: typeof cp.spawn;
   // FR-PRE-3: whether the project root holds a Makefile; overridable for tests.
   makefileExists?: (projectRoot: string) => Promise<boolean>;
+  // FR-WIN-TCH-2: defaults to the host platform; overridable for tests.
+  platform?: NodeJS.Platform;
+}
+
+function isSpawnNotFound(err: unknown): boolean {
+  return err instanceof Error && (err as NodeJS.ErrnoException).code === 'ENOENT';
 }
 
 const defaultMakefileExists = async (projectRoot: string): Promise<boolean> => {
@@ -40,7 +48,15 @@ export async function buildForHardware(
   token?: vscode.CancellationToken,
 ): Promise<boolean> {
   const spawnFn = deps.spawn ?? cp.spawn;
+  const platform = deps.platform ?? process.platform;
   const channel = outputChannel;
+  // FR-PRE-2: the cause also goes to the output channel, not only a toast.
+  const reportMissing = (msg: string): false => {
+    channel.show();
+    channel.appendLine(msg);
+    void vscode.window.showErrorMessage(`ds-ide: ${msg}`);
+    return false;
+  };
 
   // FR-PRE-3: without a Makefile `make` only says "No targets specified and no
   // makefile found" — say what that means for this project instead.
@@ -54,13 +70,16 @@ export async function buildForHardware(
   const configuredPath = vscode.workspace.getConfiguration('ds-ide').get<string>('armToolchainPath');
   const gccPath = await detectArmToolchain(configuredPath ?? undefined);
 
-  if (!gccPath) {
-    // FR-PRE-2: the cause also goes to the output channel, not only a toast.
-    const msg = `arm-none-eabi-gcc not found. ${ARM_GCC_INSTALL_HINT}`;
-    channel.show();
-    channel.appendLine(msg);
-    void vscode.window.showErrorMessage(`ds-ide: ${msg}`);
-    return false;
+  if (!gccPath) return reportMissing(`arm-none-eabi-gcc not found. ${armGccInstallHint(platform)}`);
+
+  // FR-WIN-TCH-2: stock Windows has no `make`; find one (PATH, MSYS2, …) so its
+  // directory can join PATH, or say how to get one. macOS/Linux keep spawning
+  // plain `make`; a missing one is reported from the spawn error below.
+  let makeCommand = 'make';
+  if (platform === 'win32') {
+    const found = await detectMake();
+    if (!found) return reportMissing(`make not found. ${makeInstallHint(platform)}`);
+    makeCommand = found;
   }
 
   channel.show();
@@ -69,10 +88,10 @@ export async function buildForHardware(
 
   const parsed: ParsedDiagnostic[] = [];
   const outputLines: string[] = [];
-  const env = buildEnv(gccPath);
+  const env = buildEnv(gccPath, platform === 'win32' ? makeCommand : undefined, process.env, platform);
 
   try {
-    await runMake(projectRoot, env, spawnFn, (line) => {
+    await runMake(makeCommand, projectRoot, env, spawnFn, (line) => {
       channel.appendLine(line);
       outputLines.push(line);
       const d = parseBuildLine(line);
@@ -84,6 +103,7 @@ export async function buildForHardware(
     return true;
   } catch (err) {
     applyDiagnostics(diagnostics, parsed, projectRoot);
+    if (isSpawnNotFound(err)) return reportMissing(`make not found. ${makeInstallHint(platform)}`);
     void vscode.window.showErrorMessage(`ds-ide: hardware build failed — ${buildFailureDetail(outputLines.join('\n'), err)}`);
     return false;
   }
@@ -162,17 +182,33 @@ function reportMemoryUsage(rawOutput: string, channel: vscode.OutputChannel, har
   }
 }
 
-// Construct a PATH-augmented environment so make finds arm-none-eabi-gcc.
-function buildEnv(gccPath: string): NodeJS.ProcessEnv {
-  const binDir = path.dirname(gccPath);
-  const existingPath = process.env['PATH'] ?? '';
+// Construct a PATH-augmented environment so make finds arm-none-eabi-gcc (and,
+// on Windows, the tools that ship next to `make`). The separator and path
+// rules follow the target platform; on Windows the variable is usually spelled
+// `Path`, so the existing key is reused rather than adding a second `PATH`.
+export function buildEnv(
+  gccPath: string,
+  makePath: string | undefined,
+  baseEnv: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+): NodeJS.ProcessEnv {
+  const p = platform === 'win32' ? path.win32 : path.posix;
+  const key = platform === 'win32'
+    ? Object.keys(baseEnv).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH'
+    : 'PATH';
+  const dirs = [gccPath, makePath]
+    .filter((x): x is string => x !== undefined)
+    .map((x) => p.dirname(x))
+    .filter((d, i, all) => d !== '.' && all.indexOf(d) === i);
+  const existing = baseEnv[key];
   return {
-    ...process.env,
-    PATH: binDir !== '.' ? `${binDir}:${existingPath}` : existingPath,
+    ...baseEnv,
+    [key]: [...dirs, ...(existing ? [existing] : [])].join(p.delimiter),
   };
 }
 
 function runMake(
+  command: string,
   cwd: string,
   env: NodeJS.ProcessEnv,
   spawnFn: typeof cp.spawn,
@@ -180,7 +216,7 @@ function runMake(
   token?: vscode.CancellationToken,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const proc = spawnFn('make', [], { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const proc = spawnFn(command, [], { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
 
     const stdoutSplitter = createLineSplitter(onOutput);
     const stderrSplitter = createLineSplitter(onOutput);
