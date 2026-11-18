@@ -92,6 +92,19 @@ This is a **preview**: it is published as a Marketplace pre-release, runs on **m
 - **FR-REL-3** — The extension activates when a folder containing a Daisy project (`*.cpp`, `src/*.cpp`, `source/*.cpp`) is opened, so Run Daisy Effect and the editor play button are available without first using another Daisy command.
 - Packaging: `darwin-arm64` target, trimmed `.vscodeignore`, third-party notices for node-midi/RtMidi, repository and bugs URLs, Electron pin 43.7.3.
 
+## 0.25.0-win.5 — 2026-11-18
+
+**Windows toolchain, debug & flash discovery** *(FR-WIN-TCH-1 to FR-WIN-TCH-3, FR-WIN-TCH-5, FR-WIN-DBG-1, M81 — pre-release on `feat/windows-support`)*
+
+- **FR-WIN-TCH-5** — One tool-lookup module (`src/hardware/tool-locator.ts`): configured path → PATH (`which`, `where.exe` on Windows) → known install locations → a managed-toolchain extension point (filled in M82). `.exe` suffixes and per-platform path rules are chosen by the target platform. macOS and Linux results are unchanged.
+- **FR-WIN-TCH-1** — Windows discovery of `arm-none-eabi-gcc`, `dfu-util`, `make`, CMake and the C++ compiler (`clang++`): Arm GNU Toolchain default installs, xPack, MSYS2, LLVM, Chocolatey, Scoop, WinGet. The emulator build no longer asks `xcode-select` on Windows. Install hints and the CMake / compiler "not found" messages are per platform.
+- **FR-WIN-TCH-2** — Hardware build: PATH is extended with the platform's delimiter and reuses the existing `Path` key, `make` is located and spawned by full path on Windows, and a missing `make` says how to get one. The ARM `Makefile` of DaisyExamples (libDaisy, DaisySP, `seed/Blink`) builds unmodified with xPack gcc and MSYS2 make.
+- **FR-WIN-TCH-3** — A board that enumerates without a WinUSB driver is explained (Zadig steps) in the Daisy view / Build & Flash and in the flash command, instead of reading as "no board" or a bare exit code. dfu-util's exact wording on Windows and the exit-code-74 `:leave` case stay unverified (M84).
+- **FR-WIN-DBG-1** — Per-platform `lldb-dap` resolver (xcrun on macOS, versioned names on Linux, LLVM / MSYS2 CLANG64 on Windows) and a not-found message with the right remedy. Debug Daisy Effect with a breakpoint verified on Windows.
+- **Fix** — The emulator now builds with MinGW's libc++ headers: `daisy_seed.h` provides `<stdlib.h>` as libDaisy does (DaisySP's `dsp.h` needs `RAND_MAX`), DaisySP's own sources get `<cstdlib>` force-included, and `ipc_server.cpp` includes it for `std::strtof`. Found by the manual test of Build for Emulator on `examples/tremolo-filter`.
+- Fix: the arm-none-eabi-gcc Windows hint no longer names an MSYS2 package that does not exist.
+- Test changes: macOS/Linux tool-lookup and message tests now state their platform, so they hold on a Windows host. No test removed or weakened.
+
 ## 0.25.0-win.4 — 2026-11-08
 
 **Windows audio backend & measurement gate** *(FR-WIN-AUD-5 to FR-WIN-AUD-7, M80 — pre-release on `feat/windows-support`)*

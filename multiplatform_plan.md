@@ -536,6 +536,12 @@ path above and as the natural **first implementation step**; C is then layered o
    TypeScript unit tests (they stub `fs`/`child_process`, so passing on macOS does not imply
    passing on Windows) — worth running the vitest suite on a Windows CI runner early; cheap and
    independent of every other item.
+9. **`effect_emu.exe` needs the MinGW runtime DLLs at run time** (found in the M81 manual test,
+   2026-11-18): it imports `libc++.dll` and `libwinpthread-1.dll`; started without
+   `C:\msys64\clang64\bin` on `PATH` it exits at once with `0xC0000135` (DLL not found), and with it
+   on `PATH` it starts and announces its TCP port. Harmless while the user's own MSYS2/LLVM is on the
+   system `PATH`, but a managed toolchain (M82) would have to add its `bin` directory to the
+   emulator's environment or link the runtime statically (`-static`). To settle in M82.
 
 ## Suggested priority order
 

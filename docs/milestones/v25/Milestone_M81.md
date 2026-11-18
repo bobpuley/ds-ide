@@ -1,7 +1,7 @@
 # M81 — Windows Toolchain, Debug & Flash Discovery
 
 **Version:** 0.25.0-win.5
-**Status:** planned
+**Status:** released
 **Source:** intake session, 2026-10-04 (`multiplatform_plan.md`; 01_input-ideas.md). Branch `feat/m81-windows-toolchain-discovery` is created from `feat/windows-support` and merged back into `feat/windows-support` at close (never `main`) — FR-WIN-GIT-1
 
 ## Goal
