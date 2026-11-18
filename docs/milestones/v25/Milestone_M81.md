@@ -37,7 +37,7 @@ Candidate lists contain only Homebrew and `/usr` paths; install hints mention on
 
 ---
 
-### [ ] fix: hardware build PATH and make availability on Windows (FR-WIN-TCH-2)
+### [x] fix: hardware build PATH and make availability on Windows (FR-WIN-TCH-2)
 
 `buildEnv()` prefixes PATH with a hard-coded `:`; `make` is spawned by name and is absent on stock Windows.
 
