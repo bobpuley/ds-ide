@@ -4,7 +4,7 @@ import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { EmulatorManager, workspaceRuntimeDir, killStalePid, sweepStaleSockets, clearPidIfOwned, SHUTDOWN_GRACE_MS } from '../../../emulator/manager';
+import { EmulatorManager, workspaceRuntimeDir, killStalePid, sweepStaleSockets, clearPidIfOwned, SHUTDOWN_GRACE_MS, CMakeNotFoundError, CompilerNotFoundError } from '../../../emulator/manager';
 import { IpcClient } from '../../../emulator/ipc-client';
 import { PROTOCOL_VERSION } from '../../../ipc/protocol-version';
 
@@ -147,9 +147,102 @@ describe('EmulatorManager', () => {
       // The Unix-socket fixtures in this file assume the macOS transport on any
       // host, including the Windows CI runner (FR-WIN-IPC-1).
       platform: 'darwin',
+      detectCMake: async () => 'cmake',
+      detectCompiler: async () => '/usr/bin/clang++',
       spawn: spawnMock as unknown as typeof cp.spawn,
       ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
       mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+    });
+  });
+
+  describe('build() CMake resolution (FR-REL-2)', () => {
+    const buildOpts = { projectRoot: '/proj', effectSrc: '/proj/effect.cpp', emulatorSrc: '/ext/emulator' };
+
+    // A failed spawn emits only 'error' — never 'close'.
+    function makeEnoentProcess() {
+      const proc = new EventEmitter() as EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; kill: () => void };
+      proc.stdout = new EventEmitter();
+      proc.stderr = new EventEmitter();
+      proc.kill = () => { /* nothing to kill */ };
+      const err = Object.assign(new Error('spawn cmake ENOENT'), { code: 'ENOENT' });
+      setTimeout(() => proc.emit('error', err), 0);
+      return proc;
+    }
+
+    it('runs the CMake that detectCMake resolved for both configure and build', async () => {
+      const spawn = vi.fn(() => makeCmakeProcess(0));
+      const mgr = new EmulatorManager({
+        detectCMake: async () => '/opt/homebrew/bin/cmake',
+        detectCompiler: async () => '/usr/bin/clang++',
+        spawn: spawn as unknown as typeof cp.spawn,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+      });
+      await mgr.build(buildOpts, () => { /* ignore */ });
+      expect(spawn).toHaveBeenCalledTimes(2);
+      const calls = spawn.mock.calls as unknown as [string, string[]][];
+      expect(calls[0]![0]).toBe('/opt/homebrew/bin/cmake');
+      expect(calls[1]![0]).toBe('/opt/homebrew/bin/cmake');
+    });
+
+    it('fails with CMakeNotFoundError, spawning nothing, when no CMake is found', async () => {
+      const spawn = vi.fn();
+      const mgr = new EmulatorManager({
+        detectCMake: async () => undefined,
+        detectCompiler: async () => '/usr/bin/clang++',
+        spawn: spawn as unknown as typeof cp.spawn,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+      });
+      const lines: string[] = [];
+      await expect(mgr.build(buildOpts, (l) => lines.push(l))).rejects.toBeInstanceOf(CMakeNotFoundError);
+      expect(spawn).not.toHaveBeenCalled();
+    });
+
+    it('fails with CompilerNotFoundError, before CMake, when no C++ compiler is found (FR-PRE-1)', async () => {
+      const spawn = vi.fn();
+      const mgr = new EmulatorManager({
+        detectCMake: async () => 'cmake',
+        detectCompiler: async () => undefined,
+        spawn: spawn as unknown as typeof cp.spawn,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+      });
+      const err = await mgr.build(buildOpts, () => { /* ignore */ }).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(CompilerNotFoundError);
+      expect((err as Error).message).toBe('Xcode Command Line Tools not found. Run `xcode-select --install` and try again.');
+      expect(spawn).not.toHaveBeenCalled();
+    });
+
+    it('the CMakeNotFoundError message tells the user how to fix it', async () => {
+      const mgr = new EmulatorManager({
+        detectCMake: async () => undefined,
+        detectCompiler: async () => '/usr/bin/clang++',
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+      });
+      await expect(mgr.build(buildOpts, () => { /* ignore */ })).rejects.toThrow(/CMake not found.*brew install cmake/);
+    });
+
+    it('maps a spawn ENOENT (CMake vanished between detection and launch) to CMakeNotFoundError', async () => {
+      const spawn = vi.fn(() => makeEnoentProcess());
+      const mgr = new EmulatorManager({
+        detectCMake: async () => '/gone/cmake',
+        detectCompiler: async () => '/usr/bin/clang++',
+        spawn: spawn as unknown as typeof cp.spawn,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+      });
+      await expect(mgr.build(buildOpts, () => { /* ignore */ })).rejects.toBeInstanceOf(CMakeNotFoundError);
+    });
+
+    it('a CMake that starts and then fails keeps the plain exit-code error', async () => {
+      const spawn = vi.fn(() => makeCmakeProcess(2));
+      const mgr = new EmulatorManager({
+        detectCMake: async () => 'cmake',
+        detectCompiler: async () => '/usr/bin/clang++',
+        spawn: spawn as unknown as typeof cp.spawn,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+      });
+      const err = await mgr.build(buildOpts, () => { /* ignore */ }).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(Error);
+      expect(err).not.toBeInstanceOf(CMakeNotFoundError);
+      expect((err as Error).message).toBe('cmake exited with code 2');
     });
   });
 
@@ -197,6 +290,8 @@ describe('EmulatorManager', () => {
       spawnMock = vi.fn(() => makeCmakeProcess(1)) as ReturnType<typeof vi.fn>;
       const mgr = new EmulatorManager({
         platform: 'darwin',
+        detectCMake: async () => 'cmake',
+        detectCompiler: async () => '/usr/bin/clang++',
         spawn: spawnMock as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
@@ -223,6 +318,8 @@ describe('EmulatorManager', () => {
         ) as ReturnType<typeof vi.fn>;
       }
       return new EmulatorManager({
+        detectCMake: async () => 'cmake',
+        detectCompiler: async () => '/usr/bin/clang++',
         spawn: spawnMock as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
@@ -293,6 +390,8 @@ describe('EmulatorManager', () => {
         return child.proc;
       }) as ReturnType<typeof vi.fn>;
       const mgr = new EmulatorManager({
+        detectCMake: async () => 'cmake',
+        detectCompiler: async () => '/usr/bin/clang++',
         spawn: spawnMock as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
@@ -389,6 +488,8 @@ describe('EmulatorManager', () => {
       rmMock = vi.fn().mockResolvedValue(undefined);
       return new EmulatorManager({
         platform: 'darwin',
+        detectCMake: async () => 'cmake',
+        detectCompiler: async () => '/usr/bin/clang++',
         spawn: spawnMock as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
@@ -470,8 +571,49 @@ describe('EmulatorManager', () => {
   });
 
   describe('deploy()', () => {
-    it('throws if build was never called', async () => {
-      await expect(manager.deploy(() => undefined)).rejects.toThrow('Build before deploying');
+    it('throws if build was never called, saying what to do (FR-PRE-4)', async () => {
+      await expect(manager.deploy(() => undefined)).rejects.toThrow(
+        'Nothing built yet. Run Daisy IDE: Run Daisy Effect, or Build for Emulator first.');
+    });
+
+    describe('adoptExistingBuild() (FR-PRE-4)', () => {
+      const exeAt = (root: string): string => path.join(root, '.ds-ide', 'build', 'effect_emu');
+      const mgrWithExes = (...exes: string[]): EmulatorManager => new EmulatorManager({
+        detectCMake: async () => 'cmake',
+        detectCompiler: async () => '/usr/bin/clang++',
+        platform: 'darwin',
+        spawn: spawnMock as unknown as typeof cp.spawn,
+        ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+        access: (async (p: string) => { if (!exes.includes(p)) throw new Error('ENOENT'); }) as unknown as typeof fs.promises.access,
+      });
+
+      it('uses <project>/.ds-ide/build/effect_emu from an earlier session, so deploy works in a fresh window', async () => {
+        const m = mgrWithExes(exeAt('/proj'));
+        expect(await m.adoptExistingBuild('/proj')).toBe(true);
+        await m.deploy(() => undefined);
+        const emuCall = spawnMock.mock.calls.find((c) => String(c[0]).endsWith('effect_emu'))!;
+        expect(emuCall[0]).toBe(exeAt('/proj'));
+        expect(emuCall[2].cwd).toBe('/proj');
+      });
+
+      it('reports false, and deploy still refuses, when no build exists for the project', async () => {
+        const m = mgrWithExes();
+        expect(await m.adoptExistingBuild('/proj')).toBe(false);
+        await expect(m.deploy(() => undefined)).rejects.toThrow(/Nothing built yet/);
+      });
+
+      it("does not deploy another project's build", async () => {
+        const m = mgrWithExes();
+        await m.build({ projectRoot: '/a', effectSrc: '/a/e.cpp', emulatorSrc: '/ext/emulator' }, () => undefined);
+        expect(await m.adoptExistingBuild('/b')).toBe(false);
+      });
+
+      it('keeps this session\'s own build of the project', async () => {
+        const m = mgrWithExes();
+        await m.build({ projectRoot: '/a', effectSrc: '/a/e.cpp', emulatorSrc: '/ext/emulator' }, () => undefined);
+        expect(await m.adoptExistingBuild('/a')).toBe(true);
+      });
     });
 
     it('spawns effect_emu after a successful build', async () => {
@@ -484,6 +626,16 @@ describe('EmulatorManager', () => {
       expect(spawnMock).toHaveBeenCalledTimes(3);
       const lastCall = spawnMock.mock.calls[2] as [string, string[]];
       expect(lastCall[0]).toContain('effect_emu');
+    });
+
+    it('starts effect_emu in the project folder so its SD card is <project>/sdcard/ (FR-EXM-8)', async () => {
+      await manager.build(
+        { projectRoot: '/proj', effectSrc: '/proj/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      const emuCall = spawnMock.mock.calls[2] as [string, string[], { cwd?: string }];
+      expect(emuCall[2].cwd).toBe('/proj');
     });
 
     it('connects IPC client after socket path is announced', async () => {
@@ -1311,6 +1463,8 @@ describe('EmulatorManager', () => {
       });
       const failingManager = new EmulatorManager({
         platform: 'darwin',
+        detectCMake: async () => 'cmake',
+        detectCompiler: async () => '/usr/bin/clang++',
         spawn: failingSpawn as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
@@ -1360,6 +1514,8 @@ describe('EmulatorManager', () => {
       });
       const flakyManager = new EmulatorManager({
         platform: 'darwin',
+        detectCMake: async () => 'cmake',
+        detectCompiler: async () => '/usr/bin/clang++',
         spawn: flakySpawn as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,

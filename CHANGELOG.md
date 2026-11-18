@@ -3,6 +3,95 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.25.1 — 2026-11-17
+
+**AI agent guide** *(M92)*
+
+- New `DAISY_IDE_AI_GUIDE.md`, shipped with the extension and written for coding agents (Claude Code, Copilot, Codex, Cursor and others): the `ds-ide:` code conventions, `controllers.yaml`, what the emulator supports, and a checklist for adapting an existing effect.
+- **Create New Effect Project** now adds the guide and an `AGENTS.md` that points to it.
+- New command **Daisy IDE: Add AI Guide to Project**: copies the guide into the current project and, for the agent files it finds (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.github/copilot-instructions.md`, `.cursorrules`, `.windsurfrules`, `.clinerules`), appends a one-line pointer to the ones you choose. It never rewrites existing content and a second run changes nothing.
+- A test keeps the guide in step with the product (markers, control kinds, `controllers.yaml` fields and ranges), and the package check fails if the guide is missing from the VSIX.
+- Fix: the Controls and Wiring editors now refresh when the effect source or `controllers.yaml` changes on disk outside the VS Code editor (a coding agent, git, a terminal), instead of keeping the old state until a window reload.
+
+## 0.25.0 — 2026-11-14
+
+**First public preview** *(M85 to M91)*
+
+Daisy IDE lets you write, run and debug Daisy Seed audio effects in VS Code without a board: your effect is compiled for your Mac and runs in an emulator with a scope, virtual pots, buttons, toggles, LEDs and encoders, a MIDI keyboard and monitor, an OLED viewer and a virtual SD card. Building for the real Daisy Seed and flashing it over DFU is there too.
+
+This is a **preview**: it is published as a Marketplace pre-release, runs on **macOS with Apple Silicon only**, and has [known issues and limitations](README.md#known-issues) listed in the README. Windows support is planned for a later release.
+
+- Five examples (controls, MIDI, OLED, SD card, a tremolo-filter effect) that open and run with one click on **Run Daisy Effect**.
+- A rewritten README, clear messages when CMake, the Xcode Command Line Tools, the Arm toolchain or `dfu-util` are missing, and a Deploy that works after a restart.
+- Licensed under the PolyForm Shield License 1.0.0: free to use, including for your own effects; competing products need a commercial agreement.
+- **Feedback:** please open an issue at https://github.com/bobpuley/ds-ide/issues (bug report, feature request) using the forms provided.
+
+## 0.24.9 — 2026-11-14
+
+**Marketplace readiness** *(FR-MKT-1 to FR-MKT-5, M90)*
+
+- **FR-MKT-1** — The package is flagged as a preview, with a one-sentence description, categories, Daisy-specific keywords (Electro-Smith, libDaisy, DaisySP, MIDI and more) and a dark gallery banner; tests keep the icon at 128 x 128 or larger and the version free of a pre-release suffix.
+- **FR-MKT-2** — Issue forms for bug reports (versions, steps, output, the `crashed with code` lines) and feature requests; `config.yml` points questions to the README.
+- **FR-MKT-3** — `npm run check:published-links` requests, anonymously, every URL the published README contains (the screenshots and relative links as vsce rewrites them) and fails on any that does not answer 200.
+- **FR-MKT-5** — The committed `.pyc` files are untracked and the root clutter is gone.
+- **FR-MKT-4** — The repository is public; its history was scanned and no secrets were found, and the published links all resolve.
+
+## 0.24.8 — 2026-11-14
+
+**First-run polish II** *(FR-PRE-1 to FR-PRE-5, M89)*
+
+- **FR-PRE-1** — Without the Xcode Command Line Tools the emulator build stops with "Xcode Command Line Tools not found. Run `xcode-select --install` and try again." (notification and output channel, no empty Show Problems button). The `lldb-dap` message names the same command.
+- **FR-PRE-2** — The missing Arm toolchain and missing `dfu-util` hints now also appear in the output channel, not only in a notification.
+- **FR-PRE-3** — **Build for Hardware** checks for a `Makefile` first and says "No Makefile in this project. Build for Hardware needs a libDaisy-style project; see Limitations in the README." instead of letting `make` fail.
+- **FR-PRE-4** — **Deploy to Emulator** in a fresh window uses the project's existing build, or says "Nothing built yet. Run Daisy IDE: Run Daisy Effect, or Build for Emulator first." The Scope and Controls Editor now open only after a successful deploy.
+- **FR-PRE-5** — `engines.vscode` is `^1.140.0` (the version the native MIDI addon was built and tested for), matching the README; a test keeps them equal. With the addon unable to load, the on-screen MIDI keyboard keeps working (now covered by a test).
+
+## 0.24.7 — 2026-11-14
+
+**Licensing** *(FR-LIC-1 to FR-LIC-6, M88)*
+
+- **FR-LIC-1** — Daisy IDE is now licensed under the PolyForm Shield License 1.0.0 everywhere: `LICENSE` (the official text plus a `Required Notice:` line), `package.json` and `LICENSES.md`. Before, `LICENSE` said GPL-3.0 while the metadata said MIT.
+- **FR-LIC-2** — A test keeps `LICENSE`, `package.json`, `LICENSES.md`, the README and `CONTRIBUTING.md` in agreement.
+- **FR-LIC-3** — The README's License section says in plain words: use it for anything, what you build is yours, competing with the IDE needs a commercial agreement.
+- **FR-LIC-4** — A "Commercial licence enquiry" issue template is the route for such agreements.
+- **FR-LIC-5** — `CONTRIBUTING.md` sets the terms for contributions.
+- **FR-LIC-6** — The one outside contribution (PR #1, test-only) was settled by the owner's decision; see the M88 milestone note.
+
+## 0.24.6 — 2026-11-13
+
+**README polish** *(FR-DOC-1 to FR-DOC-7, M87)*
+
+- **FR-DOC-1** — The README opens with what Daisy IDE is, a visible preview notice and the platform scope (macOS, Apple Silicon only).
+- **FR-DOC-2** — Real requirements, split into what the emulator needs (CMake 3.20 or later, Xcode Command Line Tools) and what only hardware needs (Arm toolchain, dfu-util, a board); installation shows the Marketplace pre-release route first. The README said CMake 3.19 while the build needs 3.20; a test now keeps them equal.
+- **FR-DOC-3** — The quick start is built on the examples and **Run Daisy Effect**, with a second path through **Create New Effect Project**; the old Build, Deploy, Start Audio sequence is a note.
+- **FR-DOC-4** — Features and editor sections describe what shipped: Scope and spectrum, input generators, record and replay, the full device set, MIDI, OLED and SD card panels, debugging with **Debug Daisy Effect**, hardware build and flash, and the three settings. A new Examples section links the five examples. The doc-command lint now accepts command titles containing `&`.
+- **FR-DOC-5** — Known issues (the intermittent window close after opening a folder, with what to send; Deploy needing a build from the same session) and Limitations (Apple Silicon only, not cycle-accurate, hardware build needs a `Makefile`, OLED pixels only, encoder click).
+- **FR-DOC-6** — A unit test fails when a README link or image points at a missing file, an image is not under `media/`, or an in-page anchor has no heading. The three README screenshots are refreshed.
+- **FR-DOC-7** — Developer content moved to a new `CONTRIBUTING.md`; the README has a Feedback section pointing at the GitHub issues page and saying what to include.
+- **Chore** — An example's emulated SD card (`examples/**/sdcard/`) is ignored by git and left out of the package.
+
+## 0.24.5 — 2026-11-13
+
+**Example curation** *(FR-EXM-1 to FR-EXM-9, M86)*
+
+- **FR-EXM-1** — A project with no DaisySP of its own now builds against the extension's bundled `vendor/DaisySP`; a project's own copy still wins. A plain copy of a DaisySP example no longer fails with `'daisysp.h' file not found`.
+- **FR-EXM-2** — The milestone-named demos are gone. `examples/` holds five meaningfully named, standalone examples, each with a README (what it shows, how to run it, what to try, what you learn): `tremolo-filter` (now also documents breakpoint debugging), `controls-tour`, `midi-synth`, `midi-synth-oled`, `controls-sd-logger`.
+- **FR-EXM-3** — `controls-tour`: pot, button, toggle, LED, RGB LED and encoder in plain libDaisy, each wired to something you can hear or see.
+- **FR-EXM-4 / FR-EXM-5** — `midi-synth` plays a DaisySP oscillator from the MIDI panel's keyboard with Control Change #1 selecting the waveform; `midi-synth-oled` adds an OLED that draws the selected waveform as a pixel shape.
+- **FR-EXM-6** — `controls-sd-logger` logs every control action to `actions.txt` on the SD card, through a lock-free queue so the audio callback never touches the card. The FatFs host shim gains `f_sync`.
+- **FR-EXM-7** — `examples/README.md` lists the examples in learning order, and a unit test fails when an example lacks a README, `CMakeLists.txt`, `controllers.yaml` or a `ds-ide:controls` block, has a milestone-style name, or is missing from the index.
+- **FR-EXM-8** *(fix)* — The emulator now starts in the project folder, so its virtual SD card is `<project>/sdcard/` whichever way VS Code was launched. Before, the card landed in VS Code's working directory (or failed to mount when that was `/`), and the SD viewer, which reads `<project>/sdcard/`, never saw it.
+- **FR-EXM-9** *(fix)* — The SD viewer follows the card: it refreshes about once a second while the card is enabled, re-reads an expanded file whose size changed, always re-reads on Refresh, and a long preview scrolls. Before, a preview was cached on first open and never updated.
+
+## 0.24.4 — 2026-11-12
+
+**First-run experience fixes** *(FR-REL-1 to FR-REL-3, M85)*
+
+- **FR-REL-1** — The extension declares `capabilities.untrustedWorkspaces` (`supported: false`) with an explanation, so Restricted Mode shows why Daisy IDE is disabled instead of silently hiding the Controls/Wiring icons. The README quick start tells users to trust the folder.
+- **FR-REL-2** — A missing CMake is detected (`which`, then `/opt/homebrew/bin` and `/usr/local/bin`) and reported as "CMake not found. Install it (brew install cmake) and try again." in the notification and the build output, instead of a bare "Build failed" with an empty Problems list.
+- **FR-REL-3** — The extension activates when a folder containing a Daisy project (`*.cpp`, `src/*.cpp`, `source/*.cpp`) is opened, so Run Daisy Effect and the editor play button are available without first using another Daisy command.
+- Packaging: `darwin-arm64` target, trimmed `.vscodeignore`, third-party notices for node-midi/RtMidi, repository and bugs URLs, Electron pin 43.7.3.
+
 ## 0.25.0-win.4 — 2026-11-08
 
 **Windows audio backend & measurement gate** *(FR-WIN-AUD-5 to FR-WIN-AUD-7, M80 — pre-release on `feat/windows-support`)*

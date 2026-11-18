@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { EmulatorManager, sweepStaleSockets } from './emulator/manager';
+import { EmulatorManager, sweepStaleSockets, workspaceRuntimeDir, NOTHING_BUILT_MESSAGE } from './emulator/manager';
 import { IpcMessage, IpcWarning } from './emulator/ipc-client';
 import { ScopePanel } from './webview/scope-panel';
 import { OledPanel } from './webview/oled-panel';
@@ -41,6 +41,7 @@ import { SdEntry, sortSdEntries, SD_PREVIEW_MAX_BYTES } from './webview/sd-viewe
 import { ControlsViewProvider } from './sidebar/controls-editor-panel';
 import { WiringViewProvider } from './sidebar/wiring-editor-panel';
 import { createEffectProject } from './commands/create-effect-project';
+import { addAiGuideToProject } from './commands/add-ai-guide';
 import * as os from 'os';
 import { getString } from './ipc/narrow';
 // FR-EXT-10: the resolution/error-handling wrapper is shared with the build
@@ -55,6 +56,7 @@ import { detectBoard } from './hardware/board-detect';
 import { TransportStatusItems } from './transport/status-items';
 import { DaisyViewProvider, DAISY_VIEW_ID, formatAudioDetail, withViewProgress } from './views/daisy-view';
 import { resolveActiveFolder, promptSelectActiveFolder } from './workspace/active-folder';
+import { createProjectFileWatcher } from './workspace/project-watcher';
 
 const FIDELITY_CAVEAT =
   'Emulator approximates the Seed — not bit-exact, does not validate hardware CPU/RAM budget.';
@@ -445,14 +447,29 @@ class DeployCoordinator {
   ): Promise<boolean> {
     if (opts.build) {
       this.transport.dispatch({ type: 'buildStarted', mode });
+      let failureReason: string | undefined;
       const ok = await buildForEmulator(
         this.manager, this.extensionPath, this.diagnostics, this.buildChannel, this.workspaceState, token,
-        { genericFailureToast: false },
+        { genericFailureToast: false, onFailureReason: (reason) => { failureReason = reason; } },
       );
       if (!ok) {
         if (!token.isCancellationRequested) {
-          this.transport.dispatch({ type: 'deployFailed', problems: countErrors(this.diagnostics) });
+          this.transport.dispatch({
+            type: 'deployFailed',
+            problems: failureReason ? undefined : countErrors(this.diagnostics),
+            ...(failureReason ? { reason: failureReason } : {}),
+          });
         }
+        return false;
+      }
+    }
+    // FR-PRE-4: without a build of its own in this window, use the project's
+    // existing one, or say what to do — never "Build before deploying".
+    if (!opts.build) {
+      const root = resolveActiveFolder(this.workspaceState)?.uri.fsPath ?? '';
+      if (!await this.manager.adoptExistingBuild(root)) {
+        this.emulatorChannel.appendLine(NOTHING_BUILT_MESSAGE);
+        void vscode.window.showErrorMessage(`ds-ide: ${NOTHING_BUILT_MESSAGE}`);
         return false;
       }
     }
@@ -491,14 +508,17 @@ class DeployCoordinator {
       return true;
     }
 
+    // FR-PRE-4: the viewers open only once the emulator is up, so a failed
+    // deploy leaves nothing behind. The Controls Editor caches what is posted
+    // to it, so the data is loaded up front and replayed when it appears.
+    this.controlsProvider.loadEditor(cfg);
+    if (controlsConfig) this.controlsProvider.postControlsConfig(controlsConfig);
+    const deployed = await deployToEmulator(this.manager, this.emulatorChannel, token);
+    if (!deployed) return false;
     this.scopePanel.show(this.session.sineState, this.session.audioSourceState, this.session.generatorState);
     void this.showOledIfEnabled();
     void this.showMidiIfEnabled();
-    this.controlsProvider.loadEditor(cfg);
-    if (controlsConfig) this.controlsProvider.postControlsConfig(controlsConfig);
     void vscode.commands.executeCommand('workbench.view.extension.ds-ide-controls');
-    const deployed = await deployToEmulator(this.manager, this.emulatorChannel, token);
-    if (!deployed) return false;
     this.sendPostDeployState();
     this.transport.dispatch({ type: 'deploySucceeded' });
     return true;
@@ -1020,6 +1040,8 @@ function registerCommands(deps: CommandDeps): vscode.Disposable[] {
     vscode.commands.registerCommand('ds-ide.focusWiring', () =>
       vscode.commands.executeCommand('ds-ide.wiringEditor.focus')),
     vscode.commands.registerCommand('ds-ide.createNewEffectProject', () => createEffectProject(extensionPath)),
+    // FR-AIG-4: copy the AI agent guide into the project and point agent files at it.
+    vscode.commands.registerCommand('ds-ide.addAiGuide', () => addAiGuideToProject(extensionPath, workspaceState)),
     vscode.commands.registerCommand('ds-ide.selectActiveFolder', async () => {
       const chosen = await promptSelectActiveFolder(workspaceState);
       if (chosen) void initViewsFromProject();
@@ -1428,6 +1450,14 @@ export function activate(context: vscode.ExtensionContext): void {
     wiringProvider, controlsProvider,
   });
 
+  // FR-AIG-6: changes made outside the VS Code editor (a coding agent, git, a
+  // terminal) do not fire onDidSaveTextDocument, so watch the files on disk.
+  const projectFileWatcher = createProjectFileWatcher({
+    getActiveFolder: () => resolveActiveFolder(context.workspaceState)?.uri.fsPath,
+    getEffectSource: () => effectSourcePath,
+    refresh: initViewsFromProject,
+  });
+
   // Registered after the listeners above so theirs run first.
   const transportEventDisposables = wireTransportEvents(transport, {
     emulator: manager,
@@ -1473,6 +1503,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }))),
     vscode.debug.registerDebugConfigurationProvider(DS_IDE_DEBUG_TYPE, runConfigProvider),
     saveListener,
+    projectFileWatcher,
     ...commandDisposables,
     { dispose: () => {
       manager?.dispose(); scopePanel?.dispose(); oledPanel?.dispose(); midiPanel?.dispose();

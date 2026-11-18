@@ -9,6 +9,7 @@ import { parseAnnounce, formatIpcAddress } from './ipc-address';
 import { potControlId, buttonControlId, toggleControlId, encoderControlId, narrowControlValue, narrowControlSnapshot } from '../ipc/control-values';
 import type { ScopeCaptureRequest } from '../ipc/narrow';
 import { PROTOCOL_VERSION } from '../ipc/protocol-version';
+import { detectCMake, detectCxxCompiler, CMAKE_NOT_FOUND_MESSAGE, CXX_COMPILER_NOT_FOUND_MESSAGE } from '../hardware/toolchain';
 import type { GeneratorId, GeneratorParams } from '../webview/scope/scope-generators';
 
 const SOCKET_TIMEOUT_MS = 10_000;
@@ -171,7 +172,35 @@ export interface CancellationToken {
   onCancellationRequested(listener: () => void): { dispose(): void };
 }
 
+// FR-REL-2: CMake could not be found (or could not be started). Distinct from
+// a CMake that ran and failed, which is a build error reported through the
+// diagnostics path.
+export class CMakeNotFoundError extends Error {
+  constructor() {
+    super(CMAKE_NOT_FOUND_MESSAGE);
+    this.name = 'CMakeNotFoundError';
+  }
+}
+
+// FR-PRE-1: no C++ compiler (the Xcode Command Line Tools are not installed).
+export class CompilerNotFoundError extends Error {
+  constructor() {
+    super(CXX_COMPILER_NOT_FOUND_MESSAGE);
+    this.name = 'CompilerNotFoundError';
+  }
+}
+
+// FR-PRE-4: shown when Deploy finds no build to deploy.
+export const NOTHING_BUILT_MESSAGE =
+  'Nothing built yet. Run Daisy IDE: Run Daisy Effect, or Build for Emulator first.';
+
+function isSpawnNotFound(err: unknown): boolean {
+  return err instanceof Error && (err as NodeJS.ErrnoException).code === 'ENOENT';
+}
+
 export interface EmulatorManagerDeps {
+  detectCMake?: () => Promise<string | undefined>;
+  detectCompiler?: () => Promise<string | undefined>;
   spawn?: typeof cp.spawn;
   ipcClientFactory?: () => IpcClient;
   mkdir?: typeof fs.promises.mkdir;
@@ -219,6 +248,9 @@ export class EmulatorManager extends EventEmitter {
   private readonly stoppedChildren = new WeakSet<cp.ChildProcess>();
   private ipcClient: IpcClient | null = null;
   private buildDir = '';
+  // FR-EXM-8: the folder the effect was built from; the emulator runs in it so
+  // its virtual SD card (a relative `sdcard/`) is <project>/sdcard/.
+  private projectRoot = '';
   private socketPath: string | null = null;
   // Set to true before intentional kills (redeploy/dispose) so the disconnect
   // event is not forwarded to callers as an unexpected crash.
@@ -238,10 +270,15 @@ export class EmulatorManager extends EventEmitter {
   private readonly rm: typeof fs.promises.rm;
   private readonly access: typeof fs.promises.access;
   private readonly platform: NodeJS.Platform;
+  private readonly detectCMake: () => Promise<string | undefined>;
+  private readonly detectCompiler: () => Promise<string | undefined>;
 
   constructor(deps: EmulatorManagerDeps = {}) {
     super();
-    this.spawn = deps.spawn ?? cp.spawn;
+    // Looked up at call time, not captured here: the extension activates when a
+    // Daisy project opens, so anything that replaces child_process.spawn later
+    // (the e2e specs' process-boundary stub) must still be seen.
+    this.spawn = deps.spawn ?? (((...args: Parameters<typeof cp.spawn>) => (cp.spawn as (...a: unknown[]) => cp.ChildProcess)(...args)) as typeof cp.spawn);
     this.ipcClientFactory = deps.ipcClientFactory ?? (() => new IpcClient());
     this.mkdir = deps.mkdir ?? fs.promises.mkdir;
     this.execFile = deps.execFile ?? cp.execFile;
@@ -249,35 +286,78 @@ export class EmulatorManager extends EventEmitter {
     this.rm = deps.rm ?? fs.promises.rm;
     this.access = deps.access ?? fs.promises.access;
     this.platform = deps.platform ?? process.platform;
+    this.detectCMake = deps.detectCMake ?? (() => detectCMake());
+    this.detectCompiler = deps.detectCompiler ?? (() => detectCxxCompiler());
   }
 
   async build(opts: BuildOptions, onOutput: (line: string) => void, token?: CancellationToken): Promise<void> {
+    // FR-REL-2: resolve CMake first, so a missing one fails before the build
+    // directory is touched.
+    const cmake = await this.detectCMake();
+    if (!cmake) throw new CMakeNotFoundError();
+    // FR-PRE-1: and a compiler, so CMake does not fail with a cryptic message.
+    if (!await this.detectCompiler()) throw new CompilerNotFoundError();
+
+    this.projectRoot = opts.projectRoot;
     this.buildDir = path.join(opts.projectRoot, '.ds-ide', 'build');
     await this.healStaleCache(this.buildDir, opts.emulatorSrc);
     await this.mkdir(this.buildDir, { recursive: true });
 
-    await this.runProcess('cmake', cmakeConfigureArgs(opts, this.buildDir, this.platform), onOutput, token);
-    await this.runProcess('cmake', cmakeBuildArgs(this.buildDir, os.cpus().length), onOutput, token);
+    await this.runCMake(cmake, cmakeConfigureArgs(opts, this.buildDir, this.platform), onOutput, token);
+    await this.runCMake(cmake, cmakeBuildArgs(this.buildDir, os.cpus().length), onOutput, token);
   }
 
   // The single-config location (Makefiles/Ninja) first; a multi-config
-  // generator's default Debug/ subdirectory as a fallback. If neither exists
-  // the single-config path is returned so the spawn error names it.
-  private async resolveExecutable(buildDir: string): Promise<string> {
+  // generator's default Debug/ subdirectory as a fallback.
+  private async findExecutable(buildDir: string): Promise<string | undefined> {
     const name = emulatorExecutableName(this.platform);
-    const single = path.join(buildDir, name);
-    for (const candidate of [single, path.join(buildDir, 'Debug', name)]) {
+    for (const candidate of [path.join(buildDir, name), path.join(buildDir, 'Debug', name)]) {
       try {
         await this.access(candidate);
         return candidate;
       } catch { /* try the next location */ }
     }
-    return single;
+    return undefined;
+  }
+
+  // If no build exists the single-config path is returned so the spawn error
+  // names it.
+  private async resolveExecutable(buildDir: string): Promise<string> {
+    return (await this.findExecutable(buildDir))
+      ?? path.join(buildDir, emulatorExecutableName(this.platform));
+  }
+
+  // A spawn that fails with ENOENT means the resolved CMake is gone (removed
+  // or moved after detection) — the same "not found" the user has to fix.
+  private async runCMake(
+    cmake: string,
+    args: string[],
+    onOutput: (line: string) => void,
+    token?: CancellationToken,
+  ): Promise<void> {
+    try {
+      await this.runProcess(cmake, args, onOutput, token);
+    } catch (err) {
+      throw isSpawnNotFound(err) ? new CMakeNotFoundError() : err;
+    }
+  }
+
+  // FR-PRE-4: a fresh window has built nothing itself, but the project may hold
+  // a build from an earlier session. Uses it when it exists (or when this
+  // session already built this project); never another project's build.
+  async adoptExistingBuild(projectRoot: string): Promise<boolean> {
+    const buildDir = path.join(projectRoot, '.ds-ide', 'build');
+    if (!await this.findExecutable(buildDir)) {
+      return this.buildDir !== '' && this.projectRoot === projectRoot;
+    }
+    this.projectRoot = projectRoot;
+    this.buildDir = buildDir;
+    return true;
   }
 
   deploy(onOutput: (line: string) => void, token?: CancellationToken): Promise<void> {
     if (!this.buildDir) {
-      return Promise.reject(new Error('Build before deploying'));
+      return Promise.reject(new Error(NOTHING_BUILT_MESSAGE));
     }
     // Prevent two simultaneous effect_emu processes: coalesce on the in-flight promise.
     if (this.deployLock) return this.deployLock;
@@ -315,7 +395,10 @@ export class EmulatorManager extends EventEmitter {
         .then((exePath) => {
           this.killExisting();
 
-          const child = this.spawn(exePath, spawnArgs, { stdio: [sessionToken ? 'pipe' : 'ignore', 'pipe', 'pipe'] });
+          const child = this.spawn(exePath, spawnArgs, {
+            cwd: this.projectRoot || undefined,
+            stdio: [sessionToken ? 'pipe' : 'ignore', 'pipe', 'pipe'],
+          });
           this.childProcess = child;
           if (sessionToken) {
             // EPIPE if the emulator died first — its exit is reported below.

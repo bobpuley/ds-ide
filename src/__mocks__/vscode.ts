@@ -117,6 +117,12 @@ const workspace = {
   })),
   applyEdit: vi.fn(async () => true),
   onDidSaveTextDocument: vi.fn((_cb: (doc: { uri: { fsPath: string } }) => void) => ({ dispose: vi.fn() })),
+  createFileSystemWatcher: vi.fn((_glob: string) => ({
+    onDidChange: vi.fn((_cb: (uri: { fsPath: string }) => void) => ({ dispose: vi.fn() })),
+    onDidCreate: vi.fn((_cb: (uri: { fsPath: string }) => void) => ({ dispose: vi.fn() })),
+    onDidDelete: vi.fn((_cb: (uri: { fsPath: string }) => void) => ({ dispose: vi.fn() })),
+    dispose: vi.fn(),
+  })),
   getWorkspaceFolder: vi.fn((uri: { fsPath: string }): MockWorkspaceFolder | undefined =>
     findContainingFolder(workspace.workspaceFolders, uri),
   ),
@@ -125,6 +131,7 @@ const workspace = {
     createDirectory: vi.fn(async () => undefined),
     stat: vi.fn(async () => { throw Object.assign(new Error('ENOENT'), { code: 'FileNotFound' }); }),
     copy: vi.fn(async () => undefined),
+    readFile: vi.fn(async (): Promise<Uint8Array> => new Uint8Array()),
   },
 };
 

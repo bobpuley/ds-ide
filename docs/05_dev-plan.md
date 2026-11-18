@@ -1,4 +1,6 @@
-# 05 — Development Plan (v25)
+> **v26 complete** — archived to `docs/v26/` on 2026-11-14. This file now seeds v27 planning.
+
+# 05 — Development Plan (v27)
 
 > **v1 complete** — M0–M7 released (0.1.0–0.1.7), all ACs green.
 > Archived: [`docs/v1/`](v1/).
@@ -71,8 +73,11 @@
 >
 > **v24 complete** — M73–M76 released (0.24.0–0.24.3), all ACs green.
 > Archived: [`docs/v24/`](v24/).
+>
+> **v26 complete** — M85–M91 released (0.24.4–0.25.0), all ACs green.
+> Archived: [`docs/v26/`](v26/).
 
-*v25 milestones not yet planned.*
+*v27: M92 AI Agent Guide released (0.25.1).*
 
 ---
 
@@ -226,3 +231,15 @@ Source: `multiplatform_plan.md`; intake session, 2026-10-04.
 **Git workflow (applies to every v25 milestone — FR-WIN-GIT-1..3):** nothing is merged into `main` automatically. The base branch is `feat/windows-support` (already on `origin`). For each milestone, create a branch from `feat/windows-support` (`feat/m<N>-<slug>`); at milestone close, merge that branch into `feat/windows-support` (not `main`), update `CHANGELOG.md` and bump `package.json` `version` to the pre-release (the unit suite enforces they match; run `npm test` before tagging), tag the pre-release `0.25.0-win.<N>` and push the branch and tag. `feat/windows-support` is merged into `main` only after M84, with explicit user approval. The existing macOS suites must be green at every close (FR-WIN-GIT-2).
 
 **Priority/sequence (from `multiplatform_plan.md`):** M77 → M78 → M79 → M80 → M81 → M82 → M83 → M84. The Windows compiler, packaging model and toolchain-delivery decisions are already taken (see `02_assumptions-and-risks.md`). A native WASAPI milestone is **not** planned; it is added only if the M80 measurement gate (FR-WIN-AUD-7) shows RtAudio is insufficient.
+### v26 (0.24.4–0.25.0) — archived in `docs/v26/`
+
+M85 First-Run Experience Fixes · M86 Example Curation · M87 README Polish · M88 Licensing · M89 First-Run Polish II · M90 Marketplace Readiness · M91 First Public Preview Release.
+Full registry in [`docs/v26/05_dev-plan.md`](v26/05_dev-plan.md).
+
+### v27 (0.25.1) — released
+
+| ID  | Name           | Status      | Version | File                                                |
+|-----|----------------|-------------|---------|-----------------------------------------------------|
+| M92 | AI Agent Guide | **released** | 0.25.1  | [Milestone_M92.md](milestones/v27/Milestone_M92.md) |
+
+M92 source: intake session, 2026-11-15 (an AI-oriented conventions file for developers who work with coding agents).

@@ -1,4 +1,6 @@
-# 01 — Input Ideas (v25)
+> **v26 complete** — archived to `docs/v26/` on 2026-11-14. This file now seeds v27 planning.
+
+# 01 — Input Ideas (v27)
 
 > **v1 complete** — ds-ide 0.1.0–0.1.7 (M0–M7), all ACs green. Full v1 ideas archived in
 > [`docs/v1/01_input-ideas.md`](v1/01_input-ideas.md).
@@ -71,6 +73,9 @@
 >
 > **v24 complete** — archived to `docs/v24/` on 2026-10-03. Full v24 ideas archived in
 > [`docs/v24/01_input-ideas.md`](v24/01_input-ideas.md).
+>
+> **v26 complete** — ds-ide 0.24.4–0.25.0 (M85–M91), the first public preview, all ACs green. Full v26 ideas archived in
+> [`docs/v26/01_input-ideas.md`](v26/01_input-ideas.md).
 
 ## Ideas
 
@@ -87,3 +92,7 @@
   into `feat/windows-support`. The merge of `feat/windows-support` into `main` happens only at
   the very end, once the whole Windows support is completed and tested (no regressions on macOS).
 
+## v27 ideas
+
+- **AI-agent guideline file (feature, 2026-11-15):** let's add to the extension an exclusive AI oriented file (txt, md, or whatever is best) that explains the conventions to follow in order to develop, or adapt an already written, effect so it is compatible with the IDE. Most devs are now using claude/copilot/openai/deepseek/etc, so a guideline specifically designed for the agent would be useful.
+- **Bug (M92 manual test, 2026-11-17):** after a coding agent changes the effect source of a new project (or of an existing non-Daisy-IDE project) to follow the Daisy IDE conventions, the Controls and Wiring editors do not refresh, so it looks as if the guide did not work. Expected: the editors show the controls the agent declared without reloading the window.

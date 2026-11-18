@@ -1,0 +1,21 @@
+# PR gate for main: typecheck/lint + unit tests on macOS (primary target).
+# Windows coverage lives in windows-ci.yml until feat/windows-support merges.
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lint-and-test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test

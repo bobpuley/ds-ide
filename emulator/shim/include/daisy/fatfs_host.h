@@ -64,6 +64,10 @@ FRESULT f_write(FIL* fp, const void* buff, unsigned int btw, unsigned int* bw);
 FRESULT f_lseek(FIL* fp, uint32_t ofs);
 FRESULT f_close(FIL* fp);
 
+// Flushes buffered writes to the host file, like FatFs's f_sync: data written
+// with f_write is on the "card" (and visible to the SD viewer) without closing.
+FRESULT f_sync(FIL* fp);
+
 // Minimal libDaisy-shaped wrappers so generated Init() code
 // (devices/codegen/sdcard.ts) has a real SdmmcHandler/FatFSInterface pair to
 // declare and call, matching the real API's shape. There is no SD hardware

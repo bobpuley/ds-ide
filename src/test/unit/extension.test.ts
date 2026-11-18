@@ -35,6 +35,7 @@ vi.mock('../../emulator/manager', () => {
   class MockEmulatorManager extends EE {
     build = vi.fn();
     deploy = vi.fn();
+    adoptExistingBuild = vi.fn(async () => true);
     sendControlSnapshot = vi.fn();
     sendPot = vi.fn();
     sendTransport = vi.fn();
@@ -54,6 +55,10 @@ vi.mock('../../emulator/manager', () => {
   }
   return {
     EmulatorManager: MockEmulatorManager,
+    // FR-REL-2: build.ts narrows on this class (`instanceof`).
+    CMakeNotFoundError: class CMakeNotFoundError extends Error {},
+    CompilerNotFoundError: class CompilerNotFoundError extends Error {},
+    NOTHING_BUILT_MESSAGE: 'Nothing built yet. Run Daisy IDE: Run Daisy Effect, or Build for Emulator first.',
     // FR-EXT-2: real implementation is a pure hash of buildDir — safe to reuse
     // directly rather than re-mocking its internals.
     workspaceRuntimeDir: (buildDir: string) => `/tmp/ds-ide-mock-${buildDir.length}`,
@@ -2172,6 +2177,45 @@ describe('deploy sequencing via DeployCoordinator (FR-IPC-7)', () => {
     await getCommand('ds-ide.deploy')!();
     expect(mgr.sendSine).toHaveBeenCalled();
     expect(mgr.sendGenerator).not.toHaveBeenCalled();
+  });
+
+  it('ds-ide.deploy adopts the existing build of the active project before deploying (FR-PRE-4)', async () => {
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    await flush();
+    const mgr = managerInstances[0]! as unknown as ManagerSpies & { adoptExistingBuild: ReturnType<typeof vi.fn> };
+    await getCommand('ds-ide.deploy')!();
+    expect(mgr.adoptExistingBuild).toHaveBeenCalledTimes(1);
+    expect(mgr.deploy).toHaveBeenCalled();
+  });
+
+  it('ds-ide.deploy with nothing built says what to do and opens nothing (FR-PRE-4)', async () => {
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    await flush();
+    const mgr = managerInstances[0]! as unknown as ManagerSpies & { adoptExistingBuild: ReturnType<typeof vi.fn> };
+    mgr.adoptExistingBuild.mockResolvedValueOnce(false);
+    (vscode.window.createWebviewPanel as ReturnType<typeof vi.fn>).mockClear();
+    (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mockClear();
+    await getCommand('ds-ide.deploy')!();
+    expect(mgr.deploy).not.toHaveBeenCalled();
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      expect.stringContaining('Nothing built yet. Run Daisy IDE: Run Daisy Effect, or Build for Emulator first.'));
+    expect(vscode.window.createWebviewPanel).not.toHaveBeenCalled();
+    expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith('workbench.view.extension.ds-ide-controls');
+  });
+
+  it('a failed ds-ide.deploy opens neither the Scope nor the Controls Editor (FR-PRE-4)', async () => {
+    const { activate: act } = await import('../../extension');
+    act(makeContext());
+    await flush();
+    const mgr = managerInstances[0]! as unknown as ManagerSpies;
+    mgr.deploy.mockImplementationOnce(() => Promise.reject(new Error('boom')));
+    (vscode.window.createWebviewPanel as ReturnType<typeof vi.fn>).mockClear();
+    (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mockClear();
+    await getCommand('ds-ide.deploy')!();
+    expect(vscode.window.createWebviewPanel).not.toHaveBeenCalled();
+    expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith('workbench.view.extension.ds-ide-controls');
   });
 
   it('ds-ide.deploy opens the OLED viewer when the deployed effect has OLED enabled (FR-DEV-15)', async () => {

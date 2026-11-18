@@ -160,7 +160,11 @@ export function wireTransportNotifications(controller: TransportController): vsc
   return controller.onDidChange((state) => {
     const entered = state.phase !== previous ? state.phase : undefined;
     previous = state.phase;
-    if (entered === 'buildFailed') {
+    if (entered === 'buildFailed' && state.failureReason) {
+      // FR-REL-2: a failure with a known cause (e.g. CMake not found) has no
+      // problems to show — say the cause, and offer no empty Problems list.
+      void vscode.window.showErrorMessage(state.failureReason);
+    } else if (entered === 'buildFailed') {
       void vscode.window.showErrorMessage(buildFailedMessage(state.problems), 'Show Problems').then((choice) => {
         if (choice === 'Show Problems') void vscode.commands.executeCommand('workbench.actions.view.problems');
       });

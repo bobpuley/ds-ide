@@ -45,5 +45,11 @@ HANDOFF.md
 
 # Example build dirs and transient screenshots — but track source files
 examples/**/.ds-ide/
+# The emulated SD card: created next to an example when it runs in place (FR-EXM-8)
+examples/**/sdcard/
 examples/**/*.png
 .ds-ide-shim-test/
+
+# Python bytecode
+__pycache__/
+*.pyc

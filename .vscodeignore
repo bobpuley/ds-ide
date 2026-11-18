@@ -8,7 +8,9 @@ tsconfig.json
 tsconfig.test.json
 **/*.map
 **/*.ts
-!dist/**
+# Only the bundles ship. (vsce applies `!` re-includes after all excludes, so a
+# later `dist/**/*.map` exclude cannot undo a blanket `!dist/**`.)
+!dist/**/*.js
 node_modules/**
 # midi (FR-DEV-18's host MIDI bridge) is a native addon esbuild can't inline
 # into dist/extension.js — its runtime files (JS glue + prebuilt binary, plus
@@ -44,6 +46,7 @@ tests/**
 # stray local .ds-ide/ build cache alone added ~89 MB to the package).
 .ds-ide/**
 examples/**/.ds-ide/**
+examples/**/sdcard/**
 examples/**/*.png
 .ds-ide-shim-test/**
 .idea/**
@@ -52,3 +55,29 @@ mockup/**
 docs/raw/**
 HANDOFF.md
 *.tsbuildinfo
+
+# Repo/dev files that no runtime code reads (verified by grep over src/).
+out/**
+scripts/**
+.github/**
+.gitmodules
+.graphifyignore
+.vscode-test.mjs
+tsconfig.e2e.json
+tsconfig.webview.json
+CLAUDE.md
+Seed_pinout.csv
+devices-list.md
+design_plan*.md
+multiplatform_plan.md
+# Stray screenshots dropped in the repo root; only media/ images (icon and the
+# README screenshots) ship. vsce applies `!` re-includes after excludes.
+*.png
+!media/*.png
+# graphify knowledge graphs are local, regenerable dev tooling (gitignored).
+graphify-out-extension/**
+**/graphify-out/**
+.tsbuildinfo
+dist/.tsbuildinfo
+# Build-time input for `npm run gen:pins`; the generated table is compiled into dist/.
+resources/**
