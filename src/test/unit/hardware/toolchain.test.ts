@@ -367,7 +367,7 @@ describe('install hints per platform', () => {
 
   it('Windows hints name where to get each tool', () => {
     expect(armGccInstallHint('win32')).toMatch(/Arm GNU Toolchain/);
-    expect(armGccInstallHint('win32')).toMatch(/MSYS2/);
+    expect(armGccInstallHint('win32')).toMatch(/xPack/);
     expect(dfuUtilInstallHint('win32')).toMatch(/dfu-util/i);
     expect(makeInstallHint('win32')).toMatch(/MSYS2|make/);
     expect(cmakeNotFoundMessage('win32')).toMatch(/CMake not found/);

@@ -62,7 +62,7 @@ export const MAKE_BINARY = 'make';
 // wording (the constants above); Windows names where each tool comes from.
 const WIN_ARM_GCC_HINT =
   'Install the Arm GNU Toolchain for Windows (developer.arm.com/downloads/-/arm-gnu-toolchain-downloads, ' +
-  '"arm-none-eabi"), or from MSYS2: pacman -S mingw-w64-x86_64-arm-none-eabi-gcc. ' +
+  '"arm-none-eabi"), or install the xPack build (xpm install --global @xpack-dev-tools/arm-none-eabi-gcc@latest). ' +
   'Add its bin directory to PATH, or set ds-ide.armToolchainPath.';
 const WIN_DFU_UTIL_HINT =
   'Install dfu-util: download the Windows binaries from dfu-util.sourceforge.net and add them to PATH, ' +
