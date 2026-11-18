@@ -317,7 +317,7 @@ describe('buildForEmulator when CMake is missing (FR-REL-2)', () => {
   });
 
   const missingCMake = (): EmulatorManager =>
-    ({ build: vi.fn().mockRejectedValue(new CMakeNotFoundError()) }) as unknown as EmulatorManager;
+    ({ build: vi.fn().mockRejectedValue(new CMakeNotFoundError('darwin')) }) as unknown as EmulatorManager;
 
   it('writes the cause to the build output channel', async () => {
     const channel = makeChannel();
@@ -364,7 +364,7 @@ describe('buildForEmulator when the C++ compiler is missing (FR-PRE-1)', () => {
   });
 
   const missingCompiler = (): EmulatorManager =>
-    ({ build: vi.fn().mockRejectedValue(new CompilerNotFoundError()) }) as unknown as EmulatorManager;
+    ({ build: vi.fn().mockRejectedValue(new CompilerNotFoundError('darwin')) }) as unknown as EmulatorManager;
 
   it('writes the cause to the output channel and toasts it, with no Show Problems button', async () => {
     const channel = makeChannel();

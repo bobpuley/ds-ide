@@ -202,6 +202,7 @@ describe('EmulatorManager', () => {
       const mgr = new EmulatorManager({
         detectCMake: async () => 'cmake',
         detectCompiler: async () => undefined,
+        platform: 'darwin',
         spawn: spawn as unknown as typeof cp.spawn,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
       });
@@ -214,6 +215,7 @@ describe('EmulatorManager', () => {
     it('the CMakeNotFoundError message tells the user how to fix it', async () => {
       const mgr = new EmulatorManager({
         detectCMake: async () => undefined,
+        platform: 'darwin',
         detectCompiler: async () => '/usr/bin/clang++',
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
       });

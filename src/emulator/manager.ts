@@ -9,7 +9,7 @@ import { parseAnnounce, formatIpcAddress } from './ipc-address';
 import { potControlId, buttonControlId, toggleControlId, encoderControlId, narrowControlValue, narrowControlSnapshot } from '../ipc/control-values';
 import type { ScopeCaptureRequest } from '../ipc/narrow';
 import { PROTOCOL_VERSION } from '../ipc/protocol-version';
-import { detectCMake, detectCxxCompiler, CMAKE_NOT_FOUND_MESSAGE, CXX_COMPILER_NOT_FOUND_MESSAGE } from '../hardware/toolchain';
+import { detectCMake, detectCxxCompiler, cmakeNotFoundMessage, cxxCompilerNotFoundMessage } from '../hardware/toolchain';
 import type { GeneratorId, GeneratorParams } from '../webview/scope/scope-generators';
 
 const SOCKET_TIMEOUT_MS = 10_000;
@@ -176,16 +176,16 @@ export interface CancellationToken {
 // a CMake that ran and failed, which is a build error reported through the
 // diagnostics path.
 export class CMakeNotFoundError extends Error {
-  constructor() {
-    super(CMAKE_NOT_FOUND_MESSAGE);
+  constructor(platform: NodeJS.Platform = process.platform) {
+    super(cmakeNotFoundMessage(platform));
     this.name = 'CMakeNotFoundError';
   }
 }
 
 // FR-PRE-1: no C++ compiler (the Xcode Command Line Tools are not installed).
 export class CompilerNotFoundError extends Error {
-  constructor() {
-    super(CXX_COMPILER_NOT_FOUND_MESSAGE);
+  constructor(platform: NodeJS.Platform = process.platform) {
+    super(cxxCompilerNotFoundMessage(platform));
     this.name = 'CompilerNotFoundError';
   }
 }
@@ -294,9 +294,9 @@ export class EmulatorManager extends EventEmitter {
     // FR-REL-2: resolve CMake first, so a missing one fails before the build
     // directory is touched.
     const cmake = await this.detectCMake();
-    if (!cmake) throw new CMakeNotFoundError();
+    if (!cmake) throw new CMakeNotFoundError(this.platform);
     // FR-PRE-1: and a compiler, so CMake does not fail with a cryptic message.
-    if (!await this.detectCompiler()) throw new CompilerNotFoundError();
+    if (!await this.detectCompiler()) throw new CompilerNotFoundError(this.platform);
 
     this.projectRoot = opts.projectRoot;
     this.buildDir = path.join(opts.projectRoot, '.ds-ide', 'build');
@@ -338,7 +338,7 @@ export class EmulatorManager extends EventEmitter {
     try {
       await this.runProcess(cmake, args, onOutput, token);
     } catch (err) {
-      throw isSpawnNotFound(err) ? new CMakeNotFoundError() : err;
+      throw isSpawnNotFound(err) ? new CMakeNotFoundError(this.platform) : err;
     }
   }
 

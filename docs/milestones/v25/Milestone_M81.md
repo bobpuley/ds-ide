@@ -24,7 +24,7 @@ Tool discovery, the hardware build and the debugger lookup are macOS-specific (H
 
 ---
 
-### [ ] feat: Windows discovery of arm-none-eabi-gcc, dfu-util and make (FR-WIN-TCH-1)
+### [x] feat: Windows discovery of arm-none-eabi-gcc, dfu-util and make (FR-WIN-TCH-1)
 
 Candidate lists contain only Homebrew and `/usr` paths; install hints mention only Homebrew.
 

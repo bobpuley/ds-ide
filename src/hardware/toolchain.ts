@@ -56,27 +56,111 @@ export const DFU_UTIL_CANDIDATES = [
 export const DFU_UTIL_INSTALL_HINT =
   'Install dfu-util: brew install dfu-util';
 
+export const MAKE_BINARY = 'make';
+
+// FR-WIN-TCH-1: install hints per platform. macOS and Linux keep the existing
+// wording (the constants above); Windows names where each tool comes from.
+const WIN_ARM_GCC_HINT =
+  'Install the Arm GNU Toolchain for Windows (developer.arm.com/downloads/-/arm-gnu-toolchain-downloads, ' +
+  '"arm-none-eabi"), or from MSYS2: pacman -S mingw-w64-x86_64-arm-none-eabi-gcc. ' +
+  'Add its bin directory to PATH, or set ds-ide.armToolchainPath.';
+const WIN_DFU_UTIL_HINT =
+  'Install dfu-util: download the Windows binaries from dfu-util.sourceforge.net and add them to PATH, ' +
+  'or use Chocolatey (choco install dfu-util) or MSYS2 (pacman -S mingw-w64-x86_64-dfu-util).';
+const WIN_MAKE_HINT =
+  'Install make: MSYS2 (pacman -S make), Chocolatey (choco install make) or the xPack Windows Build Tools, ' +
+  'and add its bin directory to PATH.';
+const WIN_CMAKE_MESSAGE =
+  'CMake not found. Install it (cmake.org/download, or MSYS2: pacman -S mingw-w64-clang-x86_64-cmake) ' +
+  'and add it to PATH, then try again.';
+const WIN_CXX_COMPILER_MESSAGE =
+  'No C++ compiler (clang) found. Install LLVM (llvm.org) or MSYS2 CLANG64 ' +
+  '(pacman -S mingw-w64-clang-x86_64-clang), add its bin directory to PATH and try again.';
+
+export const armGccInstallHint = (platform: NodeJS.Platform = process.platform): string =>
+  (platform === 'win32' ? WIN_ARM_GCC_HINT : ARM_GCC_INSTALL_HINT);
+export const dfuUtilInstallHint = (platform: NodeJS.Platform = process.platform): string =>
+  (platform === 'win32' ? WIN_DFU_UTIL_HINT : DFU_UTIL_INSTALL_HINT);
+export const makeInstallHint = (platform: NodeJS.Platform = process.platform): string =>
+  (platform === 'win32'
+    ? WIN_MAKE_HINT
+    : 'Install make: on macOS run `xcode-select --install`; on Linux use your package manager (e.g. apt install make).');
+export const cmakeNotFoundMessage = (platform: NodeJS.Platform = process.platform): string =>
+  (platform === 'win32' ? WIN_CMAKE_MESSAGE : CMAKE_NOT_FOUND_MESSAGE);
+export const cxxCompilerNotFoundMessage = (platform: NodeJS.Platform = process.platform): string =>
+  (platform === 'win32' ? WIN_CXX_COMPILER_MESSAGE : CXX_COMPILER_NOT_FOUND_MESSAGE);
+
 // Platform/environment overrides for tests; production passes none.
 type Env = Pick<LocateOptions, 'platform' | 'env' | 'listDir'>;
 
-// macOS/Linux known locations are the fixed lists above (their directories);
-// Windows locations are added per tool in FR-WIN-TCH-1.
+// macOS/Linux known locations are the fixed lists above (their directories).
 const dirsOf = (files: readonly string[]): string[] => files.map((f) => path.posix.dirname(f));
 
-const ARM_GCC_SPEC: ToolSpec = {
-  binary: ARM_GCC_BINARY,
-  knownDirs: (platform) => (platform === 'win32' ? [] : dirsOf(ARM_GCC_CANDIDATES)),
+// ── Windows install locations (FR-WIN-TCH-1) ────────────────────────────────
+// Built from the environment, never from a hard-coded user or drive; a
+// variable that is not set simply contributes nothing. `*` is a versioned
+// directory (see tool-locator.ts).
+type WinEnv = NodeJS.ProcessEnv;
+
+const joinWin = (base: string | undefined, ...parts: string[]): string[] =>
+  (base ? [[base, ...parts].join('\\')] : []);
+
+const programFiles = (env: WinEnv): string[] => [
+  env['ProgramFiles'] ?? 'C:\\Program Files',
+  env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)',
+];
+const msys2 = (env: WinEnv, ...subdirs: string[]): string[] =>
+  subdirs.map((s) => `${env['SystemDrive'] ?? 'C:'}\\msys64\\${s}`);
+const chocolatey = (env: WinEnv): string[] => joinWin(env['ProgramData'] ?? 'C:\\ProgramData', 'chocolatey', 'bin');
+const scoop = (env: WinEnv): string[] => joinWin(env['USERPROFILE'], 'scoop', 'shims');
+const winget = (env: WinEnv): string[] => joinWin(env['LOCALAPPDATA'], 'Microsoft', 'WinGet', 'Links');
+const xpack = (env: WinEnv, pkg: string): string[] =>
+  joinWin(env['APPDATA'], 'xPacks', '@xpack-dev-tools', pkg, '*', '.content', 'bin');
+
+const windowsDirs: Record<string, (env: WinEnv) => string[]> = {
+  [ARM_GCC_BINARY]: (env) => [
+    ...programFiles(env).flatMap((pf) => [
+      `${pf}\\Arm GNU Toolchain arm-none-eabi\\*\\bin`,
+      `${pf}\\GNU Arm Embedded Toolchain\\*\\bin`,
+      `${pf}\\GNU Tools Arm Embedded\\*\\bin`,
+    ]),
+    ...xpack(env, 'arm-none-eabi-gcc'),
+    ...msys2(env, 'mingw64\\bin', 'ucrt64\\bin'),
+    ...chocolatey(env), ...scoop(env),
+  ],
+  [DFU_UTIL_BINARY]: (env) => [
+    ...programFiles(env).map((pf) => `${pf}\\dfu-util`),
+    ...msys2(env, 'mingw64\\bin', 'ucrt64\\bin', 'clang64\\bin'),
+    ...chocolatey(env), ...scoop(env), ...winget(env),
+  ],
+  [MAKE_BINARY]: (env) => [
+    ...msys2(env, 'usr\\bin', 'mingw64\\bin'),
+    ...chocolatey(env), ...scoop(env),
+    ...xpack(env, 'windows-build-tools'),
+    ...programFiles(env).map((pf) => `${pf}\\GnuWin32\\bin`),
+  ],
+  [CMAKE_BINARY]: (env) => [
+    ...programFiles(env).map((pf) => `${pf}\\CMake\\bin`),
+    ...msys2(env, 'clang64\\bin', 'ucrt64\\bin', 'mingw64\\bin'),
+    ...chocolatey(env), ...scoop(env), ...winget(env),
+  ],
+  'clang++': (env) => [
+    ...programFiles(env).map((pf) => `${pf}\\LLVM\\bin`),
+    ...msys2(env, 'clang64\\bin'),
+    ...scoop(env), ...winget(env),
+  ],
 };
 
-const DFU_UTIL_SPEC: ToolSpec = {
-  binary: DFU_UTIL_BINARY,
-  knownDirs: (platform) => (platform === 'win32' ? [] : dirsOf(DFU_UTIL_CANDIDATES)),
-};
+const knownDirsFor = (binary: string, posix: readonly string[]): ToolSpec['knownDirs'] =>
+  (platform, env) => (platform === 'win32' ? windowsDirs[binary]!(env) : dirsOf(posix));
 
-const CMAKE_SPEC: ToolSpec = {
-  binary: CMAKE_BINARY,
-  knownDirs: (platform) => (platform === 'win32' ? [] : dirsOf(CMAKE_CANDIDATES)),
-};
+const ARM_GCC_SPEC: ToolSpec = { binary: ARM_GCC_BINARY, knownDirs: knownDirsFor(ARM_GCC_BINARY, ARM_GCC_CANDIDATES) };
+const DFU_UTIL_SPEC: ToolSpec = { binary: DFU_UTIL_BINARY, knownDirs: knownDirsFor(DFU_UTIL_BINARY, DFU_UTIL_CANDIDATES) };
+const CMAKE_SPEC: ToolSpec = { binary: CMAKE_BINARY, knownDirs: knownDirsFor(CMAKE_BINARY, CMAKE_CANDIDATES) };
+// macOS/Linux: make is on PATH, or the system one in /usr/bin.
+const MAKE_SPEC: ToolSpec = { binary: MAKE_BINARY, knownDirs: knownDirsFor(MAKE_BINARY, ['/usr/bin/make']) };
+// Windows only: macOS locates its compiler through xcode-select instead.
+const CLANGXX_SPEC: ToolSpec = { binary: 'clang++', knownDirs: knownDirsFor('clang++', []) };
 
 // Detect arm-none-eabi-gcc.
 // configuredPath may be a full path to the binary or a bin directory.
@@ -110,14 +194,28 @@ export async function detectCMake(
   return locateTool(CMAKE_SPEC, undefined, { ...env, exists, exec });
 }
 
-// Detect a C++ compiler (FR-PRE-1). Detection order: the developer directory
-// `xcode-select -p` reports, then the known Command Line Tools location. The
-// compiler is looked up inside that directory rather than via `which`, because
-// a bare macOS has /usr/bin/clang++ as an installer stub.
+// Detect make (FR-WIN-TCH-2). PATH → known paths. Stock Windows has none.
+export async function detectMake(
+  exists: Exists = defaultExists,
+  exec: Exec = defaultExec,
+  env: Env = {},
+): Promise<string | undefined> {
+  return locateTool(MAKE_SPEC, undefined, { ...env, exists, exec });
+}
+
+// Detect a C++ compiler (FR-PRE-1). On Windows that is clang++ (the toolchain
+// is clang/MinGW): PATH → LLVM / MSYS2 CLANG64. On macOS the developer
+// directory `xcode-select -p` reports, then the known Command Line Tools
+// location; the compiler is looked up inside that directory rather than via
+// `which`, because a bare macOS has /usr/bin/clang++ as an installer stub.
 export async function detectCxxCompiler(
   exists: Exists = defaultExists,
   exec: Exec = defaultExec,
+  env: Env = {},
 ): Promise<string | undefined> {
+  if ((env.platform ?? process.platform) === 'win32') {
+    return locateTool(CLANGXX_SPEC, undefined, { ...env, exists, exec });
+  }
   const dirs: string[] = [];
   try {
     const dir = (await exec('xcode-select', ['-p'])).trim();
