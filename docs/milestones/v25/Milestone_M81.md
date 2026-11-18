@@ -10,7 +10,7 @@ Tool discovery, the hardware build and the debugger lookup are macOS-specific (H
 
 ## Sprint Tasks
 
-### [ ] refactor: single cross-platform tool lookup module (FR-WIN-TCH-5)
+### [x] refactor: single cross-platform tool lookup module (FR-WIN-TCH-5)
 
 `toolchain.ts` and `debug-adapter.ts` each hard-code macOS paths and call `which`/`xcrun`.
 

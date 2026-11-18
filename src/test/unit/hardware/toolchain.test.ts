@@ -13,6 +13,10 @@ import {
   DFU_UTIL_CANDIDATES,
 } from '../../../hardware/toolchain';
 
+// These suites describe the macOS/Linux behaviour; the platform is explicit so
+// they hold on a Windows host too (FR-WIN-TCH-5).
+const MAC = { platform: 'darwin' } as const;
+
 // ── detectArmToolchain ────────────────────────────────────────────────────────
 
 describe('detectArmToolchain()', () => {
@@ -20,7 +24,7 @@ describe('detectArmToolchain()', () => {
     const exists = vi.fn((p: string) => Promise.resolve(p === '/custom/bin/arm-none-eabi-gcc'));
     const exec = vi.fn(() => Promise.reject(new Error()));
 
-    const result = await detectArmToolchain('/custom/bin/arm-none-eabi-gcc', exists, exec);
+    const result = await detectArmToolchain('/custom/bin/arm-none-eabi-gcc', exists, exec, MAC);
     expect(result).toBe('/custom/bin/arm-none-eabi-gcc');
   });
 
@@ -28,7 +32,7 @@ describe('detectArmToolchain()', () => {
     const exists = vi.fn((p: string) => Promise.resolve(p === '/custom/bin/arm-none-eabi-gcc'));
     const exec = vi.fn(() => Promise.reject(new Error()));
 
-    const result = await detectArmToolchain('/custom/bin', exists, exec);
+    const result = await detectArmToolchain('/custom/bin', exists, exec, MAC);
     expect(result).toBe('/custom/bin/arm-none-eabi-gcc');
   });
 
@@ -36,7 +40,7 @@ describe('detectArmToolchain()', () => {
     const exists = vi.fn((p: string) => Promise.resolve(p === '/custom/bin/arm-none-eabi-gcc'));
     const exec = vi.fn(() => Promise.reject(new Error()));
 
-    const result = await detectArmToolchain('/custom/bin/', exists, exec);
+    const result = await detectArmToolchain('/custom/bin/', exists, exec, MAC);
     expect(result).toBe('/custom/bin/arm-none-eabi-gcc');
   });
 
@@ -44,7 +48,7 @@ describe('detectArmToolchain()', () => {
     const exists = vi.fn((p: string) => Promise.resolve(p === ARM_GCC_CANDIDATES[0]));
     const exec = vi.fn(() => Promise.reject(new Error()));
 
-    const result = await detectArmToolchain('/nonexistent/bin', exists, exec);
+    const result = await detectArmToolchain('/nonexistent/bin', exists, exec, MAC);
     expect(result).toBe(ARM_GCC_CANDIDATES[0]);
   });
 
@@ -52,7 +56,7 @@ describe('detectArmToolchain()', () => {
     const exists = vi.fn(() => Promise.resolve(true));
     const exec = vi.fn(() => Promise.resolve('/usr/bin/arm-none-eabi-gcc\n'));
 
-    const result = await detectArmToolchain(undefined, exists, exec);
+    const result = await detectArmToolchain(undefined, exists, exec, MAC);
     expect(result).toBe('/usr/bin/arm-none-eabi-gcc');
     expect(exec).toHaveBeenCalledWith('which', [ARM_GCC_BINARY]);
   });
@@ -61,7 +65,7 @@ describe('detectArmToolchain()', () => {
     const exists = vi.fn((p: string) => Promise.resolve(p === ARM_GCC_CANDIDATES[0]));
     const exec = vi.fn(() => Promise.resolve('/ghost/arm-none-eabi-gcc\n'));
 
-    const result = await detectArmToolchain(undefined, exists, exec);
+    const result = await detectArmToolchain(undefined, exists, exec, MAC);
     expect(result).toBe(ARM_GCC_CANDIDATES[0]);
   });
 
@@ -69,7 +73,7 @@ describe('detectArmToolchain()', () => {
     const exists = vi.fn((p: string) => Promise.resolve(p === ARM_GCC_CANDIDATES[0]));
     const exec = vi.fn(() => Promise.reject(new Error('not found')));
 
-    const result = await detectArmToolchain(undefined, exists, exec);
+    const result = await detectArmToolchain(undefined, exists, exec, MAC);
     expect(result).toBe(ARM_GCC_CANDIDATES[0]);
   });
 
@@ -77,7 +81,7 @@ describe('detectArmToolchain()', () => {
     const exists = vi.fn((p: string) => Promise.resolve(p === ARM_GCC_CANDIDATES[1]));
     const exec = vi.fn(() => Promise.reject(new Error()));
 
-    const result = await detectArmToolchain(undefined, exists, exec);
+    const result = await detectArmToolchain(undefined, exists, exec, MAC);
     expect(result).toBe(ARM_GCC_CANDIDATES[1]);
   });
 
@@ -85,7 +89,7 @@ describe('detectArmToolchain()', () => {
     const exists = vi.fn(() => Promise.resolve(false));
     const exec = vi.fn(() => Promise.reject(new Error()));
 
-    const result = await detectArmToolchain(undefined, exists, exec);
+    const result = await detectArmToolchain(undefined, exists, exec, MAC);
     expect(result).toBeUndefined();
   });
 });
@@ -97,7 +101,7 @@ describe('detectDfuUtil()', () => {
     const exists = vi.fn(() => Promise.resolve(true));
     const exec = vi.fn(() => Promise.resolve('/usr/bin/dfu-util\n'));
 
-    const result = await detectDfuUtil(exists, exec);
+    const result = await detectDfuUtil(exists, exec, MAC);
     expect(result).toBe('/usr/bin/dfu-util');
   });
 
@@ -105,7 +109,7 @@ describe('detectDfuUtil()', () => {
     const exists = vi.fn((p: string) => Promise.resolve(p === DFU_UTIL_CANDIDATES[0]));
     const exec = vi.fn(() => Promise.reject(new Error()));
 
-    const result = await detectDfuUtil(exists, exec);
+    const result = await detectDfuUtil(exists, exec, MAC);
     expect(result).toBe(DFU_UTIL_CANDIDATES[0]);
   });
 
@@ -113,7 +117,7 @@ describe('detectDfuUtil()', () => {
     const exists = vi.fn(() => Promise.resolve(false));
     const exec = vi.fn(() => Promise.reject(new Error()));
 
-    const result = await detectDfuUtil(exists, exec);
+    const result = await detectDfuUtil(exists, exec, MAC);
     expect(result).toBeUndefined();
   });
 
@@ -121,7 +125,7 @@ describe('detectDfuUtil()', () => {
     const exists = vi.fn((p: string) => Promise.resolve(p === DFU_UTIL_CANDIDATES[0]));
     const exec = vi.fn(() => Promise.resolve('/ghost/dfu-util\n'));
 
-    const result = await detectDfuUtil(exists, exec);
+    const result = await detectDfuUtil(exists, exec, MAC);
     expect(result).toBe(DFU_UTIL_CANDIDATES[0]);
   });
 });
@@ -133,35 +137,35 @@ describe('detectCMake()', () => {
     const exists = vi.fn(() => Promise.resolve(true));
     const exec = vi.fn(() => Promise.resolve('/custom/bin/cmake\n'));
 
-    expect(await detectCMake(exists, exec)).toBe('/custom/bin/cmake');
+    expect(await detectCMake(exists, exec, MAC)).toBe('/custom/bin/cmake');
   });
 
   it('falls back to the Homebrew location when which fails', async () => {
     const exists = vi.fn((p: string) => Promise.resolve(p === CMAKE_CANDIDATES[0]));
     const exec = vi.fn(() => Promise.reject(new Error()));
 
-    expect(await detectCMake(exists, exec)).toBe('/opt/homebrew/bin/cmake');
+    expect(await detectCMake(exists, exec, MAC)).toBe('/opt/homebrew/bin/cmake');
   });
 
   it('falls back to /usr/local/bin when only that exists', async () => {
     const exists = vi.fn((p: string) => Promise.resolve(p === '/usr/local/bin/cmake'));
     const exec = vi.fn(() => Promise.reject(new Error()));
 
-    expect(await detectCMake(exists, exec)).toBe('/usr/local/bin/cmake');
+    expect(await detectCMake(exists, exec, MAC)).toBe('/usr/local/bin/cmake');
   });
 
   it('ignores a which result that does not exist on disk and keeps looking', async () => {
     const exists = vi.fn((p: string) => Promise.resolve(p === CMAKE_CANDIDATES[0]));
     const exec = vi.fn(() => Promise.resolve('/stale/cmake\n'));
 
-    expect(await detectCMake(exists, exec)).toBe(CMAKE_CANDIDATES[0]);
+    expect(await detectCMake(exists, exec, MAC)).toBe(CMAKE_CANDIDATES[0]);
   });
 
   it('returns undefined when cmake is not found anywhere', async () => {
     const exists = vi.fn(() => Promise.resolve(false));
     const exec = vi.fn(() => Promise.reject(new Error()));
 
-    expect(await detectCMake(exists, exec)).toBeUndefined();
+    expect(await detectCMake(exists, exec, MAC)).toBeUndefined();
   });
 
   it('has a not-found message that names CMake and how to install it', () => {

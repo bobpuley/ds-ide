@@ -1,5 +1,8 @@
-import * as cp from 'child_process';
-import * as fs from 'fs';
+import * as path from 'path';
+import {
+  locateTool, defaultExists, defaultExec,
+  type ToolSpec, type Exists, type Exec, type LocateOptions,
+} from './tool-locator';
 
 export const ARM_GCC_BINARY = 'arm-none-eabi-gcc';
 
@@ -53,78 +56,58 @@ export const DFU_UTIL_CANDIDATES = [
 export const DFU_UTIL_INSTALL_HINT =
   'Install dfu-util: brew install dfu-util';
 
-type Exists = (p: string) => Promise<boolean>;
-type Exec   = (cmd: string, args: string[]) => Promise<string>;
+// Platform/environment overrides for tests; production passes none.
+type Env = Pick<LocateOptions, 'platform' | 'env' | 'listDir'>;
 
-const defaultExists: Exists = async (p) => {
-  try { await fs.promises.access(p); return true; } catch { return false; }
+// macOS/Linux known locations are the fixed lists above (their directories);
+// Windows locations are added per tool in FR-WIN-TCH-1.
+const dirsOf = (files: readonly string[]): string[] => files.map((f) => path.posix.dirname(f));
+
+const ARM_GCC_SPEC: ToolSpec = {
+  binary: ARM_GCC_BINARY,
+  knownDirs: (platform) => (platform === 'win32' ? [] : dirsOf(ARM_GCC_CANDIDATES)),
 };
 
-// execFile (not exec) — no shell is involved, so binary/arg strings can't be
-// reinterpreted as shell metacharacters.
-const defaultExec: Exec = (cmd, args) =>
-  new Promise<string>((resolve, reject) =>
-    cp.execFile(cmd, args, (err, stdout) => (err ? reject(err) : resolve(stdout)))
-  );
+const DFU_UTIL_SPEC: ToolSpec = {
+  binary: DFU_UTIL_BINARY,
+  knownDirs: (platform) => (platform === 'win32' ? [] : dirsOf(DFU_UTIL_CANDIDATES)),
+};
+
+const CMAKE_SPEC: ToolSpec = {
+  binary: CMAKE_BINARY,
+  knownDirs: (platform) => (platform === 'win32' ? [] : dirsOf(CMAKE_CANDIDATES)),
+};
 
 // Detect arm-none-eabi-gcc.
 // configuredPath may be a full path to the binary or a bin directory.
-// Detection order: configured setting → which → known Homebrew / system paths.
+// Detection order: configured setting → PATH → known install locations.
 export async function detectArmToolchain(
   configuredPath: string | undefined,
   exists: Exists = defaultExists,
   exec: Exec = defaultExec,
+  env: Env = {},
 ): Promise<string | undefined> {
-  if (configuredPath) {
-    const candidate = configuredPath.endsWith(ARM_GCC_BINARY)
-      ? configuredPath
-      : `${configuredPath.replace(/\/$/, '')}/${ARM_GCC_BINARY}`;
-    if (await exists(candidate)) return candidate;
-  }
-
-  try {
-    const result = (await exec('which', [ARM_GCC_BINARY])).trim();
-    if (result && await exists(result)) return result;
-  } catch { /* not on PATH */ }
-
-  for (const p of ARM_GCC_CANDIDATES) {
-    if (await exists(p)) return p;
-  }
-  return undefined;
+  return locateTool(ARM_GCC_SPEC, configuredPath, { ...env, exists, exec });
 }
 
-// Detect dfu-util. Detection order: which → known paths.
+// Detect dfu-util. Detection order: PATH → known paths.
 export async function detectDfuUtil(
   exists: Exists = defaultExists,
   exec: Exec = defaultExec,
+  env: Env = {},
 ): Promise<string | undefined> {
-  try {
-    const result = (await exec('which', [DFU_UTIL_BINARY])).trim();
-    if (result && await exists(result)) return result;
-  } catch { /* not on PATH */ }
-
-  for (const p of DFU_UTIL_CANDIDATES) {
-    if (await exists(p)) return p;
-  }
-  return undefined;
+  return locateTool(DFU_UTIL_SPEC, undefined, { ...env, exists, exec });
 }
 
-// Detect cmake (FR-REL-2). Detection order: which → known paths, so a CMake
+// Detect cmake (FR-REL-2). Detection order: PATH → known paths, so a CMake
 // the user already put on PATH always wins and the known locations only cover
 // an editor started without the shell's PATH (e.g. launched from the Dock).
 export async function detectCMake(
   exists: Exists = defaultExists,
   exec: Exec = defaultExec,
+  env: Env = {},
 ): Promise<string | undefined> {
-  try {
-    const result = (await exec('which', [CMAKE_BINARY])).trim();
-    if (result && await exists(result)) return result;
-  } catch { /* not on PATH */ }
-
-  for (const p of CMAKE_CANDIDATES) {
-    if (await exists(p)) return p;
-  }
-  return undefined;
+  return locateTool(CMAKE_SPEC, undefined, { ...env, exists, exec });
 }
 
 // Detect a C++ compiler (FR-PRE-1). Detection order: the developer directory
