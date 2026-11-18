@@ -2555,6 +2555,15 @@ describe('Build & Flash with on-demand board detection (FR-TRN-7)', () => {
     expect(flashToHardware).not.toHaveBeenCalled();
   });
 
+  it('a board that enumerates but cannot be opened is reported with the detection diagnostic (FR-WIN-TCH-3)', async () => {
+    vi.mocked(detectBoard).mockImplementationOnce(async (deps) => {
+      deps?.onDiagnostic?.('dfu-util cannot open the board: no WinUSB driver');
+      return null;
+    });
+    await handler('ds-ide.buildAndFlash')();
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith('ds-ide: dfu-util cannot open the board: no WinUSB driver');
+  });
+
   it('Retry detects again, and proceeds once the board shows up', async () => {
     vi.mocked(detectBoard).mockResolvedValueOnce(null).mockResolvedValueOnce(BOARD);
     (vscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce('Retry');

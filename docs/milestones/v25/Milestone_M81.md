@@ -51,7 +51,7 @@ Candidate lists contain only Homebrew and `/usr` paths; install hints mention on
 
 ---
 
-### [ ] feat: dfu-util on Windows: WinUSB diagnostic (FR-WIN-TCH-3)
+### [x] feat: dfu-util on Windows: WinUSB diagnostic (FR-WIN-TCH-3)
 
 `dfu-util` on Windows needs a WinUSB driver bound to the DFU device (typically via Zadig).
 

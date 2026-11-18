@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { parseDfuList, selectDaisyBoard, detectBoard } from '../../../hardware/board-detect';
+import {
+  parseDfuList, selectDaisyBoard, detectBoard, findUnopenableDfuDevice, winusbDriverMessage,
+} from '../../../hardware/board-detect';
 
 // Captured from `dfu-util -l` (dfu-util 0.11, Homebrew, macOS) with no board
 // attached — exits 0 and lists nothing after the banner.
@@ -84,5 +86,83 @@ describe('detectBoard()', () => {
 
   it('returns null when dfu-util fails', async () => {
     expect(await detectBoard({ resolveDfuUtil: async () => '/x/dfu-util', run: async () => { throw new Error('EACCES'); } })).toBeNull();
+  });
+});
+
+// ── WinUSB diagnostic (FR-WIN-TCH-3) ─────────────────────────────────────────
+// ⚠️ ASSUMPTION: the "Cannot open DFU device" line is dfu-util's own wording
+// (probe_devices in dfu-util's main.c); not captured from a Windows machine
+// with the driver missing — confirm during the Windows verification (M84).
+const CANNOT_OPEN_OUTPUT =
+  `${DFU_UTIL_BANNER}Cannot open DFU device 0483:df11 found on devnum 2 (LIBUSB_ERROR_NOT_SUPPORTED)\n` +
+  'No DFU capable USB device available\n';
+
+describe('findUnopenableDfuDevice() (FR-WIN-TCH-3)', () => {
+  it('returns the USB id of a DFU device that enumerates but cannot be opened', () => {
+    expect(findUnopenableDfuDevice(CANNOT_OPEN_OUTPUT)).toBe('0483:df11');
+  });
+
+  it('tolerates Windows line endings and upper-case ids', () => {
+    expect(findUnopenableDfuDevice('Cannot open DFU device 0483:DF11 found on devnum 2 (x)\r\n')).toBe('0483:df11');
+  });
+
+  it('returns undefined for a listing, for no device, and for unrelated output', () => {
+    expect(findUnopenableDfuDevice(DFU_UTIL_BANNER + DAISY_LINES)).toBeUndefined();
+    expect(findUnopenableDfuDevice(DFU_UTIL_BANNER)).toBeUndefined();
+    expect(findUnopenableDfuDevice('No DFU capable USB device available\n')).toBeUndefined();
+  });
+});
+
+describe('winusbDriverMessage() (FR-WIN-TCH-3)', () => {
+  it('names the missing WinUSB driver, the device, and how to install it with Zadig', () => {
+    const m = winusbDriverMessage('0483:df11');
+    expect(m).toMatch(/WinUSB/);
+    expect(m).toMatch(/0483:df11/);
+    expect(m).toMatch(/Zadig/);
+    expect(m).toMatch(/zadig\.akeo\.ie/);
+    expect(m).toMatch(/BOOT/);
+  });
+});
+
+describe('detectBoard() — WinUSB driver missing (FR-WIN-TCH-3)', () => {
+  it('on Windows, reports the diagnostic once and still returns null', async () => {
+    const onDiagnostic = vi.fn();
+    const board = await detectBoard({
+      platform: 'win32',
+      resolveDfuUtil: async () => 'C:\\dfu-util\\dfu-util.exe',
+      run: async () => CANNOT_OPEN_OUTPUT,
+      onDiagnostic,
+    });
+    expect(board).toBeNull();
+    expect(onDiagnostic).toHaveBeenCalledTimes(1);
+    expect(onDiagnostic).toHaveBeenCalledWith(winusbDriverMessage('0483:df11'));
+  });
+
+  it('does not diagnose off Windows (libusb access errors there are a different problem)', async () => {
+    const onDiagnostic = vi.fn();
+    await detectBoard({
+      platform: 'darwin', resolveDfuUtil: async () => '/usr/local/bin/dfu-util',
+      run: async () => CANNOT_OPEN_OUTPUT, onDiagnostic,
+    });
+    expect(onDiagnostic).not.toHaveBeenCalled();
+  });
+
+  it('does not diagnose when the board lists normally', async () => {
+    const onDiagnostic = vi.fn();
+    const board = await detectBoard({
+      platform: 'win32', resolveDfuUtil: async () => 'dfu-util.exe',
+      run: async () => DFU_UTIL_BANNER + DAISY_LINES, onDiagnostic,
+    });
+    expect(board).not.toBeNull();
+    expect(onDiagnostic).not.toHaveBeenCalled();
+  });
+
+  it('does not diagnose a plain "no board attached"', async () => {
+    const onDiagnostic = vi.fn();
+    await detectBoard({
+      platform: 'win32', resolveDfuUtil: async () => 'dfu-util.exe',
+      run: async () => DFU_UTIL_BANNER, onDiagnostic,
+    });
+    expect(onDiagnostic).not.toHaveBeenCalled();
   });
 });
