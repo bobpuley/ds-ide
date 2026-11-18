@@ -64,7 +64,7 @@ Candidate lists contain only Homebrew and `/usr` paths; install hints mention on
 
 ---
 
-### [ ] feat: per-platform lldb-dap resolver (FR-WIN-DBG-1)
+### [x] feat: per-platform lldb-dap resolver (FR-WIN-DBG-1)
 
 `lldb-dap` discovery uses `xcrun --find`, Xcode paths and `which`; its error says to run `xcode-select --install`.
 

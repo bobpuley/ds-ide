@@ -77,6 +77,36 @@ const WIN_CXX_COMPILER_MESSAGE =
   'No C++ compiler (clang) found. Install LLVM (llvm.org) or MSYS2 CLANG64 ' +
   '(pacman -S mingw-w64-clang-x86_64-clang), add its bin directory to PATH and try again.';
 
+// FR-WIN-DBG-1: where lldb-dap lives, and what to do when it is missing.
+export const LLDB_DAP_BINARY = 'lldb-dap';
+
+export const LLDB_DAP_CANDIDATES = [
+  '/Library/Developer/CommandLineTools/usr/bin/lldb-dap',
+  '/usr/bin/lldb-dap',
+  '/Applications/Xcode.app/Contents/Developer/usr/bin/lldb-dap',
+];
+
+// Debian/Ubuntu LLVM packages (apt.llvm.org and distro repos) install
+// lldb-dap under a version-suffixed name alongside — or instead of — the
+// unversioned symlink. Tried newest-first on PATH via `which` (FR-QA-EXT-9).
+const LLDB_DAP_POSIX_PATH_NAMES = [
+  'lldb-dap',
+  'lldb-dap-20', 'lldb-dap-19', 'lldb-dap-18', 'lldb-dap-17',
+  'lldb-dap-16', 'lldb-dap-15', 'lldb-dap-14',
+];
+
+const LINUX_LLDB_DAP_MESSAGE =
+  'ds-ide: lldb-dap not found. Install LLDB from your package manager ' +
+  '(for example: sudo apt install lldb) so that lldb-dap is on PATH.';
+const WIN_LLDB_DAP_MESSAGE =
+  'ds-ide: lldb-dap not found. Install LLVM (llvm.org, includes lldb-dap) or MSYS2 CLANG64 ' +
+  '(pacman -S mingw-w64-clang-x86_64-lldb) and add its bin directory to PATH.';
+
+export const lldbDapNotFoundMessage = (platform: NodeJS.Platform = process.platform): string => {
+  if (platform === 'win32') return WIN_LLDB_DAP_MESSAGE;
+  return platform === 'darwin' ? LLDB_DAP_NOT_FOUND_MESSAGE : LINUX_LLDB_DAP_MESSAGE;
+};
+
 export const armGccInstallHint = (platform: NodeJS.Platform = process.platform): string =>
   (platform === 'win32' ? WIN_ARM_GCC_HINT : ARM_GCC_INSTALL_HINT);
 export const dfuUtilInstallHint = (platform: NodeJS.Platform = process.platform): string =>
@@ -149,6 +179,11 @@ const windowsDirs: Record<string, (env: WinEnv) => string[]> = {
     ...msys2(env, 'clang64\\bin'),
     ...scoop(env), ...winget(env),
   ],
+  [LLDB_DAP_BINARY]: (env) => [
+    ...programFiles(env).map((pf) => `${pf}\\LLVM\\bin`),
+    ...msys2(env, 'clang64\\bin'),
+    ...scoop(env), ...winget(env),
+  ],
 };
 
 const knownDirsFor = (binary: string, posix: readonly string[]): ToolSpec['knownDirs'] =>
@@ -192,6 +227,24 @@ export async function detectCMake(
   env: Env = {},
 ): Promise<string | undefined> {
   return locateTool(CMAKE_SPEC, undefined, { ...env, exists, exec });
+}
+
+// Detect lldb-dap (FR-WIN-DBG-1). PATH → known paths: on Windows the clang/MinGW
+// toolchain (LLVM, MSYS2 CLANG64), on macOS/Linux the Command Line Tools /
+// Xcode locations and the versioned Debian/Ubuntu names. The macOS `xcrun`
+// lookup, which respects the active Xcode selection, stays in debug-adapter.ts.
+export async function detectLldbDap(
+  exists: Exists = defaultExists,
+  exec: Exec = defaultExec,
+  env: Env = {},
+): Promise<string | undefined> {
+  const windows = (env.platform ?? process.platform) === 'win32';
+  const spec: ToolSpec = {
+    binary: LLDB_DAP_BINARY,
+    pathNames: windows ? [LLDB_DAP_BINARY] : LLDB_DAP_POSIX_PATH_NAMES,
+    knownDirs: knownDirsFor(LLDB_DAP_BINARY, LLDB_DAP_CANDIDATES),
+  };
+  return locateTool(spec, undefined, { ...env, exists, exec });
 }
 
 // Detect make (FR-WIN-TCH-2). PATH → known paths. Stock Windows has none.
