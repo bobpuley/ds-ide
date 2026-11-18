@@ -1,16 +1,27 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
 import * as vscode from 'vscode';
-import { buildForHardware } from '../../../commands/hardware-build';
+import { buildForHardware, buildEnv } from '../../../commands/hardware-build';
 
 // Mock toolchain module so tests don't depend on actual fs/execSync.
 vi.mock('../../../hardware/toolchain', () => ({
   detectArmToolchain: vi.fn().mockResolvedValue('/opt/homebrew/bin/arm-none-eabi-gcc'),
-  ARM_GCC_INSTALL_HINT: 'brew install arm-none-eabi-gcc',
+  detectMake: vi.fn().mockResolvedValue('C:\\msys64\\usr\\bin\\make.exe'),
+  armGccInstallHint: (platform?: string) => (platform === 'win32' ? 'WIN-ARM-HINT' : 'brew install arm-none-eabi-gcc'),
+  makeInstallHint: (platform?: string) => (platform === 'win32' ? 'WIN-MAKE-HINT: MSYS2 pacman -S make' : 'MAC-MAKE-HINT'),
   NO_MAKEFILE_MESSAGE: 'No Makefile in this project. Build for Hardware needs a libDaisy-style project; see Limitations in the README.',
 }));
 
-import { detectArmToolchain } from '../../../hardware/toolchain';
+import { detectArmToolchain, detectMake } from '../../../hardware/toolchain';
+
+// The suites below describe the macOS/Linux behaviour; the host platform is
+// pinned so they hold on a Windows host too. Windows behaviour is tested
+// separately with an explicit `platform` dependency (FR-WIN-TCH-2).
+function pinHostPlatform(platform: NodeJS.Platform): () => void {
+  const original = Object.getOwnPropertyDescriptor(process, 'platform')!;
+  Object.defineProperty(process, 'platform', { value: platform });
+  return () => Object.defineProperty(process, 'platform', original);
+}
 
 function makeDiagnostics() {
   return {
@@ -44,12 +55,15 @@ function makeSpawn(exitCode = 0, stderr = ''): typeof import('child_process').sp
 }
 
 describe('buildForHardware()', () => {
+  let restorePlatform: () => void;
   beforeEach(() => {
+    restorePlatform = pinHostPlatform('darwin');
     vi.clearAllMocks();
     (vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>).mockReturnValue({
       get: vi.fn(() => undefined),
     });
   });
+  afterEach(() => restorePlatform());
 
   it('shows success message when make exits with code 0', async () => {
     const spawn = makeSpawn(0);
@@ -392,5 +406,118 @@ describe('buildForHardware()', () => {
     const setCall = (diagnostics.set as ReturnType<typeof vi.fn>).mock.calls[0];
     const diagArray = setCall?.[1] as { message: string }[];
     expect(diagArray?.[0]?.message).toContain("undeclared identifier 'foo'");
+  });
+});
+
+// ── Windows (FR-WIN-TCH-2) ───────────────────────────────────────────────────
+
+describe('buildEnv()', () => {
+  it('prefixes PATH with the compiler directory, joined with ":" on macOS/Linux', () => {
+    const env = buildEnv('/opt/arm/bin/arm-none-eabi-gcc', undefined, { PATH: '/usr/bin:/bin' }, 'darwin');
+    expect(env['PATH']).toBe('/opt/arm/bin:/usr/bin:/bin');
+  });
+
+  it('prefixes PATH with ";" on Windows, compiler directory first, then make\'s', () => {
+    const env = buildEnv(
+      'C:\\arm\\bin\\arm-none-eabi-gcc.exe', 'C:\\msys64\\usr\\bin\\make.exe',
+      { Path: 'C:\\Windows\\System32' }, 'win32',
+    );
+    expect(env['Path']).toBe('C:\\arm\\bin;C:\\msys64\\usr\\bin;C:\\Windows\\System32');
+  });
+
+  it('on Windows writes back to the existing "Path" key instead of adding a second "PATH"', () => {
+    const env = buildEnv('C:\\arm\\bin\\arm-none-eabi-gcc.exe', undefined, { Path: 'C:\\x', Other: '1' }, 'win32');
+    expect(Object.keys(env).filter((k) => k.toUpperCase() === 'PATH')).toEqual(['Path']);
+    expect(env['Other']).toBe('1');
+  });
+
+  it('does not repeat a directory that holds both tools', () => {
+    const env = buildEnv('C:\\t\\bin\\arm-none-eabi-gcc.exe', 'C:\\t\\bin\\make.exe', { Path: 'C:\\x' }, 'win32');
+    expect(env['Path']).toBe('C:\\t\\bin;C:\\x');
+  });
+
+  it('leaves PATH alone when the compiler path has no directory (bare command)', () => {
+    expect(buildEnv('arm-none-eabi-gcc', undefined, { PATH: '/usr/bin' }, 'darwin')['PATH']).toBe('/usr/bin');
+  });
+
+  it('does not modify the environment it was given', () => {
+    const base = { PATH: '/usr/bin' };
+    buildEnv('/opt/arm/bin/arm-none-eabi-gcc', undefined, base, 'darwin');
+    expect(base.PATH).toBe('/usr/bin');
+  });
+});
+
+describe('buildForHardware() on Windows (FR-WIN-TCH-2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>).mockReturnValue({ get: vi.fn(() => undefined) });
+    (detectArmToolchain as ReturnType<typeof vi.fn>).mockResolvedValue('C:\\arm\\bin\\arm-none-eabi-gcc.exe');
+    (detectMake as ReturnType<typeof vi.fn>).mockResolvedValue('C:\\msys64\\usr\\bin\\make.exe');
+  });
+
+  it('says make is missing, and how to get one, without spawning anything', async () => {
+    (detectMake as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
+    const spawn = makeSpawn(0);
+    const channel = makeChannel();
+    const ok = await buildForHardware('C:\\proj', makeDiagnostics(), channel,
+      { makefileExists: async () => true, spawn, platform: 'win32' });
+    expect(ok).toBe(false);
+    expect(spawn).not.toHaveBeenCalled();
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('make not found'));
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('MSYS2 pacman -S make'));
+    expect(channel.appendLine).toHaveBeenCalledWith(expect.stringContaining('WIN-MAKE-HINT'));
+  });
+
+  it('runs the make it found (full path) with both tool directories on PATH', async () => {
+    const spawn = makeSpawn(0);
+    const original = process.env['Path'];
+    const ok = await buildForHardware('C:\\proj', makeDiagnostics(), makeChannel(),
+      { makefileExists: async () => true, spawn, platform: 'win32' });
+    expect(ok).toBe(true);
+    const call = (spawn as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(call[0]).toBe('C:\\msys64\\usr\\bin\\make.exe');
+    const env = (call[2] as { env: Record<string, string> }).env;
+    const key = Object.keys(env).find((k) => k.toUpperCase() === 'PATH')!;
+    expect(env[key]!.startsWith('C:\\arm\\bin;C:\\msys64\\usr\\bin')).toBe(true);
+    expect(process.env['Path']).toBe(original);
+  });
+
+  it('uses the Windows install hint when the toolchain is missing', async () => {
+    (detectArmToolchain as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
+    const channel = makeChannel();
+    await buildForHardware('C:\\proj', makeDiagnostics(), channel,
+      { makefileExists: async () => true, spawn: makeSpawn(0), platform: 'win32' });
+    expect(channel.appendLine).toHaveBeenCalledWith(expect.stringContaining('WIN-ARM-HINT'));
+  });
+});
+
+describe('buildForHardware() when make cannot be started (any platform)', () => {
+  let restorePlatform: () => void;
+  beforeEach(() => {
+    restorePlatform = pinHostPlatform('darwin');
+    vi.clearAllMocks();
+    (vscode.workspace.getConfiguration as ReturnType<typeof vi.fn>).mockReturnValue({ get: vi.fn(() => undefined) });
+    (detectArmToolchain as ReturnType<typeof vi.fn>).mockResolvedValue('/opt/homebrew/bin/arm-none-eabi-gcc');
+  });
+  afterEach(() => restorePlatform());
+
+  it('maps a spawn ENOENT to "make not found" with the install hint, not a bare spawn error', async () => {
+    const spawn = vi.fn(() => {
+      const proc = new EventEmitter() as ReturnType<typeof import('child_process').spawn>;
+      (proc as unknown as Record<string, unknown>)['stdout'] = new EventEmitter();
+      (proc as unknown as Record<string, unknown>)['stderr'] = new EventEmitter();
+      process.nextTick(() => proc.emit('error', Object.assign(new Error('spawn make ENOENT'), { code: 'ENOENT' })));
+      return proc;
+    }) as unknown as typeof import('child_process').spawn;
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { makefileExists: async () => true, spawn });
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('make not found'));
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(expect.stringContaining('MAC-MAKE-HINT'));
+  });
+
+  it('keeps spawning plain `make` on macOS/Linux (no detection step)', async () => {
+    const spawn = makeSpawn(0);
+    await buildForHardware('/project', makeDiagnostics(), makeChannel(), { makefileExists: async () => true, spawn });
+    expect(detectMake).not.toHaveBeenCalled();
+    expect((spawn as ReturnType<typeof vi.fn>).mock.calls[0]![0]).toBe('make');
   });
 });
