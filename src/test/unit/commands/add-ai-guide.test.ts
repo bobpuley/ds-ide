@@ -33,6 +33,9 @@ const dec = (b: Uint8Array) => Buffer.from(b).toString('utf8');
 /** In-memory file system behind the vscode.workspace.fs mock. */
 let files: Map<string, string>;
 
+/** The code builds the shipped-guide path with path.join (backslashes on Windows); keys here use '/'. */
+const key = (fsPath: string): string => fsPath.replace(/\\/g, '/');
+
 function notFound(): Error {
   return Object.assign(new Error('FileNotFound'), { code: 'FileNotFound' });
 }
@@ -44,17 +47,17 @@ beforeEach(() => {
   files = new Map([[`${EXT}/ai/${GUIDE_FILE}`, SHIPPED]]);
   fsMock.readFile.mockReset();
   fsMock.readFile.mockImplementation(async (uri: { fsPath: string }) => {
-    const t = files.get(uri.fsPath);
+    const t = files.get(key(uri.fsPath));
     if (t === undefined) throw notFound();
     return enc(t);
   });
   fsMock.writeFile.mockReset();
   fsMock.writeFile.mockImplementation(async (uri: { fsPath: string }, data: Uint8Array) => {
-    files.set(uri.fsPath, dec(data));
+    files.set(key(uri.fsPath), dec(data));
   });
   fsMock.stat.mockReset();
   fsMock.stat.mockImplementation(async (uri: { fsPath: string }) => {
-    if (!files.has(uri.fsPath)) throw notFound();
+    if (!files.has(key(uri.fsPath))) throw notFound();
     return { type: 1 };
   });
   fsMock.createDirectory.mockReset();
@@ -252,7 +255,7 @@ describe('addAiGuideToProject (FR-AIG-4)', () => {
     files.set(`${ROOT}/GEMINI.md`, 'g\n');
     fsMock.writeFile.mockImplementation(async (uri: { fsPath: string }, data: Uint8Array) => {
       if (uri.fsPath.endsWith('CLAUDE.md')) throw new Error('read-only');
-      files.set(uri.fsPath, dec(data));
+      files.set(key(uri.fsPath), dec(data));
     });
     await addAiGuideToProject(EXT, workspaceState);
     expect(files.get(`${ROOT}/GEMINI.md`)).toContain(POINTER_MARKER);
