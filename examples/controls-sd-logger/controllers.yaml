@@ -1,0 +1,36 @@
+controllers:
+  - id: gainPot
+    label: Gain
+    adc_channel: 0
+    range: [0, 1]
+    taper: linear
+    default: 0.7
+    editor_pos: [20, 20]
+  - id: tonePot
+    label: Tone
+    adc_channel: 1
+    range: [0, 1]
+    taper: linear
+    default: 1
+    editor_pos: [140, 20]
+buttons:
+  - id: muteBtn
+    label: Mute
+    gpio_pin: 28
+    mode: momentary
+    active_level: low
+    editor_pos: [240, 20]
+leds:
+  - id: statusLed
+    label: Status
+    gpio_pin: 23
+    editor_pos: [240, 180]
+encoders:
+  - id: dial
+    editor_pos: [140, 180]
+toggles:
+  - id: modeSwitch
+    editor_pos: [20, 180]
+rgbleds:
+  - id: colorLed
+    editor_pos: [20, 320]

@@ -1,13 +1,26 @@
 """IPC client helper for ds-ide emulator runtime integration tests."""
 import json
+import re
 import socket
 
 
+TCP_ADDRESS = re.compile(r"^(\d{1,3}(?:\.\d{1,3}){3}):(\d{1,5})$")
+
+
 class EmulatorClient:
-    def __init__(self, socket_path: str, timeout: float = 5.0) -> None:
-        self._sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    """Connects to an announced address: a Unix socket path, or
+    "127.0.0.1:<port>" for the TCP transport (FR-WIN-IPC-1)."""
+
+    def __init__(self, address: str, timeout: float = 5.0) -> None:
+        m = TCP_ADDRESS.match(address)
+        if m:
+            self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            target = (m.group(1), int(m.group(2)))
+        else:
+            self._sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            target = address
         self._sock.settimeout(timeout)
-        self._sock.connect(socket_path)
+        self._sock.connect(target)
         self._buf = b""
 
     def send(self, msg: dict) -> None:

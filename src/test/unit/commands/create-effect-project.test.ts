@@ -55,12 +55,12 @@ function setupHappyPath() {
 }
 
 describe('createEffectProject', () => {
-  it('scaffolds five files and opens folder on happy path', async () => {
+  it('scaffolds the project files, the AI guide and AGENTS.md, and opens the folder on happy path', async () => {
     setupHappyPath();
     await createEffectProject(EXTENSION_PATH);
 
     expect(fsCreateDir).toHaveBeenCalledTimes(2);
-    expect(fsWriteFile).toHaveBeenCalledTimes(5);
+    expect(fsWriteFile).toHaveBeenCalledTimes(7);
 
     const paths = (fsWriteFile.mock.calls as [{ fsPath: string }, unknown][]).map(c => c[0].fsPath);
     expect(paths.some(p => p.endsWith('.cpp'))).toBe(true);
@@ -68,6 +68,8 @@ describe('createEffectProject', () => {
     expect(paths.some(p => p.endsWith('controllers.yaml'))).toBe(true);
     expect(paths.some(p => p.endsWith('README.md'))).toBe(true);
     expect(paths.some(p => p.endsWith('.vscode/settings.json'))).toBe(true);
+    expect(paths.some(p => p.endsWith('/DAISY_IDE_AI_GUIDE.md'))).toBe(true);
+    expect(paths.some(p => p.endsWith('/AGENTS.md'))).toBe(true);
 
     expect(execCmd).toHaveBeenCalledWith(
       'vscode.openFolder',
@@ -113,6 +115,31 @@ describe('createEffectProject', () => {
     const parsed = parseControllerConfig(content);
     expect(parsed.errors).toHaveLength(0);
     expect(parsed.pots).toHaveLength(0);
+  });
+
+  it('adds the AI guide and an AGENTS.md that names it to a new project (FR-AIG-3)', async () => {
+    setupHappyPath();
+    const guideText = '# the guide\n';
+    (vscode.workspace.fs.readFile as ReturnType<typeof vi.fn>).mockResolvedValue(Buffer.from(guideText));
+    await createEffectProject(EXTENSION_PATH);
+
+    const calls = fsWriteFile.mock.calls as [{ fsPath: string }, Uint8Array][];
+    const text = (suffix: string) => {
+      const c = calls.find(x => x[0].fsPath.endsWith(suffix));
+      return c ? Buffer.from(c[1]).toString('utf8') : undefined;
+    };
+    expect(text('/myEffect/DAISY_IDE_AI_GUIDE.md')).toBe(guideText);
+    expect(text('/myEffect/AGENTS.md')).toContain('DAISY_IDE_AI_GUIDE.md');
+    expect(fsCopy).toHaveBeenCalledTimes(1); // still only the DaisySP copy
+  });
+
+  it('still creates and opens the project when the AI guide cannot be added (FR-AIG-3)', async () => {
+    setupHappyPath();
+    (vscode.workspace.fs.readFile as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('missing'));
+    await createEffectProject(EXTENSION_PATH);
+
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(expect.stringContaining('AI guide'));
+    expect(execCmd).toHaveBeenCalledWith('vscode.openFolder', expect.anything(), { forceNewWindow: false });
   });
 
   it('aborts silently when user cancels name input', async () => {

@@ -4,7 +4,7 @@ import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { EmulatorManager, workspaceRuntimeDir, killStalePid } from '../../../emulator/manager';
+import { EmulatorManager, workspaceRuntimeDir, killStalePid, sweepStaleSockets, clearPidIfOwned, SHUTDOWN_GRACE_MS, CMakeNotFoundError, CompilerNotFoundError } from '../../../emulator/manager';
 import { IpcClient } from '../../../emulator/ipc-client';
 import { PROTOCOL_VERSION } from '../../../ipc/protocol-version';
 
@@ -12,11 +12,13 @@ import { PROTOCOL_VERSION } from '../../../ipc/protocol-version';
 
 function makeChildProcess(exitCode = 0, socketPath?: string, exitAfterAnnounce = false) {
   const proc = new EventEmitter() as EventEmitter & {
+    stdin: EventEmitter & { write: ReturnType<typeof vi.fn>; end: ReturnType<typeof vi.fn> };
     stdout: EventEmitter & { on: ReturnType<typeof vi.fn> };
     stderr: EventEmitter & { on: ReturnType<typeof vi.fn> };
     kill: ReturnType<typeof vi.fn>;
     pid: number;
   };
+  proc.stdin = Object.assign(new EventEmitter(), { write: vi.fn(), end: vi.fn() });
   proc.kill = vi.fn();
   proc.pid  = 12345;
 
@@ -97,6 +99,7 @@ function makeIpcClient() {
     connect: ReturnType<typeof vi.fn>;
     send: ReturnType<typeof vi.fn>;
     disconnect: ReturnType<typeof vi.fn>;
+    sendAndClose: ReturnType<typeof vi.fn>;
     on: ReturnType<typeof vi.fn>;
     connected: boolean;
   };
@@ -115,6 +118,7 @@ function makeIpcClient() {
   }) as ReturnType<typeof vi.fn>;
   client.send       = vi.fn();
   client.disconnect = vi.fn(() => { client.connected = false; }) as ReturnType<typeof vi.fn>;
+  client.sendAndClose = vi.fn(() => { client.connected = false; }) as ReturnType<typeof vi.fn>;
   return client;
 }
 
@@ -140,9 +144,105 @@ describe('EmulatorManager', () => {
     }) as ReturnType<typeof vi.fn>;
 
     manager = new EmulatorManager({
+      // The Unix-socket fixtures in this file assume the macOS transport on any
+      // host, including the Windows CI runner (FR-WIN-IPC-1).
+      platform: 'darwin',
+      detectCMake: async () => 'cmake',
+      detectCompiler: async () => '/usr/bin/clang++',
       spawn: spawnMock as unknown as typeof cp.spawn,
       ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
       mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+    });
+  });
+
+  describe('build() CMake resolution (FR-REL-2)', () => {
+    const buildOpts = { projectRoot: '/proj', effectSrc: '/proj/effect.cpp', emulatorSrc: '/ext/emulator' };
+
+    // A failed spawn emits only 'error' — never 'close'.
+    function makeEnoentProcess() {
+      const proc = new EventEmitter() as EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; kill: () => void };
+      proc.stdout = new EventEmitter();
+      proc.stderr = new EventEmitter();
+      proc.kill = () => { /* nothing to kill */ };
+      const err = Object.assign(new Error('spawn cmake ENOENT'), { code: 'ENOENT' });
+      setTimeout(() => proc.emit('error', err), 0);
+      return proc;
+    }
+
+    it('runs the CMake that detectCMake resolved for both configure and build', async () => {
+      const spawn = vi.fn(() => makeCmakeProcess(0));
+      const mgr = new EmulatorManager({
+        detectCMake: async () => '/opt/homebrew/bin/cmake',
+        detectCompiler: async () => '/usr/bin/clang++',
+        spawn: spawn as unknown as typeof cp.spawn,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+      });
+      await mgr.build(buildOpts, () => { /* ignore */ });
+      expect(spawn).toHaveBeenCalledTimes(2);
+      const calls = spawn.mock.calls as unknown as [string, string[]][];
+      expect(calls[0]![0]).toBe('/opt/homebrew/bin/cmake');
+      expect(calls[1]![0]).toBe('/opt/homebrew/bin/cmake');
+    });
+
+    it('fails with CMakeNotFoundError, spawning nothing, when no CMake is found', async () => {
+      const spawn = vi.fn();
+      const mgr = new EmulatorManager({
+        detectCMake: async () => undefined,
+        detectCompiler: async () => '/usr/bin/clang++',
+        spawn: spawn as unknown as typeof cp.spawn,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+      });
+      const lines: string[] = [];
+      await expect(mgr.build(buildOpts, (l) => lines.push(l))).rejects.toBeInstanceOf(CMakeNotFoundError);
+      expect(spawn).not.toHaveBeenCalled();
+    });
+
+    it('fails with CompilerNotFoundError, before CMake, when no C++ compiler is found (FR-PRE-1)', async () => {
+      const spawn = vi.fn();
+      const mgr = new EmulatorManager({
+        detectCMake: async () => 'cmake',
+        detectCompiler: async () => undefined,
+        spawn: spawn as unknown as typeof cp.spawn,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+      });
+      const err = await mgr.build(buildOpts, () => { /* ignore */ }).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(CompilerNotFoundError);
+      expect((err as Error).message).toBe('Xcode Command Line Tools not found. Run `xcode-select --install` and try again.');
+      expect(spawn).not.toHaveBeenCalled();
+    });
+
+    it('the CMakeNotFoundError message tells the user how to fix it', async () => {
+      const mgr = new EmulatorManager({
+        detectCMake: async () => undefined,
+        detectCompiler: async () => '/usr/bin/clang++',
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+      });
+      await expect(mgr.build(buildOpts, () => { /* ignore */ })).rejects.toThrow(/CMake not found.*brew install cmake/);
+    });
+
+    it('maps a spawn ENOENT (CMake vanished between detection and launch) to CMakeNotFoundError', async () => {
+      const spawn = vi.fn(() => makeEnoentProcess());
+      const mgr = new EmulatorManager({
+        detectCMake: async () => '/gone/cmake',
+        detectCompiler: async () => '/usr/bin/clang++',
+        spawn: spawn as unknown as typeof cp.spawn,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+      });
+      await expect(mgr.build(buildOpts, () => { /* ignore */ })).rejects.toBeInstanceOf(CMakeNotFoundError);
+    });
+
+    it('a CMake that starts and then fails keeps the plain exit-code error', async () => {
+      const spawn = vi.fn(() => makeCmakeProcess(2));
+      const mgr = new EmulatorManager({
+        detectCMake: async () => 'cmake',
+        detectCompiler: async () => '/usr/bin/clang++',
+        spawn: spawn as unknown as typeof cp.spawn,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+      });
+      const err = await mgr.build(buildOpts, () => { /* ignore */ }).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(Error);
+      expect(err).not.toBeInstanceOf(CMakeNotFoundError);
+      expect((err as Error).message).toBe('cmake exited with code 2');
     });
   });
 
@@ -189,6 +289,9 @@ describe('EmulatorManager', () => {
     it('rejects when cmake exits non-zero', async () => {
       spawnMock = vi.fn(() => makeCmakeProcess(1)) as ReturnType<typeof vi.fn>;
       const mgr = new EmulatorManager({
+        platform: 'darwin',
+        detectCMake: async () => 'cmake',
+        detectCompiler: async () => '/usr/bin/clang++',
         spawn: spawnMock as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
@@ -202,12 +305,191 @@ describe('EmulatorManager', () => {
     });
   });
 
+  describe('build invocation and binary path per platform (FR-WIN-BLD-5)', () => {
+    const opts = { projectRoot: '/proj', effectSrc: '/proj/effect.cpp', emulatorSrc: '/ext/emulator' };
+    const buildDir = path.join('/proj', '.ds-ide', 'build');
+    const jobs = String(Math.max(1, os.cpus().length));
+
+    function managerFor(platform: NodeJS.Platform, access?: (p: string) => Promise<void>) {
+      // Windows emulators announce TCP loopback, never a socket path (FR-WIN-IPC-1).
+      if (platform === 'win32') {
+        spawnMock = vi.fn((cmd: string) =>
+          cmd === 'cmake' ? makeCmakeProcess(0) : makeChildProcess(0, '127.0.0.1:50123'),
+        ) as ReturnType<typeof vi.fn>;
+      }
+      return new EmulatorManager({
+        detectCMake: async () => 'cmake',
+        detectCompiler: async () => '/usr/bin/clang++',
+        spawn: spawnMock as unknown as typeof cp.spawn,
+        ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+        platform,
+        access: (access ?? (() => Promise.resolve())) as unknown as typeof fs.promises.access,
+      });
+    }
+
+    it('on macOS: configures with the default generator and builds with -j <N>', async () => {
+      await managerFor('darwin').build(opts, () => undefined);
+      const [configure, build] = spawnMock.mock.calls as [string, string[]][];
+      expect(configure![1]).toEqual(['-S', '/ext/emulator', '-B', buildDir, '-DEFFECT_SRC=/proj/effect.cpp']);
+      expect(build![1]).toEqual(['--build', buildDir, '-j', jobs]);
+    });
+
+    it('on Windows: pins the Ninja generator and builds with -j <N> (no "-- -jN")', async () => {
+      await managerFor('win32').build(opts, () => undefined);
+      const [configure, build] = spawnMock.mock.calls as [string, string[]][];
+      expect(configure![1]).toEqual(['-S', '/ext/emulator', '-B', buildDir, '-DEFFECT_SRC=/proj/effect.cpp', '-G', 'Ninja']);
+      expect(build![1]).toEqual(['--build', buildDir, '-j', jobs]);
+    });
+
+    it('on Windows: keeps DAISYSP_DIR before the generator flag', async () => {
+      await managerFor('win32').build({ ...opts, daisySpDir: '/proj/DaisySP/Source' }, () => undefined);
+      const configure = spawnMock.mock.calls[0]![1] as string[];
+      expect(configure.slice(-3)).toEqual(['-DDAISYSP_DIR=/proj/DaisySP/Source', '-G', 'Ninja']);
+    });
+
+    it('on macOS: spawns <build>/effect_emu', async () => {
+      const mgr = managerFor('darwin');
+      await mgr.build(opts, () => undefined);
+      await mgr.deploy(() => undefined);
+      expect(spawnMock.mock.calls[2]![0]).toBe(path.join(buildDir, 'effect_emu'));
+    });
+
+    it('on Windows: spawns <build>/effect_emu.exe', async () => {
+      const mgr = managerFor('win32');
+      await mgr.build(opts, () => undefined);
+      await mgr.deploy(() => undefined);
+      expect(spawnMock.mock.calls[2]![0]).toBe(path.join(buildDir, 'effect_emu.exe'));
+    });
+
+    it('falls back to a multi-config Debug/ output directory when the single-config binary is absent', async () => {
+      const single = path.join(buildDir, 'effect_emu.exe');
+      const mgr = managerFor('win32', (p) => (p === single ? Promise.reject(new Error('ENOENT')) : Promise.resolve()));
+      await mgr.build(opts, () => undefined);
+      await mgr.deploy(() => undefined);
+      expect(spawnMock.mock.calls[2]![0]).toBe(path.join(buildDir, 'Debug', 'effect_emu.exe'));
+    });
+
+    it('spawns the single-config path when neither location exists, so the error names the expected binary', async () => {
+      const mgr = managerFor('darwin', () => Promise.reject(new Error('ENOENT')));
+      await mgr.build(opts, () => undefined);
+      await mgr.deploy(() => undefined);
+      expect(spawnMock.mock.calls[2]![0]).toBe(path.join(buildDir, 'effect_emu'));
+    });
+  });
+
+  describe('transport-aware deploy (FR-WIN-IPC-1)', () => {
+    const opts = { projectRoot: '/proj', effectSrc: '/proj/e.cpp', emulatorSrc: '/ext/emulator' };
+    const buildDir = path.join('/proj', '.ds-ide', 'build');
+
+    function managerAnnouncing(platform: NodeJS.Platform, announce: string) {
+      const child = { proc: null as ReturnType<typeof makeChildProcess> | null };
+      spawnMock = vi.fn((cmd: string) => {
+        if (cmd === 'cmake') return makeCmakeProcess(0);
+        child.proc = makeChildProcess(0, announce);
+        return child.proc;
+      }) as ReturnType<typeof vi.fn>;
+      const mgr = new EmulatorManager({
+        detectCMake: async () => 'cmake',
+        detectCompiler: async () => '/usr/bin/clang++',
+        spawn: spawnMock as unknown as typeof cp.spawn,
+        ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+        access: (() => Promise.resolve()) as unknown as typeof fs.promises.access,
+        platform,
+      });
+      return { mgr, child };
+    }
+
+    it('on macOS: spawns with a socket path under the per-workspace runtime dir and connects by path', async () => {
+      const { mgr } = managerAnnouncing('darwin', '/tmp/announced.sock');
+      await mgr.build(opts, () => undefined);
+      await mgr.deploy(() => undefined);
+      const args = spawnMock.mock.calls[2]![1] as string[];
+      expect(args).toHaveLength(1);
+      expect(path.dirname(args[0]!)).toBe(workspaceRuntimeDir(buildDir));
+      expect(args[0]).toMatch(/emu-[0-9a-f]{8}\.sock$/);
+      expect(mkdirMock).toHaveBeenCalledWith(workspaceRuntimeDir(buildDir), { recursive: true, mode: 0o700 });
+      expect(ipcClientStub.connect).toHaveBeenCalledWith({ kind: 'unix', path: '/tmp/announced.sock' });
+    });
+
+    it('on Windows: spawns effect_emu --tcp, creates no socket runtime dir, connects by host:port', async () => {
+      const { mgr } = managerAnnouncing('win32', '127.0.0.1:50123');
+      await mgr.build(opts, () => undefined);
+      await mgr.deploy(() => undefined);
+      expect(spawnMock.mock.calls[2]![1]).toEqual(['--tcp']);
+      expect(mkdirMock).not.toHaveBeenCalledWith(workspaceRuntimeDir(buildDir), expect.anything());
+      expect(ipcClientStub.connect).toHaveBeenCalledWith({ kind: 'tcp', host: '127.0.0.1', port: 50123 }, undefined, expect.any(String));
+    });
+
+    it('on Windows: pipes a fresh 32-byte session token to stdin and hands it to the IPC client (FR-WIN-IPC-2)', async () => {
+      const { mgr, child } = managerAnnouncing('win32', '127.0.0.1:50123');
+      await mgr.build(opts, () => undefined);
+      await mgr.deploy(() => undefined);
+      const spawnOpts = spawnMock.mock.calls[2]![2] as { stdio: string[] };
+      expect(spawnOpts.stdio).toEqual(['pipe', 'pipe', 'pipe']);
+      const written = child.proc!.stdin.write.mock.calls[0]![0] as string;
+      expect(written).toMatch(/^[0-9a-f]{64}\n$/);
+      expect(child.proc!.stdin.end).toHaveBeenCalled();
+      const token = written.trim();
+      expect(ipcClientStub.connect).toHaveBeenCalledWith({ kind: 'tcp', host: '127.0.0.1', port: 50123 }, undefined, token);
+      // The token is never on the command line.
+      expect((spawnMock.mock.calls[2]![1] as string[]).join(' ')).not.toContain(token);
+    });
+
+    it('a stdin EPIPE (emulator died before reading its token) does not throw (FR-WIN-IPC-2)', async () => {
+      const { mgr, child } = managerAnnouncing('win32', '127.0.0.1:50123');
+      await mgr.build(opts, () => undefined);
+      await mgr.deploy(() => undefined);
+      expect(child.proc!.stdin.listenerCount('error')).toBeGreaterThan(0);
+      expect(() => child.proc!.stdin.emit('error', Object.assign(new Error('EPIPE'), { code: 'EPIPE' }))).not.toThrow();
+    });
+
+    it('uses a different session token on every deploy (FR-WIN-IPC-2)', async () => {
+      const first = managerAnnouncing('win32', '127.0.0.1:50123');
+      await first.mgr.build(opts, () => undefined);
+      await first.mgr.deploy(() => undefined);
+      const t1 = first.child.proc!.stdin.write.mock.calls[0]![0];
+      const second = managerAnnouncing('win32', '127.0.0.1:50124');
+      await second.mgr.build(opts, () => undefined);
+      await second.mgr.deploy(() => undefined);
+      expect(second.child.proc!.stdin.write.mock.calls[0]![0]).not.toBe(t1);
+    });
+
+    it('on macOS: stdin stays ignored and no token is sent (Unix transport unaffected)', async () => {
+      const { mgr, child } = managerAnnouncing('darwin', '/tmp/announced.sock');
+      await mgr.build(opts, () => undefined);
+      await mgr.deploy(() => undefined);
+      expect((spawnMock.mock.calls[2]![2] as { stdio: string[] }).stdio).toEqual(['ignore', 'pipe', 'pipe']);
+      expect(child.proc!.stdin.write).not.toHaveBeenCalled();
+      expect(ipcClientStub.connect).toHaveBeenCalledWith({ kind: 'unix', path: '/tmp/announced.sock' });
+    });
+
+    it('rejects a malformed announce and kills the spawned emulator', async () => {
+      const { mgr, child } = managerAnnouncing('win32', '127.0.0.1:99999');
+      await mgr.build(opts, () => undefined);
+      await expect(mgr.deploy(() => undefined)).rejects.toThrow(/malformed emulator announce/i);
+      expect(ipcClientStub.connect).not.toHaveBeenCalled();
+      expect(child.proc!.kill).toHaveBeenCalled();
+    });
+
+    it('rejects a non-loopback TCP announce without connecting', async () => {
+      const { mgr } = managerAnnouncing('darwin', '10.0.0.5:4000');
+      await mgr.build(opts, () => undefined);
+      await expect(mgr.deploy(() => undefined)).rejects.toThrow(/loopback/i);
+      expect(ipcClientStub.connect).not.toHaveBeenCalled();
+    });
+  });
+
   describe('build() stale cache self-heal (FR-PKG-2)', () => {
     let rmMock: ReturnType<typeof vi.fn>;
 
     function buildManager(readFileImpl: (...args: unknown[]) => Promise<string>) {
       rmMock = vi.fn().mockResolvedValue(undefined);
       return new EmulatorManager({
+        platform: 'darwin',
+        detectCMake: async () => 'cmake',
+        detectCompiler: async () => '/usr/bin/clang++',
         spawn: spawnMock as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
@@ -289,8 +571,49 @@ describe('EmulatorManager', () => {
   });
 
   describe('deploy()', () => {
-    it('throws if build was never called', async () => {
-      await expect(manager.deploy(() => undefined)).rejects.toThrow('Build before deploying');
+    it('throws if build was never called, saying what to do (FR-PRE-4)', async () => {
+      await expect(manager.deploy(() => undefined)).rejects.toThrow(
+        'Nothing built yet. Run Daisy IDE: Run Daisy Effect, or Build for Emulator first.');
+    });
+
+    describe('adoptExistingBuild() (FR-PRE-4)', () => {
+      const exeAt = (root: string): string => path.join(root, '.ds-ide', 'build', 'effect_emu');
+      const mgrWithExes = (...exes: string[]): EmulatorManager => new EmulatorManager({
+        detectCMake: async () => 'cmake',
+        detectCompiler: async () => '/usr/bin/clang++',
+        platform: 'darwin',
+        spawn: spawnMock as unknown as typeof cp.spawn,
+        ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+        access: (async (p: string) => { if (!exes.includes(p)) throw new Error('ENOENT'); }) as unknown as typeof fs.promises.access,
+      });
+
+      it('uses <project>/.ds-ide/build/effect_emu from an earlier session, so deploy works in a fresh window', async () => {
+        const m = mgrWithExes(exeAt('/proj'));
+        expect(await m.adoptExistingBuild('/proj')).toBe(true);
+        await m.deploy(() => undefined);
+        const emuCall = spawnMock.mock.calls.find((c) => String(c[0]).endsWith('effect_emu'))!;
+        expect(emuCall[0]).toBe(exeAt('/proj'));
+        expect(emuCall[2].cwd).toBe('/proj');
+      });
+
+      it('reports false, and deploy still refuses, when no build exists for the project', async () => {
+        const m = mgrWithExes();
+        expect(await m.adoptExistingBuild('/proj')).toBe(false);
+        await expect(m.deploy(() => undefined)).rejects.toThrow(/Nothing built yet/);
+      });
+
+      it("does not deploy another project's build", async () => {
+        const m = mgrWithExes();
+        await m.build({ projectRoot: '/a', effectSrc: '/a/e.cpp', emulatorSrc: '/ext/emulator' }, () => undefined);
+        expect(await m.adoptExistingBuild('/b')).toBe(false);
+      });
+
+      it('keeps this session\'s own build of the project', async () => {
+        const m = mgrWithExes();
+        await m.build({ projectRoot: '/a', effectSrc: '/a/e.cpp', emulatorSrc: '/ext/emulator' }, () => undefined);
+        expect(await m.adoptExistingBuild('/a')).toBe(true);
+      });
     });
 
     it('spawns effect_emu after a successful build', async () => {
@@ -305,13 +628,23 @@ describe('EmulatorManager', () => {
       expect(lastCall[0]).toContain('effect_emu');
     });
 
+    it('starts effect_emu in the project folder so its SD card is <project>/sdcard/ (FR-EXM-8)', async () => {
+      await manager.build(
+        { projectRoot: '/proj', effectSrc: '/proj/e.cpp', emulatorSrc: '/ext/emulator' },
+        () => undefined,
+      );
+      await manager.deploy(() => undefined);
+      const emuCall = spawnMock.mock.calls[2] as [string, string[], { cwd?: string }];
+      expect(emuCall[2].cwd).toBe('/proj');
+    });
+
     it('connects IPC client after socket path is announced', async () => {
       await manager.build(
         { projectRoot: '/proj', effectSrc: '/proj/e.cpp', emulatorSrc: '/ext/emulator' },
         () => undefined,
       );
       await manager.deploy(() => undefined);
-      expect(ipcClientStub.connect).toHaveBeenCalledWith('/tmp/daisy_emu_test.sock');
+      expect(ipcClientStub.connect).toHaveBeenCalledWith({ kind: 'unix', path: '/tmp/daisy_emu_test.sock' });
     });
   });
 
@@ -866,9 +1199,10 @@ describe('EmulatorManager', () => {
 
       // Simulate the process staying alive (don't re-emit close)
       manager.dispose();
-      expect(ipcClientStub.disconnect).toHaveBeenCalledOnce();
-      // childProcess may already be null if close was emitted; test that disconnect was called
-      expect(ipcClientStub.disconnect).toHaveBeenCalled();
+      // FR-WIN-IPC-3: a live IPC link is closed by the shutdown message
+      // (sendAndClose) rather than an abrupt disconnect().
+      expect(ipcClientStub.sendAndClose).toHaveBeenCalledOnce();
+      expect(ipcClientStub.sendAndClose).toHaveBeenCalledWith({ type: 'shutdown' });
     });
   });
 
@@ -913,12 +1247,15 @@ describe('EmulatorManager', () => {
       vi.restoreAllMocks();
     });
 
+    // FR-WIN-IPC-3: with a live IPC link the shutdown message goes first (see
+    // below); these cover the direct escalation used when there is none.
     it('sends SIGTERM only when the child is already gone by the first poll', async () => {
       await manager.build(
         { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },
         () => undefined,
       );
       await manager.deploy(() => undefined);
+      ipcClientStub.connected = false;
 
       const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => {
         throw Object.assign(new Error('ESRCH'), { code: 'ESRCH' });
@@ -936,6 +1273,7 @@ describe('EmulatorManager', () => {
         () => undefined,
       );
       await manager.deploy(() => undefined);
+      ipcClientStub.connected = false;
 
       const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
 
@@ -945,6 +1283,84 @@ describe('EmulatorManager', () => {
 
       expect(killSpy).toHaveBeenCalledWith(12345, 'SIGTERM');
       expect(killSpy).toHaveBeenCalledWith(12345, 'SIGKILL');
+    });
+  });
+
+  describe('graceful shutdown message (FR-WIN-IPC-3)', () => {
+    const opts = { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' };
+    let child: ReturnType<typeof makeChildProcess>;
+
+    beforeEach(async () => {
+      spawnMock.mockImplementation((cmd: string) => {
+        if (cmd === 'cmake') return makeCmakeProcess(0);
+        child = makeChildProcess(0, '/tmp/daisy_emu_test.sock');
+        return child;
+      });
+      await manager.build(opts, () => undefined);
+      await manager.deploy(() => undefined);
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    });
+
+    it('sends shutdown over IPC first and does not signal a child that exits within the grace period', async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
+      manager.stop();
+      expect(ipcClientStub.sendAndClose).toHaveBeenCalledWith({ type: 'shutdown' });
+      expect(killSpy).not.toHaveBeenCalled();
+      child.emit('exit', 0, null);
+      await vi.advanceTimersByTimeAsync(SHUTDOWN_GRACE_MS + 1_000);
+      expect(killSpy).not.toHaveBeenCalled();
+    });
+
+    it('falls back to terminating the process when it is still alive after the grace period', async () => {
+      const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
+      manager.stop();
+      await vi.advanceTimersByTimeAsync(SHUTDOWN_GRACE_MS - 1);
+      expect(killSpy).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(killSpy).toHaveBeenCalledWith(12345, 'SIGTERM');
+      await vi.advanceTimersByTimeAsync(500);
+      expect(killSpy).toHaveBeenCalledWith(12345, 'SIGKILL');
+    });
+
+    it('dispose() also sends shutdown first', () => {
+      vi.spyOn(process, 'kill').mockReturnValue(true);
+      manager.dispose();
+      expect(ipcClientStub.sendAndClose).toHaveBeenCalledWith({ type: 'shutdown' });
+    });
+
+    it('a debugger-attached (immediate) stop skips the message and kills at once — a paused process cannot read it', () => {
+      const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
+      manager.stop({ immediate: true });
+      expect(ipcClientStub.sendAndClose).not.toHaveBeenCalled();
+      expect(killSpy).toHaveBeenCalledWith(12345, 'SIGKILL');
+    });
+
+    it('without a live IPC link, escalates immediately as before', () => {
+      const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
+      ipcClientStub.connected = false;
+      manager.stop();
+      expect(ipcClientStub.sendAndClose).not.toHaveBeenCalled();
+      expect(killSpy).toHaveBeenCalledWith(12345, 'SIGTERM');
+    });
+  });
+
+  describe('protocol version 2 (FR-WIN-IPC-3)', () => {
+    it('is 2: the shutdown message, TCP announce and session hello changed the wire protocol', () => {
+      expect(PROTOCOL_VERSION).toBe(2);
+    });
+
+    it('an old (v1) emulator fails with the existing clear mismatch error', async () => {
+      ipcClientStub.connect = vi.fn(() => {
+        ipcClientStub.emit('message', { type: 'protocolVersion', version: 1 });
+        return Promise.resolve();
+      }) as ReturnType<typeof vi.fn>;
+      await manager.build({ projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' }, () => undefined);
+      await expect(manager.deploy(() => undefined)).rejects.toThrow(/protocol version mismatch/i);
     });
   });
 
@@ -1046,6 +1462,9 @@ describe('EmulatorManager', () => {
         return proc;
       });
       const failingManager = new EmulatorManager({
+        platform: 'darwin',
+        detectCMake: async () => 'cmake',
+        detectCompiler: async () => '/usr/bin/clang++',
         spawn: failingSpawn as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
@@ -1094,6 +1513,9 @@ describe('EmulatorManager', () => {
         return makeChildProcess(0, '/tmp/daisy_emu_test.sock');
       });
       const flakyManager = new EmulatorManager({
+        platform: 'darwin',
+        detectCMake: async () => 'cmake',
+        detectCompiler: async () => '/usr/bin/clang++',
         spawn: flakySpawn as unknown as typeof cp.spawn,
         ipcClientFactory: () => ipcClientStub as unknown as IpcClient,
         mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
@@ -1134,6 +1556,28 @@ describe('EmulatorManager', () => {
     });
   });
 
+  describe('clearPidIfOwned() (FR-WIN-IPC-3)', () => {
+    let tmpDir: string;
+    beforeEach(async () => { tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ds-ide-pidtest-')); });
+    afterEach(async () => { await fs.promises.rm(tmpDir, { recursive: true, force: true }); });
+
+    it('removes the pid file when it still records this child', async () => {
+      await fs.promises.writeFile(path.join(tmpDir, 'emu.pid'), '222');
+      await clearPidIfOwned(tmpDir, 222);
+      await expect(fs.promises.access(path.join(tmpDir, 'emu.pid'))).rejects.toThrow();
+    });
+
+    it('leaves a pid file a newer emulator has already rewritten (old child exiting late after shutdown)', async () => {
+      await fs.promises.writeFile(path.join(tmpDir, 'emu.pid'), '333');
+      await clearPidIfOwned(tmpDir, 222);
+      expect(await fs.promises.readFile(path.join(tmpDir, 'emu.pid'), 'utf8')).toBe('333');
+    });
+
+    it('never rejects when there is no pid file', async () => {
+      await expect(clearPidIfOwned(tmpDir, 222)).resolves.toBeUndefined();
+    });
+  });
+
   describe('killStalePid() identity check (FR-EXT-2)', () => {
     let tmpDir: string;
 
@@ -1157,7 +1601,7 @@ describe('EmulatorManager', () => {
       const execFileMock = fakeExecFile('some_unrelated_process\n');
       const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
 
-      await killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile);
+      await killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile, 'darwin');
 
       expect(killSpy).not.toHaveBeenCalled();
     });
@@ -1172,7 +1616,7 @@ describe('EmulatorManager', () => {
         throw Object.assign(new Error('ESRCH'), { code: 'ESRCH' });
       });
 
-      await killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile);
+      await killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile, 'darwin');
 
       expect(killSpy).toHaveBeenCalledWith(424242, 'SIGTERM');
       expect(killSpy).not.toHaveBeenCalledWith(424242, 'SIGKILL');
@@ -1184,8 +1628,77 @@ describe('EmulatorManager', () => {
       const execFileMock = fakeExecFile('unrelated\n');
       vi.spyOn(process, 'kill').mockReturnValue(true);
 
-      await killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile);
+      await killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile, 'darwin');
 
+      await expect(fs.promises.access(pidFile)).rejects.toThrow();
+    });
+
+    it('macOS: queries ps for exactly that PID', async () => {
+      await fs.promises.writeFile(path.join(tmpDir, 'emu.pid'), '424242');
+      const execFileMock = fakeExecFile('effect_emu\n');
+      vi.spyOn(process, 'kill').mockImplementation(() => { throw Object.assign(new Error('ESRCH'), { code: 'ESRCH' }); });
+      await killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile, 'darwin');
+      expect(execFileMock.mock.calls[0]![0]).toBe('ps');
+      expect(execFileMock.mock.calls[0]![1]).toEqual(['-p', '424242', '-o', 'comm=']);
+    });
+
+    it('macOS: matches the executable name exactly, also as a full path (FR-WIN-IPC-4)', async () => {
+      for (const [comm, expectKill] of [
+        ['/Users/me/proj/.ds-ide/build/effect_emu\n', true],
+        ['my_effect_emu\n', false],
+        ['effect_emu_old\n', false],
+      ] as const) {
+        await fs.promises.writeFile(path.join(tmpDir, 'emu.pid'), '424242');
+        const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => { throw Object.assign(new Error('ESRCH'), { code: 'ESRCH' }); });
+        await killStalePid(tmpDir, fakeExecFile(comm) as unknown as typeof cp.execFile, 'darwin');
+        expect(killSpy.mock.calls.length > 0).toBe(expectKill);
+        killSpy.mockRestore();
+      }
+    });
+
+    it('Windows: queries tasklist for that PID and reclaims effect_emu.exe (FR-WIN-IPC-4)', async () => {
+      await fs.promises.writeFile(path.join(tmpDir, 'emu.pid'), '424242');
+      const execFileMock = fakeExecFile('"effect_emu.exe","424242","Console","1","12,345 K"\r\n');
+      const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => { throw Object.assign(new Error('ESRCH'), { code: 'ESRCH' }); });
+      await killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile, 'win32');
+      expect(execFileMock.mock.calls[0]![0]).toBe('tasklist');
+      expect(execFileMock.mock.calls[0]![1]).toEqual(['/FI', 'PID eq 424242', '/FO', 'CSV', '/NH']);
+      expect(killSpy).toHaveBeenCalledWith(424242, 'SIGTERM');
+    });
+
+    it.each([
+      ['an unrelated process that reused the PID', '"notepad.exe","424242","Console","1","9,000 K"\r\n'],
+      ['no matching process', 'INFO: No tasks are running which match the specified criteria.\r\n'],
+      ['a row for a different PID', '"effect_emu.exe","999","Console","1","12,345 K"\r\n'],
+      ['a lookalike name', '"my_effect_emu.exe","424242","Console","1","12,345 K"\r\n'],
+    ])('Windows: never signals %s (FR-WIN-IPC-4)', async (_label, output) => {
+      const pidFile = path.join(tmpDir, 'emu.pid');
+      await fs.promises.writeFile(pidFile, '424242');
+      const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
+      await killStalePid(tmpDir, fakeExecFile(output) as unknown as typeof cp.execFile, 'win32');
+      expect(killSpy).not.toHaveBeenCalled();
+      await expect(fs.promises.access(pidFile)).rejects.toThrow();
+    });
+
+    it.each(['darwin', 'win32'] as const)('%s: a failing identity query never signals', async (platform) => {
+      await fs.promises.writeFile(path.join(tmpDir, 'emu.pid'), '424242');
+      const execFileMock = vi.fn((_c: string, _a: readonly string[], cb: (err: Error | null, stdout: string) => void) => cb(new Error('ENOENT'), ''));
+      const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
+      await killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile, platform);
+      expect(killSpy).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['darwin', 'abc'], ['darwin', '123abc'], ['darwin', '-5'], ['darwin', '0'], ['darwin', ''],
+      ['win32', 'abc'], ['win32', '123abc'], ['win32', '4.2'],
+    ] as const)('%s: a garbled pid file (%j) is cleared without querying or signalling (FR-WIN-IPC-4)', async (platform, text) => {
+      const pidFile = path.join(tmpDir, 'emu.pid');
+      await fs.promises.writeFile(pidFile, text);
+      const execFileMock = fakeExecFile('effect_emu\n');
+      const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
+      await killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile, platform);
+      expect(execFileMock).not.toHaveBeenCalled();
+      expect(killSpy).not.toHaveBeenCalled();
       await expect(fs.promises.access(pidFile)).rejects.toThrow();
     });
 
@@ -1193,7 +1706,7 @@ describe('EmulatorManager', () => {
       const execFileMock = fakeExecFile('effect_emu\n');
       const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
 
-      await expect(killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile)).resolves.toBeUndefined();
+      await expect(killStalePid(tmpDir, execFileMock as unknown as typeof cp.execFile, 'darwin')).resolves.toBeUndefined();
       expect(killSpy).not.toHaveBeenCalled();
     });
   });
@@ -1301,7 +1814,9 @@ describe('EmulatorManager', () => {
 
       manager.stop();
       expect(manager.childPid).toBeUndefined();
-      expect(process.kill).toHaveBeenCalledWith(12345, 'SIGTERM');
+      // FR-WIN-IPC-3: the shutdown message goes first; SIGTERM is the
+      // fallback after SHUTDOWN_GRACE_MS (covered in its own describe).
+      expect(ipcClientStub.sendAndClose).toHaveBeenCalledWith({ type: 'shutdown' });
       lastChild!.emit('close', null);
 
       expect(onExit).toHaveBeenCalledWith({ pid: 12345, crashed: false });
@@ -1387,5 +1902,34 @@ describe('EmulatorManager', () => {
       manager.dispose();
       expect(manager.isConnected).toBe(false);
     });
+  });
+});
+
+describe('sweepStaleSockets() (FR-EXT-2, FR-WIN-IPC-1)', () => {
+  const buildDir = path.join('/proj', '.ds-ide', 'build');
+
+  it('on macOS: removes only *.sock files from this workspace\'s runtime dir', async () => {
+    const readdir = vi.fn().mockResolvedValue(['emu-1.sock', 'notes.txt', 'emu-2.sock']);
+    const unlink = vi.fn().mockResolvedValue(undefined);
+    await sweepStaleSockets(buildDir, 'darwin', { readdir, unlink } as never);
+    const dir = workspaceRuntimeDir(buildDir);
+    expect(readdir).toHaveBeenCalledWith(dir);
+    expect(unlink.mock.calls.map((c) => c[0])).toEqual([path.join(dir, 'emu-1.sock'), path.join(dir, 'emu-2.sock')]);
+  });
+
+  it('on Windows: does nothing — the TCP transport leaves no socket files', async () => {
+    const readdir = vi.fn().mockResolvedValue(['emu-1.sock']);
+    const unlink = vi.fn();
+    await sweepStaleSockets(buildDir, 'win32', { readdir, unlink } as never);
+    expect(readdir).not.toHaveBeenCalled();
+    expect(unlink).not.toHaveBeenCalled();
+  });
+
+  it('never rejects when the runtime dir or a file is already gone', async () => {
+    const readdir = vi.fn().mockRejectedValue(new Error('ENOENT'));
+    await expect(sweepStaleSockets(buildDir, 'darwin', { readdir, unlink: vi.fn() } as never)).resolves.toBeUndefined();
+    const readdir2 = vi.fn().mockResolvedValue(['a.sock']);
+    const unlink2 = vi.fn().mockRejectedValue(new Error('ENOENT'));
+    await expect(sweepStaleSockets(buildDir, 'darwin', { readdir: readdir2, unlink: unlink2 } as never)).resolves.toBeUndefined();
   });
 });

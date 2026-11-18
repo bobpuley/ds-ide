@@ -1,0 +1,65 @@
+name: Bug report
+description: Something in Daisy IDE does not work as expected.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying the preview. Please check the **Known issues** and **Limitations** in the README first.
+  - type: input
+    id: extension-version
+    attributes:
+      label: Extension version
+      description: From the Extensions view, for example 0.25.0.
+    validations:
+      required: true
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      description: For example 15.1, Apple Silicon.
+    validations:
+      required: true
+  - type: input
+    id: vscode-version
+    attributes:
+      label: VS Code version
+      description: Help > About, for example 1.140.0.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Which project or example, and what you did.
+      placeholder: |
+        1. Open examples/controls-tour
+        2. Run Daisy Effect
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output channel
+      description: The text of the "Daisy IDE" output channels (View > Output) around the problem.
+      render: text
+  - type: textarea
+    id: crash-log
+    attributes:
+      label: If the VS Code window closed on its own
+      description: The lines containing `crashed with code` from `~/Library/Application Support/Code/logs/<date>/…/main.log` (see Known issues in the README).
+      render: text

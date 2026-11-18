@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isTxtEntryName, formatSdSize, sortSdEntries, SD_PREVIEW_MAX_BYTES } from '../../../webview/sd-viewer';
+import { isTxtEntryName, formatSdSize, sortSdEntries, sdListingsEqual, sdStalePreviews, SD_PREVIEW_MAX_BYTES } from '../../../webview/sd-viewer';
 
 describe('isTxtEntryName (FR-SD-1)', () => {
   it('matches a .txt extension case-insensitively', () => {
@@ -42,5 +42,42 @@ describe('SD_PREVIEW_MAX_BYTES (FR-SD-1)', () => {
   it('is a positive, reasonably small cap', () => {
     expect(SD_PREVIEW_MAX_BYTES).toBeGreaterThan(0);
     expect(SD_PREVIEW_MAX_BYTES).toBeLessThanOrEqual(1024 * 1024);
+  });
+});
+
+describe('sdListingsEqual (FR-EXM-9)', () => {
+  const a = [{ name: 'a.txt', size: 1 }, { name: 'b.wav', size: 9 }];
+
+  it('is true for the same names and sizes', () => {
+    expect(sdListingsEqual(a, [{ name: 'a.txt', size: 1 }, { name: 'b.wav', size: 9 }])).toBe(true);
+  });
+
+  it('is false when a size changed, a file was added or removed', () => {
+    expect(sdListingsEqual(a, [{ name: 'a.txt', size: 2 }, { name: 'b.wav', size: 9 }])).toBe(false);
+    expect(sdListingsEqual(a, [...a, { name: 'c.txt', size: 0 }])).toBe(false);
+    expect(sdListingsEqual(a, [a[0]!])).toBe(false);
+  });
+
+  it('is true for two empty listings', () => {
+    expect(sdListingsEqual([], [])).toBe(true);
+  });
+});
+
+describe('sdStalePreviews (FR-EXM-9)', () => {
+  it('names the files still listed whose size changed', () => {
+    const prev = [{ name: 'a.txt', size: 1 }, { name: 'b.txt', size: 5 }];
+    const next = [{ name: 'a.txt', size: 40 }, { name: 'b.txt', size: 5 }];
+    expect(sdStalePreviews(prev, next)).toEqual(['a.txt']);
+  });
+
+  it('ignores new files and removed files', () => {
+    const prev = [{ name: 'gone.txt', size: 1 }];
+    const next = [{ name: 'new.txt', size: 1 }];
+    expect(sdStalePreviews(prev, next)).toEqual([]);
+  });
+
+  it('returns nothing when no size changed', () => {
+    const l = [{ name: 'a.txt', size: 3 }];
+    expect(sdStalePreviews(l, l)).toEqual([]);
   });
 });

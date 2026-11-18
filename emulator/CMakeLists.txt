@@ -22,6 +22,15 @@ if(ASAN)
     add_link_options(-fsanitize=address,undefined)
 endif()
 
+# FR-WIN-BLD-4: clang/MinGW has no ThreadSanitizer runtime; ASan+UBSan
+# need clang (MinGW GCC ships no ASan runtime).
+if(TSAN AND WIN32)
+    message(FATAL_ERROR "TSAN is not supported on Windows — use -DASAN=ON or a macOS/Linux build.")
+endif()
+if(ASAN AND WIN32 AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    message(FATAL_ERROR "ASAN on Windows requires clang/MinGW (found ${CMAKE_CXX_COMPILER_ID}).")
+endif()
+
 if(TSAN)
     message(STATUS "Sanitizers: ThreadSanitizer enabled")
     add_compile_options(-fsanitize=thread -fno-omit-frame-pointer)
@@ -66,13 +75,72 @@ set(SHIM_SRC
 set(RUNTIME_SRC
     "${CMAKE_SOURCE_DIR}/runtime/main.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/audio_engine.cpp"
-    "${CMAKE_SOURCE_DIR}/runtime/core_audio_device.cpp"
+    "${CMAKE_SOURCE_DIR}/runtime/audio_device_factory.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/ipc_server.cpp"
+    "${CMAKE_SOURCE_DIR}/runtime/ipc_transport_socket.cpp"
+    "${CMAKE_SOURCE_DIR}/runtime/ipc_transport_tcp.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/wav_reader.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/input_generators.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/session_recorder.cpp"
     "${CMAKE_SOURCE_DIR}/runtime/session_player.cpp"
+    "${CMAKE_SOURCE_DIR}/runtime/platform_file.cpp"
 )
+
+# ---- Per-platform sources (FR-WIN-BLD-4) --------------------------------------
+# audio_device_factory.cpp is listed everywhere (FR-WIN-AUD-1): the CoreAudio
+# backend is built only on Apple, the RtAudio backend only on Windows
+# (FR-WIN-AUD-5, see "RtAudio" below); elsewhere the factory returns the
+# header-only no-backend NullAudioDevice (all start* return false).
+# The IPC transport (FR-WIN-IPC-1): TCP loopback builds everywhere (the
+# Windows transport, testable on POSIX); the Unix-socket transport is POSIX
+# only.
+if(NOT WIN32)
+    list(APPEND RUNTIME_SRC "${CMAKE_SOURCE_DIR}/runtime/ipc_transport_unix.cpp")
+endif()
+if(APPLE)
+    list(APPEND RUNTIME_SRC "${CMAKE_SOURCE_DIR}/runtime/core_audio_device.cpp")
+endif()
+if(WIN32)
+    list(APPEND RUNTIME_SRC "${CMAKE_SOURCE_DIR}/runtime/audio_device_rtaudio.cpp")
+endif()
+
+# ---- RtAudio (Windows audio backend, FR-WIN-AUD-5) -----------------------------
+# Vendored at vendor/RtAudio (6.0.1, see its README.md), a sibling of emulator/
+# in both the repo and the packaged extension. WASAPI is always compiled in.
+# ASIO is opt-in: point ASIO_SDK_DIR at a directory holding the ASIO SDK
+# sources RtAudio expects (asio.cpp, asiodrivers.cpp, asiolist.cpp,
+# iasiothiscallresolver.cpp and their headers — the layout of RtAudio's
+# upstream include/ directory); DS_EMU_AUDIO_API=asio then selects it at runtime.
+set(ASIO_SDK_DIR "" CACHE PATH "ASIO SDK sources for the RtAudio ASIO API (Windows) — optional")
+set(RTAUDIO_DIR "${CMAKE_SOURCE_DIR}/../vendor/RtAudio")
+if(WIN32)
+    if(NOT EXISTS "${RTAUDIO_DIR}/RtAudio.cpp")
+        message(FATAL_ERROR "RtAudio not found at ${RTAUDIO_DIR}")
+    endif()
+    # Third-party code: built without the project's warning set.
+    add_library(rtaudio_obj OBJECT "${RTAUDIO_DIR}/RtAudio.cpp")
+    target_include_directories(rtaudio_obj PRIVATE "${RTAUDIO_DIR}")
+    target_compile_definitions(rtaudio_obj PRIVATE __WINDOWS_WASAPI__)
+    target_compile_options(rtaudio_obj PRIVATE -O2 -g -w)
+    if(ASIO_SDK_DIR)
+        set(ASIO_SDK_SRC
+            "${ASIO_SDK_DIR}/asio.cpp"
+            "${ASIO_SDK_DIR}/asiodrivers.cpp"
+            "${ASIO_SDK_DIR}/asiolist.cpp"
+            "${ASIO_SDK_DIR}/iasiothiscallresolver.cpp")
+        foreach(f IN LISTS ASIO_SDK_SRC)
+            if(NOT EXISTS "${f}")
+                message(FATAL_ERROR "ASIO_SDK_DIR is missing ${f}")
+            endif()
+        endforeach()
+        target_sources(rtaudio_obj PRIVATE ${ASIO_SDK_SRC})
+        target_include_directories(rtaudio_obj PRIVATE "${ASIO_SDK_DIR}")
+        target_compile_definitions(rtaudio_obj PRIVATE __WINDOWS_ASIO__)
+        message(STATUS "RtAudio: WASAPI + ASIO (${ASIO_SDK_DIR})")
+    else()
+        message(STATUS "RtAudio: WASAPI (set ASIO_SDK_DIR to add ASIO)")
+    endif()
+endif()
 
 # DaisySP: glob all .cpp files under DAISYSP_DIR if provided.
 # DaisySP source files use bare includes ("dsp.h", "oscillator.h") that resolve
@@ -122,6 +190,9 @@ target_include_directories(runtime_shim_obj PRIVATE
     "${CMAKE_SOURCE_DIR}/shim/include"
     "${CMAKE_SOURCE_DIR}/runtime"
 )
+if(WIN32)
+    target_include_directories(runtime_shim_obj PRIVATE "${RTAUDIO_DIR}")
+endif()
 target_compile_options(runtime_shim_obj PRIVATE
     -O2 -g -Wall -Wextra -Wshadow -Wno-unused-parameter
 )
@@ -133,6 +204,9 @@ add_executable(effect_emu
     $<TARGET_OBJECTS:runtime_shim_obj>
     ${DAISYSP_SRC}
 )
+if(WIN32)
+    target_sources(effect_emu PRIVATE $<TARGET_OBJECTS:rtaudio_obj>)
+endif()
 
 target_include_directories(effect_emu PRIVATE
     "${CMAKE_SOURCE_DIR}/shim/include"
@@ -145,11 +219,19 @@ target_compile_options(effect_emu PRIVATE
 )
 
 find_package(Threads REQUIRED)
-target_link_libraries(effect_emu PRIVATE Threads::Threads m)
+target_link_libraries(effect_emu PRIVATE Threads::Threads)
 
-# CoreAudio + AudioToolbox for real-time audio I/O (macOS only)
+# ---- Per-platform libraries (FR-WIN-BLD-4) -------------------------------------
 if(APPLE)
+    # CoreAudio + AudioToolbox for real-time audio I/O
     find_library(COREAUDIO_LIB CoreAudio REQUIRED)
     find_library(AUDIOTOOLBOX_LIB AudioToolbox REQUIRED)
-    target_link_libraries(effect_emu PRIVATE ${COREAUDIO_LIB} ${AUDIOTOOLBOX_LIB})
+    target_link_libraries(effect_emu PRIVATE m ${COREAUDIO_LIB} ${AUDIOTOOLBOX_LIB})
+elseif(WIN32)
+    # Winsock for the TCP IPC transport (FR-WIN-IPC-1); COM, Media Foundation
+    # (WASAPI resampler) and winmm for RtAudio's WASAPI API (FR-WIN-AUD-5).
+    target_link_libraries(effect_emu PRIVATE ws2_32
+        ole32 winmm ksuser mfplat mfuuid wmcodecdspuuid)
+else()
+    target_link_libraries(effect_emu PRIVATE m)
 endif()

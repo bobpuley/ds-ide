@@ -345,7 +345,7 @@ ${ctrlCardCssRules()}
     .sd-row:hover { background: var(--ds-hover-bg); }
     .sd-row .name { flex: 1; color: var(--ds-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .sd-row .size { color: var(--ds-text-muted); font-size: 10px; }
-    .sd-preview { padding: 8px 14px 10px 22px; background: var(--ds-input-bg); border-bottom: 1px solid var(--ds-border); color: var(--ds-text); font-size: 11px; white-space: pre-wrap; word-break: break-word; }
+    .sd-preview { max-height: 160px; overflow: auto; padding: 8px 14px 10px 22px; background: var(--ds-input-bg); border-bottom: 1px solid var(--ds-border); color: var(--ds-text); font-size: 11px; white-space: pre-wrap; word-break: break-word; }
     .sd-preview.unavailable { color: var(--ds-text-muted); font-style: italic; }
     .sd-empty-state { padding: 16px 14px; text-align: center; color: var(--ds-text-muted); font-size: 11px; }
   </style>

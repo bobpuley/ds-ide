@@ -1,0 +1,19 @@
+name: Feature request
+description: Suggest something Daisy IDE should do.
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to do?
+      description: The task you want to get done, not the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: missing
+    attributes:
+      label: What is missing?
+      description: What stops you today, and how you imagine it working (optional).
+    validations:
+      required: true

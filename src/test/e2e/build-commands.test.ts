@@ -53,7 +53,7 @@ suite('Build command dispatch (stubbed process-spawn boundary)', () => {
     const result = await vscode.commands.executeCommand('ds-ide.build');
     assert.strictEqual(result, true, 'buildForEmulator should report success with a stubbed spawn');
     assert.ok(
-      spawnCalls.some((c) => c.command === 'cmake'),
+      spawnCalls.some((c) => path.basename(c.command) === 'cmake'),
       `expected a cmake invocation, got: ${JSON.stringify(spawnCalls)}`,
     );
   });

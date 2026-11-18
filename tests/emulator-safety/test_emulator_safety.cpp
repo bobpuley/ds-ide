@@ -198,6 +198,44 @@ static void test_load_wav_file_rejects_oversize_file() {
 
 // ---- AC-39: SpscIpcQueue basic SPSC correctness ----------------------------
 
+// ---- FR-WIN-IPC-2: TCP session token hello check ----------------------------
+
+static void test_session_hello_check() {
+    std::printf("--- FR-WIN-IPC-2: session token hello check ---\n");
+    using daisy_emu::check_session_hello;
+    const std::string tok = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    CHECK(check_session_hello("{\"type\":\"hello\",\"token\":\"" + tok + "\"}", tok),
+          "the right token is accepted");
+    CHECK(check_session_hello("{\"token\":\"" + tok + "\",\"type\":\"hello\"}", tok),
+          "field order does not matter");
+    CHECK(!check_session_hello("{\"type\":\"hello\",\"token\":\"" + tok.substr(1) + "x\"}", tok),
+          "a wrong token of the same length is rejected");
+    CHECK(!check_session_hello("{\"type\":\"hello\",\"token\":\"" + tok.substr(0, 10) + "\"}", tok),
+          "a token prefix is rejected");
+    CHECK(!check_session_hello("{\"type\":\"hello\"}", tok), "a hello without a token is rejected");
+    CHECK(!check_session_hello("{\"type\":\"pot\",\"token\":\"" + tok + "\"}", tok),
+          "the token is only honoured on a hello message");
+    CHECK(!check_session_hello("garbage", tok), "a non-JSON first line is rejected");
+    CHECK(!check_session_hello("{\"type\":\"hello\",\"token\":\"\"}", ""),
+          "an empty expected token never authenticates");
+}
+
+// ---- FR-WIN-IPC-3: graceful shutdown message --------------------------------
+
+static void test_shutdown_message_requests_shutdown() {
+    std::printf("--- FR-WIN-IPC-3: shutdown message ---\n");
+    daisy_emu::g_state.shutdown.store(false);
+    daisy_emu::dispatch("{\"type\":\"shutdown\"}");
+    CHECK(daisy_emu::g_state.shutdown.load(),
+          "a shutdown message sets g_state.shutdown (the single graceful-exit path)");
+    daisy_emu::g_state.shutdown.store(false);
+}
+
+static void test_protocol_version_bumped_for_windows_transport() {
+    CHECK(daisy_emu::kProtocolVersion == 2,
+          "kProtocolVersion is 2 (shutdown message, TCP announce, session hello)");
+}
+
 static void test_spsc_queue_basic() {
     std::printf("--- AC-39: SpscIpcQueue basic ---\n");
 
@@ -1772,6 +1810,9 @@ int main() {
     test_scope_block_queue_truncates_oversize_frame_count();
     test_scope_block_queue_fifo_order_across_slots();
     test_scope_block_queue_carries_config_generation_tag();
+    test_session_hello_check();
+    test_shutdown_message_requests_shutdown();
+    test_protocol_version_bumped_for_windows_transport();
 
     std::printf("\nResult: %s\n", failures == 0 ? "all passed" : "FAILURES");
     return failures == 0 ? 0 : 1;

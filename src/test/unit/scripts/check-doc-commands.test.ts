@@ -12,6 +12,7 @@ const { findStaleReferences } = require('../../../../scripts/check-doc-commands.
 const commands = [
   { command: 'ds-ide.runEffect', title: 'Run Daisy Effect', category: 'Daisy IDE' },
   { command: 'ds-ide.focusWiring', title: 'Focus Wiring Editor', category: 'Daisy IDE' },
+  { command: 'ds-ide.buildAndFlash', title: 'Build & Flash to Daisy Seed', category: 'Daisy IDE' },
 ];
 
 describe('findStaleReferences (FR-RCH-4)', () => {
@@ -24,6 +25,14 @@ describe('findStaleReferences (FR-RCH-4)', () => {
     const text = 'ok\nOpen with **Daisy IDE: Open Wiring Editor**.';
     expect(findStaleReferences([{ file: 'README.md', text }], commands))
       .toEqual([{ file: 'README.md', line: 2, ref: 'Daisy IDE: Open Wiring Editor' }]);
+  });
+
+  it('accepts a title that contains an ampersand, and reports a stale one (FR-DOC-4)', () => {
+    const ok = 'Run **Daisy IDE: Build & Flash to Daisy Seed** to do both.';
+    expect(findStaleReferences([{ file: 'a.md', text: ok }], commands)).toEqual([]);
+    const stale = 'Run **Daisy IDE: Build & Burn the Board**.';
+    expect(findStaleReferences([{ file: 'a.md', text: stale }], commands))
+      .toEqual([{ file: 'a.md', line: 1, ref: 'Daisy IDE: Build & Burn the Board' }]);
   });
 
   it('reports a command: link to an unknown command id', () => {

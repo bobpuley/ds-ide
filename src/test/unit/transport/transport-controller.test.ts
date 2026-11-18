@@ -239,6 +239,14 @@ describe('wireTransportNotifications() (FR-TRN-6)', () => {
       'Build failed. Nothing was deployed.', 'Show Problems');
   });
 
+  it('a build that failed for a specific reason shows that reason, with no Show Problems (FR-REL-2)', () => {
+    c.dispatch({ type: 'buildStarted', mode: 'run' });
+    c.dispatch({ type: 'deployFailed', problems: undefined, reason: 'CMake not found. Install it (brew install cmake) and try again.' });
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledTimes(1);
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      'CMake not found. Install it (brew install cmake) and try again.');
+  });
+
   it('an emulator crash: error notification with Show Output and Debug', async () => {
     (vscode.window.showErrorMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce('Show Output');
     c.dispatch({ type: 'sessionStarted', mode: 'run' });

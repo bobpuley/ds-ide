@@ -78,6 +78,30 @@ static void test_seek() {
     f_close(&fr);
 }
 
+static void test_sync_makes_data_visible_while_open() {
+    FATFS fs{};
+    f_mount(&fs, "/", 1);
+    FIL fw{};
+    f_open(&fw, "synced.txt", FA_WRITE | FA_CREATE_ALWAYS);
+    const char msg[] = "line one\n";
+    unsigned bw = 0;
+    f_write(&fw, msg, sizeof(msg) - 1, &bw);
+    CHECK(f_sync(&fw) == FR_OK, "f_sync succeeds on an open file");
+
+    // The writer is still open: a second handle must already see the bytes.
+    FIL fr{};
+    f_open(&fr, "synced.txt", FA_READ);
+    char buf[32] = {};
+    unsigned br = 0;
+    f_read(&fr, buf, sizeof(buf) - 1, &br);
+    CHECK(br == sizeof(msg) - 1 && std::strcmp(buf, msg) == 0, "synced bytes are readable before f_close");
+    f_close(&fr);
+    f_close(&fw);
+
+    FIL bad{};
+    CHECK(f_sync(&bad) == FR_INVALID_PARAMETER, "f_sync on an unopened file is rejected");
+}
+
 static void test_missing_file_error() {
     FATFS fs{};
     f_mount(&fs, "/", 1);
@@ -101,6 +125,7 @@ int main() {
     test_mount_creates_directory();
     test_write_read_round_trip();
     test_seek();
+    test_sync_makes_data_visible_while_open();
     test_missing_file_error();
     test_path_escape_rejected();
     std::printf("\nResult: %s\n", failures == 0 ? "all passed" : "FAILURES");

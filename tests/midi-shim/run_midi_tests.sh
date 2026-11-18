@@ -31,6 +31,6 @@ BIN="${BUILD_DIR}/test_midi"
 "${CXX}" "${CXXFLAGS[@]}" -pthread -o "${BIN}" \
     "${TEST_SRC}" "${SHIM_SRC}/midi_event.cpp" "${SHIM_SRC}/midi_uart_handler.cpp" \
     "${SHIM_SRC}/midi_usb_handler.cpp" \
-    "${RUNTIME_DIR}/session_recorder.cpp" "${RUNTIME_DIR}/session_player.cpp" "${RUNTIME_DIR}/wav_reader.cpp"
+    "${RUNTIME_DIR}/session_recorder.cpp" "${RUNTIME_DIR}/platform_file.cpp" "${RUNTIME_DIR}/session_player.cpp" "${RUNTIME_DIR}/wav_reader.cpp"
 
 "${BIN}"

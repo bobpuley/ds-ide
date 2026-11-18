@@ -146,9 +146,16 @@ static void test_sustained_concurrent_producer_consumer_no_corruption() {
     std::atomic<bool> producer_done{false};
 
     std::thread consumer([&]() {
+        // Every successful pop is counted — the loop condition must not pop
+        // (it used to, dropping an uncounted frame whenever the producer
+        // finished mid-drain, which made this test fail intermittently).
         std::string msg;
-        while (!producer_done.load() || daisy_emu::g_state.oled_queue.pop(msg)) {
-            if (daisy_emu::g_state.oled_queue.pop(msg)) consumed.fetch_add(1);
+        for (;;) {
+            if (daisy_emu::g_state.oled_queue.pop(msg)) { consumed.fetch_add(1); continue; }
+            if (producer_done.load()) {
+                while (daisy_emu::g_state.oled_queue.pop(msg)) consumed.fetch_add(1);
+                break;
+            }
         }
     });
 

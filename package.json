@@ -1,13 +1,18 @@
 {
   "name": "ds-ide",
   "displayName": "Daisy Seed IDE",
-  "description": "Develop, test, and debug Daisy Seed audio effects without physical hardware.",
-  "version": "0.24.3",
+  "description": "Develop, test and debug Daisy Seed audio effects in VS Code, without hardware: an emulator with scope, controls, MIDI, OLED and SD card.",
+  "version": "0.25.0-win.4",
   "publisher": "daisy-ide",
-  "license": "MIT",
+  "license": "PolyForm-Shield-1.0.0",
   "icon": "media/ds-ide-icon.png",
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  },
+  "preview": true,
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.140.0"
   },
   "categories": [
     "Other",
@@ -15,17 +20,36 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/daisy-ide/ds-ide"
+    "url": "https://github.com/bobpuley/ds-ide"
   },
-  "homepage": "https://github.com/daisy-ide/ds-ide#readme",
+  "homepage": "https://github.com/bobpuley/ds-ide#readme",
+  "bugs": {
+    "url": "https://github.com/bobpuley/ds-ide/issues"
+  },
   "keywords": [
     "daisy seed",
+    "electro-smith",
+    "libdaisy",
+    "daisysp",
     "audio",
-    "embedded",
+    "dsp",
     "emulator",
-    "dsp"
+    "midi",
+    "embedded",
+    "audio effects"
   ],
   "main": "./dist/extension.js",
+  "activationEvents": [
+    "workspaceContains:*.cpp",
+    "workspaceContains:src/*.cpp",
+    "workspaceContains:source/*.cpp"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Daisy IDE builds and runs the project's code (CMake, the emulator, the debugger), so it needs a trusted folder."
+    }
+  },
   "contributes": {
     "commands": [
       {
@@ -163,6 +187,11 @@
         "title": "Show Daisy View",
         "category": "Daisy IDE",
         "icon": "$(circuit-board)"
+      },
+      {
+        "command": "ds-ide.addAiGuide",
+        "title": "Add AI Guide to Project",
+        "category": "Daisy IDE"
       }
     ],
     "keybindings": [
@@ -210,6 +239,11 @@
         }
       ],
       "view/title": [
+        {
+          "command": "ds-ide.addAiGuide",
+          "when": "view == ds-ide.daisyView",
+          "group": "9_tools@1"
+        },
         {
           "command": "ds-ide.runEffect",
           "when": "view == ds-ide.daisyView && ds-ide.transportPhase =~ /^(stopped|buildFailed|crashed)$/",
@@ -305,25 +339,33 @@
             "id": "ds-ide.step.create",
             "title": "Create an effect project",
             "description": "Start from a working effect.\n[Create New Effect Project](command:ds-ide.createNewEffectProject)",
-            "media": { "markdown": "media/walkthrough/create-project.md" }
+            "media": {
+              "markdown": "media/walkthrough/create-project.md"
+            }
           },
           {
             "id": "ds-ide.step.wire",
             "title": "Wire a pin",
             "description": "Drag a device onto the board.\n[Open the Wiring Editor](command:ds-ide.focusWiring)",
-            "media": { "markdown": "media/walkthrough/wire-a-pin.md" }
+            "media": {
+              "markdown": "media/walkthrough/wire-a-pin.md"
+            }
           },
           {
             "id": "ds-ide.step.run",
             "title": "Run it on the emulator",
             "description": "No hardware needed.\n[Run Daisy Effect](command:ds-ide.runEffect)",
-            "media": { "markdown": "media/walkthrough/run-effect.md" }
+            "media": {
+              "markdown": "media/walkthrough/run-effect.md"
+            }
           },
           {
             "id": "ds-ide.step.scope",
             "title": "Watch and tune",
             "description": "See the waveforms and turn the knobs.\n[Show Scope](command:ds-ide.showScope)",
-            "media": { "markdown": "media/walkthrough/watch-scope.md" }
+            "media": {
+              "markdown": "media/walkthrough/watch-scope.md"
+            }
           }
         ]
       }
@@ -413,23 +455,25 @@
     "test": "npm run gen:pins && vitest run",
     "test:watch": "npm run gen:pins && vitest",
     "test:e2e": "npm run compile && tsc -p tsconfig.e2e.json && vscode-test",
+    "check:published-links": "node scripts/check-published-links.js",
     "lint": "npm run gen:pins && tsc --noEmit && tsc --noEmit -p tsconfig.webview.json && bash scripts/check-active-folder-convention.sh && node scripts/check-doc-commands.js",
-    "package": "npm run gen:pins && node esbuild.js --production && npm run rebuild:native && vsce package",
+    "package": "npm run gen:pins && node esbuild.js --production && npm run rebuild:native && vsce package --target darwin-arm64",
     "verify:package": "bash scripts/verify-vsix.sh",
     "rebuild:native": "bash scripts/rebuild-midi-native.sh",
     "postinstall": "npm run rebuild:native || true"
   },
   "devDependencies": {
-    "@electron/rebuild": "^4.2.0",
+    "@electron/rebuild": "^4.2.1",
     "@types/mocha": "^10.0.10",
     "@types/node": "^18.0.0",
     "@types/vscode": "^1.85.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",
-    "@vscode/vsce": "^3.0.0",
-    "esbuild": "^0.21.0",
-    "tsx": "^4.23.1",
-    "typescript": "^5.4.0",
+    "@vscode/vsce": "^4.1.0",
+    "esbuild": "^0.28.2",
+    "node-abi": "^4.40.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
     "vitest": "^1.5.0"
   },
   "dependencies": {

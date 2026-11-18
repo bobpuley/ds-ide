@@ -12,6 +12,40 @@ describe('package.json marketplace metadata (FR-QA-EXT-6)', () => {
     expect(pkg.version).toBe(latest);
   });
 
+  it('engines.vscode is the tested version, and the README and CONTRIBUTING say the same (FR-PRE-5)', () => {
+    expect(pkg.engines.vscode).toBe('^1.140.0');
+    const readme = fs.readFileSync(path.join(__dirname, '../../../../README.md'), 'utf8');
+    expect(readme).toContain('**VS Code** 1.140 or later');
+    const contributing = fs.readFileSync(path.join(__dirname, '../../../../CONTRIBUTING.md'), 'utf8');
+    expect(contributing).toMatch(/engines/);
+  });
+
+  it('is flagged as a preview and carries Marketplace-ready metadata (FR-MKT-1)', () => {
+    expect(pkg.preview).toBe(true);
+    expect(pkg.displayName).toBeTruthy();
+    expect(pkg.description.length).toBeGreaterThan(20);
+    expect(pkg.description.length).toBeLessThanOrEqual(200);
+    expect(pkg.categories.length).toBeGreaterThan(0);
+    for (const k of ['daisy seed', 'electro-smith', 'libdaisy', 'daisysp', 'audio', 'dsp', 'emulator', 'midi']) {
+      expect(pkg.keywords).toContain(k);
+    }
+    expect(pkg.galleryBanner?.color).toMatch(/^#[0-9a-fA-F]{6}$/);
+    expect(['dark', 'light']).toContain(pkg.galleryBanner?.theme);
+  });
+
+  it('the version has no semver pre-release suffix; the Marketplace pre-release track uses an odd minor instead (FR-MKT-1)', () => {
+    expect(pkg.version).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+
+  it('the icon is a PNG of at least 128 x 128 pixels (FR-MKT-1)', () => {
+    const buf = fs.readFileSync(path.join(__dirname, '../../../..', pkg.icon));
+    expect(buf.subarray(1, 4).toString('ascii')).toBe('PNG');
+    const width = buf.readUInt32BE(16);
+    const height = buf.readUInt32BE(20);
+    expect(width).toBeGreaterThanOrEqual(128);
+    expect(height).toBeGreaterThanOrEqual(128);
+  });
+
   it('every viewsWelcome command exists in contributes.commands (FR-RCH-2)', () => {
     const ids = new Set((pkg.contributes?.commands ?? []).map((c: { command: string }) => c.command));
     const welcome = pkg.contributes?.viewsWelcome ?? [];
@@ -190,5 +224,36 @@ describe('Daisy view in Run and Debug (FR-TRN-4)', () => {
       when: 'view == ds-ide.daisyView && viewItem == daisy.stale',
       group: 'inline',
     });
+  });
+});
+
+describe('workspace trust (FR-REL-1)', () => {
+  it('declares explicitly that untrusted workspaces are not supported, with a reason', () => {
+    const cap = pkg.capabilities?.untrustedWorkspaces;
+    expect(cap).toBeDefined();
+    expect(cap.supported).toBe(false);
+    expect(typeof cap.description).toBe('string');
+    expect(cap.description.trim().length).toBeGreaterThan(20);
+  });
+
+  it('tells the user to trust the folder in the README quick start', () => {
+    const readme = fs.readFileSync(path.join(__dirname, '../../../../README.md'), 'utf8');
+    const quickstart = readme.match(/^## Quickstart[\s\S]*?(?=^## )/m)?.[0] ?? '';
+    expect(quickstart).toMatch(/trust/i);
+  });
+});
+
+describe('activation on opening a Daisy project (FR-REL-3)', () => {
+  const events: string[] = pkg.activationEvents ?? [];
+
+  it('activates when the effect source detection would find a .cpp at the root, src/ or source/', () => {
+    expect(events).toContain('workspaceContains:*.cpp');
+    expect(events).toContain('workspaceContains:src/*.cpp');
+    expect(events).toContain('workspaceContains:source/*.cpp');
+  });
+
+  it('does not activate on every startup or with a wildcard', () => {
+    expect(events).not.toContain('*');
+    expect(events).not.toContain('onStartupFinished');
   });
 });

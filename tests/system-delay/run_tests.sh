@@ -31,6 +31,6 @@ echo ""
 BIN="${BUILD_DIR}/test_system_delay"
 "${CXX}" "${CXXFLAGS[@]}" -pthread -o "${BIN}" \
     "${TEST_SRC}" "${SHIM_SRC_DIR}/system.cpp" \
-    "${RUNTIME_DIR}/session_recorder.cpp" "${RUNTIME_DIR}/session_player.cpp"
+    "${RUNTIME_DIR}/session_recorder.cpp" "${RUNTIME_DIR}/platform_file.cpp" "${RUNTIME_DIR}/session_player.cpp"
 
 "${BIN}"

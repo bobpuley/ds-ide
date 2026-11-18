@@ -16,7 +16,7 @@ function findStaleReferences(docs, commands) {
   const stale = [];
   for (const { file, text } of docs) {
     text.split('\n').forEach((lineText, i) => {
-      for (const m of lineText.matchAll(/Daisy IDE: [A-Z][A-Za-z0-9 ]*[A-Za-z0-9]/g)) {
+      for (const m of lineText.matchAll(/Daisy IDE: [A-Z][A-Za-z0-9 &]*[A-Za-z0-9]/g)) {
         // Longest-prefix match: prose may continue after the title ("... Build for Emulator compiles").
         const words = m[0].split(' ');
         let ok = false;

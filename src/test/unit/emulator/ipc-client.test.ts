@@ -38,6 +38,78 @@ describe('IpcClient', () => {
     await expect(promise).resolves.toBeUndefined();
   });
 
+  it('connects a Unix socket by path (string or descriptor) (FR-WIN-IPC-1)', async () => {
+    const client = new IpcClient();
+    const p1 = client.connect('/tmp/test.sock');
+    socketStub.emit('connect');
+    await p1;
+    expect(socketStub.connect).toHaveBeenLastCalledWith({ path: '/tmp/test.sock' });
+
+    socketStub = makeSocketStub();
+    vi.mocked(net.Socket).mockImplementation(() => socketStub as unknown as net.Socket);
+    const p2 = new IpcClient().connect({ kind: 'unix', path: '/tmp/other.sock' });
+    socketStub.emit('connect');
+    await p2;
+    expect(socketStub.connect).toHaveBeenLastCalledWith({ path: '/tmp/other.sock' });
+  });
+
+  it('connects TCP loopback by host and port (FR-WIN-IPC-1)', async () => {
+    const client = new IpcClient();
+    const promise = client.connect({ kind: 'tcp', host: '127.0.0.1', port: 50123 }, 5_000, 'tok');
+    socketStub.emit('connect');
+    await expect(promise).resolves.toBeUndefined();
+    expect(socketStub.connect).toHaveBeenLastCalledWith({ host: '127.0.0.1', port: 50123 });
+  });
+
+  it('on TCP, sends the session hello as the very first line (FR-WIN-IPC-2)', async () => {
+    const client = new IpcClient();
+    const promise = client.connect({ kind: 'tcp', host: '127.0.0.1', port: 50123 }, 5_000, 'ab12');
+    socketStub.emit('connect');
+    await promise;
+    expect(socketStub.write).toHaveBeenCalledTimes(1);
+    expect(socketStub.write.mock.calls[0]![0]).toBe('{"type":"hello","token":"ab12"}\n');
+  });
+
+  it('on a Unix socket, sends no hello even if a token is given (FR-WIN-IPC-2)', async () => {
+    const client = new IpcClient();
+    const promise = client.connect({ kind: 'unix', path: '/tmp/test.sock' }, 5_000, 'ab12');
+    socketStub.emit('connect');
+    await promise;
+    expect(socketStub.write).not.toHaveBeenCalled();
+  });
+
+  it('refuses a TCP connect without a session token (FR-WIN-IPC-2)', async () => {
+    await expect(new IpcClient().connect({ kind: 'tcp', host: '127.0.0.1', port: 50123 }))
+      .rejects.toThrow(/session token/i);
+    expect(socketStub.connect).not.toHaveBeenCalled();
+  });
+
+  it('sendAndClose writes the message then half-closes, so the write is not discarded (FR-WIN-IPC-3)', async () => {
+    const end = vi.fn();
+    (socketStub as unknown as Record<string, unknown>)['end'] = end;
+    const client = new IpcClient();
+    const promise = client.connect('/tmp/test.sock');
+    socketStub.emit('connect');
+    await promise;
+    client.sendAndClose({ type: 'shutdown' });
+    expect(socketStub.write).toHaveBeenLastCalledWith('{"type":"shutdown"}\n');
+    expect(end).toHaveBeenCalledOnce();
+    expect(socketStub.destroy).not.toHaveBeenCalled();
+    expect(client.connected).toBe(false);
+  });
+
+  it('names the TCP address in a connect timeout (FR-WIN-IPC-1)', async () => {
+    vi.useFakeTimers();
+    try {
+      const promise = new IpcClient().connect({ kind: 'tcp', host: '127.0.0.1', port: 50123 }, 5_000, 'tok');
+      const assertion = expect(promise).rejects.toThrow(/127\.0\.0\.1:50123 timed out/);
+      await vi.advanceTimersByTimeAsync(5_000);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('connect rejects when socket emits error before connect', async () => {
     const client = new IpcClient();
     const promise = client.connect('/tmp/test.sock');

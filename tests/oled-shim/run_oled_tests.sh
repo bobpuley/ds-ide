@@ -30,6 +30,6 @@ echo ""
 BIN="${BUILD_DIR}/test_oled"
 "${CXX}" "${CXXFLAGS[@]}" -pthread -o "${BIN}" \
     "${TEST_SRC}" "${SHIM_SRC}/oled_display.cpp" \
-    "${RUNTIME_DIR}/session_recorder.cpp" "${RUNTIME_DIR}/session_player.cpp" "${RUNTIME_DIR}/wav_reader.cpp"
+    "${RUNTIME_DIR}/session_recorder.cpp" "${RUNTIME_DIR}/platform_file.cpp" "${RUNTIME_DIR}/session_player.cpp" "${RUNTIME_DIR}/wav_reader.cpp"
 
 "${BIN}"
