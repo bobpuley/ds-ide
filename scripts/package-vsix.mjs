@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // FR-WIN-PKG-1: packages the VSIX for the current OS/arch (darwin-arm64 or
 // win32-x64, see vsix-target.mjs). Extra arguments (e.g. --pre-release, -o)
 // are passed through to `vsce package`. The addon in node_modules/midi must
