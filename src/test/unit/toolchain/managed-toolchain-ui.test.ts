@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { locateTool, setManagedToolDirsProvider } from '../../../hardware/tool-locator';
 import * as fs from 'fs';
 import * as path from 'path';
 import {
@@ -347,5 +348,41 @@ describe('ManagedToolchainService.installFromCommand() (the "Install Windows Too
     const { service, install } = makeService(ui);
     expect(await service.installFromCommand()).toBe(true);
     expect(install).toHaveBeenCalledOnce();
+  });
+});
+
+describe('ManagedToolchainService as a tool source (FR-WIN-TCH-5)', () => {
+  afterEach(() => setManagedToolDirsProvider(undefined));
+  const lookup = (exists: (p: string) => Promise<boolean>) => locateTool({ binary: 'clang++' }, undefined, {
+    platform: 'win32', exists, env: {}, exec: async () => { throw new Error('not on PATH'); },
+  });
+
+  it('registers the installed bin directories as the last place tools are looked for', async () => {
+    const { service } = makeService(makeUi(), { find: async () => installed });
+    service.registerAsToolSource();
+    const exe = 'C:\\store\\1\\llvm-mingw\\bin\\clang++.exe';
+    expect(await lookup(async (p) => p === exe)).toBe(exe);
+  });
+
+  it('contributes nothing while no toolchain is installed, and never prompts', async () => {
+    const ui = makeUi();
+    const { service } = makeService(ui);
+    service.registerAsToolSource();
+    expect(await lookup(async () => true)).toBeUndefined();
+    expect(ui.confirmDownload).not.toHaveBeenCalled();
+  });
+
+  it('stops contributing once disposed', async () => {
+    const { service } = makeService(makeUi(), { find: async () => installed });
+    service.registerAsToolSource().dispose();
+    expect(await lookup(async () => true)).toBeUndefined();
+  });
+
+  it('installedBinDirs() is empty, not an error, when the manifest cannot be read', async () => {
+    const service = new ManagedToolchainService(
+      { storageDir: 'C:\\store', extensionPath: 'C:\\ext' }, makeUi() as unknown as ToolchainUi,
+      { loadManifest: async () => { throw new Error('ENOENT'); } } as never,
+    );
+    expect(await service.installedBinDirs()).toEqual([]);
   });
 });

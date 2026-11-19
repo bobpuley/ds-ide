@@ -174,6 +174,11 @@ const windowsDirs: Record<string, (env: WinEnv) => string[]> = {
     ...msys2(env, 'clang64\\bin', 'ucrt64\\bin', 'mingw64\\bin'),
     ...chocolatey(env), ...scoop(env), ...winget(env),
   ],
+  ninja: (env) => [
+    ...programFiles(env).map((pf) => `${pf}\\ninja`),
+    ...msys2(env, 'clang64\\bin', 'ucrt64\\bin', 'mingw64\\bin'),
+    ...chocolatey(env), ...scoop(env), ...winget(env),
+  ],
   'clang++': (env) => [
     ...programFiles(env).map((pf) => `${pf}\\LLVM\\bin`),
     ...msys2(env, 'clang64\\bin'),
@@ -195,6 +200,8 @@ const CMAKE_SPEC: ToolSpec = { binary: CMAKE_BINARY, knownDirs: knownDirsFor(CMA
 // macOS/Linux: make is on PATH, or the system one in /usr/bin.
 const MAKE_SPEC: ToolSpec = { binary: MAKE_BINARY, knownDirs: knownDirsFor(MAKE_BINARY, ['/usr/bin/make']) };
 // Windows only: macOS locates its compiler through xcode-select instead.
+// macOS/Linux: ninja is on PATH, or installed by Homebrew.
+const NINJA_SPEC: ToolSpec = { binary: 'ninja', knownDirs: knownDirsFor('ninja', ['/opt/homebrew/bin/ninja', '/usr/local/bin/ninja']) };
 const CLANGXX_SPEC: ToolSpec = { binary: 'clang++', knownDirs: knownDirsFor('clang++', []) };
 
 // Detect arm-none-eabi-gcc.
@@ -245,6 +252,17 @@ export async function detectLldbDap(
     knownDirs: knownDirsFor(LLDB_DAP_BINARY, LLDB_DAP_CANDIDATES),
   };
   return locateTool(spec, undefined, { ...env, exists, exec });
+}
+
+// Detect ninja (FR-WIN-TCH-5): the build tool CMake is told to use on Windows. In a
+// managed toolchain it sits in its own directory, so the emulator build puts that
+// directory on PATH. PATH → known paths → the managed toolchain.
+export async function detectNinja(
+  exists: Exists = defaultExists,
+  exec: Exec = defaultExec,
+  env: Env = {},
+): Promise<string | undefined> {
+  return locateTool(NINJA_SPEC, undefined, { ...env, exists, exec });
 }
 
 // Detect make (FR-WIN-TCH-2). PATH → known paths. Stock Windows has none.

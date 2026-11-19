@@ -9,6 +9,7 @@ import {
 } from './managed-toolchain';
 import { archiveFileName, loadManifest, type ToolchainManifest } from './manifest';
 import type { CancelToken } from './download';
+import { setManagedToolDirsProvider } from '../hardware/tool-locator';
 
 // FR-WIN-TCH-4: consent, progress and recovery around the managed toolchain
 // download. The VS Code side is behind `ToolchainUi`, so the whole flow — consent
@@ -165,6 +166,16 @@ export class ManagedToolchainService {
       const manifest = await this.loadManifest(this.config.extensionPath);
       return (await this.find(this.config.storageDir, manifest))?.binDirs ?? [];
     } catch { return []; }
+  }
+
+  /**
+   * Makes an installed toolchain the last place tool lookups try (after the
+   * configured path, PATH and the known install locations), so a toolchain the
+   * user installed always wins. Never prompts. Dispose to unregister.
+   */
+  registerAsToolSource(): { dispose(): void } {
+    setManagedToolDirsProvider(() => this.installedBinDirs());
+    return { dispose: () => setManagedToolDirsProvider(undefined) };
   }
 
   /**

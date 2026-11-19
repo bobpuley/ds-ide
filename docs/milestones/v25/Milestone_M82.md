@@ -51,7 +51,7 @@ A large download needs explicit consent and a way out.
 
 ---
 
-### [ ] feat: managed toolchain joins the lookup order (FR-WIN-TCH-5)
+### [x] feat: managed toolchain joins the lookup order (FR-WIN-TCH-5)
 
 M81 left the managed-toolchain step as an extension point.
 

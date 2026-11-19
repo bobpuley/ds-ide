@@ -1481,6 +1481,7 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   context.subscriptions.push(
+    toolchain.registerAsToolSource(),
     vscode.commands.registerCommand('ds-ide.installWindowsToolchain', () => toolchain.installFromCommand()),
     vscode.commands.registerCommand('ds-ide.installToolchainFromArchive', () => toolchain.installFromLocalArchive()),
     transport,

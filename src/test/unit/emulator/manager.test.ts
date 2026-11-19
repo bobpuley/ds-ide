@@ -308,6 +308,66 @@ describe('EmulatorManager', () => {
       });
     });
 
+    describe('tool environment on Windows (FR-WIN-TCH-5)', () => {
+      type Deps = NonNullable<ConstructorParameters<typeof EmulatorManager>[0]>;
+      const mgr = (over: Deps): EmulatorManager => new EmulatorManager({
+        platform: 'win32',
+        env: { Path: 'C:/Windows' },
+        detectCMake: async () => 'C:/tc/cmake/bin/cmake.exe',
+        detectCompiler: async () => 'C:/tc/llvm/bin/clang++.exe',
+        detectNinja: async () => 'C:/tc/ninja/ninja.exe',
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+        ...over,
+      });
+      const envOf = (spawn: { mock: { calls: unknown[][] } }, call: number): Record<string, string> =>
+        (spawn.mock.calls[call]![2] as { env: Record<string, string> }).env;
+
+      it('runs CMake with the cmake and compiler directories first on PATH and CXX set to the compiler', async () => {
+        const spawn = vi.fn(() => makeCmakeProcess(0));
+        await mgr({ spawn: spawn as unknown as typeof cp.spawn }).build(buildOpts, () => { /* ignore */ });
+        for (const call of [0, 1]) {
+          const env = envOf(spawn, call);
+          expect(env['Path']).toBe('C:/tc/cmake/bin;C:/tc/llvm/bin;C:/tc/ninja;C:/Windows');
+          expect(env['CXX']).toBe('C:/tc/llvm/bin/clang++.exe');
+        }
+      });
+
+      it('puts the directory of Ninja on PATH too: in a managed toolchain it is not beside cmake or the compiler', async () => {
+        const spawn = vi.fn(() => makeCmakeProcess(0));
+        await mgr({ detectNinja: async () => 'D:/elsewhere/ninja.exe', spawn: spawn as unknown as typeof cp.spawn })
+          .build(buildOpts, () => { /* ignore */ });
+        expect(envOf(spawn, 0)['Path']).toContain('D:/elsewhere');
+      });
+
+      it('builds anyway when no separate Ninja is found (it may already be on PATH)', async () => {
+        const spawn = vi.fn(() => makeCmakeProcess(0));
+        await mgr({ detectNinja: async () => undefined, spawn: spawn as unknown as typeof cp.spawn })
+          .build(buildOpts, () => { /* ignore */ });
+        expect(envOf(spawn, 0)['Path']).toBe('C:/tc/cmake/bin;C:/tc/llvm/bin;C:/Windows');
+      });
+
+      it('keeps a CXX the user set', async () => {
+        const spawn = vi.fn(() => makeCmakeProcess(0));
+        await mgr({ env: { Path: 'C:/Windows', CXX: 'D:/mine/clang++.exe' }, spawn: spawn as unknown as typeof cp.spawn })
+          .build(buildOpts, () => { /* ignore */ });
+        expect(envOf(spawn, 0)['CXX']).toBe('D:/mine/clang++.exe');
+      });
+
+      it('does not modify the process environment', async () => {
+        const before = process.env['PATH'];
+        const spawn = vi.fn(() => makeCmakeProcess(0));
+        await mgr({ env: undefined, spawn: spawn as unknown as typeof cp.spawn }).build(buildOpts, () => { /* ignore */ });
+        expect(process.env['PATH']).toBe(before);
+        expect(process.env['CXX']).toBeUndefined();
+      });
+
+      it('passes no environment at all off Windows, so macOS and Linux builds are unchanged', async () => {
+        const spawn = vi.fn(() => makeCmakeProcess(0));
+        await mgr({ platform: 'darwin', spawn: spawn as unknown as typeof cp.spawn }).build(buildOpts, () => { /* ignore */ });
+        expect((spawn.mock.calls as unknown as unknown[][])[0]![2] as Record<string, unknown>).not.toHaveProperty('env');
+      });
+    });
+
     it('maps a spawn ENOENT (CMake vanished between detection and launch) to CMakeNotFoundError', async () => {
       const spawn = vi.fn(() => makeEnoentProcess());
       const mgr = new EmulatorManager({
@@ -508,6 +568,22 @@ describe('EmulatorManager', () => {
       expect(spawnMock.mock.calls[2]![1]).toEqual(['--tcp']);
       expect(mkdirMock).not.toHaveBeenCalledWith(workspaceRuntimeDir(buildDir), expect.anything());
       expect(ipcClientStub.connect).toHaveBeenCalledWith({ kind: 'tcp', host: '127.0.0.1', port: 50123 }, undefined, expect.any(String));
+    });
+
+    it('on Windows: starts effect_emu with the compiler directory on PATH, where the MinGW runtime DLLs live (FR-WIN-TCH-5)', async () => {
+      const { mgr } = managerAnnouncing('win32', '127.0.0.1:50123');
+      await mgr.build(opts, () => undefined);
+      await mgr.deploy(() => undefined);
+      const env = (spawnMock.mock.calls[2]![2] as { env: Record<string, string> }).env;
+      const key = Object.keys(env).find((k) => k.toUpperCase() === 'PATH')!;
+      expect(env[key]!.startsWith('/usr/bin;')).toBe(true);
+    });
+
+    it('on macOS: starts effect_emu with no environment override', async () => {
+      const { mgr } = managerAnnouncing('darwin', '/tmp/announced.sock');
+      await mgr.build(opts, () => undefined);
+      await mgr.deploy(() => undefined);
+      expect(spawnMock.mock.calls[2]![2] as Record<string, unknown>).not.toHaveProperty('env');
     });
 
     it('on Windows: pipes a fresh 32-byte session token to stdin and hands it to the IPC client (FR-WIN-IPC-2)', async () => {

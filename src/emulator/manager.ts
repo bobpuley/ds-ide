@@ -9,7 +9,8 @@ import { parseAnnounce, formatIpcAddress } from './ipc-address';
 import { potControlId, buttonControlId, toggleControlId, encoderControlId, narrowControlValue, narrowControlSnapshot } from '../ipc/control-values';
 import type { ScopeCaptureRequest } from '../ipc/narrow';
 import { PROTOCOL_VERSION } from '../ipc/protocol-version';
-import { detectCMake, detectCxxCompiler, cmakeNotFoundMessage, cxxCompilerNotFoundMessage } from '../hardware/toolchain';
+import { detectCMake, detectCxxCompiler, detectNinja, cmakeNotFoundMessage, cxxCompilerNotFoundMessage } from '../hardware/toolchain';
+import { prependToPath } from '../hardware/path-env';
 import type { GeneratorId, GeneratorParams } from '../webview/scope/scope-generators';
 
 const SOCKET_TIMEOUT_MS = 10_000;
@@ -201,6 +202,7 @@ function isSpawnNotFound(err: unknown): boolean {
 export interface EmulatorManagerDeps {
   detectCMake?: () => Promise<string | undefined>;
   detectCompiler?: () => Promise<string | undefined>;
+  detectNinja?: () => Promise<string | undefined>;
   spawn?: typeof cp.spawn;
   ipcClientFactory?: () => IpcClient;
   mkdir?: typeof fs.promises.mkdir;
@@ -213,6 +215,8 @@ export interface EmulatorManagerDeps {
   // resolves true once a toolchain has been installed (the user consented and the
   // download succeeded), so the lookup is tried again.
   offerToolchain?: () => Promise<boolean>;
+  // The environment child processes inherit; defaults to process.env. For tests.
+  env?: NodeJS.ProcessEnv;
 }
 
 // FR-WIN-BLD-5: Ninja is pinned on Windows (no MSBuild; the toolchain is
@@ -275,8 +279,10 @@ export class EmulatorManager extends EventEmitter {
   private readonly access: typeof fs.promises.access;
   private readonly platform: NodeJS.Platform;
   private readonly offerToolchain: (() => Promise<boolean>) | undefined;
+  private readonly baseEnv: NodeJS.ProcessEnv | undefined;
   private readonly detectCMake: () => Promise<string | undefined>;
   private readonly detectCompiler: () => Promise<string | undefined>;
+  private readonly detectNinja: () => Promise<string | undefined>;
 
   constructor(deps: EmulatorManagerDeps = {}) {
     super();
@@ -292,8 +298,10 @@ export class EmulatorManager extends EventEmitter {
     this.access = deps.access ?? fs.promises.access;
     this.platform = deps.platform ?? process.platform;
     this.offerToolchain = deps.offerToolchain;
+    this.baseEnv = deps.env;
     this.detectCMake = deps.detectCMake ?? (() => detectCMake());
     this.detectCompiler = deps.detectCompiler ?? (() => detectCxxCompiler());
+    this.detectNinja = deps.detectNinja ?? (() => detectNinja());
   }
 
   async build(opts: BuildOptions, onOutput: (line: string) => void, token?: CancellationToken): Promise<void> {
@@ -309,14 +317,40 @@ export class EmulatorManager extends EventEmitter {
     }
     if (!cmake) throw new CMakeNotFoundError(this.platform);
     if (!compiler) throw new CompilerNotFoundError(this.platform);
+    // FR-WIN-TCH-5: the tools may live in a directory that is not on PATH (a managed
+    // or user-installed toolchain found at a known location), yet CMake has to
+    // find the compiler and Ninja: put their directories first, and name the compiler.
+    const cmakeEnv = this.platform === 'win32' ? await this.windowsBuildEnv(cmake, compiler) : undefined;
 
     this.projectRoot = opts.projectRoot;
     this.buildDir = path.join(opts.projectRoot, '.ds-ide', 'build');
     await this.healStaleCache(this.buildDir, opts.emulatorSrc);
     await this.mkdir(this.buildDir, { recursive: true });
 
-    await this.runCMake(cmake, cmakeConfigureArgs(opts, this.buildDir, this.platform), onOutput, token);
-    await this.runCMake(cmake, cmakeBuildArgs(this.buildDir, os.cpus().length), onOutput, token);
+    await this.runCMake(cmake, cmakeConfigureArgs(opts, this.buildDir, this.platform), onOutput, token, cmakeEnv);
+    await this.runCMake(cmake, cmakeBuildArgs(this.buildDir, os.cpus().length), onOutput, token, cmakeEnv);
+  }
+
+  // FR-WIN-TCH-5 (Windows): CMake's environment — the directories of the cmake,
+  // compiler and Ninja found come first on PATH, and CXX names the compiler unless
+  // the user already set one.
+  private async windowsBuildEnv(cmake: string, compiler: string): Promise<NodeJS.ProcessEnv> {
+    // A managed toolchain keeps Ninja in a directory of its own (not beside CMake or
+    // the compiler), so it is looked up too; one that is not found may be on PATH.
+    const ninja = await this.detectNinja();
+    const dirs = [cmake, compiler, ninja].filter((x): x is string => x !== undefined).map((x) => path.win32.dirname(x));
+    const env = prependToPath(this.baseEnv ?? process.env, dirs, 'win32');
+    if (!Object.keys(env).some((k) => k.toUpperCase() === 'CXX')) env['CXX'] = compiler;
+    return env;
+  }
+
+  // FR-WIN-TCH-5 (Windows): effect_emu is linked against the toolchain's C++ runtime
+  // DLLs (libc++, winpthread), found in the compiler's directory; that directory may
+  // not be on the system PATH (a managed toolchain), so it goes on the child's PATH.
+  private async runtimeEnv(): Promise<NodeJS.ProcessEnv | undefined> {
+    if (this.platform !== 'win32') return undefined;
+    const compiler = await this.detectCompiler();
+    return compiler ? prependToPath(this.baseEnv ?? process.env, [path.win32.dirname(compiler)], 'win32') : undefined;
   }
 
   // The single-config location (Makefiles/Ninja) first; a multi-config
@@ -346,9 +380,10 @@ export class EmulatorManager extends EventEmitter {
     args: string[],
     onOutput: (line: string) => void,
     token?: CancellationToken,
+    env?: NodeJS.ProcessEnv,
   ): Promise<void> {
     try {
-      await this.runProcess(cmake, args, onOutput, token);
+      await this.runProcess(cmake, args, onOutput, token, env);
     } catch (err) {
       throw isSpawnNotFound(err) ? new CMakeNotFoundError(this.platform) : err;
     }
@@ -403,13 +438,14 @@ export class EmulatorManager extends EventEmitter {
       return killStalePid(this.buildDir, this.execFile, this.platform)
         .catch(() => { /* ignore stale-pid errors */ })
         // Resolved before killExisting() so kill → spawn stays synchronous.
-        .then(() => this.resolveExecutable(buildDir))
-        .then((exePath) => {
+        .then(async () => ({ exePath: await this.resolveExecutable(buildDir), env: await this.runtimeEnv() }))
+        .then(({ exePath, env }) => {
           this.killExisting();
 
           const child = this.spawn(exePath, spawnArgs, {
             cwd: this.projectRoot || undefined,
             stdio: [sessionToken ? 'pipe' : 'ignore', 'pipe', 'pipe'],
+            ...(env ? { env } : {}),
           });
           this.childProcess = child;
           if (sessionToken) {
@@ -848,9 +884,10 @@ export class EmulatorManager extends EventEmitter {
     args: string[],
     onOutput: (line: string) => void,
     token?: CancellationToken,
+    env?: NodeJS.ProcessEnv,
   ): Promise<void> {
     return new Promise((resolve, reject) => {
-      const proc = this.spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+      const proc = this.spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], ...(env ? { env } : {}) });
 
       const handleOutput = (data: Buffer): void => {
         for (const line of data.toString('utf8').split('\n')) {
