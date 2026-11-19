@@ -10,7 +10,7 @@ A Windows user without clang/MinGW, CMake and Ninja cannot build the emulator or
 
 ## Sprint Tasks
 
-### [ ] feat: pinned toolchain manifest and mirror (FR-WIN-TCH-4)
+### [x] feat: pinned toolchain manifest and mirror (FR-WIN-TCH-4)
 
 Upstream release assets can be removed and Ninja publishes no hash file, so versions and hashes are pinned by us.
 
