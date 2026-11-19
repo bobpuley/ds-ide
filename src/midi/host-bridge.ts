@@ -1,7 +1,11 @@
 // Host MIDI bridge (FR-DEV-18) — forwards a real controller's messages into
-// the emulator's midiEvent pipeline (manager.sendMidiEvent), macOS-only by
-// explicit decision (02_assumptions-and-risks.md); the on-screen keyboard is
-// the cross-platform fallback everywhere else.
+// the emulator's midiEvent pipeline (manager.sendMidiEvent). Runs wherever the
+// 'midi' addon is shipped (macOS arm64, Windows x64 — FR-WIN-MIDI-1); on any
+// other platform the addon is absent, the lazy load fails and the bridge
+// degrades to a console warning, with the on-screen keyboard as the fallback.
+// On Windows RtMidi uses the WinMM backend (the 'midi' package's default);
+// each physical device appears as one input port, and WinMM allows a port to
+// be opened by one process at a time, so a busy port is skipped, not fatal.
 //
 // 'midi' (RtMidi bindings) is a native addon esbuild can't inline (see
 // esbuild.js's `external`) — loaded lazily via the injectable
@@ -42,12 +46,9 @@ export class HostMidiBridge {
   constructor(
     private readonly manager: MidiEventSender,
     private readonly inputFactory: MidiInputFactory = defaultInputFactory,
-    private readonly platform: NodeJS.Platform = process.platform,
   ) {}
 
   start(): void {
-    if (this.platform !== 'darwin') return;
-
     let probe: MidiInputLike;
     try {
       probe = this.inputFactory();

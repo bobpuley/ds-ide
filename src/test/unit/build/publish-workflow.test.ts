@@ -25,7 +25,8 @@ describe('publish workflow (FR-RLS-4)', () => {
 
   it('publishes a darwin-arm64 pre-release package', () => {
     expect(wf).toContain('npm run package -- --pre-release');
-    expect(pkg.scripts.package).toContain('--target darwin-arm64');
+    expect(pkg.scripts.package).toContain('scripts/package-vsix.mjs');
+    expect(wf).toContain('ds-ide-darwin-arm64-*.vsix');
   });
 
   it('verifies the package before publishing it', () => {
