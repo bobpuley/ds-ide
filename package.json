@@ -477,7 +477,7 @@
     "test:e2e": "npm run compile && tsc -p tsconfig.e2e.json && vscode-test",
     "check:published-links": "node scripts/check-published-links.js",
     "lint": "npm run gen:pins && tsc --noEmit && tsc --noEmit -p tsconfig.webview.json && bash scripts/check-active-folder-convention.sh && node scripts/check-doc-commands.js",
-    "package": "npm run gen:pins && node esbuild.js --production && npm run rebuild:native && vsce package --target darwin-arm64",
+    "package": "npm run gen:pins && node esbuild.js --production && npm run rebuild:native && node scripts/package-vsix.mjs",
     "verify:package": "bash scripts/verify-vsix.sh",
     "rebuild:native": "node scripts/rebuild-midi-native.mjs",
     "postinstall": "npm run rebuild:native || true"

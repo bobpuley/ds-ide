@@ -29,7 +29,7 @@ npm run package            # builds, rebuilds the native midi addon for Electron
 npm run verify:package     # checks the package contents, the target platform and the native addon's ABI
 ```
 
-The package contains a native addon (`midi.node`) that must match the Electron version inside VS Code. The version is pinned in `scripts/electron-target-version.txt`; after a VS Code update that changes Electron, update the pin, run `npm run rebuild:native` and revisit `engines.vscode` in `package.json` (it names the VS Code version the addon was built and tested for, currently 1.140).
+The package contains a native addon (`midi.node`) that must match the Electron version inside VS Code. The version is pinned in `scripts/electron-target-version.txt`; after a VS Code update that changes Electron, update the pin, run `npm run rebuild:native` and revisit `engines.vscode` in `package.json` (it names the VS Code version the addon was built and tested for, currently 1.140). The rebuild is `scripts/rebuild-midi-native.mjs` (Node, runs on macOS and Windows; one platform per run), and `npm run package` produces the VSIX for the current platform (`darwin-arm64` or `win32-x64`); the `package` workflow builds and smoke-tests both and records each VSIX size in its run summary.
 
 Before publishing, run `npm run check:published-links`. It requests every URL the published README will contain (including the screenshots, which vsce points at the repository) anonymously and fails on any that does not answer 200. It needs network and a public repository, so it is not part of `npm test`.
 

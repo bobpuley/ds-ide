@@ -8,8 +8,9 @@
 # (invisible when testing only via the dev-mode Extension Host, per
 # docs/02_assumptions-and-risks.md).
 #
-# Not wired into any CI provider yet (none exists in this repo) — run it
-# manually or plug it into whatever CI gets set up later.
+# Platform-aware (FR-WIN-PKG-1): packages for the machine it runs on
+# (darwin-arm64 or win32-x64) and asserts that platform's addon. Run by
+# .github/workflows/package.yml on both runners; on Windows it needs Git Bash.
 #
 # Exit code: 0 = all assertions pass, 1 = packaging or an assertion failed.
 
@@ -20,6 +21,7 @@ WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "${WORK_DIR}"' EXIT
 
 VSIX_PATH="${WORK_DIR}/ds-ide.vsix"
+VSCE_TARGET="$(node "${REPO_ROOT}/scripts/vsix-target.mjs")" || { echo "No VSIX target for this platform"; exit 1; }
 UNZIP_DIR="${WORK_DIR}/unzipped"
 
 echo "=== FR-PKG-1 packaging smoke test ==="
@@ -38,11 +40,18 @@ npm run rebuild:native
 # inline, so its runtime files must ship as real node_modules entries —
 # .vscodeignore carves the specific files needed back in from its blanket
 # node_modules/** exclusion.
-# Same target as `npm run package`: the release ships as a darwin-arm64 package.
-npx --yes @vscode/vsce package --target darwin-arm64 -o "${VSIX_PATH}"
+# Same target as `npm run package`: one VSIX per platform.
+echo "Target: ${VSCE_TARGET}"
+node "${REPO_ROOT}/scripts/package-vsix.mjs" -o "${VSIX_PATH}"
 
 mkdir -p "${UNZIP_DIR}"
-unzip -q "${VSIX_PATH}" -d "${UNZIP_DIR}"
+if command -v unzip >/dev/null 2>&1; then
+  unzip -q "${VSIX_PATH}" -d "${UNZIP_DIR}"
+else
+  # Git Bash on Windows ships no unzip.
+  powershell -NoProfile -Command "Expand-Archive -LiteralPath '$(cygpath -w "${VSIX_PATH}")' -DestinationPath '$(cygpath -w "${UNZIP_DIR}")'"
+fi
+echo "VSIX size: $(wc -c < "${VSIX_PATH}") bytes (${VSCE_TARGET})"
 
 fail=0
 check() {
@@ -96,19 +105,24 @@ else
   fail=1
 fi
 
-# Platform target: the manifest must declare darwin-arm64 and the native addon
-# must actually be an arm64 Mach-O (a universal package or an x64 addon would
+# Platform target: the manifest must declare this platform and the native addon
+# must be built for its arch (a universal package or a wrong-arch addon would
 # install on machines it cannot run on).
-if grep -q 'TargetPlatform="darwin-arm64"' "${UNZIP_DIR}/extension.vsixmanifest"; then
-  echo "  PASS  package manifest targets darwin-arm64"
+ADDON="${UNZIP_DIR}/extension/node_modules/midi/build/Release/midi.node"
+if grep -q "TargetPlatform=\"${VSCE_TARGET}\"" "${UNZIP_DIR}/extension.vsixmanifest"; then
+  echo "  PASS  package manifest targets ${VSCE_TARGET}"
 else
-  echo "  FAIL  package manifest does not declare TargetPlatform=darwin-arm64"
+  echo "  FAIL  package manifest does not declare TargetPlatform=${VSCE_TARGET}"
   fail=1
 fi
-if file "${UNZIP_DIR}/extension/node_modules/midi/build/Release/midi.node" | grep -q "arm64"; then
-  echo "  PASS  node_modules/midi's native addon is arm64"
+case "${VSCE_TARGET}" in
+  darwin-arm64) addon_pattern="arm64" ;;
+  win32-x64)    addon_pattern="x86-64" ;;
+esac
+if file "${ADDON}" | grep -q "${addon_pattern}"; then
+  echo "  PASS  node_modules/midi's native addon is ${addon_pattern}"
 else
-  echo "  FAIL  node_modules/midi's native addon is not arm64"
+  echo "  FAIL  node_modules/midi's native addon is not ${addon_pattern}"
   fail=1
 fi
 

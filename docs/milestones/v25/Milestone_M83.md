@@ -24,7 +24,7 @@ The gate exists in `host-bridge.ts` (`platform !== 'darwin'`), in `rebuild-midi-
 
 ---
 
-### [ ] feat: per-platform VSIX packaging and CI (FR-WIN-PKG-1)
+### [x] feat: per-platform VSIX packaging and CI (FR-WIN-PKG-1)
 
 `.vscodeignore` carves in a single `midi.node`; the VSIX is built for whatever machine ran `npm install`.
 

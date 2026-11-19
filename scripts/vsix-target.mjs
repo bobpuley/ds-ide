@@ -28,3 +28,13 @@ export function resolveTarget(platform, arch) {
 export function buildRebuildArgs({ electronVersion, arch, repoRoot }) {
   return ['--version', electronVersion, '-f', '-w', 'midi', '-m', repoRoot, '--arch', arch];
 }
+
+// CLI: `node scripts/vsix-target.mjs` prints the vsce target for this machine
+// (used by verify-vsix.sh); exits 1 when the platform is unsupported.
+import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const t = resolveTarget(process.platform, process.arch);
+  if (!t) process.exit(1);
+  console.log(t.vsceTarget);
+}
