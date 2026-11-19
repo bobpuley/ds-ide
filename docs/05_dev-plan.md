@@ -222,7 +222,7 @@ Full registry in [`docs/v24/05_dev-plan.md`](v24/05_dev-plan.md).
 | M79 | Audio Backend Abstraction                           | **released** | 0.25.0-win.3   | [Milestone_M79.md](milestones/v25/Milestone_M79.md) |
 | M80 | Windows Audio Backend & Measurement Gate            | **released** | 0.25.0-win.4   | [Milestone_M80.md](milestones/v25/Milestone_M80.md) |
 | M81 | Windows Toolchain, Debug & Flash Discovery          | **released** | 0.25.0-win.5   | [Milestone_M81.md](milestones/v25/Milestone_M81.md) |
-| M82 | Managed Windows Toolchain Download                  | **planned** | 0.25.0-win.6   | [Milestone_M82.md](milestones/v25/Milestone_M82.md) |
+| M82 | Managed Windows Toolchain Download                  | **released** | 0.25.0-win.6   | [Milestone_M82.md](milestones/v25/Milestone_M82.md) |
 | M83 | Cross-Platform MIDI Bridge & Per-Platform VSIX      | **planned** | 0.25.0-win.7   | [Milestone_M83.md](milestones/v25/Milestone_M83.md) |
 | M84 | Windows Verification & Merge Readiness              | **planned** | 0.25.0-win.8   | [Milestone_M84.md](milestones/v25/Milestone_M84.md) |
 

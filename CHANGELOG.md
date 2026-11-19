@@ -92,6 +92,17 @@ This is a **preview**: it is published as a Marketplace pre-release, runs on **m
 - **FR-REL-3** — The extension activates when a folder containing a Daisy project (`*.cpp`, `src/*.cpp`, `source/*.cpp`) is opened, so Run Daisy Effect and the editor play button are available without first using another Daisy command.
 - Packaging: `darwin-arm64` target, trimmed `.vscodeignore`, third-party notices for node-midi/RtMidi, repository and bugs URLs, Electron pin 43.7.3.
 
+## 0.25.0-win.6 — 2026-11-19
+
+**Managed Windows toolchain download** *(FR-WIN-TCH-4, FR-WIN-TCH-5, M82 — pre-release on `feat/windows-support`)*
+
+- **FR-WIN-TCH-4** — On Windows the extension can download the toolchain it needs on first use: llvm-mingw 20261117 (LLVM 23.1.6, includes `lldb-dap`), CMake 4.5.0 and Ninja 1.13.2, pinned in `resources/windows-toolchain.json` with our own SHA-256 (cross-checked with upstream) and a mirror URL under the ds-ide `toolchain-1` release. `scripts/update-toolchain-manifest.mjs` checks, hashes, verifies and adopts versions; `docs/toolchain-mirror.md` documents the manifest and the manual mirror upload.
+- **FR-WIN-TCH-4** — Download over HTTPS only (redirects included), SHA-256 and size verified before anything is extracted, extraction with the system `tar.exe`, unused target sysroots pruned, and the finished tree renamed into `<globalStorage>/toolchain/<version>/` in one step with a completion marker written last: a partial download or extraction is never taken for an install. Free space is checked before downloading; a failing source falls back to the mirror; superseded versions and stale temporary folders are removed.
+- **FR-WIN-TCH-4** — A modal consent prompt states the download size (about 248 MB) and the disk space needed (up to 902 MB); progress is a cancellable notification; each failure (offline or proxy, HTTP error, hash mismatch, disk full, unpack failure, incomplete install, missing archive) has a clear message with Retry and, where it helps, "Install from local archives…". New commands **Install Windows Toolchain** and **Install Windows Toolchain from Local Archives** (air-gapped machines), shown only on Windows. The emulator build and the debugger offer the download when a tool is missing.
+- **FR-WIN-TCH-5** — The installed toolchain is the last source of every tool lookup (after the configured path, PATH and the known install locations), so a toolchain the user installed always wins. The managed set does not ship `arm-none-eabi-gcc`, `make` or `dfu-util`: the hardware build offers no download.
+- **FR-WIN-TCH-5** — The emulator build gives CMake the environment it needs when the tools are not on PATH (the directories of cmake, the compiler and the new `detectNinja` first on PATH, `CXX` set to the compiler), and `effect_emu` starts with the compiler's directory on PATH, where the MinGW runtime DLLs live. Verified end to end with PATH reduced to System32 and MSYS2 hidden: the emulator builds, starts and connects.
+- Test changes: none removed or weakened.
+
 ## 0.25.0-win.5 — 2026-11-18
 
 **Windows toolchain, debug & flash discovery** *(FR-WIN-TCH-1 to FR-WIN-TCH-3, FR-WIN-TCH-5, FR-WIN-DBG-1, M81 — pre-release on `feat/windows-support`)*

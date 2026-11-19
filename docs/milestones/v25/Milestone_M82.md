@@ -1,7 +1,7 @@
 # M82 — Managed Windows Toolchain Download
 
 **Version:** 0.25.0-win.6
-**Status:** planned
+**Status:** released
 **Source:** intake session, 2026-10-04 (`multiplatform_plan.md`; 01_input-ideas.md). Branch `feat/m82-managed-toolchain-download` is created from `feat/windows-support` and merged back into `feat/windows-support` at close (never `main`) — FR-WIN-GIT-1
 
 ## Goal
