@@ -1,2 +1,7 @@
+# Same line endings on every OS and CI runner. Without this, a Windows checkout
+# with core.autocrlf=true (the Git for Windows default, e.g. on windows-latest)
+# turns files into CRLF and breaks tests that match "\n" in workflow, guide and
+# YAML text.
+* text=auto eol=lf
 # Shell scripts must stay LF even with core.autocrlf=true (bash fails on CRLF).
 *.sh text eol=lf

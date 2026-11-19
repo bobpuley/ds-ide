@@ -7,9 +7,14 @@ const changelog = fs.readFileSync(path.join(__dirname, '../../../../CHANGELOG.md
 
 describe('package.json marketplace metadata (FR-QA-EXT-6)', () => {
   it('version matches the latest CHANGELOG entry', () => {
-    const latest = changelog.match(/^## (\S+)/m)?.[1];
-    expect(latest).toBeDefined();
-    expect(pkg.version).toBe(latest);
+    const headings = [...changelog.matchAll(/^## (\S+)/gm)].map(m => m[1]);
+    // feat/windows-support releases pre-release versions (X.Y.Z-win.N) whose
+    // entries sit above the last main release; a plain version must be the top entry.
+    if (/-win\.\d+$/.test(pkg.version)) {
+      expect(headings).toContain(pkg.version);
+    } else {
+      expect(headings[0]).toBe(pkg.version);
+    }
   });
 
   it('engines.vscode is the tested version, and the README and CONTRIBUTING say the same (FR-PRE-5)', () => {
@@ -34,7 +39,9 @@ describe('package.json marketplace metadata (FR-QA-EXT-6)', () => {
   });
 
   it('the version has no semver pre-release suffix; the Marketplace pre-release track uses an odd minor instead (FR-MKT-1)', () => {
-    expect(pkg.version).toMatch(/^\d+\.\d+\.\d+$/);
+    // Only the Windows pre-release train (feat/windows-support) uses a -win.N suffix;
+    // it never reaches main (FR-WIN-GIT-1).
+    expect(pkg.version).toMatch(/^\d+\.\d+\.\d+(-win\.\d+)?$/);
   });
 
   it('the icon is a PNG of at least 128 x 128 pixels (FR-MKT-1)', () => {
