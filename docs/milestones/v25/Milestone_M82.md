@@ -23,7 +23,7 @@ Upstream release assets can be removed and Ninja publishes no hash file, so vers
 
 ---
 
-### [ ] feat: downloader, verifier and atomic installer (FR-WIN-TCH-4)
+### [x] feat: downloader, verifier and atomic installer (FR-WIN-TCH-4)
 
 Several hundred MB must be downloaded and extracted safely on Windows.
 
