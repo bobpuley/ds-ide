@@ -18,7 +18,7 @@ describe('MIDI native addon unable to load (FR-PRE-5)', () => {
     const manager = Object.assign(new EventEmitter(), { sendMidiEvent: vi.fn() });
 
     // Activation constructs and starts the bridge; that must not throw.
-    const bridge = new HostMidiBridge(manager, failing, 'darwin');
+    const bridge = new HostMidiBridge(manager, failing);
     expect(() => bridge.start()).not.toThrow();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('MIDI host bridge unavailable'), expect.anything());
     expect(() => bridge.stop()).not.toThrow();

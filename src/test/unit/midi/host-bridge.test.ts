@@ -19,20 +19,36 @@ function fakeInput(portCount: number, messageHandlers: Array<(dt: number, msg: n
 }
 
 describe('HostMidiBridge (FR-DEV-18)', () => {
-  it('is inert on a non-macOS platform — never touches the input factory', () => {
-    const factory = vi.fn();
-    const bridge = new HostMidiBridge(fakeManager(), factory as unknown as MidiInputFactory, 'linux');
+  it('opens every enumerated port on Windows too — no platform gate (FR-WIN-MIDI-1)', () => {
+    const opened: number[] = [];
+    const handlerLists: Array<Array<(dt: number, msg: number[]) => void>> = [];
+    const factory: MidiInputFactory = () => {
+      const input = fakeInput(2, handlerLists);
+      const originalOpen = input.openPort;
+      input.openPort = (i: number) => { opened.push(i); originalOpen(i); };
+      return input;
+    };
+    const bridge = new HostMidiBridge(fakeManager(), factory);
     bridge.start();
-    expect(factory).not.toHaveBeenCalled();
+    expect(opened.sort()).toEqual([0, 1]);
+  });
+
+  it('degrades to a console warning when the addon is missing on Windows (FR-WIN-MIDI-1)', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const factory: MidiInputFactory = () => { throw new Error('Could not locate the bindings file'); };
+    const bridge = new HostMidiBridge(fakeManager(), factory);
+    expect(() => bridge.start()).not.toThrow();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   it('is inert (no throw) when the native binding fails to load', () => {
     const factory: MidiInputFactory = () => { throw new Error('native module not found'); };
-    const bridge = new HostMidiBridge(fakeManager(), factory, 'darwin');
+    const bridge = new HostMidiBridge(fakeManager(), factory);
     expect(() => bridge.start()).not.toThrow();
   });
 
-  it('opens every enumerated port on macOS', () => {
+  it('opens every enumerated port', () => {
     const opened: number[] = [];
     const handlerLists: Array<Array<(dt: number, msg: number[]) => void>> = [];
     let call = 0;
@@ -43,7 +59,7 @@ describe('HostMidiBridge (FR-DEV-18)', () => {
       input.openPort = (i: number) => { opened.push(i); originalOpen(i); };
       return input;
     };
-    const bridge = new HostMidiBridge(fakeManager(), factory, 'darwin');
+    const bridge = new HostMidiBridge(fakeManager(), factory);
     bridge.start();
     // First factory call is the enumeration probe (never opened); one more
     // factory call per port to actually listen on it.
@@ -55,7 +71,7 @@ describe('HostMidiBridge (FR-DEV-18)', () => {
     const manager = fakeManager();
     const handlerLists: Array<Array<(dt: number, msg: number[]) => void>> = [];
     const factory: MidiInputFactory = () => fakeInput(1, handlerLists);
-    const bridge = new HostMidiBridge(manager, factory, 'darwin');
+    const bridge = new HostMidiBridge(manager, factory);
     bridge.start();
     // handlerLists[0] is the enumeration probe's (never fired); [1] is the
     // one open port's real handler list.
@@ -73,7 +89,7 @@ describe('HostMidiBridge (FR-DEV-18)', () => {
       if (call === 1) probes.push(input);
       return input;
     };
-    const bridge = new HostMidiBridge(fakeManager(), factory, 'darwin');
+    const bridge = new HostMidiBridge(fakeManager(), factory);
     bridge.start();
     expect(probes[0]?.closePort).toHaveBeenCalledOnce();
   });
@@ -92,7 +108,7 @@ describe('HostMidiBridge (FR-DEV-18)', () => {
       });
       return input;
     };
-    const bridge = new HostMidiBridge(fakeManager(), factory, 'darwin');
+    const bridge = new HostMidiBridge(fakeManager(), factory);
     expect(() => bridge.start()).not.toThrow();
     expect(opened.sort()).toEqual([0, 2]);
   });
@@ -106,7 +122,7 @@ describe('HostMidiBridge (FR-DEV-18)', () => {
       input.closePort = () => { closedPorts.push(input); originalClose(); };
       return input;
     };
-    const bridge = new HostMidiBridge(fakeManager(), factory, 'darwin');
+    const bridge = new HostMidiBridge(fakeManager(), factory);
     bridge.start();
     closedPorts.length = 0; // start() also closes the enumeration probe (FR-EXT-15); isolate stop()'s own closes
     bridge.stop();
@@ -116,7 +132,7 @@ describe('HostMidiBridge (FR-DEV-18)', () => {
 
 // FR-EXT-36: the pinned 'midi' dependency's Input class must keep satisfying
 // MidiInputLike. 'midi' is a native addon rebuilt against Electron's ABI by
-// scripts/rebuild-midi-native.sh (FR-DEV-19) — not the plain Node.js this
+// scripts/rebuild-midi-native.mjs (FR-DEV-19) — not the plain Node.js this
 // test suite runs under — so a NODE_MODULE_VERSION mismatch here is the
 // expected, documented state outside VS Code's actual Extension Host (see
 // scripts/check-native-abi.js's identical tolerance) and isn't a shape
@@ -132,10 +148,11 @@ describe('installed midi package (FR-EXT-36)', () => {
         console.warn('ds-ide: midi package ABI mismatch under this Node runtime — skipping shape check:', message);
         return;
       }
-      // The native addon is only built on macOS (rebuild-midi-native.sh skips
-      // other platforms; the host bridge is FR-DEV-18, macOS-only), so a
-      // missing binding elsewhere is the expected state, not a regression.
-      if (process.platform !== 'darwin' && /Could not locate the bindings file/.test(message)) {
+      // The native addon is only built on macOS arm64 and Windows x64
+      // (rebuild-midi-native.mjs skips other platforms), and not at all under
+      // `npm ci --ignore-scripts`, so a missing binding is the expected state
+      // there, not a regression.
+      if (/Could not locate the bindings file/.test(message)) {
         console.warn('ds-ide: midi native addon not built on this platform — skipping shape check');
         return;
       }

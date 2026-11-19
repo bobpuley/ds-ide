@@ -18,9 +18,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      # --ignore-scripts: postinstall rebuilds the midi native addon via a
-      # macOS-only Bash script (ported in M83). The midi shape test skips
-      # explicitly when the binding is absent off macOS.
+      # --ignore-scripts: postinstall rebuilds the midi native addon (Node script, M83); skipped here to keep the unit job fast. The shape test skips when the addon is absent.
       - run: npm ci --ignore-scripts
       - run: npm test
 

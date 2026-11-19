@@ -10,7 +10,7 @@ The host MIDI bridge is gated to macOS in three places and the VSIX carries a si
 
 ## Sprint Tasks
 
-### [ ] feat: lift the macOS gate of the host MIDI bridge (FR-WIN-MIDI-1)
+### [x] feat: lift the macOS gate of the host MIDI bridge (FR-WIN-MIDI-1)
 
 The gate exists in `host-bridge.ts` (`platform !== 'darwin'`), in `rebuild-midi-native.sh` (`uname -s` check) and in the npm scripts that call it.
 
