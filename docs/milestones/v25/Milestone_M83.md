@@ -35,3 +35,14 @@ The gate exists in `host-bridge.ts` (`platform !== 'darwin'`), in `rebuild-midi-
 - a CI job builds both and smoke-tests that the addon loads on its own platform
 - the Electron ABI target file is shared and the rebuild runs once per target
 - VSIX size per platform is recorded
+
+## Recorded results
+
+VSIX size per platform (`package` workflow, 0.25.0-win.7):
+
+| Target | Size |
+|---|---|
+| `darwin-arm64` | 985,966 bytes (~0.94 MiB) |
+| `win32-x64` | 1,106,085 bytes (~1.05 MiB) |
+
+Host MIDI backend: on Windows `midi` (RtMidi) uses WinMM; each device is one input port and a port busy in another process is skipped with a warning.

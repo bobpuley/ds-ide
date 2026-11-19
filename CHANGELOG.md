@@ -98,7 +98,7 @@ This is a **preview**: it is published as a Marketplace pre-release, runs on **m
 
 - **FR-WIN-MIDI-1** — The host MIDI bridge no longer checks for macOS: it opens every input port on Windows too (RtMidi's WinMM backend). A missing or unloadable `midi` addon still degrades to a console warning, and the on-screen keyboard keeps working.
 - **FR-WIN-MIDI-1** — `scripts/rebuild-midi-native.sh` is replaced by `scripts/rebuild-midi-native.mjs`, a Node script that rebuilds `midi` against the Electron ABI for the current OS (darwin-arm64 or win32-x64) and skips other platforms. On Windows the rebuild needs the MSVC build tools (Visual Studio Build Tools, C++ workload); without them `postinstall` leaves the addon unbuilt.
-- **FR-WIN-PKG-1** — `npm run package` produces the VSIX for the current platform (`scripts/package-vsix.mjs`, shared target table in `scripts/vsix-target.mjs`). `verify-vsix.sh` is platform-aware and checks the manifest target, the addon's architecture and its Electron ABI. New `package` workflow builds and smoke-tests `darwin-arm64` and `win32-x64` and records each VSIX size in the run summary.
+- **FR-WIN-PKG-1** — `npm run package` produces the VSIX for the current platform (`scripts/package-vsix.mjs`, shared target table in `scripts/vsix-target.mjs`). `verify-vsix.sh` is platform-aware and checks the manifest target, the addon's architecture and its Electron ABI. New `package` workflow builds and smoke-tests `darwin-arm64` and `win32-x64` and records each VSIX size in the run summary (darwin-arm64 985,966 bytes, win32-x64 1,106,085 bytes).
 - Test changes: the macOS-only host-bridge test is replaced by Windows tests; none weakened.
 
 ## 0.25.0-win.6 — 2026-11-19
