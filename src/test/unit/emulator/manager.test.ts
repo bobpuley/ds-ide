@@ -222,6 +222,92 @@ describe('EmulatorManager', () => {
       await expect(mgr.build(buildOpts, () => { /* ignore */ })).rejects.toThrow(/CMake not found.*brew install cmake/);
     });
 
+    describe('offering the managed toolchain on Windows (FR-WIN-TCH-4)', () => {
+      type Deps = NonNullable<ConstructorParameters<typeof EmulatorManager>[0]>;
+      const winMgr = (over: Deps): EmulatorManager => new EmulatorManager({
+        platform: 'win32',
+        spawn: vi.fn(() => makeCmakeProcess(0)) as unknown as typeof cp.spawn,
+        mkdir: mkdirMock as unknown as typeof fs.promises.mkdir,
+        ...over,
+      });
+
+      it('offers the download when CMake is missing, then builds with the CMake it installed', async () => {
+        let installed = false;
+        const offerToolchain = vi.fn(async () => { installed = true; return true; });
+        const spawn = vi.fn(() => makeCmakeProcess(0));
+        const mgr = winMgr({
+          detectCMake: async () => (installed ? 'C:/tc/cmake.exe' : undefined),
+          detectCompiler: async () => 'C:/tc/clang++.exe',
+          offerToolchain,
+          spawn: spawn as unknown as typeof cp.spawn,
+        });
+        await mgr.build(buildOpts, () => { /* ignore */ });
+        expect(offerToolchain).toHaveBeenCalledOnce();
+        expect((spawn.mock.calls as unknown as [string][])[0]![0]).toBe('C:/tc/cmake.exe');
+      });
+
+      it('offers it when only the C++ compiler is missing', async () => {
+        let installed = false;
+        const offerToolchain = vi.fn(async () => { installed = true; return true; });
+        const mgr = winMgr({
+          detectCMake: async () => 'C:/cmake.exe',
+          detectCompiler: async () => (installed ? 'C:/tc/clang++.exe' : undefined),
+          offerToolchain,
+        });
+        await mgr.build(buildOpts, () => { /* ignore */ });
+        expect(offerToolchain).toHaveBeenCalledOnce();
+      });
+
+      it('offers once when both are missing', async () => {
+        let installed = false;
+        const offerToolchain = vi.fn(async () => { installed = true; return true; });
+        const mgr = winMgr({
+          detectCMake: async () => (installed ? 'C:/tc/cmake.exe' : undefined),
+          detectCompiler: async () => (installed ? 'C:/tc/clang++.exe' : undefined),
+          offerToolchain,
+        });
+        await mgr.build(buildOpts, () => { /* ignore */ });
+        expect(offerToolchain).toHaveBeenCalledOnce();
+      });
+
+      it('fails with the usual error, spawning nothing, when the user declines', async () => {
+        const spawn = vi.fn();
+        const mgr = winMgr({
+          detectCMake: async () => undefined, detectCompiler: async () => undefined,
+          offerToolchain: async () => false, spawn: spawn as unknown as typeof cp.spawn,
+        });
+        await expect(mgr.build(buildOpts, () => { /* ignore */ })).rejects.toBeInstanceOf(CMakeNotFoundError);
+        expect(spawn).not.toHaveBeenCalled();
+      });
+
+      it('fails with the usual error when the install still did not provide the tool', async () => {
+        const mgr = winMgr({
+          detectCMake: async () => 'C:/cmake.exe', detectCompiler: async () => undefined,
+          offerToolchain: async () => true,
+        });
+        await expect(mgr.build(buildOpts, () => { /* ignore */ })).rejects.toBeInstanceOf(CompilerNotFoundError);
+      });
+
+      it('does not offer when both tools are present', async () => {
+        const offerToolchain = vi.fn(async () => true);
+        await winMgr({ detectCMake: async () => 'C:/cmake.exe', detectCompiler: async () => 'C:/clang++.exe', offerToolchain })
+          .build(buildOpts, () => { /* ignore */ });
+        expect(offerToolchain).not.toHaveBeenCalled();
+      });
+
+      it('does not offer off Windows', async () => {
+        const offerToolchain = vi.fn(async () => true);
+        const mgr = winMgr({ platform: 'darwin', detectCMake: async () => undefined, detectCompiler: async () => undefined, offerToolchain });
+        await expect(mgr.build(buildOpts, () => { /* ignore */ })).rejects.toBeInstanceOf(CMakeNotFoundError);
+        expect(offerToolchain).not.toHaveBeenCalled();
+      });
+
+      it('behaves as before when no offer hook is given', async () => {
+        const mgr = winMgr({ detectCMake: async () => undefined, detectCompiler: async () => undefined });
+        await expect(mgr.build(buildOpts, () => { /* ignore */ })).rejects.toBeInstanceOf(CMakeNotFoundError);
+      });
+    });
+
     it('maps a spawn ENOENT (CMake vanished between detection and launch) to CMakeNotFoundError', async () => {
       const spawn = vi.fn(() => makeEnoentProcess());
       const mgr = new EmulatorManager({

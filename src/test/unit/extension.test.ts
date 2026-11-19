@@ -89,6 +89,7 @@ function makeContext(): vscode.ExtensionContext {
     subscriptions: [],
     extensionPath: '/ext',
     extensionUri: { fsPath: '/ext' },
+    globalStorageUri: { fsPath: '/global-storage' },
     workspaceState: {
       get: (_key: string, defaultValue?: unknown) => defaultValue,
       update: (_key: string, _value: unknown) => Promise.resolve(),
@@ -2392,6 +2393,7 @@ describe('multi-root workspace folder selection (FR-UX-4)', () => {
       subscriptions: [],
       extensionPath: '/ext',
       extensionUri: { fsPath: '/ext' },
+      globalStorageUri: { fsPath: '/global-storage' },
       workspaceState: {
         get: (key: string, defaultValue?: unknown) => (key in store ? store[key] : defaultValue),
         update: (key: string, value: unknown) => { store[key] = value; return Promise.resolve(); },

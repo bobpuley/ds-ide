@@ -405,3 +405,43 @@ describe('lldb-dap not-found message per platform (FR-WIN-DBG-1)', () => {
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(lldbDapNotFoundMessage('win32'));
   });
 });
+
+describe('DaisyDebugAdapterFactory offering the managed toolchain on Windows (FR-WIN-TCH-4)', () => {
+  const session = {} as vscode.DebugSession;
+
+  it('offers the download when lldb-dap is missing, then uses the one it installed', async () => {
+    let installed = false;
+    const offer = vi.fn(async () => { installed = true; return true; });
+    const find = vi.fn(async () => (installed ? 'C:/tc/lldb-dap.exe' : undefined));
+    const factory = new DaisyDebugAdapterFactory(find, 'win32', offer);
+    const descriptor = await factory.createDebugAdapterDescriptor(session);
+    expect(offer).toHaveBeenCalledOnce();
+    expect(descriptor).toBeInstanceOf(vscode.DebugAdapterInlineImplementation);
+  });
+
+  it('shows the not-found message when the user declines', async () => {
+    (vscode.window.showErrorMessage as ReturnType<typeof vi.fn>).mockClear();
+    const factory = new DaisyDebugAdapterFactory(async () => undefined, 'win32', async () => false);
+    expect(await factory.createDebugAdapterDescriptor(session)).toBeUndefined();
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(lldbDapNotFoundMessage('win32'));
+  });
+
+  it('shows the not-found message when the install did not provide lldb-dap', async () => {
+    (vscode.window.showErrorMessage as ReturnType<typeof vi.fn>).mockClear();
+    const factory = new DaisyDebugAdapterFactory(async () => undefined, 'win32', async () => true);
+    expect(await factory.createDebugAdapterDescriptor(session)).toBeUndefined();
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledOnce();
+  });
+
+  it('does not offer when lldb-dap is found', async () => {
+    const offer = vi.fn(async () => true);
+    await new DaisyDebugAdapterFactory(async () => 'C:/lldb-dap.exe', 'win32', offer).createDebugAdapterDescriptor(session);
+    expect(offer).not.toHaveBeenCalled();
+  });
+
+  it('does not offer off Windows', async () => {
+    const offer = vi.fn(async () => true);
+    await new DaisyDebugAdapterFactory(async () => undefined, 'darwin', offer).createDebugAdapterDescriptor(session);
+    expect(offer).not.toHaveBeenCalled();
+  });
+});

@@ -42,6 +42,7 @@ import { ControlsViewProvider } from './sidebar/controls-editor-panel';
 import { WiringViewProvider } from './sidebar/wiring-editor-panel';
 import { createEffectProject } from './commands/create-effect-project';
 import { addAiGuideToProject } from './commands/add-ai-guide';
+import { ManagedToolchainService, vscodeToolchainUi } from './toolchain/managed-toolchain-ui';
 import * as os from 'os';
 import { getString } from './ipc/narrow';
 // FR-EXT-10: the resolution/error-handling wrapper is shared with the build
@@ -1167,7 +1168,14 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   }
 
-  const manager = new EmulatorManager();
+  // FR-WIN-TCH-4: the managed Windows toolchain (download on first use). Offered
+  // by the emulator build and the debugger when a tool is missing on Windows.
+  const toolchain = new ManagedToolchainService(
+    { storageDir: path.join(context.globalStorageUri.fsPath, 'toolchain'), extensionPath: context.extensionPath },
+    vscodeToolchainUi(),
+  );
+
+  const manager = new EmulatorManager({ offerToolchain: () => toolchain.offer() });
 
   // Remove this workspace's stale UNIX socket files (FR-EXT-2; macOS only —
   // FR-WIN-IPC-1).
@@ -1370,7 +1378,7 @@ export function activate(context: vscode.ExtensionContext): void {
     controlsProvider.postStatus({ type: 'status', running: false });
   }
 
-  const debugAdapterFactory = new DaisyDebugAdapterFactory();
+  const debugAdapterFactory = new DaisyDebugAdapterFactory(undefined, undefined, () => toolchain.offer());
   const debugTrackerFactory = new DaisyDebugAdapterTrackerFactory((mode) => manager?.sendAudioMode(mode));
 
   const deployCoordinator = new DeployCoordinator({
@@ -1473,6 +1481,8 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('ds-ide.installWindowsToolchain', () => toolchain.installFromCommand()),
+    vscode.commands.registerCommand('ds-ide.installToolchainFromArchive', () => toolchain.installFromLocalArchive()),
     transport,
     daisyView,
     daisyTreeView,

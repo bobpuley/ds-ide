@@ -71,11 +71,11 @@ const WIN_MAKE_HINT =
   'Install make: MSYS2 (pacman -S make), Chocolatey (choco install make) or the xPack Windows Build Tools, ' +
   'and add its bin directory to PATH.';
 const WIN_CMAKE_MESSAGE =
-  'CMake not found. Install it (cmake.org/download, or MSYS2: pacman -S mingw-w64-clang-x86_64-cmake) ' +
-  'and add it to PATH, then try again.';
+  'CMake not found. Run "Daisy IDE: Install Windows Toolchain" to download one, or install it yourself ' +
+  '(cmake.org/download, or MSYS2: pacman -S mingw-w64-clang-x86_64-cmake) and add it to PATH, then try again.';
 const WIN_CXX_COMPILER_MESSAGE =
-  'No C++ compiler (clang) found. Install LLVM (llvm.org) or MSYS2 CLANG64 ' +
-  '(pacman -S mingw-w64-clang-x86_64-clang), add its bin directory to PATH and try again.';
+  'No C++ compiler (clang) found. Run "Daisy IDE: Install Windows Toolchain" to download one, or install ' +
+  'LLVM (llvm.org) or MSYS2 CLANG64 (pacman -S mingw-w64-clang-x86_64-clang), add its bin directory to PATH and try again.';
 
 // FR-WIN-DBG-1: where lldb-dap lives, and what to do when it is missing.
 export const LLDB_DAP_BINARY = 'lldb-dap';
@@ -99,8 +99,8 @@ const LINUX_LLDB_DAP_MESSAGE =
   'ds-ide: lldb-dap not found. Install LLDB from your package manager ' +
   '(for example: sudo apt install lldb) so that lldb-dap is on PATH.';
 const WIN_LLDB_DAP_MESSAGE =
-  'ds-ide: lldb-dap not found. Install LLVM (llvm.org, includes lldb-dap) or MSYS2 CLANG64 ' +
-  '(pacman -S mingw-w64-clang-x86_64-lldb) and add its bin directory to PATH.';
+  'ds-ide: lldb-dap not found. Run "Daisy IDE: Install Windows Toolchain" to download one, or install ' +
+  'LLVM (llvm.org, includes lldb-dap) or MSYS2 CLANG64 (pacman -S mingw-w64-clang-x86_64-lldb) and add its bin directory to PATH.';
 
 export const lldbDapNotFoundMessage = (platform: NodeJS.Platform = process.platform): string => {
   if (platform === 'win32') return WIN_LLDB_DAP_MESSAGE;

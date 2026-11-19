@@ -209,6 +209,10 @@ export interface EmulatorManagerDeps {
   rm?: typeof fs.promises.rm;
   access?: typeof fs.promises.access;
   platform?: NodeJS.Platform;
+  // FR-WIN-TCH-4: on Windows, called when CMake or the C++ compiler is missing;
+  // resolves true once a toolchain has been installed (the user consented and the
+  // download succeeded), so the lookup is tried again.
+  offerToolchain?: () => Promise<boolean>;
 }
 
 // FR-WIN-BLD-5: Ninja is pinned on Windows (no MSBuild; the toolchain is
@@ -270,6 +274,7 @@ export class EmulatorManager extends EventEmitter {
   private readonly rm: typeof fs.promises.rm;
   private readonly access: typeof fs.promises.access;
   private readonly platform: NodeJS.Platform;
+  private readonly offerToolchain: (() => Promise<boolean>) | undefined;
   private readonly detectCMake: () => Promise<string | undefined>;
   private readonly detectCompiler: () => Promise<string | undefined>;
 
@@ -286,6 +291,7 @@ export class EmulatorManager extends EventEmitter {
     this.rm = deps.rm ?? fs.promises.rm;
     this.access = deps.access ?? fs.promises.access;
     this.platform = deps.platform ?? process.platform;
+    this.offerToolchain = deps.offerToolchain;
     this.detectCMake = deps.detectCMake ?? (() => detectCMake());
     this.detectCompiler = deps.detectCompiler ?? (() => detectCxxCompiler());
   }
@@ -293,10 +299,16 @@ export class EmulatorManager extends EventEmitter {
   async build(opts: BuildOptions, onOutput: (line: string) => void, token?: CancellationToken): Promise<void> {
     // FR-REL-2: resolve CMake first, so a missing one fails before the build
     // directory is touched.
-    const cmake = await this.detectCMake();
-    if (!cmake) throw new CMakeNotFoundError(this.platform);
+    let cmake = await this.detectCMake();
     // FR-PRE-1: and a compiler, so CMake does not fail with a cryptic message.
-    if (!await this.detectCompiler()) throw new CompilerNotFoundError(this.platform);
+    let compiler = cmake ? await this.detectCompiler() : undefined;
+    // FR-WIN-TCH-4: on Windows offer the managed toolchain, then look again.
+    if ((!cmake || !compiler) && this.platform === 'win32' && this.offerToolchain && await this.offerToolchain()) {
+      cmake = await this.detectCMake();
+      compiler = cmake ? await this.detectCompiler() : undefined;
+    }
+    if (!cmake) throw new CMakeNotFoundError(this.platform);
+    if (!compiler) throw new CompilerNotFoundError(this.platform);
 
     this.projectRoot = opts.projectRoot;
     this.buildDir = path.join(opts.projectRoot, '.ds-ide', 'build');

@@ -47,6 +47,8 @@ export interface ProgressEvent {
   phase: ProgressPhase;
   /** The component being handled (the last one, for `finalize`). */
   component: string;
+  /** Position of `component` in the manifest, from 0. */
+  index: number;
   /** Number of components being installed. */
   count: number;
   receivedBytes?: number;
@@ -142,7 +144,8 @@ export async function installManagedToolchain(
 ): Promise<InstalledToolchain> {
   const { storageDir, manifest, token, localArchiveDir } = opts;
   const count = manifest.components.length;
-  const emit = (e: Omit<ProgressEvent, 'count'>): void => opts.onProgress?.({ ...e, count });
+  const emit = (e: Omit<ProgressEvent, 'count' | 'index'>): void =>
+    opts.onProgress?.({ ...e, count, index: manifest.components.findIndex((c) => c.name === e.component) });
   const finalDir = path.join(storageDir, manifest.toolchainVersion);
   const tmp = path.join(storageDir, `.tmp-${crypto.randomBytes(4).toString('hex')}`);
   const cancelledError = (): ManagedToolchainError => new ManagedToolchainError('cancelled', 'Toolchain installation cancelled');
@@ -215,7 +218,7 @@ async function localArchive(dir: string, c: ToolchainComponent): Promise<{ file:
 
 async function downloadArchive(
   c: ToolchainComponent, downloads: string, deps: InstallDeps, token: CancelToken | undefined,
-  emit: (e: Omit<ProgressEvent, 'count'>) => void,
+  emit: (e: Omit<ProgressEvent, 'count' | 'index'>) => void,
 ): Promise<{ file: string; temporary: boolean }> {
   const dest = path.join(downloads, archiveFileName(c));
   let mismatch = false;
@@ -253,7 +256,7 @@ async function downloadArchive(
 
 async function extractComponent(
   c: ToolchainComponent, archive: string, tmp: string, stage: string, deps: InstallDeps,
-  token: CancelToken | undefined, emit: (e: Omit<ProgressEvent, 'count'>) => void,
+  token: CancelToken | undefined, emit: (e: Omit<ProgressEvent, 'count' | 'index'>) => void,
 ): Promise<void> {
   emit({ phase: 'extract', component: c.name });
   const work = path.join(tmp, `x-${c.name}`);

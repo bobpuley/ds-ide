@@ -37,7 +37,7 @@ Several hundred MB must be downloaded and extracted safely on Windows.
 
 ---
 
-### [ ] feat: consent, progress and recovery UX (FR-WIN-TCH-4)
+### [x] feat: consent, progress and recovery UX (FR-WIN-TCH-4)
 
 A large download needs explicit consent and a way out.
 
