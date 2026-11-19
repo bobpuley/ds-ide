@@ -192,6 +192,16 @@
         "command": "ds-ide.addAiGuide",
         "title": "Add AI Guide to Project",
         "category": "Daisy IDE"
+      },
+      {
+        "command": "ds-ide.installWindowsToolchain",
+        "title": "Install Windows Toolchain",
+        "category": "Daisy IDE"
+      },
+      {
+        "command": "ds-ide.installToolchainFromArchive",
+        "title": "Install Windows Toolchain from Local Archives",
+        "category": "Daisy IDE"
       }
     ],
     "keybindings": [
@@ -221,6 +231,16 @@
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "ds-ide.installWindowsToolchain",
+          "when": "isWindows"
+        },
+        {
+          "command": "ds-ide.installToolchainFromArchive",
+          "when": "isWindows"
+        }
+      ],
       "editor/title/run": [
         {
           "command": "ds-ide.runEffect",

@@ -71,11 +71,11 @@ const WIN_MAKE_HINT =
   'Install make: MSYS2 (pacman -S make), Chocolatey (choco install make) or the xPack Windows Build Tools, ' +
   'and add its bin directory to PATH.';
 const WIN_CMAKE_MESSAGE =
-  'CMake not found. Install it (cmake.org/download, or MSYS2: pacman -S mingw-w64-clang-x86_64-cmake) ' +
-  'and add it to PATH, then try again.';
+  'CMake not found. Run "Daisy IDE: Install Windows Toolchain" to download one, or install it yourself ' +
+  '(cmake.org/download, or MSYS2: pacman -S mingw-w64-clang-x86_64-cmake) and add it to PATH, then try again.';
 const WIN_CXX_COMPILER_MESSAGE =
-  'No C++ compiler (clang) found. Install LLVM (llvm.org) or MSYS2 CLANG64 ' +
-  '(pacman -S mingw-w64-clang-x86_64-clang), add its bin directory to PATH and try again.';
+  'No C++ compiler (clang) found. Run "Daisy IDE: Install Windows Toolchain" to download one, or install ' +
+  'LLVM (llvm.org) or MSYS2 CLANG64 (pacman -S mingw-w64-clang-x86_64-clang), add its bin directory to PATH and try again.';
 
 // FR-WIN-DBG-1: where lldb-dap lives, and what to do when it is missing.
 export const LLDB_DAP_BINARY = 'lldb-dap';
@@ -99,8 +99,8 @@ const LINUX_LLDB_DAP_MESSAGE =
   'ds-ide: lldb-dap not found. Install LLDB from your package manager ' +
   '(for example: sudo apt install lldb) so that lldb-dap is on PATH.';
 const WIN_LLDB_DAP_MESSAGE =
-  'ds-ide: lldb-dap not found. Install LLVM (llvm.org, includes lldb-dap) or MSYS2 CLANG64 ' +
-  '(pacman -S mingw-w64-clang-x86_64-lldb) and add its bin directory to PATH.';
+  'ds-ide: lldb-dap not found. Run "Daisy IDE: Install Windows Toolchain" to download one, or install ' +
+  'LLVM (llvm.org, includes lldb-dap) or MSYS2 CLANG64 (pacman -S mingw-w64-clang-x86_64-lldb) and add its bin directory to PATH.';
 
 export const lldbDapNotFoundMessage = (platform: NodeJS.Platform = process.platform): string => {
   if (platform === 'win32') return WIN_LLDB_DAP_MESSAGE;
@@ -174,6 +174,11 @@ const windowsDirs: Record<string, (env: WinEnv) => string[]> = {
     ...msys2(env, 'clang64\\bin', 'ucrt64\\bin', 'mingw64\\bin'),
     ...chocolatey(env), ...scoop(env), ...winget(env),
   ],
+  ninja: (env) => [
+    ...programFiles(env).map((pf) => `${pf}\\ninja`),
+    ...msys2(env, 'clang64\\bin', 'ucrt64\\bin', 'mingw64\\bin'),
+    ...chocolatey(env), ...scoop(env), ...winget(env),
+  ],
   'clang++': (env) => [
     ...programFiles(env).map((pf) => `${pf}\\LLVM\\bin`),
     ...msys2(env, 'clang64\\bin'),
@@ -195,6 +200,8 @@ const CMAKE_SPEC: ToolSpec = { binary: CMAKE_BINARY, knownDirs: knownDirsFor(CMA
 // macOS/Linux: make is on PATH, or the system one in /usr/bin.
 const MAKE_SPEC: ToolSpec = { binary: MAKE_BINARY, knownDirs: knownDirsFor(MAKE_BINARY, ['/usr/bin/make']) };
 // Windows only: macOS locates its compiler through xcode-select instead.
+// macOS/Linux: ninja is on PATH, or installed by Homebrew.
+const NINJA_SPEC: ToolSpec = { binary: 'ninja', knownDirs: knownDirsFor('ninja', ['/opt/homebrew/bin/ninja', '/usr/local/bin/ninja']) };
 const CLANGXX_SPEC: ToolSpec = { binary: 'clang++', knownDirs: knownDirsFor('clang++', []) };
 
 // Detect arm-none-eabi-gcc.
@@ -245,6 +252,17 @@ export async function detectLldbDap(
     knownDirs: knownDirsFor(LLDB_DAP_BINARY, LLDB_DAP_CANDIDATES),
   };
   return locateTool(spec, undefined, { ...env, exists, exec });
+}
+
+// Detect ninja (FR-WIN-TCH-5): the build tool CMake is told to use on Windows. In a
+// managed toolchain it sits in its own directory, so the emulator build puts that
+// directory on PATH. PATH → known paths → the managed toolchain.
+export async function detectNinja(
+  exists: Exists = defaultExists,
+  exec: Exec = defaultExec,
+  env: Env = {},
+): Promise<string | undefined> {
+  return locateTool(NINJA_SPEC, undefined, { ...env, exists, exec });
 }
 
 // Detect make (FR-WIN-TCH-2). PATH → known paths. Stock Windows has none.

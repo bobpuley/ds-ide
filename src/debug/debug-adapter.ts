@@ -25,12 +25,17 @@ export class DaisyDebugAdapterFactory implements vscode.DebugAdapterDescriptorFa
   constructor(
     private readonly _findLldbDap: () => Promise<string | undefined> = findLldbDap,
     private readonly _platform: NodeJS.Platform = process.platform,
+    // FR-WIN-TCH-4: on Windows, offered when lldb-dap is missing; true = installed.
+    private readonly _offerToolchain?: () => Promise<boolean>,
   ) {}
 
   async createDebugAdapterDescriptor(
     _session: vscode.DebugSession,
   ): Promise<vscode.DebugAdapterDescriptor | undefined> {
-    const lldbDap = await this._findLldbDap();
+    let lldbDap = await this._findLldbDap();
+    if (!lldbDap && this._platform === 'win32' && this._offerToolchain && await this._offerToolchain()) {
+      lldbDap = await this._findLldbDap();
+    }
     if (!lldbDap) {
       void vscode.window.showErrorMessage(lldbDapNotFoundMessage(this._platform));
       return undefined;

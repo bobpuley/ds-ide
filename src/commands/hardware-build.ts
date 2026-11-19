@@ -6,6 +6,7 @@ import {
   detectArmToolchain, detectMake, armGccInstallHint, makeInstallHint, NO_MAKEFILE_MESSAGE,
 } from '../hardware/toolchain';
 import { createLineSplitter } from '../hardware/line-buffer';
+import { prependToPath } from '../hardware/path-env';
 import { parseBuildLine, applyDiagnostics, ParsedDiagnostic } from '../diagnostics/build-diagnostics';
 import {
   parseMemoryRegionTable,
@@ -193,18 +194,8 @@ export function buildEnv(
   platform: NodeJS.Platform,
 ): NodeJS.ProcessEnv {
   const p = platform === 'win32' ? path.win32 : path.posix;
-  const key = platform === 'win32'
-    ? Object.keys(baseEnv).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH'
-    : 'PATH';
-  const dirs = [gccPath, makePath]
-    .filter((x): x is string => x !== undefined)
-    .map((x) => p.dirname(x))
-    .filter((d, i, all) => d !== '.' && all.indexOf(d) === i);
-  const existing = baseEnv[key];
-  return {
-    ...baseEnv,
-    [key]: [...dirs, ...(existing ? [existing] : [])].join(p.delimiter),
-  };
+  const dirs = [gccPath, makePath].filter((x): x is string => x !== undefined).map((x) => p.dirname(x));
+  return prependToPath(baseEnv, dirs, platform);
 }
 
 function runMake(

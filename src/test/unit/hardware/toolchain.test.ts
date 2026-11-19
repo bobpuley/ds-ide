@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { setManagedToolDirsProvider } from '../../../hardware/tool-locator';
 import {
   detectArmToolchain,
   detectDfuUtil,
@@ -12,6 +13,8 @@ import {
   ARM_GCC_CANDIDATES,
   DFU_UTIL_CANDIDATES,
   detectMake,
+  detectLldbDap,
+  detectNinja,
   armGccInstallHint,
   dfuUtilInstallHint,
   makeInstallHint,
@@ -372,5 +375,91 @@ describe('install hints per platform', () => {
     expect(makeInstallHint('win32')).toMatch(/MSYS2|make/);
     expect(cmakeNotFoundMessage('win32')).toMatch(/CMake not found/);
     expect(cxxCompilerNotFoundMessage('win32')).toMatch(/clang/i);
+  });
+});
+
+// ── managed toolchain in the lookup order (FR-WIN-TCH-5) ─────────────────────
+// The managed toolchain is the LAST source: configured path, PATH and the known
+// install locations all win over it, so a user-installed toolchain is an override.
+
+describe('managed toolchain in the lookup order (FR-WIN-TCH-5)', () => {
+  const MANAGED = 'C:\\store\\1\\llvm-mingw\\bin';
+  const MANAGED_CMAKE = 'C:\\store\\1\\cmake\\bin';
+
+  afterEach(() => setManagedToolDirsProvider(undefined));
+
+  const withManaged = (): void => setManagedToolDirsProvider(async () => [MANAGED, MANAGED_CMAKE]);
+
+  it('finds cmake, the compiler and lldb-dap in the managed directories', async () => {
+    withManaged();
+    expect(await detectCMake(present(`${MANAGED_CMAKE}\\cmake.exe`), noPath, winOpts(noList))).toBe(`${MANAGED_CMAKE}\\cmake.exe`);
+    expect(await detectCxxCompiler(present(`${MANAGED}\\clang++.exe`), noPath, winOpts(noList))).toBe(`${MANAGED}\\clang++.exe`);
+    expect(await detectLldbDap(present(`${MANAGED}\\lldb-dap.exe`), noPath, winOpts(noList))).toBe(`${MANAGED}\\lldb-dap.exe`);
+  });
+
+  it('a toolchain on PATH wins over the managed one', async () => {
+    withManaged();
+    const exec = vi.fn(async () => 'C:\\mine\\cmake.exe\r\n');
+    const exists = present('C:\\mine\\cmake.exe', `${MANAGED_CMAKE}\\cmake.exe`);
+    expect(await detectCMake(exists, exec, winOpts(noList))).toBe('C:\\mine\\cmake.exe');
+  });
+
+  it('a toolchain in a known install location wins over the managed one', async () => {
+    withManaged();
+    const known = 'C:\\Program Files\\CMake\\bin\\cmake.exe';
+    expect(await detectCMake(present(known, `${MANAGED_CMAKE}\\cmake.exe`), noPath, winOpts(noList))).toBe(known);
+  });
+
+  it('the configured arm toolchain path wins over the managed one', async () => {
+    setManagedToolDirsProvider(async () => ['C:\\store\\1\\arm\\bin']);
+    const exists = present('D:\\arm\\bin\\arm-none-eabi-gcc.exe', 'C:\\store\\1\\arm\\bin\\arm-none-eabi-gcc.exe');
+    expect(await detectArmToolchain('D:\\arm\\bin', exists, noPath, winOpts(noList))).toBe('D:\\arm\\bin\\arm-none-eabi-gcc.exe');
+  });
+
+  it('tools the managed set does not ship (arm-none-eabi-gcc, make, dfu-util) are simply not found there', async () => {
+    withManaged();
+    expect(await detectArmToolchain(undefined, present(), noPath, winOpts(noList))).toBeUndefined();
+    expect(await detectMake(present(), noPath, winOpts(noList))).toBeUndefined();
+    expect(await detectDfuUtil(present(), noPath, winOpts(noList))).toBeUndefined();
+  });
+
+  it('without a managed install nothing changes', async () => {
+    setManagedToolDirsProvider(async () => []);
+    expect(await detectCMake(present(), noPath, winOpts(noList))).toBeUndefined();
+  });
+});
+
+describe('detectNinja() (FR-WIN-TCH-5)', () => {
+  it('on Windows finds ninja on PATH through where.exe', async () => {
+    const exec = vi.fn(async () => 'C:\\tools\\ninja.exe\r\n');
+    expect(await detectNinja(present('C:\\tools\\ninja.exe'), exec, winOpts(noList))).toBe('C:\\tools\\ninja.exe');
+    expect(exec).toHaveBeenCalledWith('where.exe', ['ninja']);
+  });
+
+  it.each([
+    'C:\\msys64\\clang64\\bin\\ninja.exe',
+    'C:\\ProgramData\\chocolatey\\bin\\ninja.exe',
+    'C:\\Users\\me\\scoop\\shims\\ninja.exe',
+  ])('on Windows finds ninja at %s', async (exe) => {
+    expect(await detectNinja(present(exe), noPath, winOpts(noList))).toBe(exe);
+  });
+
+  it('finds the managed Ninja, last', async () => {
+    setManagedToolDirsProvider(async () => ['C:\\store\\1\\ninja']);
+    try {
+      expect(await detectNinja(present('C:\\store\\1\\ninja\\ninja.exe'), noPath, winOpts(noList))).toBe('C:\\store\\1\\ninja\\ninja.exe');
+    } finally {
+      setManagedToolDirsProvider(undefined);
+    }
+  });
+
+  it('on macOS/Linux finds ninja on PATH, then Homebrew', async () => {
+    expect(await detectNinja(present('/opt/x/ninja'), vi.fn(async () => '/opt/x/ninja\n'), MAC)).toBe('/opt/x/ninja');
+    expect(await detectNinja(present('/opt/homebrew/bin/ninja'), noPath, MAC)).toBe('/opt/homebrew/bin/ninja');
+  });
+
+  it('returns undefined when there is none', async () => {
+    expect(await detectNinja(present(), noPath, MAC)).toBeUndefined();
+    expect(await detectNinja(present(), noPath, winOpts(noList))).toBeUndefined();
   });
 });

@@ -10,7 +10,7 @@ A Windows user without clang/MinGW, CMake and Ninja cannot build the emulator or
 
 ## Sprint Tasks
 
-### [ ] feat: pinned toolchain manifest and mirror (FR-WIN-TCH-4)
+### [x] feat: pinned toolchain manifest and mirror (FR-WIN-TCH-4)
 
 Upstream release assets can be removed and Ninja publishes no hash file, so versions and hashes are pinned by us.
 
@@ -23,7 +23,7 @@ Upstream release assets can be removed and Ninja publishes no hash file, so vers
 
 ---
 
-### [ ] feat: downloader, verifier and atomic installer (FR-WIN-TCH-4)
+### [x] feat: downloader, verifier and atomic installer (FR-WIN-TCH-4)
 
 Several hundred MB must be downloaded and extracted safely on Windows.
 
@@ -37,7 +37,7 @@ Several hundred MB must be downloaded and extracted safely on Windows.
 
 ---
 
-### [ ] feat: consent, progress and recovery UX (FR-WIN-TCH-4)
+### [x] feat: consent, progress and recovery UX (FR-WIN-TCH-4)
 
 A large download needs explicit consent and a way out.
 
@@ -51,7 +51,7 @@ A large download needs explicit consent and a way out.
 
 ---
 
-### [ ] feat: managed toolchain joins the lookup order (FR-WIN-TCH-5)
+### [x] feat: managed toolchain joins the lookup order (FR-WIN-TCH-5)
 
 M81 left the managed-toolchain step as an extension point.
 
