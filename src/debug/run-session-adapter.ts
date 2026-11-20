@@ -30,6 +30,21 @@ function asRequest(message: vscode.DebugProtocolMessage): DapRequest | undefined
   return m as DapRequest;
 }
 
+// The session has no threads, stack or breakpoints of its own, but VS Code's
+// extension host iterates these list fields of the responses (path
+// conversion); an absent list throws "reading 'forEach'" there.
+const EMPTY_BODIES: Record<string, Record<string, unknown>> = {
+  setBreakpoints: { breakpoints: [] },
+  setFunctionBreakpoints: { breakpoints: [] },
+  setDataBreakpoints: { breakpoints: [] },
+  setInstructionBreakpoints: { breakpoints: [] },
+  breakpointLocations: { breakpoints: [] },
+  stackTrace: { stackFrames: [] },
+  loadedSources: { sources: [] },
+  scopes: { scopes: [] },
+  variables: { variables: [] },
+};
+
 // DebugProtocolMessage is an opaque VS Code type; valid DAP payloads are narrowed here once.
 function makeDap(msg: { type: string; seq: number; [k: string]: unknown }): vscode.DebugProtocolMessage {
   return msg as vscode.DebugProtocolMessage;
@@ -91,7 +106,7 @@ export class RunSessionAdapter implements vscode.DebugAdapter {
         this.sendTerminated();
         return;
       default:
-        this.respond(req, {});
+        this.respond(req, EMPTY_BODIES[req.command] ?? {});
     }
   }
 
