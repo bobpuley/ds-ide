@@ -79,15 +79,15 @@ not measured). Built with the **MSYS2 UCRT64** `clang++`, not the CLANG64 toolch
 
 #### Output-only
 
-<!-- 2026-10-06T11:02Z · MINGW64_NT-10.0-26200 · 10s per run -->
+<!-- 2026-11-19T16:39Z · MINGW64_NT-10.0-19045 · 10s per run -->
 | backend                         | requested | effective | reported | interval ms | jitter ms | p99 dev ms | max ms | latency ms | xruns | driver overruns                  |
 |---------------------------------|-----------|-----------|----------|-------------|-----------|------------|--------|------------|-------|----------------------------------|
-| WASAPI shared (RtAudio), output | 64        | 512       | 64       | 10.67       | 0.24      | 0.69       | 11.86  | 1.3        | 0     | 0                                |
-| WASAPI shared (RtAudio), output | 128       | 512       | 128      | 10.67       | 0.24      | 0.74       | 11.47  | 2.7        | 0     | 0                                |
-| WASAPI shared (RtAudio), output | 256       | 512       | 256      | 10.67       | 0.25      | 0.69       | 11.65  | 5.3        | 0     | 0                                |
-| WASAPI exclusive (native probe) | 64        | 256       | 256      | 5.33        | 0.12      | 0.48       | 6.25   | 10.7       | 0     | 0                                |
-| WASAPI exclusive (native probe) | 128       | 256       | 256      | 5.34        | 0.20      | 0.44       | 10.66  | 10.7       | 0     | 0                                |
-| WASAPI exclusive (native probe) | 256       | 256       | 256      | 5.33        | 0.10      | 0.41       | 5.89   | 10.7       | 0     | 0                                |
+| WASAPI shared (RtAudio), output | 64        | 512       | 480      | 10.00       | 0.29      | 0.59       | 10.65  | 11.3       | 0     | 0                                |
+| WASAPI shared (RtAudio), output | 128       | 512       | 480      | 10.00       | 0.33      | 0.61       | 13.15  | 12.7       | 0     | 0                                |
+| WASAPI shared (RtAudio), output | 256       | 512       | 480      | 10.00       | 0.29      | 0.59       | 10.57  | 15.3       | 0     | 0                                |
+| WASAPI exclusive (native probe) | 64        | 144       | 144      | 3.00        | 0.29      | 0.53       | 3.65   | 6.0        | 0     | 0                                |
+| WASAPI exclusive (native probe) | 128       | 144       | 144      | 3.00        | 0.30      | 0.53       | 3.58   | 6.0        | 0     | 0                                |
+| WASAPI exclusive (native probe) | 256       | 256       | 256      | 5.33        | 0.32      | 0.61       | 7.52   | 10.7       | 0     | 0                                |
 | ASIO (RtAudio)                  | 64        | —         | —        | —           | —         | —          | —      | —          | —     | not measured: no ASIO SDK/device |
 | ASIO (RtAudio)                  | 128       | —         | —        | —           | —         | —          | —      | —          | —     | not measured: no ASIO SDK/device |
 | ASIO (RtAudio)                  | 256       | —         | —        | —           | —         | —          | —      | —          | —     | not measured: no ASIO SDK/device |
