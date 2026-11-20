@@ -83,6 +83,25 @@ describe('RunSessionAdapter (FR-TRN-1)', () => {
     expect(response(io.sent, 'threads')!.body).toEqual({ threads: [] });
   });
 
+  // VS Code's extension host walks these list fields of the response while
+  // converting paths (setBreakpoints → breakpoints.forEach, ...). A bare `{}`
+  // made it throw an unhandled "reading 'forEach'" rejection on every F5.
+  it.each([
+    ['setBreakpoints', 'breakpoints'],
+    ['setFunctionBreakpoints', 'breakpoints'],
+    ['setDataBreakpoints', 'breakpoints'],
+    ['setInstructionBreakpoints', 'breakpoints'],
+    ['breakpointLocations', 'breakpoints'],
+    ['stackTrace', 'stackFrames'],
+    ['loadedSources', 'sources'],
+    ['scopes', 'scopes'],
+    ['variables', 'variables'],
+  ])('answers %s with an empty %s list, never a bare {}', async (command, field) => {
+    io.request(command);
+    await flush();
+    expect(response(io.sent, command)!.body).toEqual({ [field]: [] });
+  });
+
   describe('no orphans', () => {
     beforeEach(async () => {
       io.request('initialize');
