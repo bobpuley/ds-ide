@@ -10,7 +10,7 @@ Many Windows behaviours cannot be settled from the repository and the work has n
 
 ## Sprint Tasks
 
-### [ ] test: execute and record the Windows verification matrix (FR-WIN-VER-1)
+### [x] test: execute and record the Windows verification matrix (FR-WIN-VER-1)
 
 **Affected files:** `docs/measurements/windows-verification.md`, `multiplatform_plan.md`
 

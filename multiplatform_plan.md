@@ -543,6 +543,11 @@ path above and as the natural **first implementation step**; C is then layered o
    system `PATH`, but a managed toolchain (M82) would have to add its `bin` directory to the
    emulator's environment or link the runtime statically (`-static`). To settle in M82.
 
+**Verification results (M84, 2026-11-20; evidence in `docs/measurements/windows-verification.md`)**
+- Items 1–4, 7, 9: **closed.** `lldb-dap` is available (pinned llvm-mingw manifest; MSYS2 CLANG64's binary run standalone with a reduced PATH, no separate Python); MinGW DWARF breakpoints and variables work; no spurious stop on attach/detach was observed; mute-on-breakpoint works under the debugger; the managed toolchain download passed on a fresh profile and `effect_emu.exe` runs.
+- Item 6 (`dfu-util` exit code / WinUSB): **deferred** — needs a Daisy Seed and a Windows `dfu-util` run, none available during M84. The M81 handling stays unverified on hardware.
+- Host MIDI bridge with a physical controller, and ASIO measurements: **deferred** (no controller; no ASIO SDK/device). The `midi` addon load is covered by the `package` workflow.
+
 ## Suggested priority order
 
 Revised after the call-site, toolchain and MIDI verification (§1.4, §3.1, §4.1, §6).
