@@ -1,5 +1,5 @@
 # PR gate for main: typecheck/lint + unit tests on macOS (primary target).
-# Windows coverage lives in windows-ci.yml until feat/windows-support merges.
+# Windows coverage lives in windows-ci.yml; the platform packages in package.yml.
 name: ci
 
 on:

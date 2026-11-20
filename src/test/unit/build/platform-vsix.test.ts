@@ -63,3 +63,13 @@ describe('per-platform VSIX packaging (FR-WIN-PKG-1)', () => {
     expect(ignore).not.toMatch(/^emulator\/\*\*$/m);
   });
 });
+
+describe('workflow triggers after the merge to main', () => {
+  for (const f of ['package.yml', 'windows-ci.yml']) {
+    it(`${f} runs on main, not on the retired feat/windows-support branch`, () => {
+      const wf = fs.readFileSync(path.join(root, '.github/workflows', f), 'utf8');
+      expect(wf).toMatch(/branches: \[main\]/);
+      expect(wf).not.toContain('feat/windows-support');
+    });
+  }
+});

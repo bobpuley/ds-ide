@@ -4,9 +4,9 @@ name: windows-ci
 
 on:
   push:
-    branches: [feat/windows-support]
+    branches: [main]
   pull_request:
-    branches: [feat/windows-support]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
