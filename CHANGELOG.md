@@ -92,6 +92,15 @@ This is a **preview**: it is published as a Marketplace pre-release, runs on **m
 - **FR-REL-3** — The extension activates when a folder containing a Daisy project (`*.cpp`, `src/*.cpp`, `source/*.cpp`) is opened, so Run Daisy Effect and the editor play button are available without first using another Daisy command.
 - Packaging: `darwin-arm64` target, trimmed `.vscodeignore`, third-party notices for node-midi/RtMidi, repository and bugs URLs, Electron pin 43.7.3.
 
+## 0.25.0-win.8 — 2026-11-20
+
+**Windows verification and merge readiness** *(FR-WIN-VER-1, FR-WIN-VER-2, M84 — pre-release on `feat/windows-support`)*
+
+- **FR-WIN-VER-1** — The Windows verification matrix was run and recorded in `docs/measurements/windows-verification.md`: build, run, scope, FFT and controls over TCP IPC; WASAPI shared output-only and duplex re-run after the period fix (`reported` 512, latency 12.0 / 13.3 / 16.0 ms, 0 xruns); F5 debugging (PID attach, DWARF breakpoints and variables, mute-on-breakpoint, `lldb-dap` standalone); fresh-profile install with the managed toolchain download. Deferred: Build & Flash with `dfu-util`, the MIDI bridge with a physical controller, ASIO (no hardware or SDK).
+- Fix: the run session answered list-shaped debug requests with an empty object, which made VS Code log an unhandled `forEach` error on every F5; it now answers with empty lists.
+- Fix: LF line endings are forced on every checkout (`.gitattributes`), and the metadata tests accept the `-win.N` versions of this branch (restore the strict check before merging to `main`).
+- **FR-WIN-VER-2** — Merge-readiness checklist for `main` written in `docs/milestones/v25/Milestone_M84.md`; the merge itself waits for the owner's approval.
+
 ## 0.25.0-win.7 — 2026-11-19
 
 **Cross-platform MIDI bridge and per-platform VSIX** *(FR-WIN-MIDI-1, FR-WIN-PKG-1, M83 — pre-release on `feat/windows-support`)*
