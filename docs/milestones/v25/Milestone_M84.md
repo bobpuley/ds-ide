@@ -1,7 +1,7 @@
 # M84 — Windows Verification & Merge Readiness
 
 **Version:** 0.25.0-win.8
-**Status:** planned
+**Status:** released
 **Source:** intake session, 2026-10-04 (`multiplatform_plan.md`; 01_input-ideas.md). Branch `feat/m84-windows-verification` is created from `feat/windows-support` and merged back into `feat/windows-support` at close (never `main`) — FR-WIN-GIT-1
 
 ## Goal
@@ -23,7 +23,7 @@ Many Windows behaviours cannot be settled from the repository and the work has n
 
 ---
 
-### [ ] chore: merge-readiness checklist for main (FR-WIN-VER-2)
+### [x] chore: merge-readiness checklist for main (FR-WIN-VER-2)
 
 `feat/windows-support` must reach `main` only when nothing is broken.
 
@@ -34,3 +34,21 @@ Many Windows behaviours cannot be settled from the repository and the work has n
 - the full macOS suites are green on the final tip of `feat/windows-support`, rebased or merged with current `main`, with no test removed or weakened
 - `CHANGELOG.md` is complete; the next real semver tag for `main` is proposed to the user
 - the checklist is presented to the user, and the merge into `main`, the semver tag and the push are performed only after explicit approval
+
+## Recorded results
+
+Verification matrix: `docs/measurements/windows-verification.md` (D1–D3 and ASIO deferred: no Daisy Seed, MIDI controller or ASIO SDK/device). Found and fixed on the way: the run-session adapter answered list-shaped DAP requests with `{}`, which made VS Code log an unhandled `forEach` rejection on every F5.
+
+**Merge-readiness checklist for `main` — merge NOT done, awaiting explicit approval**
+
+| # | Item | State |
+|---|---|---|
+| 1 | M77–M84 merged into `feat/windows-support`, tagged `0.25.0-win.1`…`-win.8` | done with this close (tag `0.25.0-win.8`) |
+| 2 | `main` (`fc4459f`, 0.25.1) already contained in `feat/windows-support` | yes — no merge conflicts expected |
+| 3 | `windows-ci` (Windows unit tests, emulator compile) and `package` (both VSIXs) green | yes |
+| 4 | macOS suites green on the final tip | **to confirm**: run the `ci` workflow manually (workflow_dispatch) on `feat/windows-support`, plus emulator C++ runners, `tests/build-flags` and runtime/functional tests on the Mac |
+| 5 | No test removed or weakened | **two things to review**: (a) the host-bridge tests "inert on a non-macOS platform" and "opens every enumerated port on macOS" were replaced by platform-neutral and Windows tests (intended by FR-WIN-MIDI-1); (b) `package-metadata.test.ts` now accepts a `-win.N` version suffix and a changelog heading other than the top one — restore the strict checks before merging (the version on `main` must be plain semver) |
+| 6 | `package.json` version and `CHANGELOG.md` | set the real tag at merge; the `-win.N` entries stay in the changelog as history |
+| 7 | Deferred, not blocking: `dfu-util`/WinUSB behaviour, MIDI bridge with a physical controller, ASIO | recorded in `multiplatform_plan.md` §6 |
+
+Proposed semver tag for `main`: **0.27.0** (a feature release on the Marketplace pre-release track, odd minor — FR-MKT-1; `main` is at 0.25.1). Alternative: 0.26.0 if the owner wants the release track. To be confirmed by the owner.
