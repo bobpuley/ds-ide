@@ -1,24 +1,38 @@
-# Publishes a tagged release to the Visual Studio Marketplace (FR-RLS-4).
+# Publishes a tagged release to the Visual Studio Marketplace (FR-RLS-4,
+# FR-WIN-PKG-1).
 #
 # Manual only: run it from the Actions tab and give the tag to publish. Leave
 # dry_run on to check that the whole pipeline works without publishing. It uses
 # Trusted Publishing (OIDC): no token or secret is stored anywhere. The matching
 # policy is set up on the Marketplace publisher page (Trusted Publishing:
 # repository owner, repository, this workflow's filename `publish.yml`, and the
-# environment `Production`, which the job below declares).
+# environment `Production`, which the publish job below declares).
 #
-# The package is built on an Apple Silicon runner, because it ships a native
-# addon built for Electron and is published for darwin-arm64 only. Every
-# release is a Marketplace pre-release while the extension is in preview.
+# One VSIX per platform, because the package ships a native addon built for
+# Electron: darwin-arm64 is built on an Apple Silicon runner, win32-x64 on a
+# Windows runner. `platforms` chooses which ones: "all" for a normal release, or
+# a single platform for a fix that concerns only that platform (the other
+# platform's published version is left untouched). Every platform is built,
+# tested and verified before anything is published. Every release is a
+# Marketplace pre-release while the extension is in preview.
 name: publish
 
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to publish, for example 0.25.0 (a branch name such as main works for a dry run)
+        description: Release tag to publish, for example 0.27.0 (a branch name such as main works for a dry run)
         required: true
         type: string
+      platforms:
+        description: Platforms to build and publish
+        required: true
+        type: choice
+        options:
+          - all
+          - darwin-arm64
+          - win32-x64
+        default: all
       dry_run:
         description: Build, test and verify only; do not publish
         required: true
@@ -27,13 +41,35 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
-  publish:
-    runs-on: macos-latest
-    # Must equal the Environment of the Trusted Publishing policy exactly.
-    environment: Production
+  select:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - id: pick
+        env:
+          PLATFORMS: ${{ inputs.platforms }}
+        run: |
+          all='[{"target":"darwin-arm64","os":"macos-latest"},{"target":"win32-x64","os":"windows-latest"}]'
+          if [ "$PLATFORMS" = "all" ]; then
+            echo "matrix={\"include\":$all}" >> "$GITHUB_OUTPUT"
+          else
+            picked="$(echo "$all" | jq -c --arg t "$PLATFORMS" '[.[] | select(.target == $t)]')"
+            echo "matrix={\"include\":$picked}" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: select
+    name: build (${{ matrix.target }})
+    strategy:
+      fail-fast: true
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v7
         with:
@@ -48,5 +84,30 @@ jobs:
       - run: npm test
       - run: npm run package -- --pre-release
       - run: npm run verify:package
-      - if: ${{ !inputs.dry_run }}
-        run: npx vsce publish --oidc --packagePath ds-ide-darwin-arm64-*.vsix
+      - uses: actions/upload-artifact@v5
+        with:
+          name: vsix-${{ matrix.target }}
+          path: ds-ide-${{ matrix.target }}-*.vsix
+          if-no-files-found: error
+
+  publish:
+    needs: [select, build]
+    if: ${{ !inputs.dry_run }}
+    name: publish (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    # Must equal the Environment of the Trusted Publishing policy exactly.
+    environment: Production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v5
+        with:
+          name: vsix-${{ matrix.target }}
+      - run: npx --yes @vscode/vsce publish --oidc --packagePath ds-ide-${{ matrix.target }}-*.vsix

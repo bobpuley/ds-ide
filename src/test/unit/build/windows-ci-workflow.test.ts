@@ -13,9 +13,9 @@ describe('Windows CI workflow (FR-WIN-BLD-1)', () => {
     expect(fs.existsSync(WORKFLOW)).toBe(true);
   });
 
-  it('runs on pushes and pull requests to feat/windows-support', () => {
-    expect(yml).toMatch(/^\s*push:\s*\n\s*branches:[^\n]*\n?[^\n]*feat\/windows-support/m);
-    expect(yml).toMatch(/^\s*pull_request:\s*\n\s*branches:[^\n]*\n?[^\n]*feat\/windows-support/m);
+  it('runs on pushes and pull requests to main', () => {
+    expect(yml).toMatch(/^\s*push:\s*\n\s*branches:[^\n]*\n?[^\n]*main/m);
+    expect(yml).toMatch(/^\s*pull_request:\s*\n\s*branches:[^\n]*\n?[^\n]*main/m);
   });
 
   it('runs on a Windows runner', () => {
