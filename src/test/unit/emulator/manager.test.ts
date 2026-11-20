@@ -172,6 +172,9 @@ describe('EmulatorManager', () => {
     it('runs the CMake that detectCMake resolved for both configure and build', async () => {
       const spawn = vi.fn(() => makeCmakeProcess(0));
       const mgr = new EmulatorManager({
+        // Without a fixed platform, a Windows host runs the real Ninja lookup
+        // (PATH, known locations) and this test timed out on the CI runner.
+        platform: 'darwin',
         detectCMake: async () => '/opt/homebrew/bin/cmake',
         detectCompiler: async () => '/usr/bin/clang++',
         spawn: spawn as unknown as typeof cp.spawn,
