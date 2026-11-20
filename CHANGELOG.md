@@ -3,6 +3,18 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.27.0 — 2026-11-20
+
+**Windows support** *(M77–M84, developed as pre-releases `0.25.0-win.1` … `0.25.0-win.8`, whose entries are kept below)*
+
+- **Windows 10/11 x64** is now supported: the emulator builds with clang/MinGW, talks to the extension over TCP loopback, and plays audio through WASAPI (RtAudio). Measured on Windows: 0 xruns, shared-mode latency about 12–16 ms.
+- **Managed toolchain:** on first use the extension can download llvm-mingw (with `lldb-dap`), CMake and Ninja, verified by SHA-256, with consent, progress and recovery; a toolchain you installed yourself always wins.
+- **Debugging on Windows:** F5 attaches `lldb-dap` to the emulator; DWARF breakpoints and variables work; audio switches to the simulated clock while stopped.
+- **Host MIDI bridge** works on Windows (WinMM); the native rebuild is a Node script (`scripts/rebuild-midi-native.mjs`), and the extension is packaged as one VSIX per platform: `darwin-arm64` and `win32-x64`.
+- Fixes: the run session no longer causes an unhandled `forEach` error in VS Code on every F5; LF line endings are enforced on every checkout (`.gitattributes`).
+- Not verified on hardware: Build & Flash with `dfu-util`/WinUSB on Windows, the MIDI bridge with a physical controller, and ASIO.
+- macOS behaviour is unchanged; no test was removed or weakened (two host-bridge tests that asserted the macOS-only gate were replaced by platform-neutral and Windows tests).
+
 ## 0.25.1 — 2026-11-17
 
 **AI agent guide** *(M92)*

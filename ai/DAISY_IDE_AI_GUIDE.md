@@ -1,6 +1,6 @@
 # Daisy IDE guide for AI coding agents
 
-Describes Daisy IDE 0.25.x. Last verified: 2026-11-15.
+Describes Daisy IDE 0.27.x. Last verified: 2026-11-20.
 
 Read this file completely before you create or change a Daisy Seed effect in this project. Daisy IDE is a VS Code extension that builds the effect as a native desktop program against a host libDaisy compatibility layer, runs it in an emulator (scope, virtual controls, MIDI, OLED, SD card), and builds and flashes the real board. It is not an STM32 emulator. Follow the rules below; they are what the IDE parses and the emulator supports.
 
