@@ -2,7 +2,7 @@
   "name": "ds-ide",
   "displayName": "Daisy Seed IDE",
   "description": "Develop, test and debug Daisy Seed audio effects in VS Code, without hardware: an emulator with scope, controls, MIDI, OLED and SD card.",
-  "version": "0.25.1",
+  "version": "0.27.0",
   "publisher": "daisy-ide",
   "license": "PolyForm-Shield-1.0.0",
   "icon": "media/ds-ide-icon.png",
@@ -192,6 +192,16 @@
         "command": "ds-ide.addAiGuide",
         "title": "Add AI Guide to Project",
         "category": "Daisy IDE"
+      },
+      {
+        "command": "ds-ide.installWindowsToolchain",
+        "title": "Install Windows Toolchain",
+        "category": "Daisy IDE"
+      },
+      {
+        "command": "ds-ide.installToolchainFromArchive",
+        "title": "Install Windows Toolchain from Local Archives",
+        "category": "Daisy IDE"
       }
     ],
     "keybindings": [
@@ -221,6 +231,16 @@
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "ds-ide.installWindowsToolchain",
+          "when": "isWindows"
+        },
+        {
+          "command": "ds-ide.installToolchainFromArchive",
+          "when": "isWindows"
+        }
+      ],
       "editor/title/run": [
         {
           "command": "ds-ide.runEffect",
@@ -457,9 +477,9 @@
     "test:e2e": "npm run compile && tsc -p tsconfig.e2e.json && vscode-test",
     "check:published-links": "node scripts/check-published-links.js",
     "lint": "npm run gen:pins && tsc --noEmit && tsc --noEmit -p tsconfig.webview.json && bash scripts/check-active-folder-convention.sh && node scripts/check-doc-commands.js",
-    "package": "npm run gen:pins && node esbuild.js --production && npm run rebuild:native && vsce package --target darwin-arm64",
+    "package": "npm run gen:pins && node esbuild.js --production && npm run rebuild:native && node scripts/package-vsix.mjs",
     "verify:package": "bash scripts/verify-vsix.sh",
-    "rebuild:native": "bash scripts/rebuild-midi-native.sh",
+    "rebuild:native": "node scripts/rebuild-midi-native.mjs",
     "postinstall": "npm run rebuild:native || true"
   },
   "devDependencies": {

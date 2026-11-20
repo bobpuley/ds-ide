@@ -1,5 +1,12 @@
 #pragma once
 
+// Real libDaisy's daisy_core.h includes <stdlib.h>, so an effect that includes
+// only this header can already use RAND_MAX, rand(), abs()... and DaisySP's
+// Utility/dsp.h relies on it (RAND_MAX, without including it itself). Provide
+// it here too: on macOS it arrives indirectly, with MinGW / libc++ it does not.
+#include <stdlib.h>
+#include <cstdlib>
+
 // Host libDaisy shim — ds-ide emulator (C5).
 // Drop-in replacement for the real libDaisy daisy_seed.h used by bare-libDaisy
 // effects compiled for the emulator target.  Include exactly as the real header:

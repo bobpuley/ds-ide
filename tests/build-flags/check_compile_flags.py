@@ -8,6 +8,15 @@ and inspects the generated compile_commands.json to verify:
   - the runtime/shim sources compile at -O2 -g
   - -Wextra and -Wshadow are present for BOTH the effect object and the
     runtime/shim sources
+  - every runtime/shim .cpp in the tree has a compile entry (FR-WIN-BLD-4:
+    the source list here is derived from the tree, so it always matches
+    the CMake list on this platform)
+  - the CMake platform split: audio_device_factory.cpp is common,
+    core_audio_device.cpp Apple-only (FR-WIN-AUD-1) and
+    audio_device_rtaudio.cpp Windows-only (FR-WIN-AUD-5), ipc_server.cpp and the TCP transport are
+    common, the Unix-socket transport is built only off Windows
+    (FR-WIN-IPC-1), Winsock is linked on Windows, libm only off Windows,
+    TSan is rejected on Windows (FR-WIN-BLD-4)
 
 This is a property of the generated build graph, not runtime behavior, so a
 compile-commands inspection is the direct way to test it (rather than timing
@@ -17,6 +26,7 @@ Exit code: 0 = all checks pass, 1 = any failure.
 """
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -27,14 +37,23 @@ EMU_DIR = os.path.join(REPO_ROOT, "emulator")
 EFFECT_SRC = os.path.join(
     REPO_ROOT, "daisy-seed-knowledge/examples/bypass/bypass.cpp")
 
-RUNTIME_BASENAMES = {
-    "main.cpp", "audio_engine.cpp", "core_audio_device.cpp",
-    "ipc_server.cpp", "wav_reader.cpp", "session_recorder.cpp",
-    "session_player.cpp",
-}
-SHIM_BASENAMES = {
-    "daisy_seed.cpp", "adc_handle.cpp", "system.cpp", "switch.cpp", "led.cpp",
-}
+CMAKELISTS = os.path.join(EMU_DIR, "CMakeLists.txt")
+
+
+def tree_sources(subdir):
+    d = os.path.join(EMU_DIR, subdir)
+    return {f for f in os.listdir(d) if f.endswith(".cpp")}
+
+
+RUNTIME_BASENAMES = tree_sources("runtime")
+# FR-WIN-AUD-1: the CoreAudio backend is built only on Apple platforms; every
+# other platform builds audio_device_factory.cpp's NullAudioDevice instead.
+if sys.platform != "darwin":
+    RUNTIME_BASENAMES.discard("core_audio_device.cpp")
+# FR-WIN-AUD-5: the RtAudio backend is built only on Windows.
+if sys.platform != "win32":
+    RUNTIME_BASENAMES.discard("audio_device_rtaudio.cpp")
+SHIM_BASENAMES = tree_sources("shim/src")
 
 failures = 0
 
@@ -48,7 +67,43 @@ def check(cond, msg):
         failures += 1
 
 
+def check_platform_split():
+    """FR-WIN-BLD-4: text checks on the CMake platform branches. The Windows
+    side is exercised for real by the windows-ci emulator-compile job."""
+    with open(CMAKELISTS) as f:
+        cm = f.read()
+    common = re.search(r"set\(RUNTIME_SRC\b(.*?)\)", cm, re.S)
+    for name in ("ipc_server.cpp", "ipc_transport_socket.cpp", "ipc_transport_tcp.cpp"):
+        check(common is not None and name in common.group(1),
+              f"{name} is in the platform-independent RUNTIME_SRC list (FR-WIN-IPC-1)")
+    check(common is not None and "audio_device_factory.cpp" in common.group(1),
+          "audio_device_factory.cpp is in the platform-independent RUNTIME_SRC list (FR-WIN-AUD-1)")
+    check(common is not None and "core_audio_device.cpp" not in common.group(1),
+          "core_audio_device.cpp is not in the platform-independent RUNTIME_SRC list")
+    check(re.search(r"if\(APPLE\)\s*\n\s*list\(APPEND RUNTIME_SRC\s+\"[^\"]*/runtime/core_audio_device\.cpp\"\)", cm) is not None,
+          "the CoreAudio backend is appended only on Apple platforms (FR-WIN-AUD-1)")
+    check(common is not None and "audio_device_rtaudio.cpp" not in common.group(1),
+          "audio_device_rtaudio.cpp is not in the platform-independent RUNTIME_SRC list")
+    check(re.search(r"if\(WIN32\)\s*\n\s*list\(APPEND RUNTIME_SRC\s+\"[^\"]*/runtime/audio_device_rtaudio\.cpp\"\)", cm) is not None,
+          "the RtAudio backend is appended only on Windows (FR-WIN-AUD-5)")
+    check(re.search(r"target_compile_definitions\(rtaudio_obj PRIVATE __WINDOWS_WASAPI__\)", cm) is not None,
+          "RtAudio is built with its WASAPI API (FR-WIN-AUD-5)")
+    check(re.search(r"target_link_libraries\(effect_emu PRIVATE ws2_32[^)]*\bole32\b[^)]*\bmfplat\b", cm) is not None,
+          "COM and Media Foundation are linked on Windows for WASAPI (FR-WIN-AUD-5)")
+    check(common is not None and "ipc_transport_unix.cpp" not in common.group(1),
+          "ipc_transport_unix.cpp is not in the platform-independent RUNTIME_SRC list")
+    check(re.search(r"if\(NOT WIN32\)\s*\n\s*list\(APPEND RUNTIME_SRC\s+\"[^\"]*/runtime/ipc_transport_unix\.cpp\"\)", cm) is not None,
+          "the Unix-socket transport is appended only off Windows (FR-WIN-IPC-1)")
+    check(re.search(r"if\(TSAN AND WIN32\)\s*\n\s*message\(FATAL_ERROR", cm) is not None,
+          "TSan is rejected with a clear error on Windows")
+    check(re.search(r"if\(WIN32\)[^\n]*\n(?:[^\n]*\n){0,4}?\s*target_link_libraries\(effect_emu PRIVATE[^)]*\bws2_32\b", cm) is not None,
+          "Winsock (ws2_32) is linked on Windows")
+    check(re.search(r"target_link_libraries\(effect_emu PRIVATE Threads::Threads m\)", cm) is None,
+          "libm is not linked unconditionally")
+
+
 def main():
+    check_platform_split()
     build_dir = tempfile.mkdtemp()
     try:
         configure = subprocess.run(
@@ -83,9 +138,12 @@ def main():
             e for e in entries
             if os.path.basename(e["file"]) in RUNTIME_BASENAMES | SHIM_BASENAMES
         ]
-        expected_count = len(RUNTIME_BASENAMES | SHIM_BASENAMES)
-        check(len(runtime_shim_entries) == expected_count,
-              f"a compile entry exists for all {expected_count} runtime/shim sources")
+        expected = RUNTIME_BASENAMES | SHIM_BASENAMES
+        compiled = {os.path.basename(e["file"]) for e in runtime_shim_entries}
+        check(compiled == expected and len(runtime_shim_entries) == len(expected),
+              f"exactly one compile entry for each of the {len(expected)} runtime/shim sources in the tree")
+        if compiled != expected:
+            print(f"    missing from build: {sorted(expected - compiled)}", file=sys.stderr)
         for e in runtime_shim_entries:
             cmd = e["command"].split()
             name = os.path.basename(e["file"])

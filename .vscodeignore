@@ -81,3 +81,5 @@ graphify-out-extension/**
 dist/.tsbuildinfo
 # Build-time input for `npm run gen:pins`; the generated table is compiled into dist/.
 resources/**
+# ...except the pinned Windows toolchain manifest, read at run time (FR-WIN-TCH-4).
+!resources/windows-toolchain.json

@@ -62,6 +62,7 @@ vi.mock('../../emulator/manager', () => {
     // FR-EXT-2: real implementation is a pure hash of buildDir — safe to reuse
     // directly rather than re-mocking its internals.
     workspaceRuntimeDir: (buildDir: string) => `/tmp/ds-ide-mock-${buildDir.length}`,
+    sweepStaleSockets: vi.fn(() => Promise.resolve()),
   };
 });
 
@@ -88,6 +89,7 @@ function makeContext(): vscode.ExtensionContext {
     subscriptions: [],
     extensionPath: '/ext',
     extensionUri: { fsPath: '/ext' },
+    globalStorageUri: { fsPath: '/global-storage' },
     workspaceState: {
       get: (_key: string, defaultValue?: unknown) => defaultValue,
       update: (_key: string, _value: unknown) => Promise.resolve(),
@@ -2391,6 +2393,7 @@ describe('multi-root workspace folder selection (FR-UX-4)', () => {
       subscriptions: [],
       extensionPath: '/ext',
       extensionUri: { fsPath: '/ext' },
+      globalStorageUri: { fsPath: '/global-storage' },
       workspaceState: {
         get: (key: string, defaultValue?: unknown) => (key in store ? store[key] : defaultValue),
         update: (key: string, value: unknown) => { store[key] = value; return Promise.resolve(); },
@@ -2552,6 +2555,15 @@ describe('Build & Flash with on-demand board detection (FR-TRN-7)', () => {
       expect.stringMatching(/BOOT.*RESET/), 'Retry');
     expect(buildForHardware).not.toHaveBeenCalled();
     expect(flashToHardware).not.toHaveBeenCalled();
+  });
+
+  it('a board that enumerates but cannot be opened is reported with the detection diagnostic (FR-WIN-TCH-3)', async () => {
+    vi.mocked(detectBoard).mockImplementationOnce(async (deps) => {
+      deps?.onDiagnostic?.('dfu-util cannot open the board: no WinUSB driver');
+      return null;
+    });
+    await handler('ds-ide.buildAndFlash')();
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith('ds-ide: dfu-util cannot open the board: no WinUSB driver');
   });
 
   it('Retry detects again, and proceeds once the board shows up', async () => {

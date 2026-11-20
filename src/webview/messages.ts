@@ -16,7 +16,7 @@ export type ScopeHostMessage =
   | { command: 'scopeCapture'; in: number[]; out: number[]; out_r: number[]; rate: number; trigger: number }
   | { command: 'status'; running: boolean; sampleRate?: number; blockSize?: number }
   | { command: 'wavSelected'; name: string }
-  | { command: 'event'; kind: string }
+  | { command: 'event'; kind: string; detail?: string }
   | { command: 'xrun'; count: number }
   | { command: 'latency'; estimatedMs?: number }
   | { command: 'led'; gpioPin: number; lit: boolean }

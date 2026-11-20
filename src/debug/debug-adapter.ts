@@ -1,71 +1,43 @@
-import * as fs from 'fs';
 import * as cp from 'child_process';
 import * as vscode from 'vscode';
-import { LLDB_DAP_NOT_FOUND_MESSAGE } from '../hardware/toolchain';
+import { detectLldbDap, lldbDapNotFoundMessage } from '../hardware/toolchain';
+import { defaultExists, defaultExec, type Exists, type Exec, type LocateOptions } from '../hardware/tool-locator';
 
-const LLDB_DAP_CANDIDATES = [
-  '/Library/Developer/CommandLineTools/usr/bin/lldb-dap',
-  '/usr/bin/lldb-dap',
-  '/Applications/Xcode.app/Contents/Developer/usr/bin/lldb-dap',
-];
-
-// Debian/Ubuntu LLVM packages (apt.llvm.org and distro repos) install
-// lldb-dap under a version-suffixed name alongside — or instead of — the
-// unversioned symlink. Tried newest-first on PATH via `which` (FR-QA-EXT-9).
-const LLDB_DAP_LINUX_PATH_NAMES = [
-  'lldb-dap',
-  'lldb-dap-20', 'lldb-dap-19', 'lldb-dap-18', 'lldb-dap-17',
-  'lldb-dap-16', 'lldb-dap-15', 'lldb-dap-14',
-];
-
-type Exists = (p: string) => Promise<boolean>;
-type Exec   = (cmd: string, args: string[]) => Promise<string>;
-
-const defaultExists: Exists = async (p) => {
-  try { await fs.promises.access(p); return true; } catch { return false; }
-};
-
-// execFile (not exec) — no shell is involved, so binary/arg strings can't be
-// reinterpreted as shell metacharacters.
-const defaultExec: Exec = (cmd, args) =>
-  new Promise<string>((resolve, reject) =>
-    cp.execFile(cmd, args, (err, stdout) => (err ? reject(err) : resolve(stdout)))
-  );
-
+// FR-WIN-DBG-1: per-platform lookup. macOS asks xcrun first, so it respects the
+// active Xcode/CLT selection; every platform then goes through the shared tool
+// locator (PATH, then the known locations — Command Line Tools / Xcode, the
+// versioned Debian/Ubuntu names, or on Windows the clang/MinGW toolchain).
 export async function findLldbDap(
   exists: Exists = defaultExists,
   exec: Exec = defaultExec,
+  env: Pick<LocateOptions, 'platform' | 'env' | 'listDir'> = {},
 ): Promise<string | undefined> {
-  // Prefer xcrun so it respects the active Xcode/CLT selection.
-  try {
-    const result = (await exec('xcrun', ['--find', 'lldb-dap'])).trim();
-    if (result && await exists(result)) return result;
-  } catch { /* xcrun not available or lldb-dap not found */ }
-
-  for (const name of LLDB_DAP_LINUX_PATH_NAMES) {
+  if ((env.platform ?? process.platform) !== 'win32') {
     try {
-      const result = (await exec('which', [name])).trim();
+      const result = (await exec('xcrun', ['--find', 'lldb-dap'])).trim();
       if (result && await exists(result)) return result;
-    } catch { /* not on PATH under this name */ }
+    } catch { /* xcrun not available or lldb-dap not found */ }
   }
-
-  for (const p of LLDB_DAP_CANDIDATES) {
-    if (await exists(p)) return p;
-  }
-  return undefined;
+  return detectLldbDap(exists, exec, env);
 }
 
 export class DaisyDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory {
   constructor(
     private readonly _findLldbDap: () => Promise<string | undefined> = findLldbDap,
+    private readonly _platform: NodeJS.Platform = process.platform,
+    // FR-WIN-TCH-4: on Windows, offered when lldb-dap is missing; true = installed.
+    private readonly _offerToolchain?: () => Promise<boolean>,
   ) {}
 
   async createDebugAdapterDescriptor(
     _session: vscode.DebugSession,
   ): Promise<vscode.DebugAdapterDescriptor | undefined> {
-    const lldbDap = await this._findLldbDap();
+    let lldbDap = await this._findLldbDap();
+    if (!lldbDap && this._platform === 'win32' && this._offerToolchain && await this._offerToolchain()) {
+      lldbDap = await this._findLldbDap();
+    }
     if (!lldbDap) {
-      void vscode.window.showErrorMessage(LLDB_DAP_NOT_FOUND_MESSAGE);
+      void vscode.window.showErrorMessage(lldbDapNotFoundMessage(this._platform));
       return undefined;
     }
     return new vscode.DebugAdapterInlineImplementation(new FilteringLldbDapAdapter(lldbDap));

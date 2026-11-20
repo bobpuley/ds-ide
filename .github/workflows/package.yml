@@ -1,0 +1,52 @@
+# FR-WIN-PKG-1: builds the per-platform VSIX (darwin-arm64 and win32-x64) and
+# smoke-tests that each one carries its own platform's midi.node, the emulator
+# sources and an addon matching the shared Electron ABI target
+# (scripts/electron-target-version.txt). Never publishes — publish.yml does.
+name: package
+
+on:
+  push:
+    branches: [feat/windows-support]
+  pull_request:
+    branches: [feat/windows-support]
+  workflow_dispatch:
+
+jobs:
+  vsix:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: darwin-arm64
+          - os: windows-latest
+            target: win32-x64
+    name: vsix (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      # postinstall's rebuild runs here once for this runner's target; the
+      # package script rebuilds again against the same Electron target file.
+      - run: npm ci
+      - run: npm run package
+      # Builds and unpacks its own VSIX and asserts the platform's contents.
+      - run: npm run verify:package
+      - name: Record VSIX size
+        run: |
+          vsix="$(ls ds-ide-${{ matrix.target }}-*.vsix)"
+          bytes="$(wc -c < "$vsix")"
+          echo "### VSIX size — ${{ matrix.target }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$vsix\`: $bytes bytes ($((bytes / 1024 / 1024)) MiB)" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: vsix-${{ matrix.target }}
+          path: ds-ide-${{ matrix.target }}-*.vsix

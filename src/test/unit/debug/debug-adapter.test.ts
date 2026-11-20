@@ -12,6 +12,7 @@ import {
   type DapChildProcess,
 } from '../../../debug/debug-adapter';
 import * as vscode from 'vscode';
+import { lldbDapNotFoundMessage, LLDB_DAP_NOT_FOUND_MESSAGE } from '../../../hardware/toolchain';
 
 function frame(message: unknown): Buffer {
   const json = JSON.stringify(message);
@@ -36,7 +37,7 @@ describe('findLldbDap()', () => {
     const exists = vi.fn(() => Promise.resolve(true));
     const exec = vi.fn(() => Promise.resolve('/xcrun/path/lldb-dap\n'));
 
-    const result = await findLldbDap(exists, exec);
+    const result = await findLldbDap(exists, exec, { platform: 'darwin' });
     expect(result).toBe('/xcrun/path/lldb-dap');
     expect(exec).toHaveBeenCalledWith('xcrun', ['--find', 'lldb-dap']);
   });
@@ -47,7 +48,7 @@ describe('findLldbDap()', () => {
       Promise.resolve(p === '/Library/Developer/CommandLineTools/usr/bin/lldb-dap'),
     );
 
-    const result = await findLldbDap(exists, exec);
+    const result = await findLldbDap(exists, exec, { platform: 'darwin' });
     expect(result).toBe('/Library/Developer/CommandLineTools/usr/bin/lldb-dap');
   });
 
@@ -55,7 +56,7 @@ describe('findLldbDap()', () => {
     const exec = vi.fn(() => Promise.reject(new Error('xcrun not found')));
     const exists = vi.fn((p: string) => Promise.resolve(p === '/usr/bin/lldb-dap'));
 
-    const result = await findLldbDap(exists, exec);
+    const result = await findLldbDap(exists, exec, { platform: 'darwin' });
     expect(result).toBe('/usr/bin/lldb-dap');
   });
 
@@ -63,7 +64,7 @@ describe('findLldbDap()', () => {
     const exec = vi.fn(() => Promise.reject(new Error('xcrun not found')));
     const exists = vi.fn(() => Promise.resolve(false));
 
-    const result = await findLldbDap(exists, exec);
+    const result = await findLldbDap(exists, exec, { platform: 'darwin' });
     expect(result).toBeUndefined();
   });
 
@@ -73,7 +74,7 @@ describe('findLldbDap()', () => {
       Promise.resolve(p === '/Library/Developer/CommandLineTools/usr/bin/lldb-dap'),
     );
 
-    const result = await findLldbDap(exists, exec);
+    const result = await findLldbDap(exists, exec, { platform: 'darwin' });
     expect(result).toBe('/Library/Developer/CommandLineTools/usr/bin/lldb-dap');
   });
 
@@ -85,7 +86,7 @@ describe('findLldbDap()', () => {
     });
     const exists = vi.fn(() => Promise.resolve(true));
 
-    const result = await findLldbDap(exists, exec);
+    const result = await findLldbDap(exists, exec, { platform: 'linux' });
     expect(result).toBe('/usr/bin/lldb-dap');
   });
 
@@ -97,7 +98,7 @@ describe('findLldbDap()', () => {
     });
     const exists = vi.fn(() => Promise.resolve(true));
 
-    const result = await findLldbDap(exists, exec);
+    const result = await findLldbDap(exists, exec, { platform: 'linux' });
     expect(result).toBe('/usr/bin/lldb-dap-18');
   });
 });
@@ -112,7 +113,7 @@ describe('DaisyDebugAdapterFactory', () => {
   });
 
   it('shows an error and returns undefined when lldb-dap is not found', async () => {
-    const factory = new DaisyDebugAdapterFactory(() => Promise.resolve(undefined));
+    const factory = new DaisyDebugAdapterFactory(() => Promise.resolve(undefined), 'darwin');
     const descriptor = await factory.createDebugAdapterDescriptor({} as vscode.DebugSession);
     expect(descriptor).toBeUndefined();
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
@@ -330,5 +331,117 @@ describe('FilteringLldbDapAdapter (FR-UX-7)', () => {
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       expect.stringContaining('boom'),
     );
+  });
+});
+
+// ── per-platform lldb-dap resolver (FR-WIN-DBG-1) ────────────────────────────
+// Platform, environment and directory listings are injected, so the Windows
+// cases run on any host.
+
+const WIN_ENV = {
+  ProgramFiles: 'C:\\Program Files',
+  'ProgramFiles(x86)': 'C:\\Program Files (x86)',
+  SystemDrive: 'C:',
+  USERPROFILE: 'C:\\Users\\me',
+  LOCALAPPDATA: 'C:\\Users\\me\\AppData\\Local',
+};
+const winEnv = {
+  platform: 'win32' as const,
+  env: WIN_ENV,
+  listDir: async (): Promise<string[]> => { throw new Error('ENOENT'); },
+};
+const noExec = vi.fn(async (): Promise<string> => { throw new Error('not found'); });
+const presentFiles = (...files: string[]) => vi.fn(async (p: string) => files.includes(p));
+
+describe('findLldbDap() on Windows (FR-WIN-DBG-1)', () => {
+  it('finds lldb-dap on PATH through where.exe, never asking xcrun', async () => {
+    const exec = vi.fn(async (cmd: string) => {
+      if (cmd === 'where.exe') return 'C:\\msys64\\clang64\\bin\\lldb-dap.exe\r\n';
+      throw new Error('unexpected ' + cmd);
+    });
+    const result = await findLldbDap(presentFiles('C:\\msys64\\clang64\\bin\\lldb-dap.exe'), exec, winEnv);
+    expect(result).toBe('C:\\msys64\\clang64\\bin\\lldb-dap.exe');
+    expect(exec).toHaveBeenCalledWith('where.exe', ['lldb-dap']);
+    expect(exec).not.toHaveBeenCalledWith('xcrun', expect.anything());
+  });
+
+  it.each([
+    'C:\\Program Files\\LLVM\\bin\\lldb-dap.exe',
+    'C:\\msys64\\clang64\\bin\\lldb-dap.exe',
+  ])('finds the install at %s', async (exe) => {
+    expect(await findLldbDap(presentFiles(exe), noExec, winEnv)).toBe(exe);
+  });
+
+  it('returns undefined when there is none', async () => {
+    expect(await findLldbDap(presentFiles(), noExec, winEnv)).toBeUndefined();
+  });
+});
+
+describe('lldb-dap not-found message per platform (FR-WIN-DBG-1)', () => {
+  it('macOS keeps the Xcode Command Line Tools remedy', () => {
+    expect(lldbDapNotFoundMessage('darwin')).toBe(LLDB_DAP_NOT_FOUND_MESSAGE);
+    expect(lldbDapNotFoundMessage('darwin')).toMatch(/xcode-select --install/);
+  });
+
+  it('Linux names LLDB from the package manager, not Xcode', () => {
+    const m = lldbDapNotFoundMessage('linux');
+    expect(m).toMatch(/lldb-dap not found/);
+    expect(m).toMatch(/lldb/i);
+    expect(m).not.toMatch(/xcode/i);
+  });
+
+  it('Windows names LLVM / MSYS2 and PATH, not Xcode', () => {
+    const m = lldbDapNotFoundMessage('win32');
+    expect(m).toMatch(/lldb-dap not found/);
+    expect(m).toMatch(/LLVM/);
+    expect(m).toMatch(/MSYS2/);
+    expect(m).toMatch(/PATH/);
+    expect(m).not.toMatch(/xcode/i);
+  });
+
+  it('the factory shows the message of its platform when lldb-dap is missing', async () => {
+    const factory = new DaisyDebugAdapterFactory(() => Promise.resolve(undefined), 'win32');
+    await factory.createDebugAdapterDescriptor({} as vscode.DebugSession);
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(lldbDapNotFoundMessage('win32'));
+  });
+});
+
+describe('DaisyDebugAdapterFactory offering the managed toolchain on Windows (FR-WIN-TCH-4)', () => {
+  const session = {} as vscode.DebugSession;
+
+  it('offers the download when lldb-dap is missing, then uses the one it installed', async () => {
+    let installed = false;
+    const offer = vi.fn(async () => { installed = true; return true; });
+    const find = vi.fn(async () => (installed ? 'C:/tc/lldb-dap.exe' : undefined));
+    const factory = new DaisyDebugAdapterFactory(find, 'win32', offer);
+    const descriptor = await factory.createDebugAdapterDescriptor(session);
+    expect(offer).toHaveBeenCalledOnce();
+    expect(descriptor).toBeInstanceOf(vscode.DebugAdapterInlineImplementation);
+  });
+
+  it('shows the not-found message when the user declines', async () => {
+    (vscode.window.showErrorMessage as ReturnType<typeof vi.fn>).mockClear();
+    const factory = new DaisyDebugAdapterFactory(async () => undefined, 'win32', async () => false);
+    expect(await factory.createDebugAdapterDescriptor(session)).toBeUndefined();
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(lldbDapNotFoundMessage('win32'));
+  });
+
+  it('shows the not-found message when the install did not provide lldb-dap', async () => {
+    (vscode.window.showErrorMessage as ReturnType<typeof vi.fn>).mockClear();
+    const factory = new DaisyDebugAdapterFactory(async () => undefined, 'win32', async () => true);
+    expect(await factory.createDebugAdapterDescriptor(session)).toBeUndefined();
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledOnce();
+  });
+
+  it('does not offer when lldb-dap is found', async () => {
+    const offer = vi.fn(async () => true);
+    await new DaisyDebugAdapterFactory(async () => 'C:/lldb-dap.exe', 'win32', offer).createDebugAdapterDescriptor(session);
+    expect(offer).not.toHaveBeenCalled();
+  });
+
+  it('does not offer off Windows', async () => {
+    const offer = vi.fn(async () => true);
+    await new DaisyDebugAdapterFactory(async () => undefined, 'darwin', offer).createDebugAdapterDescriptor(session);
+    expect(offer).not.toHaveBeenCalled();
   });
 });

@@ -1,0 +1,87 @@
+# FR-WIN-BLD-1: run the TypeScript unit tests on Windows. Unit tests stub fs
+# and child_process, so a green macOS run says nothing about Windows paths.
+name: windows-ci
+
+on:
+  push:
+    branches: [feat/windows-support]
+  pull_request:
+    branches: [feat/windows-support]
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      # --ignore-scripts: postinstall rebuilds the midi native addon (Node script, M83); skipped here to keep the unit job fast. The shape test skips when the addon is absent.
+      - run: npm ci --ignore-scripts
+      - run: npm test
+
+  # FR-WIN-BLD-2..4: emulator sources compile under clang/MinGW.
+  # FR-WIN-IPC-1: effect_emu.exe links and serves IPC over TCP loopback.
+  emulator-compile:
+    runs-on: windows-latest
+    env:
+      CMAKE_GENERATOR: Ninja
+      CXX: clang++
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANG64
+          update: false
+          install: >-
+            mingw-w64-clang-x86_64-clang
+            mingw-w64-clang-x86_64-cmake
+            mingw-w64-clang-x86_64-ninja
+            mingw-w64-clang-x86_64-python
+      - name: Compile portable sources (FR-WIN-BLD-2, FR-WIN-BLD-3)
+        run: |
+          for src in \
+            emulator/runtime/wav_reader.cpp \
+            emulator/runtime/session_player.cpp \
+            emulator/runtime/session_recorder.cpp \
+            emulator/runtime/platform_file.cpp \
+            emulator/runtime/main.cpp \
+            emulator/shim/src/fatfs_host.cpp; do
+            echo "== $src"
+            clang++ -std=c++17 -fsyntax-only -Wall -Wextra -Wno-unused-parameter \
+              -Iemulator/runtime -Iemulator/shim/include "$src"
+          done
+      - name: Configure emulator with CMake + Ninja (FR-WIN-BLD-4)
+        run: >-
+          cmake -S emulator -B build-win -G Ninja
+          -DCMAKE_CXX_COMPILER=clang++
+          -DEFFECT_SRC="$(cygpath -m "$PWD")/tests/runtime/fixtures/passthrough.cpp"
+      - name: Build and link effect_emu (FR-WIN-IPC-1)
+        run: cmake --build build-win
+      - name: Smoke test — TCP transport handshake (FR-WIN-IPC-1)
+        run: python tests/runtime/test_tcp_transport.py
+      # FR-WIN-AUD-5: the RtAudio backend built with its real WASAPI API.
+      # Runners may have no output endpoint, so a failed start must be clean.
+      - name: RtAudio backend tests (FR-WIN-AUD-5)
+        run: bash tests/rtaudio-device/run_tests.sh
+      - name: AudioDevice contract tests (FR-WIN-AUD-1, FR-WIN-AUD-5)
+        run: bash tests/core-audio-device/run_tests.sh
+      # FR-WIN-AUD-7: the measurement harness (RtAudio backend + native WASAPI
+      # exclusive probe) builds and, with no audio endpoint, prints placeholder rows.
+      - name: Audio measurement harness (FR-WIN-AUD-7)
+        run: |
+          bash tests/audio-measurement/run_tests.sh
+          bash tests/audio-measurement/run_measurements.sh --seconds 1 | tee measure.md
+          grep -q "WASAPI exclusive (native probe)" measure.md
+      - name: TSan is rejected on Windows
+        run: |
+          if cmake -S emulator -B build-tsan -G Ninja -DTSAN=ON \
+               -DEFFECT_SRC="$(cygpath -m "$PWD")/tests/runtime/fixtures/passthrough.cpp" > tsan.log 2>&1; then
+            echo "expected -DTSAN=ON to fail on Windows"; exit 1
+          fi
+          grep -q "TSAN is not supported on Windows" tsan.log

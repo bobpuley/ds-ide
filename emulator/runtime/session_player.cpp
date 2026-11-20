@@ -1,9 +1,9 @@
 #include "session_player.h"
+#include "platform_file.h"
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <cstring>
-#include <fcntl.h>
-#include <unistd.h>
 
 namespace daisy_emu {
 
@@ -15,40 +15,40 @@ bool SessionPlayer::readBytes(void* dst, size_t n) {
     uint8_t* p = static_cast<uint8_t*>(dst);
     size_t total = 0;
     while (total < n) {
-        ssize_t r = ::read(fd_, p + total, n - total);
+        long long r = platform_file::read(fd_, p + total, n - total);
         if (r <= 0) return false;
         total += static_cast<size_t>(r);
     }
     return true;
 }
 
-void SessionPlayer::countBlocks(long data_start_offset) {
+void SessionPlayer::countBlocks(long long data_start_offset) {
     total_blocks_ = 0;
-    long pos = ::lseek(fd_, 0, SEEK_CUR);
-    if (pos < 0 || ::lseek(fd_, data_start_offset, SEEK_SET) < 0) return;  // AC-47
+    long long pos = platform_file::seek(fd_, 0, SEEK_CUR);
+    if (pos < 0 || platform_file::seek(fd_, data_start_offset, SEEK_SET) < 0) return;  // AC-47
 
     uint8_t type;
-    while (::read(fd_, &type, 1) == 1) {
+    while (platform_file::read(fd_, &type, 1) == 1) {
         if (type == kRecTypeAudioBlock) {
             ++total_blocks_;
             uint32_t frames = block_size_;
             if (version_ >= kRecMagicVersion) {
                 uint8_t c[4];
-                if (::read(fd_, c, 4) != 4) break;
+                if (platform_file::read(fd_, c, 4) != 4) break;
                 frames = static_cast<uint32_t>(c[0]) | (static_cast<uint32_t>(c[1]) << 8)
                        | (static_cast<uint32_t>(c[2]) << 16) | (static_cast<uint32_t>(c[3]) << 24);
             }
-            if (::lseek(fd_, static_cast<off_t>(static_cast<size_t>(frames) * 2 * sizeof(float)), SEEK_CUR) < 0)
+            if (platform_file::seek(fd_, static_cast<long long>(static_cast<size_t>(frames) * 2 * sizeof(float)), SEEK_CUR) < 0)
                 break;
         } else if (type == kRecTypePotEvent) {
-            if (::lseek(fd_, 5, SEEK_CUR) < 0) break;
+            if (platform_file::seek(fd_, 5, SEEK_CUR) < 0) break;
         } else if (type == kRecTypeButtonEvent) {
-            if (::lseek(fd_, 2, SEEK_CUR) < 0) break;
+            if (platform_file::seek(fd_, 2, SEEK_CUR) < 0) break;
         } else {
             break;  // END or unknown
         }
     }
-    ::lseek(fd_, pos, SEEK_SET);
+    platform_file::seek(fd_, pos, SEEK_SET);
 }
 
 bool SessionPlayer::open(const std::string& path,
@@ -56,18 +56,18 @@ bool SessionPlayer::open(const std::string& path,
                           uint32_t& out_block_size) {
     close();  // stop any previous reader thread and close any previous fd
 
-    fd_ = ::open(path.c_str(), O_RDONLY);
+    fd_ = platform_file::open_read(path.c_str());
     if (fd_ < 0) return false;
 
     uint8_t header[16];
-    if (!readBytes(header, 16)) { ::close(fd_); fd_ = -1; return false; }
+    if (!readBytes(header, 16)) { platform_file::close(fd_); fd_ = -1; return false; }
 
     // Validate magic
     if (std::memcmp(header, "DSREC", 5) != 0 || header[5] != '\0') {
-        ::close(fd_); fd_ = -1; return false;
+        platform_file::close(fd_); fd_ = -1; return false;
     }
     if (header[6] != kRecMagicVersion && header[6] != kRecVersionLegacy) {
-        ::close(fd_); fd_ = -1; return false;
+        platform_file::close(fd_); fd_ = -1; return false;
     }
     version_ = header[6];
 
@@ -81,15 +81,15 @@ bool SessionPlayer::open(const std::string& path,
                     | (static_cast<uint32_t>(header[15]) << 24);
 
     if (out_block_size == 0 || out_block_size > kMaxFramesPerSlot) {  // AC-47
-        ::close(fd_); fd_ = -1; return false;
+        platform_file::close(fd_); fd_ = -1; return false;
     }
     block_size_  = out_block_size;
     blocks_read_.store(0, std::memory_order_relaxed);
 
-    long data_start = ::lseek(fd_, 0, SEEK_CUR);
-    if (data_start < 0) { ::close(fd_); fd_ = -1; return false; }  // AC-47
+    long long data_start = platform_file::seek(fd_, 0, SEEK_CUR);
+    if (data_start < 0) { platform_file::close(fd_); fd_ = -1; return false; }  // AC-47
     countBlocks(data_start);
-    if (::lseek(fd_, data_start, SEEK_SET) < 0) { ::close(fd_); fd_ = -1; return false; }  // AC-47
+    if (platform_file::seek(fd_, data_start, SEEK_SET) < 0) { platform_file::close(fd_); fd_ = -1; return false; }  // AC-47
 
     // Pre-allocate every ring so neither thread ever resizes one, and the RT
     // thread's popBlock() touches nothing but fixed-capacity storage.
@@ -117,7 +117,7 @@ bool SessionPlayer::readNextBlockBlocking(float* buf, size_t& frames_out, std::v
 
     // Read events + one AUDIO_BLOCK
     while (true) {
-        ssize_t r = ::read(fd_, &type, 1);
+        long long r = platform_file::read(fd_, &type, 1);
         if (r != 1) return false;
 
         if (type == kRecTypePotEvent) {
@@ -287,7 +287,7 @@ bool SessionPlayer::popBlock(float* buf, size_t frames,
 void SessionPlayer::close() {
     reader_stop_.store(true, std::memory_order_relaxed);
     if (reader_thread_.joinable()) reader_thread_.join();
-    if (fd_ >= 0) { ::close(fd_); fd_ = -1; }
+    if (fd_ >= 0) { platform_file::close(fd_); fd_ = -1; }
     done_.store(true, std::memory_order_release);
 }
 

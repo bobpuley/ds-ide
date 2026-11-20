@@ -3,6 +3,18 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.27.0 — 2026-11-20
+
+**Windows support** *(M77–M84, developed as pre-releases `0.25.0-win.1` … `0.25.0-win.8`, whose entries are kept below)*
+
+- **Windows 10/11 x64** is now supported: the emulator builds with clang/MinGW, talks to the extension over TCP loopback, and plays audio through WASAPI (RtAudio). Measured on Windows: 0 xruns, shared-mode latency about 12–16 ms.
+- **Managed toolchain:** on first use the extension can download llvm-mingw (with `lldb-dap`), CMake and Ninja, verified by SHA-256, with consent, progress and recovery; a toolchain you installed yourself always wins.
+- **Debugging on Windows:** F5 attaches `lldb-dap` to the emulator; DWARF breakpoints and variables work; audio switches to the simulated clock while stopped.
+- **Host MIDI bridge** works on Windows (WinMM); the native rebuild is a Node script (`scripts/rebuild-midi-native.mjs`), and the extension is packaged as one VSIX per platform: `darwin-arm64` and `win32-x64`.
+- Fixes: the run session no longer causes an unhandled `forEach` error in VS Code on every F5; LF line endings are enforced on every checkout (`.gitattributes`).
+- Not verified on hardware: Build & Flash with `dfu-util`/WinUSB on Windows, the MIDI bridge with a physical controller, and ASIO.
+- macOS behaviour is unchanged; no test was removed or weakened (two host-bridge tests that asserted the macOS-only gate were replaced by platform-neutral and Windows tests).
+
 ## 0.25.1 — 2026-11-17
 
 **AI agent guide** *(M92)*
@@ -91,6 +103,87 @@ This is a **preview**: it is published as a Marketplace pre-release, runs on **m
 - **FR-REL-2** — A missing CMake is detected (`which`, then `/opt/homebrew/bin` and `/usr/local/bin`) and reported as "CMake not found. Install it (brew install cmake) and try again." in the notification and the build output, instead of a bare "Build failed" with an empty Problems list.
 - **FR-REL-3** — The extension activates when a folder containing a Daisy project (`*.cpp`, `src/*.cpp`, `source/*.cpp`) is opened, so Run Daisy Effect and the editor play button are available without first using another Daisy command.
 - Packaging: `darwin-arm64` target, trimmed `.vscodeignore`, third-party notices for node-midi/RtMidi, repository and bugs URLs, Electron pin 43.7.3.
+
+## 0.25.0-win.8 — 2026-11-20
+
+**Windows verification and merge readiness** *(FR-WIN-VER-1, FR-WIN-VER-2, M84 — pre-release on `feat/windows-support`)*
+
+- **FR-WIN-VER-1** — The Windows verification matrix was run and recorded in `docs/measurements/windows-verification.md`: build, run, scope, FFT and controls over TCP IPC; WASAPI shared output-only and duplex re-run after the period fix (`reported` 512, latency 12.0 / 13.3 / 16.0 ms, 0 xruns); F5 debugging (PID attach, DWARF breakpoints and variables, mute-on-breakpoint, `lldb-dap` standalone); fresh-profile install with the managed toolchain download. Deferred: Build & Flash with `dfu-util`, the MIDI bridge with a physical controller, ASIO (no hardware or SDK).
+- Fix: the run session answered list-shaped debug requests with an empty object, which made VS Code log an unhandled `forEach` error on every F5; it now answers with empty lists.
+- Fix: LF line endings are forced on every checkout (`.gitattributes`), and the metadata tests accept the `-win.N` versions of this branch (restore the strict check before merging to `main`).
+- **FR-WIN-VER-2** — Merge-readiness checklist for `main` written in `docs/milestones/v25/Milestone_M84.md`; the merge itself waits for the owner's approval.
+
+## 0.25.0-win.7 — 2026-11-19
+
+**Cross-platform MIDI bridge and per-platform VSIX** *(FR-WIN-MIDI-1, FR-WIN-PKG-1, M83 — pre-release on `feat/windows-support`)*
+
+- **FR-WIN-MIDI-1** — The host MIDI bridge no longer checks for macOS: it opens every input port on Windows too (RtMidi's WinMM backend). A missing or unloadable `midi` addon still degrades to a console warning, and the on-screen keyboard keeps working.
+- **FR-WIN-MIDI-1** — `scripts/rebuild-midi-native.sh` is replaced by `scripts/rebuild-midi-native.mjs`, a Node script that rebuilds `midi` against the Electron ABI for the current OS (darwin-arm64 or win32-x64) and skips other platforms. On Windows the rebuild needs the MSVC build tools (Visual Studio Build Tools, C++ workload); without them `postinstall` leaves the addon unbuilt.
+- **FR-WIN-PKG-1** — `npm run package` produces the VSIX for the current platform (`scripts/package-vsix.mjs`, shared target table in `scripts/vsix-target.mjs`). `verify-vsix.sh` is platform-aware and checks the manifest target, the addon's architecture and its Electron ABI. New `package` workflow builds and smoke-tests `darwin-arm64` and `win32-x64` and records each VSIX size in the run summary (darwin-arm64 985,966 bytes, win32-x64 1,106,085 bytes).
+- Test changes: the macOS-only host-bridge test is replaced by Windows tests; none weakened.
+
+## 0.25.0-win.6 — 2026-11-19
+
+**Managed Windows toolchain download** *(FR-WIN-TCH-4, FR-WIN-TCH-5, M82 — pre-release on `feat/windows-support`)*
+
+- **FR-WIN-TCH-4** — On Windows the extension can download the toolchain it needs on first use: llvm-mingw 20261117 (LLVM 23.1.6, includes `lldb-dap`), CMake 4.5.0 and Ninja 1.13.2, pinned in `resources/windows-toolchain.json` with our own SHA-256 (cross-checked with upstream) and a mirror URL under the ds-ide `toolchain-1` release. `scripts/update-toolchain-manifest.mjs` checks, hashes, verifies and adopts versions; `docs/toolchain-mirror.md` documents the manifest and the manual mirror upload.
+- **FR-WIN-TCH-4** — Download over HTTPS only (redirects included), SHA-256 and size verified before anything is extracted, extraction with the system `tar.exe`, unused target sysroots pruned, and the finished tree renamed into `<globalStorage>/toolchain/<version>/` in one step with a completion marker written last: a partial download or extraction is never taken for an install. Free space is checked before downloading; a failing source falls back to the mirror; superseded versions and stale temporary folders are removed.
+- **FR-WIN-TCH-4** — A modal consent prompt states the download size (about 248 MB) and the disk space needed (up to 902 MB); progress is a cancellable notification; each failure (offline or proxy, HTTP error, hash mismatch, disk full, unpack failure, incomplete install, missing archive) has a clear message with Retry and, where it helps, "Install from local archives…". New commands **Install Windows Toolchain** and **Install Windows Toolchain from Local Archives** (air-gapped machines), shown only on Windows. The emulator build and the debugger offer the download when a tool is missing.
+- **FR-WIN-TCH-5** — The installed toolchain is the last source of every tool lookup (after the configured path, PATH and the known install locations), so a toolchain the user installed always wins. The managed set does not ship `arm-none-eabi-gcc`, `make` or `dfu-util`: the hardware build offers no download.
+- **FR-WIN-TCH-5** — The emulator build gives CMake the environment it needs when the tools are not on PATH (the directories of cmake, the compiler and the new `detectNinja` first on PATH, `CXX` set to the compiler), and `effect_emu` starts with the compiler's directory on PATH, where the MinGW runtime DLLs live. Verified end to end with PATH reduced to System32 and MSYS2 hidden: the emulator builds, starts and connects.
+- Test changes: none removed or weakened.
+
+## 0.25.0-win.5 — 2026-11-18
+
+**Windows toolchain, debug & flash discovery** *(FR-WIN-TCH-1 to FR-WIN-TCH-3, FR-WIN-TCH-5, FR-WIN-DBG-1, M81 — pre-release on `feat/windows-support`)*
+
+- **FR-WIN-TCH-5** — One tool-lookup module (`src/hardware/tool-locator.ts`): configured path → PATH (`which`, `where.exe` on Windows) → known install locations → a managed-toolchain extension point (filled in M82). `.exe` suffixes and per-platform path rules are chosen by the target platform. macOS and Linux results are unchanged.
+- **FR-WIN-TCH-1** — Windows discovery of `arm-none-eabi-gcc`, `dfu-util`, `make`, CMake and the C++ compiler (`clang++`): Arm GNU Toolchain default installs, xPack, MSYS2, LLVM, Chocolatey, Scoop, WinGet. The emulator build no longer asks `xcode-select` on Windows. Install hints and the CMake / compiler "not found" messages are per platform.
+- **FR-WIN-TCH-2** — Hardware build: PATH is extended with the platform's delimiter and reuses the existing `Path` key, `make` is located and spawned by full path on Windows, and a missing `make` says how to get one. The ARM `Makefile` of DaisyExamples (libDaisy, DaisySP, `seed/Blink`) builds unmodified with xPack gcc and MSYS2 make.
+- **FR-WIN-TCH-3** — A board that enumerates without a WinUSB driver is explained (Zadig steps) in the Daisy view / Build & Flash and in the flash command, instead of reading as "no board" or a bare exit code. dfu-util's exact wording on Windows and the exit-code-74 `:leave` case stay unverified (M84).
+- **FR-WIN-DBG-1** — Per-platform `lldb-dap` resolver (xcrun on macOS, versioned names on Linux, LLVM / MSYS2 CLANG64 on Windows) and a not-found message with the right remedy. Debug Daisy Effect with a breakpoint verified on Windows.
+- **Fix** — The emulator now builds with MinGW's libc++ headers: `daisy_seed.h` provides `<stdlib.h>` as libDaisy does (DaisySP's `dsp.h` needs `RAND_MAX`), DaisySP's own sources get `<cstdlib>` force-included, and `ipc_server.cpp` includes it for `std::strtof`. Found by the manual test of Build for Emulator on `examples/tremolo-filter`.
+- Fix: the arm-none-eabi-gcc Windows hint no longer names an MSYS2 package that does not exist.
+- Test changes: macOS/Linux tool-lookup and message tests now state their platform, so they hold on a Windows host. No test removed or weakened.
+
+## 0.25.0-win.4 — 2026-11-08
+
+**Windows audio backend & measurement gate** *(FR-WIN-AUD-5 to FR-WIN-AUD-7, M80 — pre-release on `feat/windows-support`)*
+
+- **FR-WIN-AUD-5** — RtAudio 6.0.1 (vendored without the ASIO SDK files) implements `AudioDevice` on Windows: output-only first, then duplex with mono/multichannel adaptation to the stereo-interleaved contract. Failure to open a device falls back to the silent software loop as on macOS.
+- **FR-WIN-AUD-6** — Backends report the actual buffer size (CoreAudio in stream-rate frames; WASAPI shared as its period) and latency. A requested-vs-actual mismatch raises a `buffer_size_mismatch` event whose numbers are shown in the Scope history; `sample_rate_mismatch` carries its rates the same way. The `realtime_unavailable` text is platform-neutral.
+- **FR-WIN-AUD-7** — Measurement harness (`tests/audio-measurement`) and recorded results (`docs/measurements/windows-audio.md`). Conclusion: RtAudio WASAPI shared is sufficient (≈10.67 ms period); no native WASAPI milestone. The post-fix WASAPI re-run and ASIO are deferred to M84.
+- **Tooling** — Electron ABI anchor bumped to 43.7.3 (VS Code 1.140.0) so the bundled `midi` addon matches the host again.
+
+## 0.25.0-win.3 — 2026-10-05
+
+**Audio backend abstraction** *(FR-WIN-AUD-1 to FR-WIN-AUD-4, M79 — pre-release on `feat/windows-support`)*
+
+- **FR-WIN-AUD-4** — New `tests/audio-engine` regression net: `run_audio_engine()` is driven end to end against a fake audio backend, covering real-time start parameters, `audioDevice` reconfiguration, transport mute, xrun / latency / `render_error` events, `sample_rate_mismatch`, the `realtime_unavailable` fallback, mode switching and the silent output-only fallback. Written green against the pre-refactor macOS code first.
+- **FR-WIN-AUD-1** — `audio_engine.cpp` now uses an abstract, non-copyable, non-movable `AudioDevice` (`audio_device.h`) obtained from `make_audio_device()`, the only place that branches on the platform. `CoreAudioDevice` is the macOS implementation (built only on Apple); other platforms get the header-only `NullAudioDevice` (all `start*` fail → existing fallbacks). The interface adds `maxCallbackFrames()`. The device contract test is backend-agnostic and runs against the platform backend and the fake.
+- **FR-WIN-AUD-2** — No heap allocation on the real-time thread: engine work buffers are sized up front from `maxCallbackFrames()` and both CoreAudio render callbacks no longer `assign`/`resize`. An oversized callback is clamped with its tail zero-filled; tests count allocations on the callback path.
+- **FR-WIN-AUD-3** — `mach_absolute_time()` / `compute_mach_ns_per_tick()` replaced by `std::chrono::steady_clock` (xrun definition unchanged). Driver-level overflow/underflow is a separate `drainDriverOverruns()` counter in the interface (0 on CoreAudio).
+
+## 0.25.0-win.2 — 2026-10-04
+
+**IPC transport & process lifecycle** *(FR-WIN-IPC-1 to FR-WIN-IPC-4, M78 — pre-release on `feat/windows-support`)*
+
+- **FR-WIN-IPC-1** — The emulator's IPC runs over a transport layer (`ipc_transport.h`): Unix domain socket on macOS (unchanged) and TCP loopback on `127.0.0.1` with an ephemeral port and `TCP_NODELAY` (Winsock on Windows; `effect_emu --tcp` on POSIX). The announce line carries a path or `127.0.0.1:<port>`; the extension parses it (`ipc-address.ts`, loopback only) and `IpcClient` connects either way. `effect_emu.exe` now links and serves IPC on Windows; the Windows CI runs a TCP smoke test against it.
+- **FR-WIN-IPC-2** — On TCP the extension generates a per-session token and passes it on the emulator's stdin (never the command line); the emulator closes any connection whose first line is not a valid `hello` within 2 s, before sending anything back.
+- **FR-WIN-IPC-3** — A host-to-emulator `shutdown` message stops audio, finalizes an active recording and exits 0 on every platform. Stop/dispose send it first and fall back to SIGTERM → SIGKILL (TerminateProcess on Windows) after 2 s; debugger-attached stops stay immediate. `PROTOCOL_VERSION` is now 2. A late-exiting emulator no longer clears a newer emulator's `emu.pid`.
+- **FR-WIN-IPC-4** — The stale-emulator check uses `ps` on macOS and `tasklist` on Windows, matches the executable name exactly and rejects garbled pid files. FR-WIN-IPC-4's wording was updated accordingly (macOS has no `ps`-free way to read a process name).
+- Test fixes: the OLED producer/consumer stress test no longer drops an uncounted frame (it failed ~1 run in 10); `manager.test.ts` Unix-socket fixtures pin `darwin` so they pass on the Windows runner.
+
+## 0.25.0-win.1 — 2026-10-04
+
+**Windows build foundations** *(FR-WIN-BLD-1 to FR-WIN-BLD-5, M77 — pre-release on `feat/windows-support`)*
+
+- **FR-WIN-BLD-1** — New `windows-ci` GitHub Actions workflow runs the TypeScript unit tests (`vitest`) on `windows-latest` for pushes/PRs to `feat/windows-support`. The `b86d7bc` Windows test fixes were already in via #1; the vitest `vscode` alias now uses `fileURLToPath`. The only Windows skip is the explicit midi native-addon shape check.
+- **FR-WIN-BLD-2** — `wav_reader`, `session_player`, `session_recorder` and `fatfs_host` no longer include POSIX-only headers. Raw-fd I/O goes through a new `platform_file` shim (identical POSIX calls on macOS, including mode `0644`; `_wopen`/`_O_BINARY`/`_lseeki64` on Windows); file size and directory creation use `std::filesystem`.
+- **FR-WIN-BLD-3** — `SIGPIPE` handling in `main.cpp` is compiled only off Windows; SIGTERM/SIGINT shutdown is unchanged.
+- **FR-WIN-BLD-4** — `emulator/CMakeLists.txt` splits sources and libraries per platform: `ipc_server.cpp` is excluded on Windows until M78, Winsock (`ws2_32`) is linked on Windows, `libm` only off Windows, TSan is rejected on Windows and ASan there requires clang. CI configures with clang/MinGW + Ninja and builds every runtime/shim object.
+- **FR-WIN-BLD-5** — The extension builds with `cmake --build <dir> -j <N>`, pins `-G Ninja` on Windows, and runs `effect_emu.exe` on Windows (with a multi-config `Debug/` fallback).
+- Test fix: the `emulator-safety` runner now links `input_generators.cpp` (it failed to link since M76).
 
 ## 0.24.3 — 2026-10-03
 

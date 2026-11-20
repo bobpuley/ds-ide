@@ -213,6 +213,24 @@ Full registry in [`docs/v23/05_dev-plan.md`](v23/05_dev-plan.md).
 M73 Reachability · M74 Editor Polish · M75 Scope Toolbar Popovers · M76 Input Generators.
 Full registry in [`docs/v24/05_dev-plan.md`](v24/05_dev-plan.md).
 
+### v25 (0.25.0-win.1–0.25.0-win.8) — planned
+
+| ID  | Name                                                | Status      | Version        | File                                                |
+|-----|-----------------------------------------------------|-------------|----------------|-----------------------------------------------------|
+| M77 | Windows Build Foundations                           | **released** | 0.25.0-win.1   | [Milestone_M77.md](milestones/v25/Milestone_M77.md) |
+| M78 | IPC Transport & Process Lifecycle                   | **released** | 0.25.0-win.2   | [Milestone_M78.md](milestones/v25/Milestone_M78.md) |
+| M79 | Audio Backend Abstraction                           | **released** | 0.25.0-win.3   | [Milestone_M79.md](milestones/v25/Milestone_M79.md) |
+| M80 | Windows Audio Backend & Measurement Gate            | **released** | 0.25.0-win.4   | [Milestone_M80.md](milestones/v25/Milestone_M80.md) |
+| M81 | Windows Toolchain, Debug & Flash Discovery          | **released** | 0.25.0-win.5   | [Milestone_M81.md](milestones/v25/Milestone_M81.md) |
+| M82 | Managed Windows Toolchain Download                  | **released** | 0.25.0-win.6   | [Milestone_M82.md](milestones/v25/Milestone_M82.md) |
+| M83 | Cross-Platform MIDI Bridge & Per-Platform VSIX      | **released** | 0.25.0-win.7   | [Milestone_M83.md](milestones/v25/Milestone_M83.md) |
+| M84 | Windows Verification & Merge Readiness              | **released** | 0.25.0-win.8   | [Milestone_M84.md](milestones/v25/Milestone_M84.md) |
+
+Source: `multiplatform_plan.md`; intake session, 2026-10-04.
+
+**Git workflow (applies to every v25 milestone — FR-WIN-GIT-1..3):** nothing is merged into `main` automatically. The base branch is `feat/windows-support` (already on `origin`). For each milestone, create a branch from `feat/windows-support` (`feat/m<N>-<slug>`); at milestone close, merge that branch into `feat/windows-support` (not `main`), update `CHANGELOG.md` and bump `package.json` `version` to the pre-release (the unit suite enforces they match; run `npm test` before tagging), tag the pre-release `0.25.0-win.<N>` and push the branch and tag. `feat/windows-support` is merged into `main` only after M84, with explicit user approval. The existing macOS suites must be green at every close (FR-WIN-GIT-2).
+
+**Priority/sequence (from `multiplatform_plan.md`):** M77 → M78 → M79 → M80 → M81 → M82 → M83 → M84. The Windows compiler, packaging model and toolchain-delivery decisions are already taken (see `02_assumptions-and-risks.md`). A native WASAPI milestone is **not** planned; it is added only if the M80 measurement gate (FR-WIN-AUD-7) shows RtAudio is insufficient.
 ### v26 (0.24.4–0.25.0) — archived in `docs/v26/`
 
 M85 First-Run Experience Fixes · M86 Example Curation · M87 README Polish · M88 Licensing · M89 First-Run Polish II · M90 Marketplace Readiness · M91 First Public Preview Release.

@@ -77,6 +77,21 @@
 > **v26 complete** — ds-ide 0.24.4–0.25.0 (M85–M91), the first public preview, all ACs green. Full v26 ideas archived in
 > [`docs/v26/01_input-ideas.md`](v26/01_input-ideas.md).
 
+## Ideas
+
+- **Windows support (macOS + Windows)** — make ds-ide (extension + emulator) run on Windows in
+  addition to macOS. Full survey, verified findings, decisions and priority order are in
+  `multiplatform_plan.md` (repo root, committed on `feat/windows-support`, `72be7f7`). Decisions
+  taken so far: clang/MinGW as the Windows compiler; platform-specific VSIX; Windows toolchain
+  delivered by download-on-first-use (Option C); common `AudioDevice` interface with CoreAudio kept
+  on macOS and RtAudio first on Windows (native WASAPI only if the measurement gate fails); IPC
+  moves to TCP loopback with an explicit IPC `shutdown` message.
+- **Git workflow for this work** — nothing is merged automatically into `main`. The base branch
+  for all Windows work is `feat/windows-support` (already on `origin`). Each milestone gets its
+  own branch created from `feat/windows-support`, and at milestone close that branch is merged
+  into `feat/windows-support`. The merge of `feat/windows-support` into `main` happens only at
+  the very end, once the whole Windows support is completed and tested (no regressions on macOS).
+
 ## v27 ideas
 
 - **AI-agent guideline file (feature, 2026-11-15):** let's add to the extension an exclusive AI oriented file (txt, md, or whatever is best) that explains the conventions to follow in order to develop, or adapt an already written, effect so it is compatible with the IDE. Most devs are now using claude/copilot/openai/deepseek/etc, so a guideline specifically designed for the agent would be useful.
