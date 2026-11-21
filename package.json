@@ -499,5 +499,11 @@
   },
   "dependencies": {
     "midi": "2.0.0"
+  },
+  "overrides": {
+    "serialize-javascript": "^7.1.4",
+    "diff": "^8.0.3",
+    "glob": "^14.0.6",
+    "minimatch": "^11.0.9"
   }
 }
