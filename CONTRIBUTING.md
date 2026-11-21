@@ -12,7 +12,12 @@ cd ds-ide
 npm install
 ```
 
-You need macOS on Apple Silicon, Node.js, CMake 3.20 or later and the Xcode Command Line Tools (see the README's requirements).
+You need Node.js 22 and a C++ toolchain (see the README's requirements):
+
+- **macOS on Apple Silicon:** CMake 3.20 or later and the Xcode Command Line Tools.
+- **Windows 10/11 x64:** clang/MinGW, CMake and Ninja (MSYS2 CLANG64 gives you all three; the extension can also download them, see the README), and Git for Windows with its `bash` on your `PATH`, because `npm run lint` and some tests run shell scripts.
+
+`npm install` also compiles the native `midi` addon. On Windows that needs the Visual Studio Build Tools (the C++ workload). Without them, run `npm install --ignore-scripts`: everything works except the host MIDI bridge, which is what the Windows CI does for its unit tests.
 
 ## Run it from source
 
@@ -25,7 +30,7 @@ You need macOS on Apple Silicon, Node.js, CMake 3.20 or later and the Xcode Comm
 ## Build the `.vsix`
 
 ```sh
-npm run package            # builds, rebuilds the native midi addon for Electron, and packages for darwin-arm64
+npm run package            # builds, rebuilds the native midi addon for Electron, and packages for this platform (darwin-arm64 or win32-x64)
 npm run verify:package     # checks the package contents, the target platform and the native addon's ABI
 ```
 
@@ -37,7 +42,7 @@ Before publishing, run `npm run check:published-links`. It requests every URL th
 
 - **`npm test`**: the vitest unit suite (the `vscode` module is mocked). Fast; run it while you work. `npm run lint` type-checks the extension and the webviews and checks that the README and walkthrough only name commands that exist.
 - **`npm run test:e2e`**: the functional suite. It builds the extension, starts a real VS Code Extension Development Host and exercises real activation, command dispatch and IPC. Slower (it downloads a VS Code build on the first run), and not part of `npm test`; run it before a release or when you change activation, command registration or the IPC boundary. Specs are in `src/test/e2e/`.
-- **Emulator tests**: `bash tests/runtime/build_and_test.sh` builds the emulator and drives it over IPC (scope, record and replay, generators, controls). Each `tests/<name>/` folder (for example `fatfs-shim`, `oled-shim`) has a `run_*.sh` runner for one piece of the C++ shim.
+- **Emulator tests**: `bash tests/runtime/build_and_test.sh` builds the emulator and drives it over IPC (scope, record and replay, generators, controls). Each `tests/<name>/` folder (for example `fatfs-shim`, `oled-shim`) has a `run_*.sh` runner for one piece of the C++ shim. Most of these runners are POSIX-only; on Windows, the `windows-ci` workflow builds the emulator with clang/MinGW and runs the ones that apply (the TCP transport smoke test, `tests/rtaudio-device` and `tests/core-audio-device`), in an MSYS2 CLANG64 shell.
 - **Manual checklist**: `src/test/manual/manual-tests.html` lists the cases no automated suite can cover (real audio, hardware build and flash, webview rendering).
 
 ## Project documents

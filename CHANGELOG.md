@@ -3,6 +3,15 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.27.1 — 2026-11-21
+
+**Documentation for Windows** *(no change to the extension's behaviour)*
+
+- **README:** no longer says the extension is macOS-only. Requirements, installation (one package per platform, `Ctrl+Shift+P` on Windows), the Debugging and Limitations sections, and the feedback checklist now cover Windows, and a new **Windows** section explains the audio and debugging setup, the toolchain download (what it fetches, its size, where it goes, how to install it later or from local archives), hardware tools and the WinUSB driver (Zadig) for flashing, and what is not verified yet on Windows.
+- **Third-party notices (`LICENSES.md`):** RtAudio, which ships inside the package, is now listed with its licence; the managed Windows toolchain (llvm-mingw, CMake, Ninja) is described as downloaded, not bundled; the `lldb-dap` entry now covers Windows.
+- The bug report form asks for the operating system instead of the macOS version and gives the Windows log location; `examples/README.md` and `CONTRIBUTING.md` explain the Windows setup (including building the native `midi` addon, or skipping it with `--ignore-scripts`).
+- Includes a test fix made after 0.27.0: the CMake-resolution test pins its platform so it cannot time out on the Windows runner.
+
 ## 0.27.0 — 2026-11-20
 
 **Windows support** *(M77–M84, developed as pre-releases `0.25.0-win.1` … `0.25.0-win.8`, whose entries are kept below)*

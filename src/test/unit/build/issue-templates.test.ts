@@ -29,7 +29,7 @@ function checkForm(file: string): string {
 describe('issue templates (FR-MKT-2)', () => {
   it('the bug report asks for versions, steps, expected/actual, the output channel and the crash lines', () => {
     const t = checkForm('bug-report.yml');
-    for (const needle of ['Extension version', 'macOS version', 'VS Code version', 'Steps to reproduce',
+    for (const needle of ['Extension version', 'Operating system and version', 'VS Code version', 'Steps to reproduce',
       'Expected behaviour', 'Actual behaviour', 'Output channel', 'crashed with code', 'main.log']) {
       expect(t).toContain(needle);
     }
