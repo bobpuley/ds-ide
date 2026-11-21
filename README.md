@@ -6,7 +6,7 @@ It replaces the slow loop of compile, flash, plug in an instrument and listen wi
 
 > **Preview release.** Daisy IDE is in early access. It works, but expect rough edges, some UI changes between versions, and a few known issues (see [Known issues](#known-issues) and [Limitations](#limitations)). Feedback is the reason this preview exists: please [tell us what you find](#feedback).
 >
-> **macOS on Apple Silicon only** for now.
+> **macOS on Apple Silicon and Windows 10/11 (x64).** Intel Macs and Linux are not supported yet.
 
 ![Scope panel and Controls Editor showing a live tremolo effect](media/screenshot-overview.png)
 
@@ -16,15 +16,17 @@ It replaces the slow loop of compile, flash, plug in an instrument and listen wi
 
 **To build and run effects on the emulator** (everything except flashing hardware):
 
-- **macOS on Apple Silicon (arm64)**. Intel Macs, Linux and Windows are not supported yet.
+- **macOS on Apple Silicon (arm64)** or **Windows 10/11 (x64)**. Intel Macs and Linux are not supported yet.
 - **VS Code** 1.140 or later.
-- **CMake** 3.20 or later: `brew install cmake`.
-- **Xcode Command Line Tools**: `xcode-select --install`. They provide the C++ compiler the emulator build uses and `lldb-dap`, the debugger.
+- **A C++ toolchain** (a compiler, CMake, and the debugger `lldb-dap`):
+  - **macOS**: **CMake** 3.20 or later (`brew install cmake`) and the **Xcode Command Line Tools** (`xcode-select --install`). The Command Line Tools provide the C++ compiler the emulator build uses and `lldb-dap`.
+  - **Windows**: nothing to install by hand. The first time you build, Daisy IDE offers to download a pinned toolchain (clang with `lldb-dap`, CMake and Ninja) after you agree: about 248 MB to download and up to 902 MB of disk space while it installs, kept in the extension's own storage and not installed system-wide. If you already have clang/MinGW, CMake 3.20 or later and Ninja on your `PATH`, those are used instead. See [Windows](#windows).
 
 **Only to build for and flash a real Daisy Seed** (optional):
 
-- The **Arm GNU toolchain**: `brew install arm-none-eabi-gcc`.
-- **dfu-util**: `brew install dfu-util`.
+- The **Arm GNU toolchain**: on macOS `brew install arm-none-eabi-gcc`; on Windows the Arm GNU Toolchain `arm-none-eabi` installer (from developer.arm.com), or the xPack build (`xpm install --global @xpack-dev-tools/arm-none-eabi-gcc@latest`).
+- **make**, on Windows only (macOS has it with the Xcode tools): for example MSYS2 (`pacman -S make`) or Chocolatey (`choco install make`).
+- **dfu-util**: on macOS `brew install dfu-util`; on Windows the binaries from [dfu-util.sourceforge.net](https://dfu-util.sourceforge.net/), on your `PATH`, plus a WinUSB driver for the board (see [Windows](#windows)).
 - A Daisy Seed board and a USB cable.
 - A libDaisy-style project with a `Makefile` (see [Limitations](#limitations)).
 
@@ -40,7 +42,9 @@ You do not need a Daisy Seed to write, run, listen to or debug an effect.
 code --install-extension daisy-ide.ds-ide --pre-release
 ```
 
-**From a `.vsix` file.** Open the Command Palette (`Cmd+Shift+P`), run **Extensions: Install from VSIX…** and select the `ds-ide-darwin-arm64-<version>.vsix` file.
+The Marketplace installs the package for your platform (macOS Apple Silicon or Windows x64) by itself.
+
+**From a `.vsix` file.** Open the Command Palette (`Cmd+Shift+P` on macOS, `Ctrl+Shift+P` on Windows), run **Extensions: Install from VSIX…** and select the file for your platform: `ds-ide-darwin-arm64-<version>.vsix` or `ds-ide-win32-x64-<version>.vsix`.
 
 **Trust the folder.** When you open a project, VS Code asks whether you trust the authors of the folder. Choose **Yes, I trust the authors**. Daisy IDE builds and runs your project's code, so it stays inactive, and its editors stay hidden, in an untrusted (Restricted Mode) window.
 
@@ -52,9 +56,9 @@ code --install-extension daisy-ide.ds-ide --pre-release
 
 The extension ships five small examples in its `examples/` folder, starting with `tremolo-filter`, an effect with four pots, a bypass button and a beat LED. They are also in the [repository](https://github.com/bobpuley/ds-ide/tree/main/examples), and [`examples/README.md`](examples/README.md) says which to try in what order.
 
-1. Copy the `tremolo-filter` folder somewhere you can edit it (builds write a `.ds-ide/` folder into the project). In an installed extension it is in `~/.vscode/extensions/daisy-ide.ds-ide-<version>/examples/`.
+1. Copy the `tremolo-filter` folder somewhere you can edit it (builds write a `.ds-ide/` folder into the project). In an installed extension it is in the `examples/` folder inside `~/.vscode/extensions/` on macOS or `%USERPROFILE%\.vscode\extensions\` on Windows, in the folder whose name starts with `daisy-ide.ds-ide-`.
 2. Open that folder in VS Code (**File > Open Folder**) and trust it when asked.
-3. Open `tremolo_filter.cpp` and click the **play button** at the top right of the editor, or run **Daisy IDE: Run Daisy Effect** from the Command Palette (`Cmd+Shift+P`). It builds the effect, starts the emulator and plays. The first build takes a little longer because it compiles DaisySP.
+3. Open `tremolo_filter.cpp` and click the **play button** at the top right of the editor, or run **Daisy IDE: Run Daisy Effect** from the Command Palette (`Cmd+Shift+P` on macOS, `Ctrl+Shift+P` on Windows). It builds the effect, starts the emulator and plays. The first build takes a little longer because it compiles DaisySP; on Windows, if no toolchain is found, it first offers to download one (see [Windows](#windows)).
 4. The **Scope** opens with the waveform and spectrum. Open the **Controls Editor** from the Activity Bar and turn the pots, press the Bypass button, and watch the output change.
 5. Stop with **Daisy IDE: Stop Daisy Effect**.
 
@@ -117,7 +121,7 @@ The Scope opens when an effect runs (or on demand with **Daisy IDE: Show Scope**
 
 ![Wiring Editor showing assigned pins on the Daisy Seed pinout](media/screenshot-wiring-editor.png)
 
-Open it with **Daisy IDE: Focus Wiring Editor** (`Cmd+Shift+P`), or the Wiring Editor icon in the Activity Bar.
+Open it with **Daisy IDE: Focus Wiring Editor** from the Command Palette (`Cmd+Shift+P` on macOS, `Ctrl+Shift+P` on Windows), or the Wiring Editor icon in the Activity Bar.
 
 The Wiring Editor shows the Daisy Seed's pin layout. Drag a device from the palette onto the board; the pins it can use light up as you drag, and dropping it opens a confirmation popover. The devices are:
 
@@ -127,7 +131,7 @@ The Wiring Editor shows the Daisy Seed's pin layout. Drag a device from the pale
 
 The **Peripherals** section switches on the bus devices: **SD card**, **OLED** (SPI or I2C), **MIDI over TRS** and **MIDI over USB** (the board's USB port or an external USB connection).
 
-Each device needs a unique **id** (pre-filled as `pot1`, `button1`, `led1` and so on). On confirm, the extension writes the declaration into the `ds-ide:controls` block (and the init lines into its init block) of your effect source, as an undoable edit: `Cmd+Z` restores the original. Click a placed device for its type and id, **Show panel** (OLED and MIDI), **Reveal in code**, and **Remove**. The Controls Editor updates automatically after any change.
+Each device needs a unique **id** (pre-filled as `pot1`, `button1`, `led1` and so on). On confirm, the extension writes the declaration into the `ds-ide:controls` block (and the init lines into its init block) of your effect source, as an undoable edit: `Cmd+Z` (`Ctrl+Z` on Windows) restores the original. Click a placed device for its type and id, **Show panel** (OLED and MIDI), **Reveal in code**, and **Remove**. The Controls Editor updates automatically after any change.
 
 ---
 
@@ -168,7 +172,7 @@ The editor reads the `ds-ide:controls` block in your effect source and the label
 2. Run **Daisy IDE: Debug Daisy Effect**. It builds, starts the emulator under the debugger and stops at your breakpoints.
 3. Step, inspect variables and read the call stack as you would in any VS Code debug session.
 
-Debugging uses `lldb-dap`, which comes with the Xcode Command Line Tools. **Daisy IDE: Stop Daisy Effect** ends the session.
+Debugging uses `lldb-dap`: on macOS it comes with the Xcode Command Line Tools, on Windows with the downloaded toolchain (or your own LLVM or MSYS2 CLANG64). **Daisy IDE: Stop Daisy Effect** ends the session.
 
 ---
 
@@ -180,6 +184,34 @@ When the effect is ready, build the same project for a real Daisy Seed:
 2. Put the board in DFU mode and run **Daisy IDE: Flash to Daisy Seed** (or **Daisy IDE: Build & Flash to Daisy Seed** for both steps).
 
 The hardware build needs a libDaisy-style project with a `Makefile` (see [Limitations](#limitations)). The `ds-ide.hardwareVariant` setting says whether your board has the extra 65 MB of SDRAM, so SDRAM use that would fail on the base board is caught.
+
+---
+
+## Windows
+
+Windows 10 and 11 (x64) are supported, and everything above works the same way. This section covers what is different.
+
+- **Build and run.** The emulator is built with clang (MinGW), and your effect runs as a native Windows program.
+- **Audio.** Sound goes through WASAPI in shared mode. On the PC it was measured on there were no xruns and the latency was about 12 to 16 ms; yours may differ. ASIO is not supported.
+- **Debugging.** **Daisy IDE: Debug Daisy Effect** attaches `lldb-dap` to the emulator; breakpoints and variables in your effect code work, and the audio switches to a simulated clock while the program is stopped.
+- **MIDI.** The host MIDI bridge uses WinMM.
+
+### The toolchain
+
+When **Run Daisy Effect**, **Build for Emulator** or **Debug Daisy Effect** finds no usable compiler, CMake or `lldb-dap`, Daisy IDE asks before it downloads anything, and shows the size (about 248 MB to download, up to 902 MB of disk space while installing).
+
+- **What is downloaded.** clang/MinGW (llvm-mingw, which includes `lldb-dap`), CMake and Ninja, from their official GitHub release pages, with a copy on this project's GitHub releases as a fallback. Each archive is checked against a SHA-256 hash pinned in the extension before it is unpacked.
+- **Where it goes.** The extension's own storage folder. Nothing is installed system-wide, and older versions are removed when a new one is installed.
+- **A toolchain of your own always wins.** One on your `PATH`, or in a standard place such as MSYS2 CLANG64 or LLVM, is used before the downloaded one.
+- **If you said no, or want to install it later**, run **Daisy IDE: Install Windows Toolchain**.
+- **No internet access, or a proxy that blocks the download.** The download does not use VS Code's proxy settings. Download the three archives listed in [`docs/toolchain-mirror.md`](docs/toolchain-mirror.md) on another machine, put them in one folder, and run **Daisy IDE: Install Windows Toolchain from Local Archives**.
+- **If unpacking fails**, security software may have blocked some files. Try again.
+
+### Hardware on Windows
+
+- `arm-none-eabi-gcc`, `make` and `dfu-util` are found on your `PATH` and in the usual install folders (the Arm GNU Toolchain's default folder, xPack, MSYS2). If yours are elsewhere, set `ds-ide.armToolchainPath` for the Arm toolchain.
+- **Flashing needs a WinUSB driver.** With the board in DFU mode (hold BOOT, press RESET), install the driver once with [Zadig](https://zadig.akeo.ie/): choose "STM32 BOOTLOADER", select WinUSB and click Install Driver. If the board is there but `dfu-util` cannot open it, Daisy IDE says so and points to this step.
+- **Not verified on hardware yet:** Build & Flash with `dfu-util` on Windows, and the host MIDI bridge with a physical controller. If you try them, please [tell us how it went](#feedback).
 
 ---
 
@@ -210,14 +242,15 @@ These settings go in `.vscode/settings.json` (or the Settings UI):
 
 This is a preview, so some rough edges are known:
 
-- **The VS Code window can occasionally close right after you open a folder.** It was seen a few seconds after VS Code reloaded for a newly opened folder, with `Extension host … crashed with code 6` in VS Code's log. It was seen while running the extension from source in a development host, and it was not reproduced in an installed copy over a few folder switches, but it is not fixed. If it happens, reopen the folder and carry on. To help track it down, send us the lines containing `crashed with code` from `~/Library/Application Support/Code/logs/<date>/…/main.log` (see [Feedback](#feedback)).
+- **The VS Code window can occasionally close right after you open a folder.** It was seen a few seconds after VS Code reloaded for a newly opened folder, with `Extension host … crashed with code 6` in VS Code's log. It was seen while running the extension from source in a development host, and it was not reproduced in an installed copy over a few folder switches, but it is not fixed. If it happens, reopen the folder and carry on. To help track it down, send us the lines containing `crashed with code` from VS Code's `main.log`: `~/Library/Application Support/Code/logs/<date>/…/main.log` on macOS, `%APPDATA%\Code\logs\<date>\…\main.log` on Windows (see [Feedback](#feedback)).
 - **Deploy to Emulator needs a build from the same session.** Right after you open a window, **Daisy IDE: Deploy to Emulator** says "Build before deploying", even if an earlier build exists. Use **Daisy IDE: Run Daisy Effect**, which always builds first.
 
 ---
 
 ## Limitations
 
-- **macOS on Apple Silicon only.** The emulator is built for macOS and the extension is published as an arm64 package. Intel Macs, Linux and Windows are not supported yet.
+- **macOS on Apple Silicon and Windows x64 only.** The extension is published as one package for each. Intel Macs and Linux are not supported yet.
+- **On Windows, three things are not verified yet:** Build & Flash with `dfu-util` and a WinUSB driver, the host MIDI bridge with a physical controller, and ASIO audio (not supported). See [Windows](#windows).
 - **Not cycle-accurate.** The emulator runs your code natively against a libDaisy compatibility layer; it is not an STM32 simulation. CPU and RAM budgets cannot be validated against real hardware, and audio is close to, but not bit-exact with, what the board produces. A libDaisy API the compatibility layer does not provide will fail to build in the emulator.
 - **Hardware build and flash need a libDaisy-style project.** **Build for Hardware** runs your project's `Makefile`. **Create New Effect Project** and the examples set up the emulator build only (a `CMakeLists.txt`), so on those projects Build for Hardware stops with "No targets specified and no makefile found". Add a `Makefile` as in the libDaisy examples, then build and flash.
 - **The OLED draws pixels only.** The emulator's display supports `Fill`, `DrawPixel` and `Update`. There is no `WriteString`, no fonts and no line or rectangle helpers, so code that uses them does not build in the emulator yet.
@@ -229,7 +262,7 @@ This is a preview, so some rough edges are known:
 
 This is a preview, and your reports shape what comes next. To report a problem or suggest something, [open an issue](https://github.com/bobpuley/ds-ide/issues). It helps to include:
 
-- the extension version and your VS Code and macOS versions;
+- the extension version, your VS Code version and your operating system (macOS or Windows, and its version);
 - what you did, what you expected and what happened (a screenshot of the Scope or editor helps);
 - the example or project you used, and the output of **Daisy IDE: Show Emulator Output** if a build or run failed;
 - for a window that closed on its own, the `crashed with code` lines from VS Code's `main.log` (see [Known issues](#known-issues)).

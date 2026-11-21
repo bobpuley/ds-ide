@@ -15,10 +15,10 @@ body:
     validations:
       required: true
   - type: input
-    id: macos-version
+    id: os-version
     attributes:
-      label: macOS version
-      description: For example 15.1, Apple Silicon.
+      label: Operating system and version
+      description: For example macOS 15.1 (Apple Silicon) or Windows 11 23H2.
     validations:
       required: true
   - type: input
@@ -61,5 +61,5 @@ body:
     id: crash-log
     attributes:
       label: If the VS Code window closed on its own
-      description: The lines containing `crashed with code` from `~/Library/Application Support/Code/logs/<date>/…/main.log` (see Known issues in the README).
+      description: The lines containing `crashed with code` from VS Code's main.log (`~/Library/Application Support/Code/logs/<date>/…/main.log` on macOS, `%APPDATA%/Code/logs/<date>/…/main.log` on Windows; see Known issues in the README).
       render: text

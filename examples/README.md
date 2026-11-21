@@ -14,5 +14,5 @@ They are independent, so you can start anywhere. If you are new, this order buil
 
 - Open the example folder itself, not the `examples` folder, and **trust it** when VS Code asks.
 - The first build compiles the emulator and (for the DaisySP examples) DaisySP, so it takes a little longer than later ones.
-- You need CMake (`brew install cmake`) and the Xcode Command Line Tools. The extension's README lists the full requirements.
+- On macOS you need CMake (`brew install cmake`) and the Xcode Command Line Tools. On Windows nothing needs installing by hand: the extension offers to download a toolchain the first time you build. The extension's README lists the full requirements.
 - Examples that use the SD card write to a `sdcard/` folder inside the example, so copy an example out of the extension's folder before running it if you want to keep your changes.

@@ -47,10 +47,70 @@ nested git submodule. ds-ide never initializes or vendors this submodule.
 **Source:** https://llvm.org/
 
 `lldb-dap` (formerly `lldb-vscode`) is the DAP server component of the LLVM debugger.  
-ds-ide **does not bundle** `lldb-dap` — it is located at runtime via `xcrun` or known Xcode / CLT paths on the user's machine.  
-Users must have Xcode Command Line Tools installed (`xcode-select --install`) to use the debug feature.
+ds-ide **does not bundle** `lldb-dap`. It is located at runtime on the user's machine:
+
+- **macOS:** via `xcrun` or the known Xcode / Command Line Tools paths. Users must have the Xcode Command Line
+  Tools installed (`xcode-select --install`) to use the debug feature.
+- **Windows:** in the user's own LLVM or MSYS2 CLANG64 install, or in the managed toolchain the extension can
+  download on first use (see "Managed Windows toolchain" below), which includes it.
 
 Full license text: https://llvm.org/LICENSE.txt
+
+---
+
+## RtAudio
+
+**License:** MIT-style (see the text below)  
+**Copyright:** 2001-2023 Gary P. Scavone  
+**Source:** https://github.com/thestk/rtaudio
+
+The emulator's real-time audio backend on Windows uses RtAudio 6.0.1 (WASAPI). Its source is vendored,
+unmodified, in `vendor/RtAudio/` and ships in the packaged extension together with its `LICENSE` file; it is
+compiled on the user's machine together with the effect. The ASIO SDK is **not** included: ASIO support is
+off unless a user builds with their own copy.
+
+RtAudio: a set of realtime audio i/o C++ classes  
+Copyright (c) 2001-2023 Gary P. Scavone
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the Software without restriction, including without
+limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the
+Software, and to permit persons to whom the Software is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions
+of the Software.
+
+Any person wishing to distribute modifications to the Software is asked to send the modifications to the
+original developer so that they can be incorporated into the canonical version. This is, however, not a
+binding provision of this license.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+---
+
+## Managed Windows toolchain (downloaded, not bundled)
+
+On Windows the extension can download, after the user agrees, a pinned set of programs into its own storage
+folder. None of them is part of the extension package; each keeps its own licence files inside its archive, and
+the archives are used unmodified and checked against a SHA-256 hash pinned in
+`resources/windows-toolchain.json` before they are unpacked.
+
+| Component | Pinned version | Licence | Source |
+|---|---|---|---|
+| llvm-mingw (clang, lld, lldb, `lldb-dap`, MinGW-w64 runtime) | 20261117 (LLVM 23.1.6) | LLVM: Apache License v2.0 with LLVM Exceptions; MinGW-w64 and the other parts under their own licences, as shipped in the archive | https://github.com/mstorsjo/llvm-mingw |
+| CMake | 4.5.0 | BSD 3-Clause | https://github.com/Kitware/CMake |
+| Ninja | 1.13.2 | Apache License v2.0 | https://github.com/ninja-build/ninja |
+
+As a fallback source, unmodified copies of the same three archives are kept as assets of a ds-ide GitHub release
+(`toolchain-1`); see `docs/toolchain-mirror.md`.
+
+> ⚠️ ASSUMPTION: the licences above are those the projects publish for these releases; the redistribution
+> terms for the mirrored copies have not been reviewed beyond that.
 
 ---
 
