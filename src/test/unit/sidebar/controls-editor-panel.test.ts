@@ -62,8 +62,8 @@ describe('ControlsViewProvider', () => {
     onOledPopOut = vi.fn();
     provider = new ControlsViewProvider(
       { fsPath: '/ext' } as unknown as vscode.Uri,
-      onEditorSave, onPotChange, onButtonChange, onToggleChange, onEncoderChange,
-      onSdRefresh, onSdPreview, onOledPopOut,
+      onEditorSave as never, onPotChange as never, onButtonChange as never, onToggleChange as never, onEncoderChange as never,
+      onSdRefresh as never, onSdPreview as never, onOledPopOut as never,
     );
   });
 

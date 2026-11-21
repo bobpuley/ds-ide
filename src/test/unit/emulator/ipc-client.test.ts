@@ -28,7 +28,7 @@ describe('IpcClient', () => {
 
   beforeEach(() => {
     socketStub = makeSocketStub();
-    vi.mocked(net.Socket).mockImplementation(() => socketStub as unknown as net.Socket);
+    vi.mocked(net.Socket).mockImplementation(function () { return socketStub as unknown as net.Socket; });
   });
 
   it('connect resolves when socket emits connect', async () => {
@@ -46,7 +46,7 @@ describe('IpcClient', () => {
     expect(socketStub.connect).toHaveBeenLastCalledWith({ path: '/tmp/test.sock' });
 
     socketStub = makeSocketStub();
-    vi.mocked(net.Socket).mockImplementation(() => socketStub as unknown as net.Socket);
+    vi.mocked(net.Socket).mockImplementation(function () { return socketStub as unknown as net.Socket; });
     const p2 = new IpcClient().connect({ kind: 'unix', path: '/tmp/other.sock' });
     socketStub.emit('connect');
     await p2;

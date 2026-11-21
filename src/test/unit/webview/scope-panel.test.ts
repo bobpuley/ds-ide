@@ -37,7 +37,7 @@ describe('ScopePanel', () => {
     pickWavSpy = vi.fn();
     panel = new ScopePanel(
       { fsPath: '/ext' } as unknown as vscode.Uri,
-      manager, sineChangeSpy, audioSourceChangeSpy, pickWavSpy,
+      manager, sineChangeSpy as never, audioSourceChangeSpy as never, pickWavSpy as never,
     );
     webviewMock = vscode.window.createWebviewPanel as ReturnType<typeof vi.fn>;
   });
@@ -1071,7 +1071,7 @@ describe('ScopePanel input generators (FR-GEN-1, FR-GEN-4, FR-GEN-5)', () => {
     generatorSpy = vi.fn();
     panel = new ScopePanel(
       { fsPath: '/ext' } as unknown as vscode.Uri, manager,
-      undefined, sourceSpy, undefined, undefined, undefined, undefined, undefined, undefined, generatorSpy,
+      undefined, sourceSpy as never, undefined, undefined, undefined, undefined, undefined, undefined, generatorSpy as never,
     );
   });
 

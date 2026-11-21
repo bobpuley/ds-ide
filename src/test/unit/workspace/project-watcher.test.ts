@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import * as vscode from 'vscode';
 import { createProjectFileWatcher, isProjectFile } from '../../../workspace/project-watcher';
 
@@ -37,12 +37,12 @@ describe('createProjectFileWatcher (FR-AIG-6)', () => {
   let onChange: Handler, onCreate: Handler, onDelete: Handler;
   const watcherDispose = vi.fn();
   let folder: string | undefined;
-  let refresh: ReturnType<typeof vi.fn<[], Promise<void>>>;
+  let refresh: Mock<() => Promise<void>>;
 
   beforeEach(() => {
     vi.useFakeTimers();
     folder = '/proj';
-    refresh = vi.fn<[], Promise<void>>(async () => undefined);
+    refresh = vi.fn<() => Promise<void>>(async () => undefined);
     watcherDispose.mockClear();
     createWatcher.mockReset();
     createWatcher.mockImplementation(() => ({
