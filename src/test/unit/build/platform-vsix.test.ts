@@ -65,7 +65,7 @@ describe('per-platform VSIX packaging (FR-WIN-PKG-1)', () => {
 });
 
 describe('workflow triggers after the merge to main', () => {
-  for (const f of ['package.yml', 'windows-ci.yml']) {
+  for (const f of ['package.yml', 'test.yml']) {
     it(`${f} runs on main, not on the retired feat/windows-support branch`, () => {
       const wf = fs.readFileSync(path.join(root, '.github/workflows', f), 'utf8');
       expect(wf).toMatch(/branches: \[main\]/);

@@ -2,11 +2,38 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 
-// FR-WIN-BLD-1: a CI workflow runs the TypeScript unit tests on a Windows
-// runner. Checked as text so the test needs no YAML dependency.
-const WORKFLOW = path.join(__dirname, '../../../../.github/workflows/windows-ci.yml');
+// The Test workflow (.github/workflows/test.yml) gates main on both platforms:
+// unit tests on macOS and Windows (FR-WIN-BLD-1), the native emulator on both
+// (FR-WIN-BLD-2..4 on Windows). Checked as text so the test needs no YAML dependency.
+const WORKFLOWS = path.join(__dirname, '../../../../.github/workflows');
+const WORKFLOW = path.join(WORKFLOWS, 'test.yml');
 
-describe('Windows CI workflow (FR-WIN-BLD-1)', () => {
+describe('Test workflow', () => {
+  const yml = fs.existsSync(WORKFLOW) ? fs.readFileSync(WORKFLOW, 'utf8') : '';
+
+  it('replaces the old per-OS ci.yml and windows-ci.yml', () => {
+    expect(fs.existsSync(path.join(WORKFLOWS, 'ci.yml'))).toBe(false);
+    expect(fs.existsSync(path.join(WORKFLOWS, 'windows-ci.yml'))).toBe(false);
+  });
+
+  it('is named Test', () => {
+    expect(yml).toMatch(/^name: Test$/m);
+  });
+
+  it('runs lint and the unit suite on a macOS runner', () => {
+    expect(yml).toMatch(/runs-on:\s*macos-latest/);
+    expect(yml).toMatch(/run:\s*npm run lint\b/);
+  });
+
+  it('builds and tests the native emulator on macOS, with the vendored DaisySP', () => {
+    expect(yml).toMatch(/name: emulator \(macos\)/);
+    expect(yml).toContain('vendor/DaisySP/Source');
+    expect(yml).toMatch(/for s in tests\/\*\/run_\*\.sh/);
+    expect(yml).toMatch(/run: bash tests\/runtime\/build_and_test\.sh/);
+  });
+});
+
+describe('Windows unit tests (FR-WIN-BLD-1)', () => {
   const yml = fs.existsSync(WORKFLOW) ? fs.readFileSync(WORKFLOW, 'utf8') : '';
 
   it('exists', () => {

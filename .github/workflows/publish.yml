@@ -15,7 +15,7 @@
 # platform's published version is left untouched). Every platform is built,
 # tested and verified before anything is published. Every release is a
 # Marketplace pre-release while the extension is in preview.
-name: publish
+name: Publish to Marketplace
 
 on:
   workflow_dispatch:

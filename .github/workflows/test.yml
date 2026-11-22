@@ -1,6 +1,8 @@
-# FR-WIN-BLD-1: run the TypeScript unit tests on Windows. Unit tests stub fs
-# and child_process, so a green macOS run says nothing about Windows paths.
-name: windows-ci
+# Test: every check that gates main, on both platforms.
+#   unit-macos / unit-windows         — TypeScript unit suite (lint once, on macOS)
+#   emulator-macos / emulator-windows — native C++ emulator build and tests
+# Packaging lives in package.yml; Marketplace releases in publish.yml.
+name: Test
 
 on:
   push:
@@ -10,7 +12,25 @@ on:
   workflow_dispatch:
 
 jobs:
-  unit-tests:
+  # Lint and unit tests on macOS (primary target). Full `npm ci`, so the
+  # postinstall rebuild of the midi native addon is exercised too.
+  unit-macos:
+    name: unit (macos)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+
+  # FR-WIN-BLD-1: the unit tests stub fs and child_process, so a green macOS
+  # run says nothing about Windows paths.
+  unit-windows:
+    name: unit (windows)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -22,9 +42,36 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm test
 
+  # Native emulator on macOS: every shim/engine test runner, then the runtime
+  # suite that builds effect_emu and drives it over IPC. DaisySP comes from the
+  # vendored submodule so the Osc/inout tests run instead of skipping.
+  emulator-macos:
+    name: emulator (macos)
+    runs-on: macos-latest
+    env:
+      DAISYSP_DIR: ${{ github.workspace }}/vendor/DaisySP/Source
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - name: Shim and engine test runners
+        run: |
+          fail=0
+          for s in tests/*/run_*.sh; do
+            # A measurement report, not a pass/fail test.
+            [ "$s" = tests/audio-measurement/run_measurements.sh ] && continue
+            echo "::group::$s"
+            bash "$s" || { echo "::error::$s failed"; fail=1; }
+            echo "::endgroup::"
+          done
+          exit "$fail"
+      - name: Runtime integration tests (effect_emu over IPC)
+        run: bash tests/runtime/build_and_test.sh
+
   # FR-WIN-BLD-2..4: emulator sources compile under clang/MinGW.
   # FR-WIN-IPC-1: effect_emu.exe links and serves IPC over TCP loopback.
-  emulator-compile:
+  emulator-windows:
+    name: emulator (windows)
     runs-on: windows-latest
     env:
       CMAKE_GENERATOR: Ninja

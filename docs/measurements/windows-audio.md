@@ -37,7 +37,7 @@ Each run plays a quiet 440 Hz sine (the probe renders silence), discards the fir
 
 ## How to run
 
-**Windows** (MSYS2, CLANG64 shell; same toolchain as `windows-ci`):
+**Windows** (MSYS2, CLANG64 shell; same toolchain as the Test workflow's `emulator (windows)` job):
 
 ```sh
 pacman -S --needed mingw-w64-clang-x86_64-clang

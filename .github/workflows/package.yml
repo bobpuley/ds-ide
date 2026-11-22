@@ -2,7 +2,7 @@
 # smoke-tests that each one carries its own platform's midi.node, the emulator
 # sources and an addon matching the shared Electron ABI target
 # (scripts/electron-target-version.txt). Never publishes — publish.yml does.
-name: package
+name: Package VSIX
 
 on:
   push:

@@ -69,7 +69,7 @@ def check(cond, msg):
 
 def check_platform_split():
     """FR-WIN-BLD-4: text checks on the CMake platform branches. The Windows
-    side is exercised for real by the windows-ci emulator-compile job."""
+    side is exercised for real by the Test workflow's emulator (windows) job."""
     with open(CMAKELISTS) as f:
         cm = f.read()
     common = re.search(r"set\(RUNTIME_SRC\b(.*?)\)", cm, re.S)
