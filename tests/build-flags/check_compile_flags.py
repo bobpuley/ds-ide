@@ -35,7 +35,7 @@ import tempfile
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 EMU_DIR = os.path.join(REPO_ROOT, "emulator")
 EFFECT_SRC = os.path.join(
-    REPO_ROOT, "daisy-seed-knowledge/examples/bypass/bypass.cpp")
+    REPO_ROOT, "tests/fixtures/daisy-examples/bypass/bypass.cpp")
 
 CMAKELISTS = os.path.join(EMU_DIR, "CMakeLists.txt")
 

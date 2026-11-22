@@ -66,6 +66,8 @@ jobs:
           done
           exit "$fail"
       - name: Runtime integration tests (effect_emu over IPC)
+        # Run even if a runner above failed, so one CI run reports every failure.
+        if: ${{ !cancelled() }}
         run: bash tests/runtime/build_and_test.sh
 
   # FR-WIN-BLD-2..4: emulator sources compile under clang/MinGW.

@@ -12,7 +12,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SHIM_INCLUDE="${REPO_ROOT}/emulator/shim/include"
 STUBS_DIR="${REPO_ROOT}/tests/shim-compile/stubs"
-EXAMPLES_DIR="${REPO_ROOT}/daisy-seed-knowledge/examples"
+EXAMPLES_DIR="${REPO_ROOT}/tests/fixtures/daisy-examples"
 BUILD_DIR="$(mktemp -d)"
 
 trap 'rm -rf "${BUILD_DIR}"' EXIT

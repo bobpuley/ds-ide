@@ -1607,6 +1607,19 @@ describe('EmulatorManager', () => {
   });
 
   describe('deploy() failure does not leak an unhandled rejection (FR-EXT-1)', () => {
+    // A failed deploy fire-and-forgets escalateKill(child.pid). The fake child's
+    // pid (999) is not ours: without this stub the real process.kill would signal
+    // whatever process owns pid 999 on the machine, and its 200 ms liveness poll
+    // would outlive the test and land on a later test's process.kill spy.
+    beforeEach(() => {
+      vi.spyOn(process, 'kill').mockImplementation(() => {
+        throw Object.assign(new Error('ESRCH'), { code: 'ESRCH' });
+      });
+    });
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
     it('a deploy that fails to spawn does not produce an unhandledRejection', async () => {
       await manager.build(
         { projectRoot: '/p', effectSrc: '/p/e.cpp', emulatorSrc: '/ext/emulator' },

@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "helpers"))
 from build import cmake_build, REPO_ROOT
 from runner import run_emulator
 
-EXAMPLES = os.path.join(REPO_ROOT, "daisy-seed-knowledge/examples")
+EXAMPLES = os.path.join(REPO_ROOT, "tests/fixtures/daisy-examples")
 BUILD_DIR = os.path.join(REPO_ROOT, ".ds-ide/build/test-bypass")
 SOCKET    = "/tmp/daisy_emu_bypass_test.sock"
 
