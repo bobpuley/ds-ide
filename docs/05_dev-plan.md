@@ -1,8 +1,6 @@
-> **v25 complete** — archived to `docs/v25/` on 2026-11-23. This file now seeds v26 planning.
+> **v27 complete** — archived to `docs/v27/` on 2026-11-23. This file now seeds v28 planning.
 
-> **v26 complete** — archived to `docs/v26/` on 2026-11-14. This file now seeds v27 planning.
-
-# 05 — Development Plan (v27)
+# 05 — Development Plan (v28)
 
 > **v1 complete** — M0–M7 released (0.1.0–0.1.7), all ACs green.
 > Archived: [`docs/v1/`](v1/).
@@ -76,10 +74,16 @@
 > **v24 complete** — M73–M76 released (0.24.0–0.24.3), all ACs green.
 > Archived: [`docs/v24/`](v24/).
 >
+> **v25 complete** — M77–M84 released (0.25.0-win.1–0.25.0-win.8), all ACs green.
+> Archived: [`docs/v25/`](v25/).
+>
 > **v26 complete** — M85–M91 released (0.24.4–0.25.0), all ACs green.
 > Archived: [`docs/v26/`](v26/).
+>
+> **v27 complete** — M92 released (0.25.1), all ACs green.
+> Archived: [`docs/v27/`](v27/).
 
-*v27: M92 AI Agent Guide released (0.25.1).*
+*v28 milestones not yet planned.*
 
 ---
 
@@ -225,10 +229,11 @@ Full registry in [`docs/v25/05_dev-plan.md`](v25/05_dev-plan.md).
 M85 First-Run Experience Fixes · M86 Example Curation · M87 README Polish · M88 Licensing · M89 First-Run Polish II · M90 Marketplace Readiness · M91 First Public Preview Release.
 Full registry in [`docs/v26/05_dev-plan.md`](v26/05_dev-plan.md).
 
-### v27 (0.25.1) — released
+### v27 (0.25.1) — archived in `docs/v27/`
 
-| ID  | Name           | Status      | Version | File                                                |
-|-----|----------------|-------------|---------|-----------------------------------------------------|
-| M92 | AI Agent Guide | **released** | 0.25.1  | [Milestone_M92.md](milestones/v27/Milestone_M92.md) |
+M92 AI Agent Guide.
+Full registry in [`docs/v27/05_dev-plan.md`](v27/05_dev-plan.md).
 
-M92 source: intake session, 2026-11-15 (an AI-oriented conventions file for developers who work with coding agents).
+### v28 — planned
+
+*(no milestones yet)*
