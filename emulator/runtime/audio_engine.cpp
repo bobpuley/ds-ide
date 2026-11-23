@@ -1,4 +1,5 @@
 #include "audio_engine.h"
+#include "block_adapter.h"
 #include "audio_device.h"
 #include "emulator_state.h"
 #include "session_player.h"
@@ -609,26 +610,37 @@ static void run_simulated(float sample_rate,
     AudioDevice& device = *device_owner;
 
     // Work buffers are sized before the stream starts (below) from the backend's
-    // maximum callback size; the callback never resizes them (FR-WIN-AUD-2). A
-    // larger callback is clamped and its tail zero-filled.
+    // maximum callback size; the callback never resizes them (FR-WIN-AUD-2).
+    //
+    // FR-EMU-12: the device delivers at least 256 frames per callback (see
+    // hw_buf), but on hardware the effect always gets exactly block_size
+    // frames. The adapter runs process_one_block(block_size) as many times as
+    // the device's frames require and hands back buffered output, adding at
+    // most one block of latency.
+    BlockAdapter adapter;
+    bool adapter_exit = false;  // process_one_block asked to leave this mode
     auto ca_process = [&](const float* /*ca_in*/, float* ca_out, size_t frames) {
-        const size_t n = std::min(frames, in_buf.size() / 2);
-        if (!process_one_block(n)) {
+        if (adapter_exit || !g_state.transport_running.load()) {
+            // Stopped transport (or leaving the mode): silence, and drop any
+            // buffered audio so it is not played when the transport resumes.
+            if (!adapter_exit && !process_one_block(block_size)) adapter_exit = true;  // keeps the mode/config exit checks live
             std::fill(ca_out, ca_out + frames * 2, 0.f);
+            adapter.reset();
             return;
         }
-        if (g_state.transport_running.load()) {
-            std::memcpy(ca_out, out_buf.data(), n * 2 * sizeof(float));
-            std::fill(ca_out + n * 2, ca_out + frames * 2, 0.f);
-        } else {
-            std::fill(ca_out, ca_out + frames * 2, 0.f);
-        }
+        adapter.run(nullptr, ca_out, frames, [&](const float* /*blk_in*/, float* blk_out) {
+            if (adapter_exit) return;  // output stays zeroed
+            if (!process_one_block(block_size)) { adapter_exit = true; return; }
+            if (g_state.transport_running.load())
+                std::memcpy(blk_out, out_buf.data(), block_size * 2 * sizeof(float));
+        });
+        if (adapter_exit) std::fill(ca_out, ca_out + frames * 2, 0.f);
     };
 
     // Never request fewer than 256 frames from CoreAudio in simulated mode.
     // Very small block sizes (e.g. 4) cause ~12 000 callbacks/s, overwhelming
-    // the kernel scheduler and producing xrun distortion. Effects receive the
-    // full hardware frame count per call, which is correct for emulation.
+    // the kernel scheduler and producing xrun distortion. The adapter above
+    // re-blocks each device callback into block_size effect calls (FR-EMU-12).
     const size_t hw_buf = std::max(block_size, size_t(256));
     // Size every work buffer for the largest callback the backend can deliver
     // before the stream starts (non-RT); the silent fallback loop below needs
@@ -643,6 +655,7 @@ static void run_simulated(float sample_rate,
             out_ch0.resize(cap, 0.f);
             out_ch1.resize(cap, 0.f);
         }
+        adapter.configure(block_size, cap);
     }
     bool audio_started = device.start_output_only(
         static_cast<uint32_t>(sample_rate),
@@ -727,10 +740,15 @@ static void run_realtime(float sample_rate,
     // Sized up front for the largest callback the backend can deliver so the
     // callback never allocates (FR-WIN-AUD-2).
     const size_t capacity = device.maxCallbackFrames(buffer_size);
-    std::vector<float> in_buf(capacity * 2);
-    std::vector<float> out_buf(capacity * 2);
-    std::vector<float> local_in_ch0(capacity), local_in_ch1(capacity);
-    std::vector<float> local_out_ch0(capacity), local_out_ch1(capacity);
+    // FR-EMU-12: the effect is called with exactly block_size frames; the
+    // adapter re-blocks the device's callbacks (at most one block of latency).
+    const size_t block_size = std::max<size_t>(g_state.block_size.load(), 1);
+    BlockAdapter adapter;
+    adapter.configure(block_size, capacity);
+    std::vector<float> in_buf(block_size * 2);
+    std::vector<float> out_buf(block_size * 2);
+    std::vector<float> local_in_ch0(block_size), local_in_ch1(block_size);
+    std::vector<float> local_out_ch0(block_size), local_out_ch1(block_size);
 
     // Xrun reporting: track last reported count.
     uint32_t last_reported_xruns = 0;
@@ -738,23 +756,13 @@ static void run_realtime(float sample_rate,
 
     GeneratorFeed generator_feed;
 
-    auto processBlock = [&](const float* ca_in, float* ca_out, size_t frames_in) {
-        // A callback larger than the pre-sized buffers is clamped; the tail is
-        // zero-filled instead of growing the buffers on the RT thread.
-        const size_t frames = std::min(frames_in, capacity);
-        if (frames_in > frames)
-            std::fill(ca_out + frames * 2, ca_out + frames_in * 2, 0.f);
-        // Copy CoreAudio input to interleaved in_buf
-        std::memcpy(in_buf.data(), ca_in, frames * 2 * sizeof(float));
+    // One effect block of exactly block_size frames (FR-EMU-12).
+    auto process_rt_block = [&](const float* blk_in, float* blk_out) {
+        const size_t frames = block_size;
+        std::memcpy(in_buf.data(), blk_in, frames * 2 * sizeof(float));
         // FR-GEN-3: a selected generator replaces the host input in real-time mode too.
         generator_feed.render(sample_rate, frames, in_buf.data());
         std::fill(out_buf.begin(), out_buf.begin() + static_cast<ptrdiff_t>(frames * 2), 0.f);
-
-        if (!g_state.transport_running.load()) {
-            // Transport stopped — output silence
-            std::fill(ca_out, ca_out + frames * 2, 0.f);
-            return;
-        }
 
         // FR-QA-EMU-3: re-read both callback pointers each block (see
         // run_simulated()'s processBlock lambda for rationale).
@@ -785,13 +793,26 @@ static void run_realtime(float sample_rate,
         if (vol != 1.f) {
             for (size_t i = 0; i < frames * 2; ++i) out_buf[i] *= vol;
         }
-        std::memcpy(ca_out, out_buf.data(), frames * 2 * sizeof(float));
+        std::memcpy(blk_out, out_buf.data(), frames * 2 * sizeof(float));
 
         // FR-EMU-10: hand the raw block to the non-RT drain thread instead of
         // accumulating/JSON-building/FFT-ing inline — see ScopeBlockQueue.
         scope_queue.push(in_buf.data(), out_buf.data(), frames, sample_rate, cfg_gen_seen);
+    };
 
-        // Latency reporting (~once per SCOPE_BLOCKS)
+    auto processBlock = [&](const float* ca_in, float* ca_out, size_t frames_in) {
+        if (!g_state.transport_running.load()) {
+            // Transport stopped — output silence, and drop buffered audio so
+            // it is not played when the transport resumes.
+            std::fill(ca_out, ca_out + frames_in * 2, 0.f);
+            adapter.reset();
+            return;
+        }
+        // A callback larger than the pre-sized FIFOs is clamped and its tail
+        // zero-filled instead of growing buffers on the RT thread.
+        adapter.run(ca_in, ca_out, frames_in, process_rt_block);
+
+        // Latency reporting (~once per SCOPE_BLOCKS device callbacks)
         ++xrun_report_blocks;
         if (xrun_report_blocks >= ScopeState::SCOPE_BLOCKS) {
             xrun_report_blocks = 0;

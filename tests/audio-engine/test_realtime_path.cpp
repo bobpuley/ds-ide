@@ -50,6 +50,21 @@ static void gain2_cb(const float* in, float* out, size_t size) {
     for (size_t i = 0; i < size; ++i) out[i] = in[i] * 2.f;
 }
 
+// FR-EMU-12: records every callback's frame count and writes a running
+// sample counter (starting at 1, so the primed silence is distinguishable)
+// to both channels, so the test can detect gaps or repeated frames.
+static std::atomic<size_t> g_cnt_min{~size_t(0)};
+static std::atomic<size_t> g_cnt_max{0};
+static std::atomic<int>    g_cnt_calls{0};
+static float               g_cnt_next = 1.f;   // touched only by the callback
+static void counter_cb(const float* /*in*/, float* out, size_t size) {
+    const size_t frames = size / 2;
+    ++g_cnt_calls;
+    if (frames < g_cnt_min) g_cnt_min = frames;
+    if (frames > g_cnt_max) g_cnt_max = frames;
+    for (size_t i = 0; i < frames; ++i) { out[2 * i] = g_cnt_next; out[2 * i + 1] = g_cnt_next; g_cnt_next += 1.f; }
+}
+
 // ---- Harness -----------------------------------------------------------------
 
 template <typename Pred>
@@ -65,7 +80,8 @@ static bool wait_for(Pred pred, int timeout_ms = 3000) {
 class Harness {
 public:
     explicit Harness(int audio_mode, size_t rt_buffer = 128, float rate = 48000.f,
-                     uint32_t max_callback_frames = 0) {
+                     uint32_t max_callback_frames = 0, size_t block = 48,
+                     void (*effect)(const float*, float*, size_t) = gain2_cb) {
         g_fake.reset();
         g_fake.max_callback_frames = max_callback_frames;
         g_cb_calls = 0;
@@ -74,12 +90,12 @@ public:
         g_state.transport_running = true;
         g_state.audio_mode = audio_mode;
         g_state.sample_rate = rate;
-        g_state.block_size = 48;
+        g_state.block_size = block;
         g_state.rt_buffer_size = rt_buffer;
         g_state.output_volume = 1.f;
         g_state.gen_kind = -1;
         g_state.block_cb = nullptr;
-        g_state.interleaving_cb = gain2_cb;
+        g_state.interleaving_cb = effect;
         {
             std::lock_guard<std::mutex> lk(g_state.send_mutex);
             g_state.send_ipc = [this](std::string m) {
@@ -165,31 +181,39 @@ static void test_audio_device_reconfig() {
 
 static void test_processing_and_transport() {
     std::printf("\n-- callback processing, volume, transport --\n");
-    Harness h(1, 128);
+    // Block 64 with 128-frame driver callbacks: two effect blocks per callback.
+    Harness h(1, 128, 48000.f, 0, 64);
     wait_for([] { return g_fake.running(); });
     std::vector<float> out(128 * 2, -1.f);
 
     g_fake.fire(128, 0.25f, out.data());
+    CHECK(g_cb_calls == 2, "the effect runs once per full block, not once per driver callback (FR-EMU-12)");
+    CHECK(out[0] == 0.f && out[127] == 0.f && out[128] == 0.5f && out[255] == 0.5f,
+          "output is delayed by one primed block of silence, then the effect output follows (gain x2)");
+
+    g_fake.fire(128, 0.25f, out.data());
     CHECK(out[0] == 0.5f && out[255] == 0.5f, "effect output reaches the driver buffer (gain x2)");
-    CHECK(g_cb_calls == 1, "the effect callback runs once per driver callback");
 
     g_state.output_volume = 0.5f;
+    g_fake.fire(128, 0.25f, out.data());
     g_fake.fire(128, 0.25f, out.data());
     CHECK(out[0] == 0.25f, "master output volume is applied");
     g_state.output_volume = 1.f;
 
+    const int calls_before = g_cb_calls;
     g_state.transport_running = false;
     g_fake.fire(128, 0.25f, out.data());
     CHECK(out[0] == 0.f && out[255] == 0.f, "stopped transport (breakpoint mute) outputs silence");
-    CHECK(g_cb_calls == 2, "the effect callback is not invoked while muted");
+    CHECK(g_cb_calls == calls_before, "the effect callback is not invoked while muted");
 
     g_state.transport_running = true;
     g_fake.fire(128, 0.25f, out.data());
-    CHECK(out[0] == 0.5f, "audio resumes when the transport restarts");
+    CHECK(out[0] == 0.f && out[128] == 0.5f && out[255] == 0.5f,
+          "audio resumes when the transport restarts, without replaying stale buffered audio");
 
     std::vector<float> small(37 * 2, -1.f);
     g_fake.fire(37, 0.25f, small.data());
-    CHECK(small[0] == 0.5f && small[73] == 0.5f, "a callback smaller than rt_buffer_size is processed");
+    CHECK(small[0] == 0.5f && small[73] == 0.5f, "a callback smaller than the block size still gets output");
 }
 
 static bool all_equal(const std::vector<float>& v, size_t from, size_t to, float x) {
@@ -211,7 +235,7 @@ static void test_no_rt_allocation_and_oversize() {
         std::vector<float> big(1000 * 2, -1.f);
         g_fake.fire(1000, 0.25f, big.data());
         CHECK(g_fake.last_fire_allocs == 0, "an oversized real-time callback does not allocate");
-        CHECK(g_cb_max_size <= 128, "the effect never sees more frames than the buffers hold");
+        CHECK(g_cb_max_size == 48, "the effect only ever sees the configured block size (FR-EMU-12)");
         CHECK(all_equal(big, 0, 128 * 2, 0.5f), "the in-capacity head of an oversized callback is processed");
         CHECK(all_equal(big, 128 * 2, 1000 * 2, 0.f), "the tail beyond capacity is zero-filled");
     }
@@ -220,9 +244,10 @@ static void test_no_rt_allocation_and_oversize() {
         Harness h(1, 128, 48000.f, 512);
         wait_for([] { return g_fake.running(); });
         std::vector<float> out(400 * 2, -1.f);
+        g_fake.fire(400, 0.25f, out.data());   // first callback carries the primed block
         g_fake.fire(400, 0.25f, out.data());
         CHECK(g_fake.last_fire_allocs == 0, "a callback up to maxCallbackFrames() does not allocate");
-        CHECK(g_cb_max_size == 400, "the full callback is processed when the backend reported room for it");
+        CHECK(g_cb_max_size == 48, "a large callback is processed as configured-size blocks (FR-EMU-12)");
         CHECK(all_equal(out, 0, 400 * 2, 0.5f), "and its whole output is written");
     }
     {
@@ -233,7 +258,7 @@ static void test_no_rt_allocation_and_oversize() {
         g_fake.fire(256, 0.f, out.data());
         g_fake.fire(2000, 0.f, out.data());
         CHECK(g_fake.last_fire_allocs == 0, "an oversized simulated-mode callback does not allocate");
-        CHECK(g_cb_max_size <= 256, "simulated mode clamps the effect block to the buffers it has");
+        CHECK(g_cb_max_size == 48, "simulated mode calls the effect with the configured block size (FR-EMU-12)");
         CHECK(all_equal(out, 256 * 2, 2000 * 2, 0.f), "simulated mode zero-fills the tail beyond capacity");
     }
 }
@@ -400,6 +425,52 @@ static void test_simulated_silent_fallback() {
     CHECK(true, "the silent loop exits cleanly on shutdown");
 }
 
+// FR-EMU-12: whatever the driver delivers, every effect call gets exactly the
+// configured block size, and the output stream has no gaps or repeats.
+static void reblock_case(int mode, size_t block, const std::vector<size_t>& callbacks, const char* label) {
+    g_cnt_min = ~size_t(0); g_cnt_max = 0; g_cnt_calls = 0; g_cnt_next = 1.f;
+    Harness h(mode, 256, 48000.f, 0, block, counter_cb);
+    wait_for([] { return g_fake.running(); });
+    std::vector<float> stream;
+    size_t total = 0;
+    for (size_t frames : callbacks) {
+        std::vector<float> out(frames * 2, -1.f);
+        g_fake.fire(frames, 0.f, out.data());
+        stream.insert(stream.end(), out.begin(), out.end());
+        total += frames;
+    }
+    h.finish();
+    char msg[200];
+    std::snprintf(msg, sizeof(msg), "%s: every callback has exactly %zu frames", label, block);
+    CHECK(g_cnt_calls > 0 && g_cnt_min == block && g_cnt_max == block, msg);
+    std::snprintf(msg, sizeof(msg), "%s: %zu frames in -> %zu full blocks processed", label, total, total / block);
+    CHECK(static_cast<size_t>(g_cnt_calls.load()) == total / block, msg);
+    // Leading silence of at most one block, then 1, 2, 3, ... with no gap or repeat.
+    size_t i = 0;
+    while (i < total && stream[2 * i] == 0.f) ++i;
+    bool seq_ok = i <= block;
+    for (float expect = 1.f; i < total; ++i, expect += 1.f) {
+        if (stream[2 * i] != expect || stream[2 * i + 1] != expect) { seq_ok = false; break; }
+    }
+    std::snprintf(msg, sizeof(msg), "%s: output is continuous (<= one block of latency, no gaps or repeats)", label);
+    CHECK(seq_ok, msg);
+}
+
+static void test_block_size_reblocking() {
+    std::printf("\n-- effect always receives the configured block size (FR-EMU-12) --\n");
+    const std::vector<size_t> fixed(12, 256);
+    const std::vector<size_t> varying = {256, 37, 200, 1, 256, 129, 64, 255, 3, 250, 256, 100};
+    for (size_t block : {size_t(4), size_t(48), size_t(512)}) {
+        char label[80];
+        std::snprintf(label, sizeof(label), "real-time, block %zu, 256-frame driver", block);
+        reblock_case(1, block, fixed, label);
+        std::snprintf(label, sizeof(label), "real-time, block %zu, varying driver", block);
+        reblock_case(1, block, varying, label);
+        std::snprintf(label, sizeof(label), "simulated, block %zu, 256-frame driver", block);
+        reblock_case(0, block, fixed, label);
+    }
+}
+
 int main() {
     std::printf("=== Real-time path regression tests (M79 / FR-WIN-AUD-4) ===\n");
     test_realtime_start_params();
@@ -413,6 +484,7 @@ int main() {
     test_realtime_unavailable_fallback();
     test_mode_switching();
     test_simulated_silent_fallback();
+    test_block_size_reblocking();
     std::printf("\nResult: %s\n", failures == 0 ? "all passed" : "FAILURES");
     return failures == 0 ? 0 : 1;
 }

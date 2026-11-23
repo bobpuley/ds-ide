@@ -26,7 +26,7 @@ The source-mutating handlers compute line ranges from a snapshot taken before se
 
 ---
 
-### [ ] fix: Re-block device audio so the effect callback always gets the configured block size (FR-EMU-12)
+### [x] fix: Re-block device audio so the effect callback always gets the configured block size (FR-EMU-12)
 
 With a real audio device the effect is called with the device's frame count (at least 256), not `SetAudioBlockSize()`, so per-callback timing is off by `device_frames / block_size` and effect arrays sized from the block size overflow.
 
