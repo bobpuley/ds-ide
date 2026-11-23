@@ -240,7 +240,7 @@ Full registry in [`docs/v27/05_dev-plan.md`](v27/05_dev-plan.md).
 |-----|-----------------------------------|-------------|---------|-----------------------------------------------------|
 | M93 | Extension Robustness Quick Fixes  | **released** | 0.27.2  | [Milestone_M93.md](milestones/v28/Milestone_M93.md) |
 | M94 | Daily-Use Correctness Fixes       | **released** | 0.27.3  | [Milestone_M94.md](milestones/v28/Milestone_M94.md) |
-| M95 | Real-Time Concurrency Fixes       | **planned** | 0.27.4  | [Milestone_M95.md](milestones/v28/Milestone_M95.md) |
+| M95 | Real-Time Concurrency Fixes       | **in progress** | 0.27.4  | [Milestone_M95.md](milestones/v28/Milestone_M95.md) |
 
 Source: HIGH findings of the 2026-11-21 code reviews (`docs/06_*_review.md`); bug intake 2026-11-23.
 

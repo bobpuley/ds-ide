@@ -157,6 +157,7 @@ int main(int argc, char* argv[]) {
         audio_thread.join();
         daisy_emu::g_state.telemetry_drained.store(true);
         ipc_thread.join();
+        daisy_emu::reclaim_wav_after_engine_stopped();  // FR-RTS-6: reader and writer both stopped
         std::fflush(nullptr);
         std::_Exit(0);
     });

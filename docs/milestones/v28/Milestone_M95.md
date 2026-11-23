@@ -1,7 +1,7 @@
 # M95 — Real-Time Concurrency Fixes
 
 **Version:** 0.27.4
-**Status:** planned
+**Status:** in progress
 **Source:** 2026-11-21 C/C++ emulator code review — HIGH findings #3, #4, #2 (intake 2026-11-23)
 
 ## Goal
@@ -10,7 +10,7 @@ Remove the remaining real-time concurrency defects: a WAV buffer that can be fre
 
 ## Sprint Tasks
 
-### [ ] fix: Close the WAV hazard-pointer window and never free on timeout (FR-RTS-6)
+### [x] fix: Close the WAV hazard-pointer window and never free on timeout (FR-RTS-6)
 
 The audio thread loads `wav_data_ptr` and only then publishes it as in use, and the retirer deletes unconditionally after 200 ms, so swapping or clearing a WAV during playback can free memory the audio thread is reading.
 

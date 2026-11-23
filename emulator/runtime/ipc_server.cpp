@@ -1,4 +1,5 @@
 #include "ipc_server.h"
+#include "wav_handoff.h"
 #include "emulator_state.h"
 #include "daisy/midi_event.h"
 #include "session_recorder.h"
@@ -18,29 +19,18 @@
 
 namespace daisy_emu {
 
-// Publishes `new_wav` as the active WAV data via an atomic pointer swap and
-// safely frees the previously-published WavData (FR-RTS-3). Runs on the IPC
-// dispatch thread, never the RT thread, so it is free to block briefly while
-// waiting for the audio engine to confirm it has moved off the old pointer
-// (wav_data_in_use) before deleting it.
-static void retire_wav_data(const WavData* new_wav) {
-    const WavData* old = g_state.wav_data_ptr.exchange(new_wav, std::memory_order_acq_rel);
-    if (!old) return;
+// Publishes the active WAV data and frees retired buffers only once the
+// audio thread is known not to be reading them (FR-RTS-3, FR-RTS-6): a buffer
+// still in use after the ~200 ms wait stays on the retire list — it is never
+// freed on a timeout. Used only by the IPC-dispatch thread.
+static WavRetirer g_wav_retirer;
 
-    bool confirmed = false;
-    for (int i = 0; i < 200; ++i) {  // up to ~200 ms
-        if (g_state.wav_data_in_use.load(std::memory_order_acquire) != old) { confirmed = true; break; }
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    if (!confirmed) {
-        // Timed out — the engine may not be rendering at all right now (e.g.
-        // transport stopped). Clear wav_data_in_use first so a future
-        // allocation that happens to reuse this address can't be
-        // misidentified as still in flight.
-        const WavData* expected = old;
-        g_state.wav_data_in_use.compare_exchange_strong(expected, static_cast<const WavData*>(nullptr));
-    }
-    delete old;
+static void retire_wav_data(const WavData* new_wav) {
+    g_wav_retirer.publish(new_wav);
+}
+
+void reclaim_wav_after_engine_stopped() {
+    g_wav_retirer.reclaim_all_after_reader_stopped();
 }
 
 // ---- Minimal JSON field extraction ------------------------------------------

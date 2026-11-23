@@ -7,6 +7,7 @@
 #include "wav_reader.h"
 #include "input_generators.h"
 #include "led_telemetry.h"
+#include "wav_handoff.h"
 #include <algorithm>
 #include <cfloat>
 #include <chrono>
@@ -566,12 +567,11 @@ static void run_simulated(float sample_rate,
                 }
             }
         } else if (g_state.wav_active.load()) {
-            // RT-safe (FR-RTS-3): atomic pointer load replaces the wav_mutex +
-            // shared_ptr copy — no mutex, no refcount churn on this thread. The
-            // pointer is published back via wav_data_in_use so the IPC thread
-            // knows when it is safe to free a retired WavData.
-            const WavData* wav = g_state.wav_data_ptr.load(std::memory_order_acquire);
-            g_state.wav_data_in_use.store(wav, std::memory_order_release);
+            // RT-safe (FR-RTS-3/FR-RTS-6): the hazard-pointer acquire
+            // publishes the buffer this block reads and re-checks it is still
+            // current, so the IPC thread (WavRetirer) can never free it
+            // mid-read; released as soon as the block is filled.
+            const WavData* wav = wav_reader_acquire();
             uint64_t gen = g_state.wav_generation.load();
             if (gen != wav_gen_seen) { wav_gen_seen = gen; wav_pos = 0.0; }
             if (wav && !wav->empty()) {
@@ -581,6 +581,7 @@ static void run_simulated(float sample_rate,
                 std::fill(in_buf.begin(),
                           in_buf.begin() + static_cast<ptrdiff_t>(frames * 2), 0.f);
             }
+            wav_reader_release();
         } else if (generator_feed.render(sample_rate, frames, in_buf.data())) {
             // FR-GEN-3: a selected generator replaces the sine branch (replay and WAV keep priority).
         } else {
