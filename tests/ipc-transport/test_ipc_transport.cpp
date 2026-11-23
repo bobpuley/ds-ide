@@ -15,6 +15,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -100,8 +101,15 @@ static void exercise(const char* label, IpcListener& listener, int (*connect_fn)
     std::snprintf(msg, sizeof(msg), "%s: recv returns 0 after the peer closes", label);
     CHECK(conn->recv(rbuf, sizeof(rbuf)) == 0, msg);
     std::snprintf(msg, sizeof(msg), "%s: send to a closed peer fails without killing the process", label);
+    // The first sends after the peer closed can still succeed (the kernel
+    // buffers them); only once the peer's RST has been processed does send()
+    // fail with EPIPE/ECONNRESET. Back-to-back sends could all beat the RST on
+    // a loaded CI runner, so give it up to ~1 s to arrive.
     long long r = 1;
-    for (int i = 0; i < 50 && r > 0; ++i) r = conn->send(out, sizeof(out) - 1);
+    for (int i = 0; i < 100 && r > 0; ++i) {
+        r = conn->send(out, sizeof(out) - 1);
+        if (r > 0) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
     CHECK(r <= 0, msg);
 }
 
