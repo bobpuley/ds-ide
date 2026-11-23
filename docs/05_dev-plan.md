@@ -83,7 +83,7 @@
 > **v27 complete** — M92 released (0.25.1), all ACs green.
 > Archived: [`docs/v27/`](v27/).
 
-*v28 milestones not yet planned.*
+*v28: review fixes for the 2026-11-21 HIGH findings (M93–M95), planned.*
 
 ---
 
@@ -234,6 +234,14 @@ Full registry in [`docs/v26/05_dev-plan.md`](v26/05_dev-plan.md).
 M92 AI Agent Guide.
 Full registry in [`docs/v27/05_dev-plan.md`](v27/05_dev-plan.md).
 
-### v28 — planned
+### v28 (0.25.2–0.25.4) — planned
 
-*(no milestones yet)*
+| ID  | Name                              | Status      | Version | File                                                |
+|-----|-----------------------------------|-------------|---------|-----------------------------------------------------|
+| M93 | Extension Robustness Quick Fixes  | **in progress** | 0.25.2  | [Milestone_M93.md](milestones/v28/Milestone_M93.md) |
+| M94 | Daily-Use Correctness Fixes       | **planned** | 0.25.3  | [Milestone_M94.md](milestones/v28/Milestone_M94.md) |
+| M95 | Real-Time Concurrency Fixes       | **planned** | 0.25.4  | [Milestone_M95.md](milestones/v28/Milestone_M95.md) |
+
+Source: HIGH findings of the 2026-11-21 code reviews (`docs/06_*_review.md`); bug intake 2026-11-23.
+
+**Priority/sequence (owner, 2026-11-23):** M93 (cheap, high value) → M94 (most likely to hit in daily use) → M95 (real-time concurrency, verified with TSAN stress tests). MEDIUM and LOW findings are not yet intaked.
