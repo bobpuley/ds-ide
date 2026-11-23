@@ -3,6 +3,14 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.27.2 — 2026-11-23
+
+**Robustness fixes (M93)** — first batch of fixes from the 2026-11-21 code review.
+
+- **IPC whitelist (FR-IPC-8):** a message from the emulator whose `type` names a built-in object key (`constructor`, `__proto__`, `toString`, …) is now rejected instead of passing as valid or throwing. If handling one line fails, that line is counted as malformed and the rest of the data is still processed.
+- **Debugger crash (FR-DBG-1):** if `lldb-dap` crashes or is killed during F5 debugging, the session now ends cleanly: the emulator stops, the debug toolbar goes away, and the Debug Console says why. Previously this could raise an error in the Extension Host and leave the toolbar running. Stop and Restart behave as before.
+- **Failed launch (FR-DBG-2):** if the rebuild on Restart, or attaching the debugger, fails, the session now ends with an error instead of staying in "launching".
+
 ## 0.27.1 — 2026-11-21
 
 **Documentation for Windows** *(no change to the extension's behaviour)*

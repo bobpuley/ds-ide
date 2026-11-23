@@ -1,6 +1,6 @@
 # M95 — Real-Time Concurrency Fixes
 
-**Version:** 0.25.4
+**Version:** 0.27.4
 **Status:** planned
 **Source:** 2026-11-21 C/C++ emulator code review — HIGH findings #3, #4, #2 (intake 2026-11-23)
 

@@ -1,7 +1,7 @@
 # M93 — Extension Robustness Quick Fixes
 
-**Version:** 0.25.2
-**Status:** in progress
+**Version:** 0.27.2
+**Status:** released
 **Source:** 2026-11-21 Node.js/TypeScript code review — HIGH findings #6, #7, #8 (intake 2026-11-23)
 
 ## Goal

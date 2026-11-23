@@ -55,7 +55,7 @@ valueOf -> {}
 HIGH
 
 ### Intake Status
-Intaken 2026-11-23 → M93 (FR-IPC-8), finding #6 of the HIGH intake. Planned, not yet fixed.
+Released in 0.27.2 — M93 (FR-IPC-8), finding #6 of the HIGH intake.
 
 ---
 
@@ -121,7 +121,7 @@ Uncaught exceptions in the Extension Host on a common failure (lldb-dap crash, a
 HIGH
 
 ### Intake Status
-Intaken 2026-11-23 → M93 (FR-DBG-1), finding #7 of the HIGH intake. Planned, not yet fixed.
+Released in 0.27.2 — M93 (FR-DBG-1), finding #7 of the HIGH intake.
 
 ---
 
@@ -249,7 +249,7 @@ Wrap the body of `launch` in `try { ... } catch (err) { this.respondError(req, e
 HIGH
 
 ### Intake Status
-Intaken 2026-11-23 → M93 (FR-DBG-2), finding #8 of the HIGH intake. Planned, not yet fixed.
+Released in 0.27.2 — M93 (FR-DBG-2), finding #8 of the HIGH intake.
 
 ---
 

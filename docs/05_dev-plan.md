@@ -83,7 +83,7 @@
 > **v27 complete** — M92 released (0.25.1), all ACs green.
 > Archived: [`docs/v27/`](v27/).
 
-*v28: review fixes for the 2026-11-21 HIGH findings (M93–M95), planned.*
+*v28: review fixes for the 2026-11-21 HIGH findings (M93–M95). M93 released (0.27.2).*
 
 ---
 
@@ -234,13 +234,13 @@ Full registry in [`docs/v26/05_dev-plan.md`](v26/05_dev-plan.md).
 M92 AI Agent Guide.
 Full registry in [`docs/v27/05_dev-plan.md`](v27/05_dev-plan.md).
 
-### v28 (0.25.2–0.25.4) — planned
+### v28 (0.27.2–0.27.4) — planned
 
 | ID  | Name                              | Status      | Version | File                                                |
 |-----|-----------------------------------|-------------|---------|-----------------------------------------------------|
-| M93 | Extension Robustness Quick Fixes  | **in progress** | 0.25.2  | [Milestone_M93.md](milestones/v28/Milestone_M93.md) |
-| M94 | Daily-Use Correctness Fixes       | **planned** | 0.25.3  | [Milestone_M94.md](milestones/v28/Milestone_M94.md) |
-| M95 | Real-Time Concurrency Fixes       | **planned** | 0.25.4  | [Milestone_M95.md](milestones/v28/Milestone_M95.md) |
+| M93 | Extension Robustness Quick Fixes  | **released** | 0.27.2  | [Milestone_M93.md](milestones/v28/Milestone_M93.md) |
+| M94 | Daily-Use Correctness Fixes       | **planned** | 0.27.3  | [Milestone_M94.md](milestones/v28/Milestone_M94.md) |
+| M95 | Real-Time Concurrency Fixes       | **planned** | 0.27.4  | [Milestone_M95.md](milestones/v28/Milestone_M95.md) |
 
 Source: HIGH findings of the 2026-11-21 code reviews (`docs/06_*_review.md`); bug intake 2026-11-23.
 

@@ -1,6 +1,6 @@
 # M94 — Daily-Use Correctness Fixes
 
-**Version:** 0.25.3
+**Version:** 0.27.3
 **Status:** planned
 **Source:** 2026-11-21 code reviews (VS Code extension, C/C++ emulator) — HIGH findings #9, #1, #5 (intake 2026-11-23)
 
