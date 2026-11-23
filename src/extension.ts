@@ -1378,7 +1378,12 @@ export function activate(context: vscode.ExtensionContext): void {
     controlsProvider.postStatus({ type: 'status', running: false });
   }
 
-  const debugAdapterFactory = new DaisyDebugAdapterFactory(undefined, undefined, () => toolchain.offer());
+  const debugAdapterFactory = new DaisyDebugAdapterFactory(
+    undefined, undefined, () => toolchain.offer(), (line) => emulatorChannel.appendLine(line),
+    // FR-DBG-1: only called once a debug session starts, after activation, so
+    // dsIdeAdapterFactory (declared below) is initialised by then.
+    (parent) => dsIdeAdapterFactory.debuggerLostHandlerFor(parent),
+  );
   const debugTrackerFactory = new DaisyDebugAdapterTrackerFactory((mode) => manager?.sendAudioMode(mode));
 
   const deployCoordinator = new DeployCoordinator({
@@ -1480,6 +1485,18 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   });
 
+  const dsIdeAdapterFactory = new DsIdeDebugAdapterDescriptorFactory((session) => ({
+    currentEmulatorPid: () => manager.childPid,
+    stopEmulator,
+    onEmulatorExit: (listener) => {
+      manager.on('exit', listener);
+      return { dispose: () => { manager.off('exit', listener); } };
+    },
+    consumeLaunch: (config) => runConfigProvider.consumeLaunch(config),
+    rebuildAndDeploy: (mode, token) => runConfigProvider.buildAndDeployWithProgress(mode, token),
+    attachDebugger: (pid) => runConfigProvider.attachDebugger(session, pid),
+  }));
+
   context.subscriptions.push(
     toolchain.registerAsToolSource(),
     vscode.commands.registerCommand('ds-ide.installWindowsToolchain', () => toolchain.installFromCommand()),
@@ -1505,17 +1522,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.debug.registerDebugAdapterDescriptorFactory(DAISY_DEBUG_TYPE, debugAdapterFactory),
     vscode.debug.registerDebugAdapterTrackerFactory(DAISY_DEBUG_TYPE, debugTrackerFactory),
-    vscode.debug.registerDebugAdapterDescriptorFactory(DS_IDE_DEBUG_TYPE, new DsIdeDebugAdapterDescriptorFactory((session) => ({
-      currentEmulatorPid: () => manager.childPid,
-      stopEmulator,
-      onEmulatorExit: (listener) => {
-        manager.on('exit', listener);
-        return { dispose: () => { manager.off('exit', listener); } };
-      },
-      consumeLaunch: (config) => runConfigProvider.consumeLaunch(config),
-      rebuildAndDeploy: (mode, token) => runConfigProvider.buildAndDeployWithProgress(mode, token),
-      attachDebugger: (pid) => runConfigProvider.attachDebugger(session, pid),
-    }))),
+    vscode.debug.registerDebugAdapterDescriptorFactory(DS_IDE_DEBUG_TYPE, dsIdeAdapterFactory),
     vscode.debug.registerDebugConfigurationProvider(DS_IDE_DEBUG_TYPE, runConfigProvider),
     saveListener,
     projectFileWatcher,

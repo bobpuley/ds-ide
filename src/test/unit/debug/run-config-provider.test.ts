@@ -234,4 +234,18 @@ describe('DsIdeDebugAdapterDescriptorFactory', () => {
     expect((result as unknown as { implementation: unknown }).implementation).toBeInstanceOf(RunSessionAdapter);
     expect(makeHost).toHaveBeenCalledWith(s);
   });
+
+  it('routes a lost debugger to the run-session adapter of the given parent session (FR-DBG-1)', () => {
+    const factory = new DsIdeDebugAdapterDescriptorFactory(() => host);
+    const parent = { id: 'p1', configuration: BASE_CONFIG } as unknown as vscode.DebugSession;
+    const result = factory.createDebugAdapterDescriptor(parent);
+    const adapter = (result as unknown as { implementation: RunSessionAdapter }).implementation;
+    const spy = vi.spyOn(adapter, 'debuggerLost');
+    const handler = factory.debuggerLostHandlerFor(parent);
+    expect(handler).toBeTypeOf('function');
+    handler!();
+    expect(spy).toHaveBeenCalledOnce();
+    expect(factory.debuggerLostHandlerFor({ id: 'other' } as unknown as vscode.DebugSession)).toBeUndefined();
+    expect(factory.debuggerLostHandlerFor(undefined)).toBeUndefined();
+  });
 });

@@ -83,4 +83,18 @@
 > **v27 complete** — ds-ide 0.25.1 (M92), AI agent guide, all ACs green. Full v27 ideas archived in
 > [`docs/v27/01_input-ideas.md`](v27/01_input-ideas.md).
 
-*v28 planning not yet started. Use `/doc-creator-driver:intake` or `/doc-creator-driver:start` to begin.*
+## v28 ideas
+
+- **Bug intake — HIGH findings of the 2026-11-21 code reviews (2026-11-23).** Source: `docs/06_emulator_review.md`, `docs/06_nodejs_review.md`, `docs/06_vscode_extension_review.md` (review of `f453269`). Owner's grouping into three milestones:
+  - **Fix first (cheap, high value):**
+    - #6 IPC whitelist bypass. Observed: `parseIpcMessage` looks up `type` on a plain object, so `"constructor"` returns the raw message as valid and `"__proto__"` throws inside the socket `data` handler. Expected: only the whitelisted types pass; a bad line is counted as malformed and the read loop continues.
+    - #7 lldb-dap proxy. Observed: no `error` listener on the child's `stdin`/`stdout` and `exit` ignored, so a crashed lldb-dap gives an uncaught EPIPE in the Extension Host and a debug session that stays "running". Expected: the error is logged, a `terminated` event is sent, and later writes are no-ops.
+    - #8 `RunSessionAdapter.launch()`. Observed: run as a floating promise, so a deploy or `startDebugging` failure is an unhandled rejection and the launch request is never answered. Expected: VS Code gets a failed launch response and a `terminated` event.
+  - **Most likely to hit in daily use:**
+    - #9 Wiring Editor edits. Observed: ranges are computed from a stale snapshot and the handlers are not serialized, so two quick actions, or an outside change, corrupt the effect source; `doc.save()` also saves unrelated unsaved edits. Expected: each edit applies to the current text, or is refused.
+    - #1 Block size. Observed: with a real audio device the effect is called with the device's frame count (≥256), not `SetAudioBlockSize()`, so per-callback timing is wrong and `float tmp[kBlockSize]` arrays overflow. Expected: every callback gets exactly the configured block size, as on hardware.
+    - #5 LED/MIDI telemetry queues. Observed: assumed single-producer, but `Led::Update`/`SetLed`/`SendMessage` are also called from the audio callback, so two threads race on a `std::string` slot. Expected: calling them from any thread is safe.
+  - **Harder, real-time concurrency (verify with TSAN stress tests):**
+    - #3 WAV swap. Observed: the hazard-pointer protocol has a load→publish window, and the 200 ms timeout deletes unconditionally, so a WAV can be freed while the audio thread reads it. Expected: no use-after-free when a WAV is swapped or cleared during playback.
+    - #4 Replay restart. Observed: `replayStart` during a replay runs `close()`/`open()` while the RT thread is inside `popBlock()` (data race, index underflow). Expected: the restart waits until the consumer has stopped.
+    - #2 Engine wake-ups. Observed: config and shutdown changes notify without holding the mutex, so wake-ups are lost (shutdown can hang); `audioDevice` changes don't bump `config_generation`, so whether they apply depends on timing. Expected: no lost wake-ups, and device changes always apply.

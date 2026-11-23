@@ -445,3 +445,89 @@ describe('DaisyDebugAdapterFactory offering the managed toolchain on Windows (FR
     expect(offer).not.toHaveBeenCalled();
   });
 });
+
+describe('FilteringLldbDapAdapter — dead backend (FR-DBG-1)', () => {
+  function collect(adapter: FilteringLldbDapAdapter): unknown[] {
+    const sent: unknown[] = [];
+    adapter.onDidSendMessage((m) => sent.push(m));
+    return sent;
+  }
+  const isTerminated = (m: unknown) =>
+    (m as { type?: string; event?: string }).type === 'event' && (m as { event?: string }).event === 'terminated';
+
+  it('logs an error on stdin instead of throwing', () => {
+    const { child, stdin } = makeFakeChild();
+    const log = vi.fn();
+    new FilteringLldbDapAdapter('/fake/lldb-dap', () => child, log);
+    expect(() => stdin.emit('error', new Error('write EPIPE'))).not.toThrow();
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/EPIPE/));
+  });
+
+  it('logs an error on stdout instead of throwing', () => {
+    const { child, stdout } = makeFakeChild();
+    const log = vi.fn();
+    new FilteringLldbDapAdapter('/fake/lldb-dap', () => child, log);
+    expect(() => stdout.emit('error', new Error('read ECONNRESET'))).not.toThrow();
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/ECONNRESET/));
+  });
+
+  it('sends exactly one terminated event when the child exits, even if error also fires', () => {
+    const { child } = makeFakeChild();
+    const adapter = new FilteringLldbDapAdapter('/fake/lldb-dap', () => child, vi.fn());
+    const sent = collect(adapter);
+    (child as unknown as NodeEventEmitter).emit('exit', 1);
+    (child as unknown as NodeEventEmitter).emit('error', new Error('spawn died'));
+    (child as unknown as NodeEventEmitter).emit('exit', 1);
+    expect(sent.filter(isTerminated)).toHaveLength(1);
+  });
+
+  it('writes nothing after the child has exited', () => {
+    const { child, stdin } = makeFakeChild();
+    const adapter = new FilteringLldbDapAdapter('/fake/lldb-dap', () => child, vi.fn());
+    const write = vi.spyOn(stdin, 'write');
+    (child as unknown as NodeEventEmitter).emit('exit', 0);
+    adapter.handleMessage({ type: 'request', seq: 1, command: 'threads' } as vscode.DebugProtocolMessage);
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it('skips the write when stdin is no longer writable', () => {
+    const { child, stdin } = makeFakeChild();
+    const adapter = new FilteringLldbDapAdapter('/fake/lldb-dap', () => child, vi.fn());
+    stdin.end();
+    const write = vi.spyOn(stdin, 'write');
+    expect(() => adapter.handleMessage({ type: 'request', seq: 2, command: 'threads' } as vscode.DebugProtocolMessage))
+      .not.toThrow();
+    expect(write).not.toHaveBeenCalled();
+  });
+});
+
+describe('FilteringLldbDapAdapter — unexpected exit reaches the parent session (FR-DBG-1)', () => {
+  const exit = (child: DapChildProcess) => (child as unknown as NodeEventEmitter).emit('exit', null);
+
+  it('reports an exit that nobody asked for, once', () => {
+    const { child } = makeFakeChild();
+    const lost = vi.fn();
+    new FilteringLldbDapAdapter('/fake/lldb-dap', () => child, vi.fn(), lost);
+    exit(child);
+    (child as unknown as NodeEventEmitter).emit('error', new Error('late'));
+    expect(lost).toHaveBeenCalledOnce();
+  });
+
+  it.each(['disconnect', 'terminate'])('does not report an exit after a %s request (Stop / Restart)', (command) => {
+    const { child } = makeFakeChild();
+    const lost = vi.fn();
+    const adapter = new FilteringLldbDapAdapter('/fake/lldb-dap', () => child, vi.fn(), lost);
+    adapter.handleMessage({ type: 'request', seq: 9, command, arguments: { restart: true } } as vscode.DebugProtocolMessage);
+    exit(child);
+    expect(lost).not.toHaveBeenCalled();
+  });
+
+  it('does not report an exit caused by disposing the adapter', () => {
+    const { child } = makeFakeChild();
+    const lost = vi.fn();
+    const adapter = new FilteringLldbDapAdapter('/fake/lldb-dap', () => child, vi.fn(), lost);
+    adapter.dispose();
+    exit(child);
+    expect(lost).not.toHaveBeenCalled();
+  });
+});

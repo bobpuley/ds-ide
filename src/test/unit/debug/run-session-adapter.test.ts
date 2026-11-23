@@ -311,3 +311,87 @@ describe('RunSessionAdapter — how the emulator is stopped', () => {
   });
 });
 
+
+describe('RunSessionAdapter — failed launch (FR-DBG-2)', () => {
+  it('a rejected rebuildAndDeploy answers launch with success: false and ends the session', async () => {
+    const h = makeHost(undefined);
+    h.host.consumeLaunch.mockReturnValue(false);
+    h.host.rebuildAndDeploy.mockRejectedValue(new Error('ENOENT: controllers.yaml'));
+    const onUnhandled = vi.fn();
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const io = start(new RunSessionAdapter(h.host));
+      io.request('launch', { noDebug: true });
+      await flush();
+      await flush();
+      const res = response(io.sent, 'launch')!;
+      expect(res.success).toBe(false);
+      expect((res as { message?: string }).message).toMatch(/ENOENT: controllers\.yaml/);
+      expect(events(io.sent, 'terminated')).toHaveLength(1);
+      expect(onUnhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+  });
+
+  it('a rejected attachDebugger reports the error, stops the emulator and ends the session', async () => {
+    const h = makeHost();
+    h.host.attachDebugger.mockRejectedValue(new Error('startDebugging failed'));
+    const onUnhandled = vi.fn();
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const io = start(new RunSessionAdapter(h.host));
+      io.request('launch', {});
+      await flush();
+      await flush();
+      // The launch was already answered before the attach; exactly one response.
+      expect(io.sent.filter((m) => m.type === 'response' && m.command === 'launch')).toHaveLength(1);
+      const output = events(io.sent, 'output');
+      expect(output).toHaveLength(1);
+      expect(output[0]!.body).toMatchObject({ category: 'stderr', output: expect.stringMatching(/startDebugging failed/) });
+      expect(h.host.stopEmulator).toHaveBeenCalledWith({ immediate: true });
+      expect(events(io.sent, 'terminated')).toHaveLength(1);
+      expect(onUnhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+  });
+});
+
+describe('RunSessionAdapter — debugger lost during F5 (FR-DBG-1)', () => {
+  it('ends the session and stops the emulator when the debugger dies in debug mode', async () => {
+    const h = makeHost();
+    const adapter = new RunSessionAdapter(h.host);
+    const io = start(adapter);
+    io.request('launch', {});
+    await flush();
+    adapter.debuggerLost();
+    expect(h.host.stopEmulator).toHaveBeenCalledWith({ immediate: true });
+    expect(events(io.sent, 'output')[0]!.body).toMatchObject({ category: 'stderr', output: expect.stringMatching(/debugger/) });
+    await flush();
+    expect(events(io.sent, 'terminated')).toHaveLength(1);
+  });
+
+  it('does nothing after the user already stopped the session', async () => {
+    const h = makeHost();
+    const adapter = new RunSessionAdapter(h.host);
+    const io = start(adapter);
+    io.request('launch', {});
+    await flush();
+    io.request('disconnect');
+    adapter.debuggerLost();
+    expect(h.host.stopEmulator).toHaveBeenCalledOnce();
+    expect(events(io.sent, 'output')).toHaveLength(0);
+  });
+
+  it('does nothing in run mode (no debugger attached)', async () => {
+    const h = makeHost();
+    const adapter = new RunSessionAdapter(h.host);
+    const io = start(adapter);
+    io.request('launch', { noDebug: true });
+    await flush();
+    adapter.debuggerLost();
+    expect(h.host.stopEmulator).not.toHaveBeenCalled();
+    expect(events(io.sent, 'terminated')).toHaveLength(0);
+  });
+});

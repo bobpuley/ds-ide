@@ -232,6 +232,31 @@ describe('IpcClient', () => {
     expect(messages).toEqual([{ type: 'status', running: true }, { type: 'xrun', count: 1 }]);
   });
 
+  it('a failure while handling one line does not abort the rest of the chunk (FR-IPC-8)', async () => {
+    const client = new IpcClient();
+    const promise = client.connect('/tmp/test.sock');
+    socketStub.emit('connect');
+    await promise;
+
+    const messages: unknown[] = [];
+    let first = true;
+    client.on('message', (m) => {
+      if (first) { first = false; throw new Error('listener failure'); }
+      messages.push(m);
+    });
+    const warnings: Array<{ message: string; count: number }> = [];
+    client.on('warning', (w) => warnings.push(w));
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    expect(() => socketStub.emit('data', Buffer.from(
+      '{"type":"status","running":true}\n{"type":"__proto__"}\n{"type":"xrun","count":1}\n',
+    ))).not.toThrow();
+    expect(messages).toEqual([{ type: 'xrun', count: 1 }]);
+    expect(warnings.map((w) => w.count)).toEqual([1, 2]);
+    expect(warnings[0]!.message).toMatch(/failed while handling IPC line/);
+    warnSpy.mockRestore();
+  });
+
   it('skips malformed JSON without throwing', async () => {
     const client = new IpcClient();
     const promise = client.connect('/tmp/test.sock');
