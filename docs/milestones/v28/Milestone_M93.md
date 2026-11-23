@@ -24,7 +24,7 @@ Close three small, contained gaps in the Extension Host's trust boundary and deb
 
 ---
 
-### [ ] fix: Handle lldb-dap stream errors and child exit in the debug proxy (FR-DBG-1)
+### [x] fix: Handle lldb-dap stream errors and child exit in the debug proxy (FR-DBG-1)
 
 `FilteringLldbDapAdapter` has no `error` listener on the child's `stdin`/`stdout` and ignores `exit`, so a dead lldb-dap produces an uncaught EPIPE and a debug session that never ends.
 

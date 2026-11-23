@@ -27,6 +27,8 @@ export class DaisyDebugAdapterFactory implements vscode.DebugAdapterDescriptorFa
     private readonly _platform: NodeJS.Platform = process.platform,
     // FR-WIN-TCH-4: on Windows, offered when lldb-dap is missing; true = installed.
     private readonly _offerToolchain?: () => Promise<boolean>,
+    // FR-DBG-1: where the proxy reports lldb-dap stream errors and exits.
+    private readonly _log: (line: string) => void = (line) => console.warn(line),
   ) {}
 
   async createDebugAdapterDescriptor(
@@ -40,7 +42,7 @@ export class DaisyDebugAdapterFactory implements vscode.DebugAdapterDescriptorFa
       void vscode.window.showErrorMessage(lldbDapNotFoundMessage(this._platform));
       return undefined;
     }
-    return new vscode.DebugAdapterInlineImplementation(new FilteringLldbDapAdapter(lldbDap));
+    return new vscode.DebugAdapterInlineImplementation(new FilteringLldbDapAdapter(lldbDap, undefined, this._log));
   }
 }
 
@@ -88,17 +90,44 @@ export class FilteringLldbDapAdapter implements vscode.DebugAdapter {
   readonly onDidSendMessage: vscode.Event<vscode.DebugProtocolMessage> = this._emitter.event;
   private readonly _child: DapChildProcess;
   private _buffer = Buffer.alloc(0);
+  // FR-DBG-1: set once lldb-dap is gone (exit or spawn error); from then on
+  // nothing is written to it and exactly one `terminated` has been sent.
+  private _dead = false;
 
-  constructor(lldbDapPath: string, spawn: SpawnDapChild = defaultSpawnDapChild) {
+  constructor(
+    lldbDapPath: string,
+    spawn: SpawnDapChild = defaultSpawnDapChild,
+    private readonly _log: (line: string) => void = (line) => console.warn(line),
+  ) {
     this._child = spawn(lldbDapPath);
     this._child.stdout.on('data', (chunk: Buffer) => this._onData(chunk));
+    // An 'error' with no listener is thrown by Node (EPIPE after lldb-dap dies).
+    this._child.stdin.on('error', (err: Error) => this._log(`ds-ide: lldb-dap stdin error — ${err.message}`));
+    this._child.stdout.on('error', (err: Error) => this._log(`ds-ide: lldb-dap stdout error — ${err.message}`));
     this._child.on('error', (err) => {
+      this._log(`ds-ide: lldb-dap process error — ${err.message}`);
       void vscode.window.showErrorMessage(`ds-ide: daisy-debug adapter error — ${err.message}`);
+      this._backendGone();
+    });
+    this._child.on('exit', (code) => {
+      this._log(`ds-ide: lldb-dap exited (code ${code ?? 'null'})`);
+      this._backendGone();
     });
   }
 
   handleMessage(message: vscode.DebugProtocolMessage): void {
-    this._child.stdin.write(encodeDapMessage(message));
+    if (this._dead) return;
+    const stdin = this._child.stdin as NodeJS.WritableStream & { writable?: boolean };
+    if (stdin.writable === false) return;
+    stdin.write(encodeDapMessage(message));
+  }
+
+  // Tells VS Code the session is over, so the debug toolbar does not stay
+  // "running" against a dead backend. Idempotent.
+  private _backendGone(): void {
+    if (this._dead) return;
+    this._dead = true;
+    this._emitter.fire({ type: 'event', event: 'terminated', seq: 0, body: {} } as vscode.DebugProtocolMessage);
   }
 
   private _onData(chunk: Buffer): void {

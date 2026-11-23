@@ -1378,7 +1378,9 @@ export function activate(context: vscode.ExtensionContext): void {
     controlsProvider.postStatus({ type: 'status', running: false });
   }
 
-  const debugAdapterFactory = new DaisyDebugAdapterFactory(undefined, undefined, () => toolchain.offer());
+  const debugAdapterFactory = new DaisyDebugAdapterFactory(
+    undefined, undefined, () => toolchain.offer(), (line) => emulatorChannel.appendLine(line),
+  );
   const debugTrackerFactory = new DaisyDebugAdapterTrackerFactory((mode) => manager?.sendAudioMode(mode));
 
   const deployCoordinator = new DeployCoordinator({
