@@ -51,7 +51,7 @@ On real hardware, libDaisy always calls the audio callback with exactly the conf
 HIGH
 
 ### Intake Status
-Intaken 2026-11-23 → M94 (FR-EMU-12), finding #1 of the HIGH intake. Planned, not yet fixed.
+Released in 0.27.3 — M94 (FR-EMU-12), finding #1 of the HIGH intake.
 
 ---
 
@@ -373,7 +373,7 @@ In debug builds, add a `thread_local`-based assertion that a given SPSC queue on
 HIGH
 
 ### Intake Status
-Intaken 2026-11-23 → M94 (FR-EMU-13), finding #5 of the HIGH intake. Planned, not yet fixed.
+Released in 0.27.3 — M94 (FR-EMU-13), finding #5 of the HIGH intake.
 
 ---
 

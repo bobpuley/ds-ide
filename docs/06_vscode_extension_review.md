@@ -219,7 +219,7 @@ The user's effect source can be corrupted: duplicated or missing declarations, h
 HIGH
 
 ### Intake Status
-Intaken 2026-11-23 → M94 (FR-WE-13), finding #9 of the HIGH intake. Planned, not yet fixed.
+Released in 0.27.3 — M94 (FR-WE-13), finding #9 of the HIGH intake.
 
 ---
 

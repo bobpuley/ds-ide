@@ -3,6 +3,15 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.27.3 — 2026-11-23
+
+**Daily-use correctness fixes (M94)** — second batch of fixes from the 2026-11-21 code review.
+
+- **Wiring Editor edits (FR-WE-13):** wiring, unwiring, moving controls and enabling peripherals now run one at a time and always apply to the effect source as it is now. Quick successive actions, or a change made meanwhile by you, git or a coding agent, can no longer corrupt the source; if the file keeps changing, the edit is refused with a message. The file is saved after an edit only if it had no unsaved changes, so your own pending edits are no longer saved for you.
+- **Audio block size (FR-EMU-12):** the effect's audio callback now always receives exactly the block size set with `SetAudioBlockSize()` (48 by default, 4 in the bundled examples), as on the Daisy Seed, whatever buffer size the computer's audio device uses. Anything timed per callback (LFOs, envelopes, `Metro`, debounce) now runs at the hardware rate, and buffers sized from the block size can no longer overflow. Output is delayed by at most one block (under 1 ms at 48 frames).
+- **LEDs and MIDI out from the audio callback (FR-EMU-13):** `SetLed`, `Led::Update`, `RgbLed::Update` and MIDI `SendMessage` are now safe to call from the audio callback and the main loop at the same time. LEDs always show the latest value; MIDI messages arrive intact and in order, and any dropped because the queue was full are counted.
+- **Tests:** a new end-to-end test builds a real effect that reports its callback sizes and sends MIDI and LED updates from both threads; a ThreadSanitizer stress test covers the LED and MIDI paths.
+
 ## 0.27.2 — 2026-11-23
 
 **Robustness fixes (M93)** — first batch of fixes from the 2026-11-21 code review.
