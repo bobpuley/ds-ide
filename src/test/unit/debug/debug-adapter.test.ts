@@ -500,3 +500,34 @@ describe('FilteringLldbDapAdapter — dead backend (FR-DBG-1)', () => {
     expect(write).not.toHaveBeenCalled();
   });
 });
+
+describe('FilteringLldbDapAdapter — unexpected exit reaches the parent session (FR-DBG-1)', () => {
+  const exit = (child: DapChildProcess) => (child as unknown as NodeEventEmitter).emit('exit', null);
+
+  it('reports an exit that nobody asked for, once', () => {
+    const { child } = makeFakeChild();
+    const lost = vi.fn();
+    new FilteringLldbDapAdapter('/fake/lldb-dap', () => child, vi.fn(), lost);
+    exit(child);
+    (child as unknown as NodeEventEmitter).emit('error', new Error('late'));
+    expect(lost).toHaveBeenCalledOnce();
+  });
+
+  it.each(['disconnect', 'terminate'])('does not report an exit after a %s request (Stop / Restart)', (command) => {
+    const { child } = makeFakeChild();
+    const lost = vi.fn();
+    const adapter = new FilteringLldbDapAdapter('/fake/lldb-dap', () => child, vi.fn(), lost);
+    adapter.handleMessage({ type: 'request', seq: 9, command, arguments: { restart: true } } as vscode.DebugProtocolMessage);
+    exit(child);
+    expect(lost).not.toHaveBeenCalled();
+  });
+
+  it('does not report an exit caused by disposing the adapter', () => {
+    const { child } = makeFakeChild();
+    const lost = vi.fn();
+    const adapter = new FilteringLldbDapAdapter('/fake/lldb-dap', () => child, vi.fn(), lost);
+    adapter.dispose();
+    exit(child);
+    expect(lost).not.toHaveBeenCalled();
+  });
+});

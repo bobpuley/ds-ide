@@ -75,7 +75,7 @@ export class RunSessionAdapter implements vscode.DebugAdapter {
   private readonly _cts = new vscode.CancellationTokenSource();
   private readonly _exitSub: { dispose(): void };
 
-  constructor(private readonly host: RunSessionHost) {
+  constructor(private readonly host: RunSessionHost, private readonly onDisposed?: () => void) {
     this._exitSub = host.onEmulatorExit((exit) => {
       if (this._boundPid === undefined || exit.pid !== this._boundPid) return;
       this._boundPid = undefined;
@@ -159,6 +159,16 @@ export class RunSessionAdapter implements vscode.DebugAdapter {
     }
   }
 
+  // FR-DBG-1: lldb-dap died on its own during an F5 session. Ends the whole
+  // session like a failed attach (owner decision, 2026-11-23): a run without
+  // its debugger is not what the user started.
+  debuggerLost(): void {
+    if (this._stopped || this._terminated || this._mode !== 'debug') return;
+    this.sendOutput('ds-ide: the debugger (lldb-dap) exited unexpectedly — ending the session.\n', 'stderr');
+    this.stopOwnEmulator();
+    this.sendTerminated();
+  }
+
   // Only the emulator this session was bound to, and only while it's still
   // the current one — a later launch may have replaced it.
   private stopOwnEmulator(): void {
@@ -203,5 +213,6 @@ export class RunSessionAdapter implements vscode.DebugAdapter {
     this.stopOwnEmulator();
     this._exitSub.dispose();
     this._emitter.dispose();
+    this.onDisposed?.();
   }
 }

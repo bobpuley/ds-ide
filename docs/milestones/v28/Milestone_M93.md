@@ -34,6 +34,7 @@ Close three small, contained gaps in the Extension Host's trust boundary and deb
 - `error` on `stdin` or `stdout` is logged to the debug output channel and does not throw (unit test with a fake child)
 - On child `exit`, exactly one DAP `terminated` event is emitted, even if `exit` and `error` both fire
 - After exit, `handleMessage` writes nothing; writes are also skipped when `stdin` is not writable
+- An unexpected lldb-dap exit (no `disconnect`/`terminate` sent, adapter not disposed) during F5 also ends the parent `ds-ide` session: it reports the error, stops the emulator and sends `terminated`; a normal Stop or Restart does not trigger this (added after manual test, 2026-11-23)
 - `npm test` green
 
 ---

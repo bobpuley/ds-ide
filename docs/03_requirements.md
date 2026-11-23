@@ -25,14 +25,14 @@ Source: `01_input-ideas.md`, 2026-11-23; `docs/06_*_review.md` (review of `f4532
 
 **FR-IPC-8 — The IPC whitelist accepts only its own message types.** [Gap in FR-IPC-2.] `parseIpcMessage` resolves a narrower only for a `type` that is an own entry of the whitelist; inherited object keys (`constructor`, `__proto__`, `toString`, `valueOf`, `hasOwnProperty`, …) return `undefined`. An exception while parsing, narrowing or emitting one line is caught, the line is counted as malformed (with the same warning as other malformed lines), and the remaining lines of the chunk are still processed.
 
-**FR-DBG-1 — The lldb-dap proxy survives a dead backend.** [Gap in FR-UX-7.] An `error` event on the lldb-dap child's `stdin` or `stdout` is logged to the debug output channel and never thrown. When the child exits, the proxy sends exactly one DAP `terminated` event, and every later message from VS Code is dropped without writing. Writes are skipped when `stdin` is not writable.
+**FR-DBG-1 — The lldb-dap proxy survives a dead backend.** [Gap in FR-UX-7.] An `error` event on the lldb-dap child's `stdin` or `stdout` is logged to the debug output channel and never thrown. When the child exits, the proxy sends exactly one DAP `terminated` event, and every later message from VS Code is dropped without writing. Writes are skipped when `stdin` is not writable. If lldb-dap exits unexpectedly (no `disconnect`/`terminate` was sent and the adapter was not disposed) during an F5 session, the parent `ds-ide` run session also ends and stops the emulator, the same as a failed attach (owner decision after M93 manual test, 2026-11-23).
 
 **FR-DBG-2 — A failed run-session launch is answered.** [Gap in FR-TRN-*.] When `rebuildAndDeploy` or `attachDebugger` rejects during a `launch` request, `RunSessionAdapter` answers the request with `success: false` and the error message, stops the emulator it started, and sends `terminated`. No unhandled promise rejection reaches the Extension Host.
 
 **Acceptance criteria**
 
 - AC-IPC-8: unit tests feed `constructor`, `__proto__`, `toString`, `valueOf` and `hasOwnProperty` lines to `parseIpcMessage` and get `undefined`; an `IpcClient` test with a narrower that throws shows the next line in the same chunk is still emitted.
-- AC-DBG-1: with a fake child, emitting `error` on `stdin` throws nothing; emitting `exit` produces one `terminated` event, and a later `handleMessage` writes nothing.
+- AC-DBG-1: with a fake child, emitting `error` on `stdin` throws nothing; emitting `exit` produces one `terminated` event, and a later `handleMessage` writes nothing. Manual: during F5, `pkill lldb-dap` ends the whole session (toolbar gone, emulator stopped); Stop and Restart still behave as before.
 - AC-DBG-2: with a fake host whose `rebuildAndDeploy` rejects, the adapter emits a failed `launch` response and a `terminated` event, and the test sees no unhandled rejection.
 
 ### Daily-use correctness (M94)

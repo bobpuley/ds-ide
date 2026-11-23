@@ -29,6 +29,9 @@ export class DaisyDebugAdapterFactory implements vscode.DebugAdapterDescriptorFa
     private readonly _offerToolchain?: () => Promise<boolean>,
     // FR-DBG-1: where the proxy reports lldb-dap stream errors and exits.
     private readonly _log: (line: string) => void = (line) => console.warn(line),
+    // FR-DBG-1: resolves, for the ds-ide parent session, what to call when
+    // lldb-dap dies unexpectedly, so the whole F5 session ends with it.
+    private readonly _debuggerLostHandlerFor?: (parent: vscode.DebugSession | undefined) => (() => void) | undefined,
   ) {}
 
   async createDebugAdapterDescriptor(
@@ -42,7 +45,9 @@ export class DaisyDebugAdapterFactory implements vscode.DebugAdapterDescriptorFa
       void vscode.window.showErrorMessage(lldbDapNotFoundMessage(this._platform));
       return undefined;
     }
-    return new vscode.DebugAdapterInlineImplementation(new FilteringLldbDapAdapter(lldbDap, undefined, this._log));
+    return new vscode.DebugAdapterInlineImplementation(new FilteringLldbDapAdapter(
+      lldbDap, undefined, this._log, this._debuggerLostHandlerFor?.(_session.parentSession),
+    ));
   }
 }
 
@@ -93,11 +98,15 @@ export class FilteringLldbDapAdapter implements vscode.DebugAdapter {
   // FR-DBG-1: set once lldb-dap is gone (exit or spawn error); from then on
   // nothing is written to it and exactly one `terminated` has been sent.
   private _dead = false;
+  // Set once VS Code asked lldb-dap to end (disconnect / terminate — Stop and
+  // Restart) or disposed the adapter: an exit after that is expected.
+  private _exitExpected = false;
 
   constructor(
     lldbDapPath: string,
     spawn: SpawnDapChild = defaultSpawnDapChild,
     private readonly _log: (line: string) => void = (line) => console.warn(line),
+    private readonly _onBackendLost?: () => void,
   ) {
     this._child = spawn(lldbDapPath);
     this._child.stdout.on('data', (chunk: Buffer) => this._onData(chunk));
@@ -116,6 +125,10 @@ export class FilteringLldbDapAdapter implements vscode.DebugAdapter {
   }
 
   handleMessage(message: vscode.DebugProtocolMessage): void {
+    const command = (message as { type?: unknown; command?: unknown });
+    if (command.type === 'request' && (command.command === 'disconnect' || command.command === 'terminate')) {
+      this._exitExpected = true;
+    }
     if (this._dead) return;
     const stdin = this._child.stdin as NodeJS.WritableStream & { writable?: boolean };
     if (stdin.writable === false) return;
@@ -128,6 +141,7 @@ export class FilteringLldbDapAdapter implements vscode.DebugAdapter {
     if (this._dead) return;
     this._dead = true;
     this._emitter.fire({ type: 'event', event: 'terminated', seq: 0, body: {} } as vscode.DebugProtocolMessage);
+    if (!this._exitExpected) this._onBackendLost?.();
   }
 
   private _onData(chunk: Buffer): void {
@@ -160,6 +174,7 @@ export class FilteringLldbDapAdapter implements vscode.DebugAdapter {
   }
 
   dispose(): void {
+    this._exitExpected = true;
     this._child.kill();
     this._emitter.dispose();
   }

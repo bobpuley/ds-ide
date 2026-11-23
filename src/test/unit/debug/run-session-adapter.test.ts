@@ -357,3 +357,41 @@ describe('RunSessionAdapter — failed launch (FR-DBG-2)', () => {
     }
   });
 });
+
+describe('RunSessionAdapter — debugger lost during F5 (FR-DBG-1)', () => {
+  it('ends the session and stops the emulator when the debugger dies in debug mode', async () => {
+    const h = makeHost();
+    const adapter = new RunSessionAdapter(h.host);
+    const io = start(adapter);
+    io.request('launch', {});
+    await flush();
+    adapter.debuggerLost();
+    expect(h.host.stopEmulator).toHaveBeenCalledWith({ immediate: true });
+    expect(events(io.sent, 'output')[0]!.body).toMatchObject({ category: 'stderr', output: expect.stringMatching(/debugger/) });
+    await flush();
+    expect(events(io.sent, 'terminated')).toHaveLength(1);
+  });
+
+  it('does nothing after the user already stopped the session', async () => {
+    const h = makeHost();
+    const adapter = new RunSessionAdapter(h.host);
+    const io = start(adapter);
+    io.request('launch', {});
+    await flush();
+    io.request('disconnect');
+    adapter.debuggerLost();
+    expect(h.host.stopEmulator).toHaveBeenCalledOnce();
+    expect(events(io.sent, 'output')).toHaveLength(0);
+  });
+
+  it('does nothing in run mode (no debugger attached)', async () => {
+    const h = makeHost();
+    const adapter = new RunSessionAdapter(h.host);
+    const io = start(adapter);
+    io.request('launch', { noDebug: true });
+    await flush();
+    adapter.debuggerLost();
+    expect(h.host.stopEmulator).not.toHaveBeenCalled();
+    expect(events(io.sent, 'terminated')).toHaveLength(0);
+  });
+});

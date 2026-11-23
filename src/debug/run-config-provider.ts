@@ -100,9 +100,24 @@ export class DaisyRunConfigurationProvider implements vscode.DebugConfigurationP
 }
 
 export class DsIdeDebugAdapterDescriptorFactory implements vscode.DebugAdapterDescriptorFactory {
+  // Live run-session adapter per ds-ide session id (FR-DBG-1). A Restart
+  // keeps the session id but creates a new adapter, which replaces the entry.
+  private readonly adapters = new Map<string, RunSessionAdapter>();
+
   constructor(private readonly makeHost: (session: vscode.DebugSession) => RunSessionHost) {}
 
   createDebugAdapterDescriptor(session: vscode.DebugSession): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
-    return new vscode.DebugAdapterInlineImplementation(new RunSessionAdapter(this.makeHost(session)));
+    const adapter: RunSessionAdapter = new RunSessionAdapter(this.makeHost(session), () => {
+      if (this.adapters.get(session.id) === adapter) this.adapters.delete(session.id);
+    });
+    this.adapters.set(session.id, adapter);
+    return new vscode.DebugAdapterInlineImplementation(adapter);
+  }
+
+  // FR-DBG-1: bound to the adapter live when the daisy-debug child starts, so
+  // a late exit from an earlier child can never end a later (restarted) run.
+  debuggerLostHandlerFor(parent: vscode.DebugSession | undefined): (() => void) | undefined {
+    const adapter = parent ? this.adapters.get(parent.id) : undefined;
+    return adapter ? () => adapter.debuggerLost() : undefined;
   }
 }
