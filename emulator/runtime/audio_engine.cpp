@@ -402,6 +402,47 @@ private:
     std::atomic<size_t> read_{0};
 };
 
+// FR-EMU-12: the effect now runs in block_size chunks (as small as 4 frames),
+// but the scope pipeline is sized in *blocks*: ScopeBlockQueue holds
+// kSlotCount blocks and the drain emits one scope message per SCOPE_BLOCKS
+// blocks. Handing it tiny blocks shrinks the queue to a few milliseconds and
+// multiplies the drain's JSON work, so it falls behind and drops blocks
+// (gaps in the scope and in full-rate captures). The stager coalesces effect
+// blocks into chunks of at least kMinFrames before pushing, which restores
+// the cadence the pipeline was built for. RT-safe: configure() allocates
+// (call it before the stream starts); add() only copies.
+struct ScopeStager {
+    static constexpr size_t kMinFrames = 256;
+
+    void configure(size_t block_frames) {
+        cap_ = std::min(kMinFrames + std::max<size_t>(block_frames, 1), ScopeBlockQueue::kMaxFramesPerSlot);
+        in_.assign(cap_ * 2, 0.f);
+        out_.assign(cap_ * 2, 0.f);
+        n_ = 0;
+    }
+
+    void add(ScopeBlockQueue& q, const float* in, const float* out, size_t frames,
+             float sample_rate, uint64_t config_generation) {
+        frames = std::min(frames, cap_);
+        if (n_ + frames > cap_) flush(q, sample_rate, config_generation);
+        std::memcpy(in_.data() + n_ * 2, in, frames * 2 * sizeof(float));
+        std::memcpy(out_.data() + n_ * 2, out, frames * 2 * sizeof(float));
+        n_ += frames;
+        if (n_ >= kMinFrames) flush(q, sample_rate, config_generation);
+    }
+
+private:
+    void flush(ScopeBlockQueue& q, float sample_rate, uint64_t config_generation) {
+        if (n_ == 0) return;
+        q.push(in_.data(), out_.data(), n_, sample_rate, config_generation);
+        n_ = 0;
+    }
+
+    std::vector<float> in_, out_;
+    size_t cap_{0};
+    size_t n_{0};
+};
+
 // ---- Input generator feed (FR-GEN-3) ------------------------------------------
 
 // Audio-thread side of the generator: reads the EmulatorState atomics once per block,
@@ -472,6 +513,10 @@ static void run_simulated(float sample_rate,
     // (checked only at recordStop) or re-firing every block indefinitely.
     bool recorder_was_active   = false;
     bool recorder_error_reported = false;
+
+    // FR-EMU-12: coalesces block_size effect blocks for the scope pipeline.
+    ScopeStager scope_stager;
+    scope_stager.configure(block_size);
 
     // Process one block of audio: generate input, run effect, emit scope/FFT.
     // Also writes the computed output into out_buf so the caller can forward
@@ -600,7 +645,7 @@ static void run_simulated(float sample_rate,
 
         // FR-EMU-10: hand the raw block to the non-RT drain thread instead of
         // accumulating/JSON-building/FFT-ing inline — see ScopeBlockQueue.
-        scope_queue.push(in_buf.data(), out_buf.data(), frames, sample_rate, cfg_gen_seen);
+        scope_stager.add(scope_queue, in_buf.data(), out_buf.data(), frames, sample_rate, cfg_gen_seen);
         return true;
     };
 
@@ -745,6 +790,8 @@ static void run_realtime(float sample_rate,
     const size_t block_size = std::max<size_t>(g_state.block_size.load(), 1);
     BlockAdapter adapter;
     adapter.configure(block_size, capacity);
+    ScopeStager scope_stager;
+    scope_stager.configure(block_size);
     std::vector<float> in_buf(block_size * 2);
     std::vector<float> out_buf(block_size * 2);
     std::vector<float> local_in_ch0(block_size), local_in_ch1(block_size);
@@ -797,7 +844,7 @@ static void run_realtime(float sample_rate,
 
         // FR-EMU-10: hand the raw block to the non-RT drain thread instead of
         // accumulating/JSON-building/FFT-ing inline — see ScopeBlockQueue.
-        scope_queue.push(in_buf.data(), out_buf.data(), frames, sample_rate, cfg_gen_seen);
+        scope_stager.add(scope_queue, in_buf.data(), out_buf.data(), frames, sample_rate, cfg_gen_seen);
     };
 
     auto processBlock = [&](const float* ca_in, float* ca_out, size_t frames_in) {
