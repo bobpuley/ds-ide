@@ -1,5 +1,6 @@
 #include "ipc_server.h"
 #include "wav_handoff.h"
+#include "replay_handoff.h"
 #include "emulator_state.h"
 #include "daisy/midi_event.h"
 #include "session_recorder.h"
@@ -666,6 +667,10 @@ void dispatch(const std::string& line) {
         if (!path.empty()) {
             uint32_t sr = 0, bs = 0;
             bool ok;
+            // FR-RTS-7: a replay may already be running — stop the audio
+            // thread's consumer and wait until it is out of popBlock()
+            // before close()/open() touch the player.
+            replay_stop_consumer();
             {
                 std::lock_guard<std::mutex> lk(g_state.player_mutex);
                 g_state.player.close();
@@ -692,6 +697,7 @@ void dispatch(const std::string& line) {
                     g_state.audio_mode.store(0);  // simulated
                 }
                 g_state.mode_cv.notify_all();
+                g_state.replay_generation.fetch_add(1);
                 g_state.replay_active.store(true);
                 g_state.transport_running.store(true);
             } else {
@@ -700,7 +706,7 @@ void dispatch(const std::string& line) {
         }
     }
     else if (type == "replayStop") {
-        g_state.replay_active.store(false);
+        replay_stop_consumer();  // FR-RTS-7: wait for the consumer before close()
         {
             std::lock_guard<std::mutex> lk(g_state.player_mutex);
             g_state.player.close();

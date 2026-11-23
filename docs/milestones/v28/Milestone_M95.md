@@ -24,7 +24,7 @@ The audio thread loads `wav_data_ptr` and only then publishes it as in use, and 
 
 ---
 
-### [ ] fix: Stop and acknowledge the replay consumer before close/open (FR-RTS-7)
+### [x] fix: Stop and acknowledge the replay consumer before close/open (FR-RTS-7)
 
 `replayStart` during a running replay calls `close()`/`open()` and resets the ring indices while the audio thread may be inside `popBlock()`, which is a data race and can underflow `w - r`.
 

@@ -358,6 +358,11 @@ struct EmulatorState {
     std::mutex       player_mutex;
     SessionPlayer    player;
     std::atomic<bool> replay_active{false};
+    // FR-RTS-7: set by the audio thread around its popBlock() call (see
+    // replay_handoff.h); open()/close() wait for it to clear first.
+    std::atomic<bool> replay_in_use{false};
+    // FR-RTS-7: bumped on every replayStart, before replay_active is set.
+    std::atomic<uint64_t> replay_generation{0};
 
     // Audio mode change notification — audio engine waits on this when in realtime mode.
     std::mutex              mode_mutex;

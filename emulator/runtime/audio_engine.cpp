@@ -8,6 +8,7 @@
 #include "input_generators.h"
 #include "led_telemetry.h"
 #include "wav_handoff.h"
+#include "replay_handoff.h"
 #include <algorithm>
 #include <cfloat>
 #include <chrono>
@@ -536,16 +537,21 @@ static void run_simulated(float sample_rate,
         if (!g_state.transport_running.load()) return true;
 
         // --- Input generation: replay (M14) / WAV (M9) / sine ---
-        if (g_state.replay_active.load()) {
+        if (replay_consumer_enter()) {
             // RT-safe (FR-RTS-3): popBlock only pops from a pre-filled ring —
             // no syscalls, no mutex, no heap allocation on this thread.
+            // FR-RTS-7: bracketed by replay_consumer_enter()/exit(), so
+            // replayStart/replayStop never close()/open() the player while
+            // this thread is inside popBlock().
             ReplayEvent evbuf[SessionPlayer::kMaxEventsPerSlot];
             size_t n_events = 0;
             bool got_block = g_state.player.popBlock(in_buf.data(), frames,
                                                       evbuf, SessionPlayer::kMaxEventsPerSlot,
                                                       n_events);
+            const bool replay_done = !got_block && g_state.player.done();
+            replay_consumer_exit();
             if (!got_block) {
-                if (g_state.player.done()) {
+                if (replay_done) {
                     g_state.replay_active.store(false);
                     ipc_send("{\"type\":\"replayDone\"}");
                     return true;
@@ -756,7 +762,9 @@ static void run_simulated(float sample_rate,
     const bool left_simulated = g_state.shutdown.load()
         || static_cast<AudioMode>(g_state.audio_mode.load()) != AudioMode::Simulated;
     if (left_simulated && g_state.replay_active.load()) {
-        g_state.replay_active.store(false);
+        // FR-RTS-7: the device callback may still be inside popBlock() here
+        // (device.stop() comes below) — wait for it before closing.
+        replay_stop_consumer();
         std::lock_guard<std::mutex> lk(g_state.player_mutex);
         g_state.player.close();
     }
