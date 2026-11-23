@@ -1,7 +1,7 @@
 # M94 — Daily-Use Correctness Fixes
 
 **Version:** 0.27.3
-**Status:** planned
+**Status:** in progress
 **Source:** 2026-11-21 code reviews (VS Code extension, C/C++ emulator) — HIGH findings #9, #1, #5 (intake 2026-11-23)
 
 ## Goal
@@ -10,7 +10,7 @@ Fix the three HIGH defects that ordinary use triggers: Wiring Editor edits that 
 
 ## Sprint Tasks
 
-### [ ] fix: Serialize Wiring Editor edits and apply them to the current document version (FR-WE-13)
+### [x] fix: Serialize Wiring Editor edits and apply them to the current document version (FR-WE-13)
 
 The source-mutating handlers compute line ranges from a snapshot taken before several `await`s and run interleaved, so two quick actions, or an outside change, apply ranges to the wrong lines; each handler also saves unrelated unsaved edits.
 

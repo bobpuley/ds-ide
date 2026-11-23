@@ -23,6 +23,7 @@ import { computeDropTargets, occupancyFromSource } from './wiring/drop-targets';
 import { REGISTRY } from './devices/registry';
 import type { Attachment } from './devices/attachment';
 import { peripheralEditText } from './wiring/peripheral-config';
+import { createEditQueue, runSourceEdit, type ComputeEdit } from './wiring/source-edit-runner';
 import {
   computePeripheralDisplayStates, PeripheralDisplayState, currentBusOf, isPeripheralEnabled,
 } from './wiring/peripheral-state';
@@ -675,179 +676,144 @@ interface WiringProviderDeps {
 function createWiringProvider(context: vscode.ExtensionContext, deps: WiringProviderDeps): WiringViewProvider {
   const { workspaceState, loadControllerConfig, refreshControlsView, showOledPanel, midiPanel } = deps;
 
+  // FR-WE-13: every source-mutating action goes through one queue and one
+  // edit protocol (read current text → compute → version check → apply →
+  // save only if it was clean), so two quick actions — or a change made by
+  // the user, git or an agent — can never apply ranges from stale text.
+  const editQueue = createEditQueue();
+  const editEffectSource = (compute: ComputeEdit, label = 'wiring'): Promise<string | undefined> =>
+    runSourceEdit({
+      openDoc: async () => {
+        const folder = resolveActiveFolder(workspaceState)?.uri.fsPath ?? '';
+        const effectPath = await findEffectSource(folder);
+        if (!effectPath) {
+          void vscode.window.showErrorMessage('ds-ide: no effect source file found — set ds-ide.effectSource');
+          return undefined;
+        }
+        return vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
+      },
+      buildEdit: (doc, oldText, newText) => makeBlockEdit(doc, doc.uri, oldText, newText),
+      applyEdit: (edit) => vscode.workspace.applyEdit(edit),
+      confirmAppend: confirmAppendMarkerBlocks,
+      showError: (message) => { void vscode.window.showErrorMessage(message); },
+    }, compute, label);
+  const activeFolderPath = (): string => resolveActiveFolder(workspaceState)?.uri.fsPath ?? '';
+
   // FR-UDM-7/8/9: shared by wirePin and moveControl. `removeIds` are
   // cleared from the source first — a conflict drop's replaced occupants
   // and, for a move, the control itself — then allocation, the conflict
   // check and the add all run against that text, and the whole change is
   // written as one edit (a single undo step). `resolve` names the control
   // to place from the pre-edit text, or returns null after saying why not.
-  const placeControl = async (removeIds: string[], resolve: (text: string) => WiredPin | null): Promise<void> => {
-    const folder = resolveActiveFolder(workspaceState)?.uri.fsPath ?? '';
-    const effectPath = await findEffectSource(folder);
-    if (!effectPath) {
-      void vscode.window.showErrorMessage('ds-ide: no effect source file found — set ds-ide.effectSource');
-      return;
-    }
-    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
-    const oldText = doc.getText();
-    const wp = resolve(oldText);
-    if (!wp) return;
-    const baseText = removeIds.length ? removeOccupantsFromSource(oldText, removeIds) : oldText;
+  const placeControl = (removeIds: string[], resolve: (text: string) => WiredPin | null): Promise<void> => editQueue.run(async () => {
+    const newText = await editEffectSource((oldText) => {
+      const wp = resolve(oldText);
+      if (!wp) return null;
+      const baseText = removeIds.length ? removeOccupantsFromSource(oldText, removeIds) : oldText;
 
-    // FR-DEV-8: a 'pins'-attachment device (rgbled) auto-claims its
-    // remaining pins from the nearest free ones after the clicked pin,
-    // rather than requiring a redesigned multi-pin picker in the popup.
-    // FR-UDM-6: the footprint comes from the same computeDropTargets() the
-    // drag preview used, so the pins written are the pins the user saw.
-    const pinCount = REGISTRY[wp.deviceType]!.pinCount;
-    let pins: number[] | undefined;
-    if (pinCount !== undefined) {
-      const allocated = computeDropTargets(wp.deviceType, PIN_DEFS, occupancyFromSource(baseText))
-        .find(t => t.kind === 'pin' && t.pins[0] === wp.pinNumber)?.pins;
-      if (!allocated) {
-        void vscode.window.showErrorMessage(
-          `ds-ide: not enough free pins after D${wp.pinNumber} to wire a ${REGISTRY[wp.deviceType]!.label} (needs ${pinCount}).`,
-        );
-        return;
+      // FR-DEV-8: a 'pins'-attachment device (rgbled) auto-claims its
+      // remaining pins from the nearest free ones after the clicked pin,
+      // rather than requiring a redesigned multi-pin picker in the popup.
+      // FR-UDM-6: the footprint comes from the same computeDropTargets() the
+      // drag preview used, so the pins written are the pins the user saw.
+      const pinCount = REGISTRY[wp.deviceType]!.pinCount;
+      let pins: number[] | undefined;
+      if (pinCount !== undefined) {
+        const allocated = computeDropTargets(wp.deviceType, PIN_DEFS, occupancyFromSource(baseText))
+          .find(t => t.kind === 'pin' && t.pins[0] === wp.pinNumber)?.pins;
+        if (!allocated) {
+          void vscode.window.showErrorMessage(
+            `ds-ide: not enough free pins after D${wp.pinNumber} to wire a ${REGISTRY[wp.deviceType]!.label} (needs ${pinCount}).`,
+          );
+          return null;
+        }
+        pins = allocated;
       }
-      pins = allocated;
-    }
 
-    // FR-DEV-13: wiring a control is also a pin-claiming action, so it must
-    // be refused on the same terms enabling a peripheral already is — a
-    // gap surfaced by manual testing (M46): wiring a button onto an
-    // enabled bus peripheral's pin (e.g. SD Card's D1-D6, OLED's D7-D10)
-    // previously succeeded silently. No peripheral is being toggled here,
-    // so nothing is excluded from the occupant set.
-    const candidateAttachment: Attachment = pins ? { kind: 'pins', pins } : { kind: 'pin', pin: wp.pinNumber };
-    const wireRejection = checkConflict(candidateAttachment, buildOccupants(baseText), PIN_DEFS, candidateBusesFor);
-    if (wireRejection) {
-      void vscode.window.showErrorMessage(
-        formatRejection(`${wp.id} (${REGISTRY[wp.deviceType]!.label})`, wireRejection),
-      );
-      return;
-    }
+      // FR-DEV-13: wiring a control is also a pin-claiming action, so it must
+      // be refused on the same terms enabling a peripheral already is — a
+      // gap surfaced by manual testing (M46): wiring a button onto an
+      // enabled bus peripheral's pin (e.g. SD Card's D1-D6, OLED's D7-D10)
+      // previously succeeded silently. No peripheral is being toggled here,
+      // so nothing is excluded from the occupant set.
+      const candidateAttachment: Attachment = pins ? { kind: 'pins', pins } : { kind: 'pin', pin: wp.pinNumber };
+      const wireRejection = checkConflict(candidateAttachment, buildOccupants(baseText), PIN_DEFS, candidateBusesFor);
+      if (wireRejection) {
+        void vscode.window.showErrorMessage(
+          formatRejection(`${wp.id} (${REGISTRY[wp.deviceType]!.label})`, wireRejection),
+        );
+        return null;
+      }
 
-    const afterDecl = insertIntoSource(baseText, wp.id, wp.deviceType, wp.pinNumber, pins);
-    const { controls: controlsAfterDecl } = parseControlsConvention(afterDecl);
-    const allPots = controlsAfterDecl.filter(c => c.kind === 'pot');
-    const newText = insertInitIntoSource(afterDecl, wp.id, wp.deviceType, wp.pinNumber, allPots, pins);
-    const { edit, needsAppendConfirmation } = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
-    if (needsAppendConfirmation && !(await confirmAppendMarkerBlocks())) {
-      return;
-    }
-    const applied = await vscode.workspace.applyEdit(edit);
-    if (!applied) {
-      void vscode.window.showErrorMessage('ds-ide: wiring edit could not be applied — source file was not changed.');
-      return;
-    }
-    // Saved immediately so buildControlsConfig's disk read below sees the
-    // same content as newText — otherwise the Controls view would disagree
-    // with the Wiring view until the user manually saves (FR-IPC-5).
-    await doc.save();
+      const afterDecl = insertIntoSource(baseText, wp.id, wp.deviceType, wp.pinNumber, pins);
+      const { controls: controlsAfterDecl } = parseControlsConvention(afterDecl);
+      const allPots = controlsAfterDecl.filter(c => c.kind === 'pot');
+      return insertInitIntoSource(afterDecl, wp.id, wp.deviceType, wp.pinNumber, allPots, pins);
+    });
+    if (newText === undefined) return;
     const { controls } = parseControlsConvention(newText);
     const wiredPinList: WiredPin[] = expandToWiredPins(controls);
     wiringProvider?.postWiredPins(wiredPinList);
     if (removeIds.length) wiringProvider?.postPeripherals(computePeripheralDisplayStates(newText));
     const cfg = await loadControllerConfig();
-    await refreshControlsView(folder, cfg);
-  };
+    await refreshControlsView(activeFolderPath(), cfg);
+  });
 
   const wiringProvider = new WiringViewProvider(
     context.extensionUri,
     (wp: WiredPin, replace?: string[]) => placeControl(replace ?? [], () => wp),
-    async (pinNumber: number, id: string) => {
-      const folder = resolveActiveFolder(workspaceState)?.uri.fsPath ?? '';
-      const effectPath = await findEffectSource(folder);
-      if (!effectPath) {
-        void vscode.window.showErrorMessage('ds-ide: no effect source file found — set ds-ide.effectSource');
-        return;
-      }
-      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
-      const oldText = doc.getText();
-      const afterDecl = removeFromSource(oldText, id);
-      const { controls: controlsAfterDecl } = parseControlsConvention(afterDecl);
-      const allPots = controlsAfterDecl.filter(c => c.kind === 'pot');
-      const newText = removeInitFromSource(afterDecl, id, allPots);
-      const { edit, needsAppendConfirmation } = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
-      if (needsAppendConfirmation && !(await confirmAppendMarkerBlocks())) {
-        return;
-      }
-      const applied = await vscode.workspace.applyEdit(edit);
-      if (!applied) {
-        void vscode.window.showErrorMessage('ds-ide: wiring edit could not be applied — source file was not changed.');
-        return;
-      }
-      // See the wire handler above (FR-IPC-5): save so the disk read inside
-      // buildControlsConfig matches newText instead of the pre-edit content.
-      await doc.save();
+    (_pinNumber: number, id: string) => editQueue.run(async () => {
+      const newText = await editEffectSource((oldText) => {
+        const afterDecl = removeFromSource(oldText, id);
+        const { controls: controlsAfterDecl } = parseControlsConvention(afterDecl);
+        const allPots = controlsAfterDecl.filter(c => c.kind === 'pot');
+        return removeInitFromSource(afterDecl, id, allPots);
+      });
+      if (newText === undefined) return;
       const { controls } = parseControlsConvention(newText);
       const wiredPinList: WiredPin[] = expandToWiredPins(controls);
       wiringProvider?.postWiredPins(wiredPinList);
       const cfg = await loadControllerConfig();
-      await refreshControlsView(folder, cfg);
-    },
-    async (peripheralId: string, enabled: boolean, requestedBus?: string, replace?: string[]) => {
-      const folder = resolveActiveFolder(workspaceState)?.uri.fsPath ?? '';
-      const effectPath = await findEffectSource(folder);
-      if (!effectPath) {
-        void vscode.window.showErrorMessage('ds-ide: no effect source file found — set ds-ide.effectSource');
-        return;
-      }
-      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(effectPath));
-      const oldText = doc.getText();
-      // FR-UDM-8: same one-edit replace as placeControl above.
-      let baseText = replace?.length ? removeOccupantsFromSource(oldText, replace) : oldText;
-      // FR-UDM-9: dropping a placed peripheral on another lane moves it —
-      // its old declaration is removed so the new bus's variant is written.
-      if (
-        enabled && requestedBus !== undefined && isPeripheralEnabled(baseText, peripheralId) &&
-        currentBusOf(baseText, peripheralId) !== requestedBus
-      ) {
-        baseText = peripheralEditText(baseText, peripheralId, false);
-      }
+      await refreshControlsView(activeFolderPath(), cfg);
+    }),
+    (peripheralId: string, enabled: boolean, requestedBus?: string, replace?: string[]) => editQueue.run(async () => {
+      const newText = await editEffectSource((oldText) => {
+        // FR-UDM-8: same one-edit replace as placeControl above.
+        let baseText = replace?.length ? removeOccupantsFromSource(oldText, replace) : oldText;
+        // FR-UDM-9: dropping a placed peripheral on another lane moves it —
+        // its old declaration is removed so the new bus's variant is written.
+        if (
+          enabled && requestedBus !== undefined && isPeripheralEnabled(baseText, peripheralId) &&
+          currentBusOf(baseText, peripheralId) !== requestedBus
+        ) {
+          baseText = peripheralEditText(baseText, peripheralId, false);
+        }
 
-      // FR-DEV-13: a colliding enable is refused before any mutation, never
-      // applied-and-flagged. Disabling a peripheral can never create a
-      // conflict, so only the enable path is checked. The bus checked is
-      // whichever `currentBusOf` resolves to — the peripheral's current
-      // declaration if already enabled, or its default first choice
-      // otherwise (FR-DEV-14).
-      // FR-UDM-7: a drop names its lane's bus; the checkbox path never did.
-      const bus = requestedBus ?? currentBusOf(oldText, peripheralId);
-      if (enabled) {
-        if (bus) {
+        // FR-DEV-13: a colliding enable is refused before any mutation, never
+        // applied-and-flagged. Disabling a peripheral can never create a
+        // conflict, so only the enable path is checked. The bus checked is
+        // whichever `currentBusOf` resolves to — the peripheral's current
+        // declaration if already enabled, or its default first choice
+        // otherwise (FR-DEV-14).
+        // FR-UDM-7: a drop names its lane's bus; the checkbox path never did.
+        const bus = requestedBus ?? currentBusOf(oldText, peripheralId);
+        if (enabled && bus) {
           const occupants = buildOccupants(baseText, peripheralId);
-          const rejection = checkConflict(
-            { kind: 'bus', bus },
-            occupants,
-            PIN_DEFS,
-            candidateBusesFor,
-          );
+          const rejection = checkConflict({ kind: 'bus', bus }, occupants, PIN_DEFS, candidateBusesFor);
           if (rejection) {
             void vscode.window.showErrorMessage(formatRejection(REGISTRY[peripheralId]!.label, rejection));
-            return;
+            return null;
           }
         }
-      }
-
-      const newText = peripheralEditText(baseText, peripheralId, enabled, bus ?? undefined);
-      const { edit, needsAppendConfirmation } = makeBlockEdit(doc, vscode.Uri.file(effectPath), oldText, newText);
-      if (needsAppendConfirmation && !(await confirmAppendMarkerBlocks())) {
-        return;
-      }
-      const applied = await vscode.workspace.applyEdit(edit);
-      if (!applied) {
-        void vscode.window.showErrorMessage('ds-ide: peripheral edit could not be applied — source file was not changed.');
-        return;
-      }
-      await doc.save();
+        return peripheralEditText(baseText, peripheralId, enabled, bus ?? undefined);
+      }, 'peripheral');
+      if (newText === undefined) return;
       wiringProvider?.postPeripherals(computePeripheralDisplayStates(newText));
       if (replace?.length) {
         wiringProvider?.postWiredPins(expandToWiredPins(parseControlsConvention(newText).controls));
-        await refreshControlsView(folder, await loadControllerConfig());
+        await refreshControlsView(activeFolderPath(), await loadControllerConfig());
       }
-    },
+    }),
     (peripheralId: string) => {
       if (peripheralId === 'oled') {
         void showOledPanel();
