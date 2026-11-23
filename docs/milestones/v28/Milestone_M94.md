@@ -41,7 +41,7 @@ With a real audio device the effect is called with the device's frame count (at 
 
 ---
 
-### [ ] fix: Make LED output latest-state atomics and MIDI output a multi-producer stream (FR-EMU-13)
+### [x] fix: Make LED output latest-state atomics and MIDI output a multi-producer stream (FR-EMU-13)
 
 `led_queue` and `midi_tx_queue` assume one producer, but `Led::Update`, `SetLed`, `RgbLed::Update` and `SendMessage` are also called from the audio callback, so two threads write the same `std::string` slot.
 

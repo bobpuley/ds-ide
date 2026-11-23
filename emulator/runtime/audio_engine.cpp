@@ -6,6 +6,7 @@
 #include "session_recorder.h"
 #include "wav_reader.h"
 #include "input_generators.h"
+#include "led_telemetry.h"
 #include <algorithm>
 #include <cfloat>
 #include <chrono>
@@ -975,20 +976,22 @@ void run_audio_engine() {
     // Runs for the lifetime of the audio engine; the mutex and ::send() stay off
     // the real-time thread. Reports ipc_queue_drops periodically (FR-QA-1).
     //
-    // Also drains oled_queue (FR-DEV-14, M46), led_queue (FR-EMU-9), and
-    // midi_tx_queue/midi_rx_queue (FR-DEV-16 M47, split FR-EMU-9) —
-    // independent SPSC queues whose producers are, respectively, the
-    // effect's own thread (OledDisplay::Update() and Led/RgbLed::Update(),
-    // all called from effect_main()'s while(1) loop) and the IPC-dispatch
-    // thread (parsing an inbound `midiEvent` message) — neither is this
-    // engine's RT callback. One consumer thread servicing several unrelated
-    // SPSC queues is safe: each queue's single-producer/single-consumer
-    // contract only constrains its own producer/consumer pair, not what else
-    // the consumer thread does between pops.
+    // Also drains oled_queue (FR-DEV-14, M46) and midi_rx_queue (FR-DEV-16
+    // M47, split FR-EMU-9) — SPSC queues whose producers are the effect's own
+    // thread (OledDisplay::Update()) and the IPC-dispatch thread — plus
+    // midi_tx_queue, a multi-producer queue (FR-EMU-13: MIDI may be sent from
+    // the effect loop and the audio callback), and samples LED state
+    // (FR-EMU-13: LedSampler sends `led`/`rgbLed` only when a value changed).
+    // One consumer thread servicing several queues is safe: each queue's
+    // contract only constrains its own producers/consumer.
     std::thread drain_thread([&]() {
         std::string msg;
         std::string oled_msg;
-        std::string led_msg;
+        LedSampler  led_sampler;
+        auto send_led = [](const char* m) {
+            std::lock_guard<std::mutex> lk(g_state.send_mutex);
+            if (g_state.send_ipc) g_state.send_ipc(m);
+        };
         std::string midi_tx_msg;
         std::string midi_rx_msg;
         uint32_t last_reported_drops = 0;
@@ -1068,11 +1071,7 @@ void run_audio_engine() {
                 if (g_state.send_ipc) g_state.send_ipc(oled_msg);
                 did_work = true;
             }
-            if (g_state.led_queue.pop(led_msg)) {
-                std::lock_guard<std::mutex> lk(g_state.send_mutex);
-                if (g_state.send_ipc) g_state.send_ipc(led_msg);
-                did_work = true;
-            }
+            if (led_sampler.collect(send_led) > 0) did_work = true;
             if (g_state.midi_tx_queue.pop(midi_tx_msg)) {
                 std::lock_guard<std::mutex> lk(g_state.send_mutex);
                 if (g_state.send_ipc) g_state.send_ipc(midi_tx_msg);
@@ -1098,7 +1097,6 @@ void run_audio_engine() {
                                    + g_state.ipc_queue.oversize_drops.load(std::memory_order_relaxed)
                                    + g_state.oled_queue_drops.load(std::memory_order_relaxed)
                                    + g_state.oled_queue.oversize_drops.load(std::memory_order_relaxed)
-                                   + g_state.led_queue.oversize_drops.load(std::memory_order_relaxed)
                                    + g_state.midi_tx_queue_drops.load(std::memory_order_relaxed)
                                    + g_state.midi_tx_queue.oversize_drops.load(std::memory_order_relaxed)
                                    + g_state.midi_rx_queue_drops.load(std::memory_order_relaxed)
@@ -1134,10 +1132,7 @@ void run_audio_engine() {
             std::lock_guard<std::mutex> lk(g_state.send_mutex);
             if (g_state.send_ipc) g_state.send_ipc(oled_msg);
         }
-        while (g_state.led_queue.pop(led_msg)) {
-            std::lock_guard<std::mutex> lk(g_state.send_mutex);
-            if (g_state.send_ipc) g_state.send_ipc(led_msg);
-        }
+        led_sampler.collect(send_led);
         while (g_state.midi_tx_queue.pop(midi_tx_msg)) {
             std::lock_guard<std::mutex> lk(g_state.send_mutex);
             if (g_state.send_ipc) g_state.send_ipc(midi_tx_msg);

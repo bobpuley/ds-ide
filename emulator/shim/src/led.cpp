@@ -1,23 +1,16 @@
 #include "daisy/led.h"
 #include "emulator_state.h"
-#include <cstdio>
 
 namespace daisy {
 
 void emit_led_change(int pin, bool lit) {
     if (pin < 0 || pin >= daisy_emu::EmulatorState::kNumGpioPins) return;
 
-    // Suppress unchanged writes (effects often call SetLed every loop iteration).
-    int8_t want = lit ? 1 : 0;
-    int8_t prev = daisy_emu::g_state.led_last_state[pin].exchange(want);
-    if (prev == want) return;
-
-    char buf[96];
-    std::snprintf(buf, sizeof(buf),
-                  "{\"type\":\"led\",\"gpioPin\":%d,\"lit\":%s}",
-                  pin, lit ? "true" : "false");
-
-    daisy_emu::g_state.led_queue.push(buf);
+    // FR-EMU-13: LED output is state — store the latest level; the drain
+    // thread samples it and sends a `led` message only when it changed
+    // (LedSampler, led_telemetry.h). Safe from the effect loop and the audio
+    // callback at once: one atomic store, no queue, no allocation.
+    daisy_emu::g_state.led_state[pin].store(lit ? 1 : 0, std::memory_order_relaxed);
 }
 
 void Led::Init(dsy_gpio_pin pin, bool invert) {
