@@ -9,6 +9,7 @@
 #include "led_telemetry.h"
 #include "wav_handoff.h"
 #include "replay_handoff.h"
+#include "engine_notify.h"
 #include <algorithm>
 #include <cfloat>
 #include <chrono>
@@ -958,6 +959,11 @@ static void run_realtime(float sample_rate,
 // ---- Engine entry point -----------------------------------------------------
 
 void run_audio_engine() {
+    // FR-RTS-8: tells the shutdown watcher (wake_engine_until_exited) that
+    // the engine is gone, on every return path.
+    g_state.engine_exited.store(false);
+    struct ExitFlag { ~ExitFlag() { g_state.engine_exited.store(true); } } exit_flag;
+
     // Wait for the effect to call StartAudio()
     {
         std::unique_lock<std::mutex> lk(g_state.callback_mutex);

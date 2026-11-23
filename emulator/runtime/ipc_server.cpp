@@ -1,6 +1,7 @@
 #include "ipc_server.h"
 #include "wav_handoff.h"
 #include "replay_handoff.h"
+#include "engine_notify.h"
 #include "emulator_state.h"
 #include "daisy/midi_event.h"
 #include "session_recorder.h"
@@ -381,7 +382,7 @@ void dispatch(const std::string& line) {
     // audio, finalizes the recorder, flushes telemetry and exits 0 — the
     // same path SIGTERM takes on POSIX.
     if (type == "shutdown") {
-        g_state.shutdown.store(true);
+        request_engine_shutdown();  // FR-RTS-8: set under the lock and wake the engine
         return;
     }
 
@@ -414,10 +415,9 @@ void dispatch(const std::string& line) {
         }
         // FR-EMU-7: wake the active mode loop so it re-reads sample_rate/
         // block_size instead of running the rest of the session on whatever
-        // was captured when run_audio_engine() started (matching the
-        // audioDevice handler's existing mode_cv.notify_all() pattern).
-        g_state.config_generation.fetch_add(1, std::memory_order_relaxed);
-        g_state.mode_cv.notify_all();
+        // was captured when run_audio_engine() started. FR-RTS-8: bumped
+        // under mode_mutex so the wake-up cannot be lost.
+        notify_engine([] { g_state.config_generation.fetch_add(1); });
     }
     else if (type == "transport") {
         auto action = json_get(line, "action");
@@ -592,11 +592,7 @@ void dispatch(const std::string& line) {
     else if (type == "audioMode") {
         auto mode = json_get(line, "mode");
         int new_mode = (mode == "realtime") ? 1 : 0;
-        {
-            std::lock_guard<std::mutex> lk(g_state.mode_mutex);
-            g_state.audio_mode.store(new_mode);
-        }
-        g_state.mode_cv.notify_all();
+        notify_engine([new_mode] { g_state.audio_mode.store(new_mode); });
     }
     else if (type == "audioDevice") {
         auto sr = json_get(line, "sampleRate");
@@ -621,11 +617,11 @@ void dispatch(const std::string& line) {
                     g_state.rt_buffer_size.store(static_cast<size_t>(v));
             } catch (...) { std::fprintf(stderr, "[daisy-emu] stoul failed: audioDevice.bufferSize\n"); }
         }
-        // Notify audio engine of device config change
-        {
-            std::lock_guard<std::mutex> lk(g_state.mode_mutex);
-        }
-        g_state.mode_cv.notify_all();
+        // FR-RTS-8: bump config_generation (as `config` does) so the running
+        // mode loop exits and re-enters with the new sample rate and buffer
+        // size — the wait predicates do not look at those values directly,
+        // so a bare notify was ignored and the change applied only by chance.
+        notify_engine([] { g_state.config_generation.fetch_add(1); });
     }
     else if (type == "recordStart") {
         auto path = json_get(line, "path");
@@ -692,11 +688,7 @@ void dispatch(const std::string& line) {
                     emit_event(buf);
                 }
                 // Ensure simulated mode and stop any active transport before replay
-                {
-                    std::lock_guard<std::mutex> lk(g_state.mode_mutex);
-                    g_state.audio_mode.store(0);  // simulated
-                }
-                g_state.mode_cv.notify_all();
+                notify_engine([] { g_state.audio_mode.store(0); });  // simulated
                 g_state.replay_generation.fetch_add(1);
                 g_state.replay_active.store(true);
                 g_state.transport_running.store(true);

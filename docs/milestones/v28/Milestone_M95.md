@@ -38,7 +38,7 @@ The audio thread loads `wav_data_ptr` and only then publishes it as in use, and 
 
 ---
 
-### [ ] fix: Notify the audio engine under its mutex and make audioDevice bump the config generation (FR-RTS-8)
+### [x] fix: Notify the audio engine under its mutex and make audioDevice bump the config generation (FR-RTS-8)
 
 State read by the engine's wait predicates is changed without holding `mode_mutex`/`callback_mutex`, so a notification can be missed and `join()` can hang at shutdown; `audioDevice` does not bump `config_generation`, so new rates apply depending on thread timing.
 

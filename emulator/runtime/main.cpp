@@ -1,6 +1,7 @@
 #include "audio_engine.h"
 #include "emulator_state.h"
 #include "ipc_server.h"
+#include "engine_notify.h"
 #include "ipc_transport.h"
 #include <chrono>
 #include <cstdio>
@@ -133,12 +134,15 @@ int main(int argc, char* argv[]) {
         while (!daisy_emu::g_state.shutdown.load(std::memory_order_relaxed)) {
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
         }
-        daisy_emu::g_state.mode_cv.notify_all();
-        daisy_emu::g_state.callback_cv.notify_all();
         {
             std::lock_guard<std::mutex> lk(daisy_emu::g_state.recorder_mutex);
             daisy_emu::g_state.recorder.stop();
         }
+        // FR-RTS-8: the flag was set without the engine's mutexes (signal
+        // handler, effect_main() return), so a single notify could be lost
+        // and audio_thread.join() would hang. Keep waking the engine, under
+        // its mutexes, until run_audio_engine() has returned.
+        daisy_emu::wake_engine_until_exited();
         // Joining audio_thread here (rather than detaching this thread) is
         // what lets the drain thread's shutdown-flush logic
         // (audio_engine.cpp) actually run and complete before the process

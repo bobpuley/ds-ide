@@ -251,6 +251,9 @@ struct EmulatorState {
     // Transport
     std::atomic<bool> transport_running{false};
     std::atomic<bool> shutdown{false};
+    // FR-RTS-8: set when run_audio_engine() returns; the shutdown watcher
+    // keeps waking the engine until it sees this (engine_notify.h).
+    std::atomic<bool> engine_exited{false};
     // FR-EMU-11: set by main.cpp's shutdown_watcher only after audio_thread
     // has been joined — i.e. only once the drain thread has finished
     // flushing ipc_queue/oled_queue/midi_tx_queue/midi_rx_queue and LED state to
