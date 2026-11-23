@@ -7,6 +7,9 @@
 #include "wav_reader.h"
 #include "input_generators.h"
 #include "led_telemetry.h"
+#include "wav_handoff.h"
+#include "replay_handoff.h"
+#include "engine_notify.h"
 #include <algorithm>
 #include <cfloat>
 #include <chrono>
@@ -535,16 +538,21 @@ static void run_simulated(float sample_rate,
         if (!g_state.transport_running.load()) return true;
 
         // --- Input generation: replay (M14) / WAV (M9) / sine ---
-        if (g_state.replay_active.load()) {
+        if (replay_consumer_enter()) {
             // RT-safe (FR-RTS-3): popBlock only pops from a pre-filled ring —
             // no syscalls, no mutex, no heap allocation on this thread.
+            // FR-RTS-7: bracketed by replay_consumer_enter()/exit(), so
+            // replayStart/replayStop never close()/open() the player while
+            // this thread is inside popBlock().
             ReplayEvent evbuf[SessionPlayer::kMaxEventsPerSlot];
             size_t n_events = 0;
             bool got_block = g_state.player.popBlock(in_buf.data(), frames,
                                                       evbuf, SessionPlayer::kMaxEventsPerSlot,
                                                       n_events);
+            const bool replay_done = !got_block && g_state.player.done();
+            replay_consumer_exit();
             if (!got_block) {
-                if (g_state.player.done()) {
+                if (replay_done) {
                     g_state.replay_active.store(false);
                     ipc_send("{\"type\":\"replayDone\"}");
                     return true;
@@ -566,12 +574,11 @@ static void run_simulated(float sample_rate,
                 }
             }
         } else if (g_state.wav_active.load()) {
-            // RT-safe (FR-RTS-3): atomic pointer load replaces the wav_mutex +
-            // shared_ptr copy — no mutex, no refcount churn on this thread. The
-            // pointer is published back via wav_data_in_use so the IPC thread
-            // knows when it is safe to free a retired WavData.
-            const WavData* wav = g_state.wav_data_ptr.load(std::memory_order_acquire);
-            g_state.wav_data_in_use.store(wav, std::memory_order_release);
+            // RT-safe (FR-RTS-3/FR-RTS-6): the hazard-pointer acquire
+            // publishes the buffer this block reads and re-checks it is still
+            // current, so the IPC thread (WavRetirer) can never free it
+            // mid-read; released as soon as the block is filled.
+            const WavData* wav = wav_reader_acquire();
             uint64_t gen = g_state.wav_generation.load();
             if (gen != wav_gen_seen) { wav_gen_seen = gen; wav_pos = 0.0; }
             if (wav && !wav->empty()) {
@@ -581,6 +588,7 @@ static void run_simulated(float sample_rate,
                 std::fill(in_buf.begin(),
                           in_buf.begin() + static_cast<ptrdiff_t>(frames * 2), 0.f);
             }
+            wav_reader_release();
         } else if (generator_feed.render(sample_rate, frames, in_buf.data())) {
             // FR-GEN-3: a selected generator replaces the sine branch (replay and WAV keep priority).
         } else {
@@ -755,7 +763,9 @@ static void run_simulated(float sample_rate,
     const bool left_simulated = g_state.shutdown.load()
         || static_cast<AudioMode>(g_state.audio_mode.load()) != AudioMode::Simulated;
     if (left_simulated && g_state.replay_active.load()) {
-        g_state.replay_active.store(false);
+        // FR-RTS-7: the device callback may still be inside popBlock() here
+        // (device.stop() comes below) — wait for it before closing.
+        replay_stop_consumer();
         std::lock_guard<std::mutex> lk(g_state.player_mutex);
         g_state.player.close();
     }
@@ -949,6 +959,11 @@ static void run_realtime(float sample_rate,
 // ---- Engine entry point -----------------------------------------------------
 
 void run_audio_engine() {
+    // FR-RTS-8: tells the shutdown watcher (wake_engine_until_exited) that
+    // the engine is gone, on every return path.
+    g_state.engine_exited.store(false);
+    struct ExitFlag { ~ExitFlag() { g_state.engine_exited.store(true); } } exit_flag;
+
     // Wait for the effect to call StartAudio()
     {
         std::unique_lock<std::mutex> lk(g_state.callback_mutex);

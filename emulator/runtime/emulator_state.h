@@ -251,6 +251,9 @@ struct EmulatorState {
     // Transport
     std::atomic<bool> transport_running{false};
     std::atomic<bool> shutdown{false};
+    // FR-RTS-8: set when run_audio_engine() returns; the shutdown watcher
+    // keeps waking the engine until it sees this (engine_notify.h).
+    std::atomic<bool> engine_exited{false};
     // FR-EMU-11: set by main.cpp's shutdown_watcher only after audio_thread
     // has been joined — i.e. only once the drain thread has finished
     // flushing ipc_queue/oled_queue/midi_tx_queue/midi_rx_queue and LED state to
@@ -358,6 +361,11 @@ struct EmulatorState {
     std::mutex       player_mutex;
     SessionPlayer    player;
     std::atomic<bool> replay_active{false};
+    // FR-RTS-7: set by the audio thread around its popBlock() call (see
+    // replay_handoff.h); open()/close() wait for it to clear first.
+    std::atomic<bool> replay_in_use{false};
+    // FR-RTS-7: bumped on every replayStart, before replay_active is set.
+    std::atomic<uint64_t> replay_generation{0};
 
     // Audio mode change notification — audio engine waits on this when in realtime mode.
     std::mutex              mode_mutex;

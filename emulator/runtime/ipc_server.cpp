@@ -1,4 +1,7 @@
 #include "ipc_server.h"
+#include "wav_handoff.h"
+#include "replay_handoff.h"
+#include "engine_notify.h"
 #include "emulator_state.h"
 #include "daisy/midi_event.h"
 #include "session_recorder.h"
@@ -18,29 +21,18 @@
 
 namespace daisy_emu {
 
-// Publishes `new_wav` as the active WAV data via an atomic pointer swap and
-// safely frees the previously-published WavData (FR-RTS-3). Runs on the IPC
-// dispatch thread, never the RT thread, so it is free to block briefly while
-// waiting for the audio engine to confirm it has moved off the old pointer
-// (wav_data_in_use) before deleting it.
-static void retire_wav_data(const WavData* new_wav) {
-    const WavData* old = g_state.wav_data_ptr.exchange(new_wav, std::memory_order_acq_rel);
-    if (!old) return;
+// Publishes the active WAV data and frees retired buffers only once the
+// audio thread is known not to be reading them (FR-RTS-3, FR-RTS-6): a buffer
+// still in use after the ~200 ms wait stays on the retire list — it is never
+// freed on a timeout. Used only by the IPC-dispatch thread.
+static WavRetirer g_wav_retirer;
 
-    bool confirmed = false;
-    for (int i = 0; i < 200; ++i) {  // up to ~200 ms
-        if (g_state.wav_data_in_use.load(std::memory_order_acquire) != old) { confirmed = true; break; }
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    if (!confirmed) {
-        // Timed out — the engine may not be rendering at all right now (e.g.
-        // transport stopped). Clear wav_data_in_use first so a future
-        // allocation that happens to reuse this address can't be
-        // misidentified as still in flight.
-        const WavData* expected = old;
-        g_state.wav_data_in_use.compare_exchange_strong(expected, static_cast<const WavData*>(nullptr));
-    }
-    delete old;
+static void retire_wav_data(const WavData* new_wav) {
+    g_wav_retirer.publish(new_wav);
+}
+
+void reclaim_wav_after_engine_stopped() {
+    g_wav_retirer.reclaim_all_after_reader_stopped();
 }
 
 // ---- Minimal JSON field extraction ------------------------------------------
@@ -390,7 +382,7 @@ void dispatch(const std::string& line) {
     // audio, finalizes the recorder, flushes telemetry and exits 0 — the
     // same path SIGTERM takes on POSIX.
     if (type == "shutdown") {
-        g_state.shutdown.store(true);
+        request_engine_shutdown();  // FR-RTS-8: set under the lock and wake the engine
         return;
     }
 
@@ -423,10 +415,9 @@ void dispatch(const std::string& line) {
         }
         // FR-EMU-7: wake the active mode loop so it re-reads sample_rate/
         // block_size instead of running the rest of the session on whatever
-        // was captured when run_audio_engine() started (matching the
-        // audioDevice handler's existing mode_cv.notify_all() pattern).
-        g_state.config_generation.fetch_add(1, std::memory_order_relaxed);
-        g_state.mode_cv.notify_all();
+        // was captured when run_audio_engine() started. FR-RTS-8: bumped
+        // under mode_mutex so the wake-up cannot be lost.
+        notify_engine([] { g_state.config_generation.fetch_add(1); });
     }
     else if (type == "transport") {
         auto action = json_get(line, "action");
@@ -601,11 +592,7 @@ void dispatch(const std::string& line) {
     else if (type == "audioMode") {
         auto mode = json_get(line, "mode");
         int new_mode = (mode == "realtime") ? 1 : 0;
-        {
-            std::lock_guard<std::mutex> lk(g_state.mode_mutex);
-            g_state.audio_mode.store(new_mode);
-        }
-        g_state.mode_cv.notify_all();
+        notify_engine([new_mode] { g_state.audio_mode.store(new_mode); });
     }
     else if (type == "audioDevice") {
         auto sr = json_get(line, "sampleRate");
@@ -630,11 +617,11 @@ void dispatch(const std::string& line) {
                     g_state.rt_buffer_size.store(static_cast<size_t>(v));
             } catch (...) { std::fprintf(stderr, "[daisy-emu] stoul failed: audioDevice.bufferSize\n"); }
         }
-        // Notify audio engine of device config change
-        {
-            std::lock_guard<std::mutex> lk(g_state.mode_mutex);
-        }
-        g_state.mode_cv.notify_all();
+        // FR-RTS-8: bump config_generation (as `config` does) so the running
+        // mode loop exits and re-enters with the new sample rate and buffer
+        // size — the wait predicates do not look at those values directly,
+        // so a bare notify was ignored and the change applied only by chance.
+        notify_engine([] { g_state.config_generation.fetch_add(1); });
     }
     else if (type == "recordStart") {
         auto path = json_get(line, "path");
@@ -676,6 +663,10 @@ void dispatch(const std::string& line) {
         if (!path.empty()) {
             uint32_t sr = 0, bs = 0;
             bool ok;
+            // FR-RTS-7: a replay may already be running — stop the audio
+            // thread's consumer and wait until it is out of popBlock()
+            // before close()/open() touch the player.
+            replay_stop_consumer();
             {
                 std::lock_guard<std::mutex> lk(g_state.player_mutex);
                 g_state.player.close();
@@ -697,11 +688,8 @@ void dispatch(const std::string& line) {
                     emit_event(buf);
                 }
                 // Ensure simulated mode and stop any active transport before replay
-                {
-                    std::lock_guard<std::mutex> lk(g_state.mode_mutex);
-                    g_state.audio_mode.store(0);  // simulated
-                }
-                g_state.mode_cv.notify_all();
+                notify_engine([] { g_state.audio_mode.store(0); });  // simulated
+                g_state.replay_generation.fetch_add(1);
                 g_state.replay_active.store(true);
                 g_state.transport_running.store(true);
             } else {
@@ -710,7 +698,7 @@ void dispatch(const std::string& line) {
         }
     }
     else if (type == "replayStop") {
-        g_state.replay_active.store(false);
+        replay_stop_consumer();  // FR-RTS-7: wait for the consumer before close()
         {
             std::lock_guard<std::mutex> lk(g_state.player_mutex);
             g_state.player.close();

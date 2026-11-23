@@ -59,4 +59,8 @@ bool decode_control_id(const std::string& id, char& kind, int& index);
 // called internally, once per received line, by run_ipc_server()'s client
 // loop. Parses one JSON line and applies its effect to g_state.
 void dispatch(const std::string& line);
+
+// FR-RTS-6: frees any WAV buffers still on the retire list. Call only once
+// both the audio thread and the IPC thread have been joined.
+void reclaim_wav_after_engine_stopped();
 }  // namespace daisy_emu
