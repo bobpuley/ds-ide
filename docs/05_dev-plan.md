@@ -1,6 +1,6 @@
-> **v27 complete** — archived to `docs/v27/` on 2026-11-23. This file now seeds v28 planning.
+> **v28 complete** — archived to `docs/v28/` on 2026-11-23. This file now seeds v29 planning.
 
-# 05 — Development Plan (v28)
+# 05 — Development Plan (v29)
 
 > **v1 complete** — M0–M7 released (0.1.0–0.1.7), all ACs green.
 > Archived: [`docs/v1/`](v1/).
@@ -82,8 +82,11 @@
 >
 > **v27 complete** — M92 released (0.25.1), all ACs green.
 > Archived: [`docs/v27/`](v27/).
+>
+> **v28 complete** — M93–M95 released (0.27.2–0.27.4), all ACs green.
+> Archived: [`docs/v28/`](v28/).
 
-*v28: review fixes for the 2026-11-21 HIGH findings (M93–M95). M93 released (0.27.2), M94 released (0.27.3), M95 released (0.27.4).*
+*v29 milestones not yet planned.*
 
 ---
 
@@ -234,14 +237,11 @@ Full registry in [`docs/v26/05_dev-plan.md`](v26/05_dev-plan.md).
 M92 AI Agent Guide.
 Full registry in [`docs/v27/05_dev-plan.md`](v27/05_dev-plan.md).
 
-### v28 (0.27.2–0.27.4) — planned
+### v28 (0.27.2–0.27.4) — archived in `docs/v28/`
 
-| ID  | Name                              | Status      | Version | File                                                |
-|-----|-----------------------------------|-------------|---------|-----------------------------------------------------|
-| M93 | Extension Robustness Quick Fixes  | **released** | 0.27.2  | [Milestone_M93.md](milestones/v28/Milestone_M93.md) |
-| M94 | Daily-Use Correctness Fixes       | **released** | 0.27.3  | [Milestone_M94.md](milestones/v28/Milestone_M94.md) |
-| M95 | Real-Time Concurrency Fixes       | **released** | 0.27.4  | [Milestone_M95.md](milestones/v28/Milestone_M95.md) |
+M93 Extension Robustness Quick Fixes · M94 Daily-Use Correctness Fixes · M95 Real-Time Concurrency Fixes.
+Full registry in [`docs/v28/05_dev-plan.md`](v28/05_dev-plan.md).
 
-Source: HIGH findings of the 2026-11-21 code reviews (`docs/06_*_review.md`); bug intake 2026-11-23.
+### v29 — planned
 
-**Priority/sequence (owner, 2026-11-23):** M93 (cheap, high value) → M94 (most likely to hit in daily use) → M95 (real-time concurrency, verified with TSAN stress tests). MEDIUM and LOW findings are not yet intaked.
+*(no milestones yet)*
