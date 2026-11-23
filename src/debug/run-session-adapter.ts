@@ -92,6 +92,7 @@ export class RunSessionAdapter implements vscode.DebugAdapter {
         this.sendEvent('initialized');
         return;
       case 'launch':
+        // FR-DBG-2: launch never rejects — failures are answered inside it.
         void this.launch(req);
         return;
       case 'threads':
@@ -110,7 +111,27 @@ export class RunSessionAdapter implements vscode.DebugAdapter {
     }
   }
 
+  // FR-DBG-2: a rejection from the host (deploy, attach) must neither escape
+  // as an unhandled rejection nor leave the session in "launching".
   private async launch(req: DapRequest): Promise<void> {
+    let responded = false;
+    const respondLaunch = () => { responded = true; this.respond(req, {}); };
+    try {
+      await this.launchSteps(req, respondLaunch);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (responded) {
+        // The attach runs after the launch was answered: report it instead.
+        this.sendOutput(`ds-ide: launch failed — ${message}\n`, 'stderr');
+      } else {
+        this.respondError(req, message);
+      }
+      this.stopOwnEmulator();
+      this.sendTerminated();
+    }
+  }
+
+  private async launchSteps(req: DapRequest, respondLaunch: () => void): Promise<void> {
     const config = req.arguments ?? {};
     const mode: TransportMode = config['noDebug'] ? 'run' : 'debug';
     this._mode = mode;
@@ -120,14 +141,14 @@ export class RunSessionAdapter implements vscode.DebugAdapter {
         // Stopped mid-rebuild but the deploy won the race: that emulator
         // belongs to this session and must not outlive it.
         if (ok) this.host.stopEmulator({ immediate: false });
-        this.respond(req, {});
+        respondLaunch();
         this.sendTerminated();
         return;
       }
     }
     const pid = this.host.currentEmulatorPid();
     this._boundPid = pid;
-    this.respond(req, {});
+    respondLaunch();
     if (pid === undefined) {
       this.sendTerminated();
       return;
@@ -152,6 +173,17 @@ export class RunSessionAdapter implements vscode.DebugAdapter {
     this._emitter.fire(makeDap({
       type: 'response', command: req.command, request_seq: req.seq, seq: ++this._seq, success: true, body,
     }));
+  }
+
+  private respondError(req: DapRequest, message: string): void {
+    this._emitter.fire(makeDap({
+      type: 'response', command: req.command, request_seq: req.seq, seq: ++this._seq, success: false, message,
+      body: { error: { id: 1, format: message, showUser: true } },
+    }));
+  }
+
+  private sendOutput(output: string, category: 'stderr' | 'console'): void {
+    this._emitter.fire(makeDap({ type: 'event', event: 'output', seq: ++this._seq, body: { category, output } }));
   }
 
   private sendEvent(event: string): void {

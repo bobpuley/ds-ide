@@ -311,3 +311,49 @@ describe('RunSessionAdapter — how the emulator is stopped', () => {
   });
 });
 
+
+describe('RunSessionAdapter — failed launch (FR-DBG-2)', () => {
+  it('a rejected rebuildAndDeploy answers launch with success: false and ends the session', async () => {
+    const h = makeHost(undefined);
+    h.host.consumeLaunch.mockReturnValue(false);
+    h.host.rebuildAndDeploy.mockRejectedValue(new Error('ENOENT: controllers.yaml'));
+    const onUnhandled = vi.fn();
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const io = start(new RunSessionAdapter(h.host));
+      io.request('launch', { noDebug: true });
+      await flush();
+      await flush();
+      const res = response(io.sent, 'launch')!;
+      expect(res.success).toBe(false);
+      expect((res as { message?: string }).message).toMatch(/ENOENT: controllers\.yaml/);
+      expect(events(io.sent, 'terminated')).toHaveLength(1);
+      expect(onUnhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+  });
+
+  it('a rejected attachDebugger reports the error, stops the emulator and ends the session', async () => {
+    const h = makeHost();
+    h.host.attachDebugger.mockRejectedValue(new Error('startDebugging failed'));
+    const onUnhandled = vi.fn();
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const io = start(new RunSessionAdapter(h.host));
+      io.request('launch', {});
+      await flush();
+      await flush();
+      // The launch was already answered before the attach; exactly one response.
+      expect(io.sent.filter((m) => m.type === 'response' && m.command === 'launch')).toHaveLength(1);
+      const output = events(io.sent, 'output');
+      expect(output).toHaveLength(1);
+      expect(output[0]!.body).toMatchObject({ category: 'stderr', output: expect.stringMatching(/startDebugging failed/) });
+      expect(h.host.stopEmulator).toHaveBeenCalledWith({ immediate: true });
+      expect(events(io.sent, 'terminated')).toHaveLength(1);
+      expect(onUnhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+  });
+});

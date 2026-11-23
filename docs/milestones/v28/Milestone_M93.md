@@ -38,13 +38,14 @@ Close three small, contained gaps in the Extension Host's trust boundary and deb
 
 ---
 
-### [ ] fix: Answer a failed run-session launch and end the session (FR-DBG-2)
+### [x] fix: Answer a failed run-session launch and end the session (FR-DBG-2)
 
 `handleMessage` fires `void this.launch(req)` and `launch` has no `try/catch`, so a rejection from `rebuildAndDeploy` or `attachDebugger` becomes an unhandled rejection and the launch request is never answered.
 
 **Affected files:** `src/debug/run-session-adapter.ts`, `src/test/unit/debug/run-session-adapter.test.ts`
 
 **DoD:**
-- A rejection in `launch` sends a `launch` response with `success: false` and the error message, stops the emulator the adapter started, and sends `terminated`
-- Unit test: a fake host whose `rebuildAndDeploy` rejects (and one whose `attachDebugger` rejects) produces the failed response and the `terminated` event, with no unhandled rejection
+- A rejection in `launch` before the launch is answered (`rebuildAndDeploy`) sends a `launch` response with `success: false` and the error message, then `terminated`
+- A rejection after the launch was answered (`attachDebugger`, which runs after the response) sends a DAP `output` event (stderr) with the error, stops the emulator the adapter bound, and sends `terminated` — exactly one launch response either way (owner decision, 2026-11-23)
+- Unit test: a fake host whose `rebuildAndDeploy` rejects, and one whose `attachDebugger` rejects, produce the behaviour above with no unhandled rejection
 - `npm test` green
