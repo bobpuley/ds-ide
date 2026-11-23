@@ -10,7 +10,7 @@ Close three small, contained gaps in the Extension Host's trust boundary and deb
 
 ## Sprint Tasks
 
-### [ ] fix: Resolve IPC narrowers from own keys only and isolate per-line failures (FR-IPC-8)
+### [x] fix: Resolve IPC narrowers from own keys only and isolate per-line failures (FR-IPC-8)
 
 `parseIpcMessage` indexes a plain object with the untrusted `type`, so `"constructor"` returns the raw message as valid and `"__proto__"` throws inside the socket `data` handler, losing the rest of the chunk.
 

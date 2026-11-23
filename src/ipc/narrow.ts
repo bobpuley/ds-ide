@@ -49,7 +49,7 @@ export function narrowScopeCaptureRequest(raw: Record<string, unknown>): ScopeCa
 // beyond the whitelisted shape can reach a downstream webview.
 type Narrower = (obj: Record<string, unknown>) => IpcMessage | undefined;
 
-const NARROWERS: Record<string, Narrower> = {
+const NARROWER_TABLE: Record<string, Narrower> = {
   status: (obj) => {
     const running = getBoolean(obj, 'running');
     if (running === undefined) return undefined;
@@ -172,6 +172,11 @@ const NARROWERS: Record<string, Narrower> = {
   },
 };
 
+// FR-IPC-8: looked up through a Map built from the table's own entries, so an
+// untrusted `type` naming an inherited object key (`constructor`, `__proto__`,
+// `toString`, ...) never resolves to an Object.prototype member.
+const NARROWERS: ReadonlyMap<string, Narrower> = new Map(Object.entries(NARROWER_TABLE));
+
 // Validates a just-JSON-parsed IPC line against the known message vocabulary,
 // rebuilding it from only whitelisted, type-checked fields. Returns undefined
 // for anything malformed or of an unrecognized type, so the caller can log
@@ -181,5 +186,5 @@ export function parseIpcMessage(raw: unknown): IpcMessage | undefined {
   const obj = raw as Record<string, unknown>;
   const type = obj['type'];
   if (typeof type !== 'string') return undefined;
-  return NARROWERS[type]?.(obj);
+  return NARROWERS.get(type)?.(obj);
 }

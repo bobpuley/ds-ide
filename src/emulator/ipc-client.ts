@@ -148,12 +148,20 @@ export class IpcClient extends EventEmitter implements IIpcClient {
         this.warn(`dropped malformed IPC line (invalid JSON): ${line.slice(0, 200)}`, this.malformedLineCount);
         continue;
       }
-      const msg = parseIpcMessage(parsed);
-      if (msg) {
-        this.emit('message', msg);
-      } else {
+      // FR-IPC-8: a defect while narrowing or handling one line (including a
+      // throwing 'message' listener) must not abort the rest of the chunk.
+      try {
+        const msg = parseIpcMessage(parsed);
+        if (msg) {
+          this.emit('message', msg);
+        } else {
+          this.malformedLineCount++;
+          this.warn(`dropped IPC message failing schema validation: ${line.slice(0, 200)}`, this.malformedLineCount);
+        }
+      } catch (err) {
         this.malformedLineCount++;
-        this.warn(`dropped IPC message failing schema validation: ${line.slice(0, 200)}`, this.malformedLineCount);
+        const reason = err instanceof Error ? err.message : String(err);
+        this.warn(`failed while handling IPC line (${reason}): ${line.slice(0, 200)}`, this.malformedLineCount);
       }
     }
   }

@@ -2,6 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { parseIpcMessage } from '../../../ipc/narrow';
 
 describe('parseIpcMessage (FR-IPC-2)', () => {
+  it.each(['constructor', '__proto__', 'toString', 'valueOf', 'hasOwnProperty', 'isPrototypeOf'])(
+    'rejects the inherited object key %s as a message type (FR-IPC-8)',
+    (type) => {
+      expect(() => parseIpcMessage({ type, evil: '<script>' })).not.toThrow();
+      expect(parseIpcMessage({ type, evil: '<script>' })).toBeUndefined();
+    },
+  );
+
   it('accepts a well-formed status message', () => {
     expect(parseIpcMessage({ type: 'status', running: true, sampleRate: 48000, blockSize: 256 }))
       .toEqual({ type: 'status', running: true, sampleRate: 48000, blockSize: 256 });
