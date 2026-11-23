@@ -102,7 +102,7 @@ There are three related defects in how state changes wake the audio-engine threa
 HIGH
 
 ### Intake Status
-Intaken 2026-11-23 → M95 (FR-RTS-8), finding #2 of the HIGH intake. Planned, not yet fixed.
+Released in 0.27.4 — M95 (FR-RTS-8), finding #2 of the HIGH intake.
 
 ---
 
@@ -253,7 +253,7 @@ Heap use-after-free on the RT thread, which can crash or play garbage audio. Tri
 HIGH
 
 ### Intake Status
-Intaken 2026-11-23 → M95 (FR-RTS-6), finding #3 of the HIGH intake. Planned, not yet fixed.
+Released in 0.27.4 — M95 (FR-RTS-6), finding #3 of the HIGH intake.
 
 ---
 
@@ -329,7 +329,7 @@ Alternatively, double-buffer two `SessionPlayer` instances and publish the activ
 HIGH
 
 ### Intake Status
-Intaken 2026-11-23 → M95 (FR-RTS-7), finding #4 of the HIGH intake. Planned, not yet fixed.
+Released in 0.27.4 — M95 (FR-RTS-7), finding #4 of the HIGH intake.
 
 ---
 

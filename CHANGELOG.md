@@ -3,6 +3,15 @@
 All notable changes to ds-ide are documented here.
 Versions follow [Semantic Versioning](https://semver.org/). Each entry maps to a sprint milestone.
 
+## 0.27.4 — 2026-11-23
+
+**Real-time concurrency fixes (M95)** — last batch of HIGH fixes from the 2026-11-21 code review.
+
+- **WAV input (FR-RTS-6):** loading a different WAV file, or switching away from WAV input, while a WAV is playing can no longer free the audio data while the audio thread is still reading it, which could crash the emulator or play garbage. A buffer still in use is now kept until it is safe to free, never freed after a timeout.
+- **Replay restart (FR-RTS-7):** pressing Replay while a replay is running, or stopping it, now waits for the audio thread to finish the current block before the recording is closed and reopened. The restarted replay plays from the beginning, with nothing left over from the previous one.
+- **Audio settings and stopping (FR-RTS-8):** a change of sample rate or buffer size now always takes effect, including while live audio is running and when it arrives together with an input-mode change; previously it depended on timing, and the effect could compute for a different rate than the device used. Stopping the emulator can no longer hang waiting for the audio thread.
+- **Tests:** new ThreadSanitizer/AddressSanitizer stress tests for WAV swapping and replay restart, and a test that drives the real IPC handlers against the audio engine for device changes and shutdown.
+
 ## 0.27.3 — 2026-11-23
 
 **Daily-use correctness fixes (M94)** — second batch of fixes from the 2026-11-21 code review.
