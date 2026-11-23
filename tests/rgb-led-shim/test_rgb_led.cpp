@@ -6,6 +6,8 @@
 
 #include "daisy/rgb_led.h"
 #include "emulator_state.h"
+#include "led_telemetry.h"
+#include <memory>
 
 #include <cstdio>
 #include <string>
@@ -23,19 +25,18 @@ static int failures = 0;
 
 static dsy_gpio_pin pin(uint8_t n) { return dsy_gpio_pin{0, n}; }
 
+// FR-EMU-13: the drain side samples RGB state (LedSampler) instead of
+// popping a queue; it emits only when a colour changed.
+static std::unique_ptr<daisy_emu::LedSampler> g_sampler = std::make_unique<daisy_emu::LedSampler>();
 static std::vector<std::string> drain_queue() {
     std::vector<std::string> result;
-    std::string msg;
-    while (daisy_emu::g_state.led_queue.pop(msg))
-        result.push_back(msg);
+    g_sampler->collect([&](const char* m) { result.push_back(m); });
     return result;
 }
 
 static void reset_state() {
-    drain_queue();
-    for (auto& v : daisy_emu::g_state.rgb_r_last) v.store(-1.f);
-    for (auto& v : daisy_emu::g_state.rgb_g_last) v.store(-1.f);
-    for (auto& v : daisy_emu::g_state.rgb_b_last) v.store(-1.f);
+    for (auto& v : daisy_emu::g_state.rgb_state) v.store(0);
+    g_sampler = std::make_unique<daisy_emu::LedSampler>();
 }
 
 static bool contains(const std::string& s, const std::string& sub) {

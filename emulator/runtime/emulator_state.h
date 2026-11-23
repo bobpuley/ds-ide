@@ -55,6 +55,7 @@ struct SpscIpcQueue {
     // (FR-EMU-2): slots_ are pre-reserved to exactly MAX_MSG bytes, so an
     // over-budget assign() would force a heap reallocation on this RT thread.
     bool push(const std::string& m) {
+        ProducerGuard guard(producers_in_push_);
         size_t w    = write_.load(std::memory_order_relaxed);
         size_t next = (w + 1) % CAPACITY;
         if (next == read_.load(std::memory_order_acquire)) return false;
@@ -72,6 +73,7 @@ struct SpscIpcQueue {
     // Overload for NUL-terminated C strings — avoids constructing a temporary
     // std::string on the RT thread when called with a string literal or char buf[].
     bool push(const char* m) {
+        ProducerGuard guard(producers_in_push_);
         size_t w    = write_.load(std::memory_order_relaxed);
         size_t next = (w + 1) % CAPACITY;
         if (next == read_.load(std::memory_order_acquire)) return false;
@@ -97,9 +99,94 @@ struct SpscIpcQueue {
     }
 
 private:
+    // FR-EMU-13: debug builds assert this queue never has two producers
+    // inside push() at once — the single-producer contract every caller
+    // relies on. (Overlap, not thread identity, is checked: a queue may
+    // legitimately get a new producer thread after an engine restart.)
+    struct ProducerGuard {
+#ifndef NDEBUG
+        explicit ProducerGuard(std::atomic<int>& n) : n_(n) {
+            const int before = n_.fetch_add(1, std::memory_order_acq_rel);
+            assert(before == 0 && "SpscIpcQueue: two producers pushed concurrently");
+            (void)before;
+        }
+        ~ProducerGuard() { n_.fetch_sub(1, std::memory_order_acq_rel); }
+        std::atomic<int>& n_;
+#else
+        explicit ProducerGuard(std::atomic<int>&) {}
+#endif
+    };
+
     std::array<Slot, CAPACITY> slots_;
     std::atomic<size_t> write_{0};
     std::atomic<size_t> read_{0};
+    std::atomic<int> producers_in_push_{0};
+};
+
+// FR-EMU-13: bounded multi-producer / single-consumer queue of short,
+// fixed-size text messages (Vyukov-style per-slot sequence numbers). Any
+// number of threads may push() concurrently — e.g. the effect's main loop and
+// the audio callback both sending MIDI — without locking or allocating; the
+// order in which producers claim slots defines one total order, so each
+// thread's own messages stay in the order it sent them. A full queue rejects
+// the push (the caller counts it) rather than overwriting anything.
+template <size_t Capacity, size_t MaxMsg>
+class MpscMsgQueue {
+    static_assert((Capacity & (Capacity - 1)) == 0, "Capacity must be a power of two");
+public:
+    // Counts messages longer than MaxMsg - 1 that had to be truncated.
+    std::atomic<uint32_t> oversize_drops{0};
+
+    MpscMsgQueue() {
+        for (size_t i = 0; i < Capacity; ++i) slots_[i].seq.store(i, std::memory_order_relaxed);
+    }
+
+    // Any thread. Returns false when the queue is full (message not queued).
+    bool push(const char* m) {
+        size_t pos = head_.load(std::memory_order_relaxed);
+        Slot* slot = nullptr;
+        for (;;) {
+            slot = &slots_[pos & (Capacity - 1)];
+            const size_t seq = slot->seq.load(std::memory_order_acquire);
+            const auto diff = static_cast<std::ptrdiff_t>(seq) - static_cast<std::ptrdiff_t>(pos);
+            if (diff == 0) {
+                if (head_.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed)) break;
+            } else if (diff < 0) {
+                return false;  // full: the consumer has not freed this slot yet
+            } else {
+                pos = head_.load(std::memory_order_relaxed);
+            }
+        }
+        size_t len = std::strlen(m);
+        if (len > MaxMsg - 1) {
+            len = MaxMsg - 1;
+            oversize_drops.fetch_add(1, std::memory_order_relaxed);
+        }
+        std::memcpy(slot->msg, m, len);
+        slot->len = static_cast<uint16_t>(len);
+        slot->seq.store(pos + 1, std::memory_order_release);  // publish
+        return true;
+    }
+
+    // Single consumer (the drain thread). Returns false when nothing is ready.
+    bool pop(std::string& out) {
+        Slot& slot = slots_[tail_ & (Capacity - 1)];
+        if (slot.seq.load(std::memory_order_acquire) != tail_ + 1) return false;
+        out.assign(slot.msg, slot.len);
+        slot.seq.store(tail_ + Capacity, std::memory_order_release);  // free for the next lap
+        ++tail_;
+        return true;
+    }
+
+private:
+    struct Slot {
+        std::atomic<size_t> seq{0};
+        uint16_t len{0};
+        char     msg[MaxMsg];
+    };
+    std::array<Slot, Capacity> slots_;
+    alignas(64) std::atomic<size_t> head_{0};  // next position to claim (producers)
+    alignas(64) size_t tail_{0};               // next position to read (consumer only)
 };
 
 // Bounded, mutex-guarded FIFO of parsed MidiEvents (M47, FR-DEV-16/17) — the
@@ -166,7 +253,7 @@ struct EmulatorState {
     std::atomic<bool> shutdown{false};
     // FR-EMU-11: set by main.cpp's shutdown_watcher only after audio_thread
     // has been joined — i.e. only once the drain thread has finished
-    // flushing ipc_queue/oled_queue/led_queue/midi_tx_queue/midi_rx_queue to
+    // flushing ipc_queue/oled_queue/midi_tx_queue/midi_rx_queue and LED state to
     // send_ipc. run_ipc_server()'s per-client read loop waits on this
     // (rather than tearing the connection down the instant `shutdown` flips)
     // so it can't race ahead of and close the socket / null out send_ipc
@@ -203,12 +290,15 @@ struct EmulatorState {
     static constexpr int kNumGpioPins = 64;
     std::atomic<bool> button_states[kNumGpioPins];
 
-    // v2 (M10): LED output. The LED shim (SetLed / Led::Update) emits a `led`
-    // IPC message on each *change*; led_last_state holds the last emitted level
-    // per pin (-1 = none yet) so unchanged writes are suppressed. The onboard
-    // user LED maps to D23 = canonical_gpio_index({0, 23}) = 23.
+    // v2 (M10) / FR-EMU-13: LED output is *state*, not an event stream. The
+    // LED shim (SetLed / Led::Update) stores the latest level per pin here,
+    // from any thread (effect loop or audio callback) with a plain atomic
+    // store; the drain thread samples it (LedSampler, led_telemetry.h) and
+    // sends a `led` message when a value differs from the last one sent.
+    // -1 = never set. The onboard user LED maps to D23 =
+    // canonical_gpio_index({0, 23}) = 23.
     static constexpr int kOnboardLedPin = 23;
-    std::atomic<int8_t> led_last_state[kNumGpioPins];
+    std::atomic<int8_t> led_state[kNumGpioPins];
 
     // FR-DEV-7: virtual toggle-switch (Switch3) position, indexed by
     // canonical_gpio_index(pin). Written by the IPC `controlValue`/
@@ -216,13 +306,11 @@ struct EmulatorState {
     // Debounce(). Value is an integer position: 0, 1, or 2.
     std::atomic<int> toggle_states[kNumGpioPins];
 
-    // FR-DEV-8: last-emitted RGB LED channel values, indexed by
-    // canonical_gpio_index(r_pin) — the RgbLed shim's dedup state (mirrors
-    // led_last_state's change-suppression, extended to three channels).
-    // -1.f sentinel means "not yet emitted" (a valid brightness is 0..1).
-    std::atomic<float> rgb_r_last[kNumGpioPins];
-    std::atomic<float> rgb_g_last[kNumGpioPins];
-    std::atomic<float> rgb_b_last[kNumGpioPins];
+    // FR-DEV-8 / FR-EMU-13: latest RGB LED colour, indexed by
+    // canonical_gpio_index(r_pin). The three channels are packed into one
+    // 64-bit word (pack_rgb in led_telemetry.h) so the drain thread never
+    // sees a colour mixing channels from two different writes. 0 = never set.
+    std::atomic<uint64_t> rgb_state[kNumGpioPins];
 
     // FR-DEV-9: encoder's accumulated position, indexed by
     // canonical_gpio_index(a_pin) — the primary (A-channel) pin. Written by
@@ -303,15 +391,8 @@ struct EmulatorState {
     // Counts messages silently dropped when ipc_queue is full (FR-QA-1).
     std::atomic<uint32_t> ipc_queue_drops{0};
 
-    // FR-EMU-9: dedicated queue for LED/RGB-LED telemetry (`led`/`rgbLed`
-    // messages), owned solely by the effect thread — Led::Update() and
-    // RgbLed::Update() are both called from effect_main()'s while(1) loop,
-    // never from the audio engine's RT callback. Previously both pushed into
-    // ipc_queue alongside the RT thread's own scope/spectrum/event
-    // emissions, making ipc_queue a genuine two-producer queue and racing on
-    // its shared, non-atomic Slot::msg. Same "different producer thread"
-    // reasoning as oled_queue below.
-    SpscIpcQueue led_queue;
+    // FR-EMU-13: LED/RGB-LED telemetry no longer goes through a queue — see
+    // led_state / rgb_state above and LedSampler (led_telemetry.h).
 
     // FR-DEV-14: a second, dedicated queue for OLED framebuffer frames — same
     // lock-free, non-allocating type as ipc_queue, but a separate instance.
@@ -338,12 +419,12 @@ struct EmulatorState {
     // Counts inbound MIDI events dropped because midi_in_queue was full.
     std::atomic<uint32_t> midi_in_drops{0};
 
-    // FR-EMU-9: outbound `midiTx` telemetry, produced by the effect thread
-    // via MidiUartHandler::SendMessage / MidiUsbHandler::SendMessage — only
-    // one MIDI transport is realistically enabled at a time, so both funnel
-    // into this single effect-thread-owned queue without violating its SPSC
-    // contract.
-    SpscIpcQueue midi_tx_queue;
+    // FR-EMU-13: outbound `midiTx` telemetry from MidiUartHandler::SendMessage
+    // / MidiUsbHandler::SendMessage. MIDI is an event stream and effects send
+    // it from both the main loop and the audio callback (e.g. MIDI clock), so
+    // this is a multi-producer queue: every message is delivered in order, or
+    // counted in midi_tx_queue_drops when the queue is full.
+    MpscMsgQueue<1024, 128> midi_tx_queue;
     // Counts messages silently dropped when midi_tx_queue is full.
     std::atomic<uint32_t> midi_tx_queue_drops{0};
 
@@ -363,11 +444,9 @@ struct EmulatorState {
     EmulatorState() {
         for (auto& v : pot_values) v.store(0.f);
         for (auto& b : button_states) b.store(false);
-        for (auto& l : led_last_state) l.store(-1);
+        for (auto& l : led_state) l.store(-1);
         for (auto& t : toggle_states) t.store(0);
-        for (auto& v : rgb_r_last) v.store(-1.f);
-        for (auto& v : rgb_g_last) v.store(-1.f);
-        for (auto& v : rgb_b_last) v.store(-1.f);
+        for (auto& v : rgb_state) v.store(0);
         for (auto& p : encoder_positions) p.store(0);
     }
 };

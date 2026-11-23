@@ -1,7 +1,7 @@
 # M94 — Daily-Use Correctness Fixes
 
 **Version:** 0.27.3
-**Status:** planned
+**Status:** in progress
 **Source:** 2026-11-21 code reviews (VS Code extension, C/C++ emulator) — HIGH findings #9, #1, #5 (intake 2026-11-23)
 
 ## Goal
@@ -10,7 +10,7 @@ Fix the three HIGH defects that ordinary use triggers: Wiring Editor edits that 
 
 ## Sprint Tasks
 
-### [ ] fix: Serialize Wiring Editor edits and apply them to the current document version (FR-WE-13)
+### [x] fix: Serialize Wiring Editor edits and apply them to the current document version (FR-WE-13)
 
 The source-mutating handlers compute line ranges from a snapshot taken before several `await`s and run interleaved, so two quick actions, or an outside change, apply ranges to the wrong lines; each handler also saves unrelated unsaved edits.
 
@@ -26,7 +26,7 @@ The source-mutating handlers compute line ranges from a snapshot taken before se
 
 ---
 
-### [ ] fix: Re-block device audio so the effect callback always gets the configured block size (FR-EMU-12)
+### [x] fix: Re-block device audio so the effect callback always gets the configured block size (FR-EMU-12)
 
 With a real audio device the effect is called with the device's frame count (at least 256), not `SetAudioBlockSize()`, so per-callback timing is off by `device_frames / block_size` and effect arrays sized from the block size overflow.
 
@@ -41,7 +41,7 @@ With a real audio device the effect is called with the device's frame count (at 
 
 ---
 
-### [ ] fix: Make LED output latest-state atomics and MIDI output a multi-producer stream (FR-EMU-13)
+### [x] fix: Make LED output latest-state atomics and MIDI output a multi-producer stream (FR-EMU-13)
 
 `led_queue` and `midi_tx_queue` assume one producer, but `Led::Update`, `SetLed`, `RgbLed::Update` and `SendMessage` are also called from the audio callback, so two threads write the same `std::string` slot.
 

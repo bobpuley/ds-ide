@@ -2,14 +2,16 @@
 //
 // Verifies that DaisySeed::SetLed and Led::Set/Update emit `led` IPC messages
 // keyed to the right pin, with change-deduplication and invert handling.
-// After FR-RTS-3: messages are enqueued via an SPSC queue, not send_ipc.
-// FR-EMU-9: that queue is led_queue, a dedicated instance separate from
-// ipc_queue (which the audio RT thread also produces into).
+// FR-EMU-13: LED output is state — the shim stores the latest level and the
+// drain side (LedSampler) emits a message only when a value changed, so the
+// tests "drain" by sampling.
 // Plain asserts; exit 0 on pass.
 
 #include "daisy/daisy_seed_class.h"
 #include "daisy/led.h"
 #include "emulator_state.h"
+#include "led_telemetry.h"
+#include <memory>
 
 #include <cstdio>
 #include <string>
@@ -25,19 +27,17 @@ static int failures = 0;
     else         { std::printf("  PASS  %s\n", msg); } \
 } while (0)
 
-// Drain all messages from the SPSC queue into a vector.
+// The drain side: samples LED state and returns the messages it would send.
+static std::unique_ptr<daisy_emu::LedSampler> g_sampler = std::make_unique<daisy_emu::LedSampler>();
 static std::vector<std::string> drain_queue() {
     std::vector<std::string> result;
-    std::string msg;
-    while (daisy_emu::g_state.led_queue.pop(msg))
-        result.push_back(msg);
+    g_sampler->collect([&](const char* m) { result.push_back(m); });
     return result;
 }
 
 static void reset_state() {
-    // Drain any leftover messages from the queue.
-    drain_queue();
-    for (auto& l : daisy_emu::g_state.led_last_state) l.store(-1);
+    for (auto& l : daisy_emu::g_state.led_state) l.store(-1);
+    g_sampler = std::make_unique<daisy_emu::LedSampler>();
 }
 
 static bool contains(const std::string& s, const std::string& sub) {

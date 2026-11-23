@@ -1,10 +1,12 @@
 #include "audio_engine.h"
+#include "block_adapter.h"
 #include "audio_device.h"
 #include "emulator_state.h"
 #include "session_player.h"
 #include "session_recorder.h"
 #include "wav_reader.h"
 #include "input_generators.h"
+#include "led_telemetry.h"
 #include <algorithm>
 #include <cfloat>
 #include <chrono>
@@ -401,6 +403,47 @@ private:
     std::atomic<size_t> read_{0};
 };
 
+// FR-EMU-12: the effect now runs in block_size chunks (as small as 4 frames),
+// but the scope pipeline is sized in *blocks*: ScopeBlockQueue holds
+// kSlotCount blocks and the drain emits one scope message per SCOPE_BLOCKS
+// blocks. Handing it tiny blocks shrinks the queue to a few milliseconds and
+// multiplies the drain's JSON work, so it falls behind and drops blocks
+// (gaps in the scope and in full-rate captures). The stager coalesces effect
+// blocks into chunks of at least kMinFrames before pushing, which restores
+// the cadence the pipeline was built for. RT-safe: configure() allocates
+// (call it before the stream starts); add() only copies.
+struct ScopeStager {
+    static constexpr size_t kMinFrames = 256;
+
+    void configure(size_t block_frames) {
+        cap_ = std::min(kMinFrames + std::max<size_t>(block_frames, 1), ScopeBlockQueue::kMaxFramesPerSlot);
+        in_.assign(cap_ * 2, 0.f);
+        out_.assign(cap_ * 2, 0.f);
+        n_ = 0;
+    }
+
+    void add(ScopeBlockQueue& q, const float* in, const float* out, size_t frames,
+             float sample_rate, uint64_t config_generation) {
+        frames = std::min(frames, cap_);
+        if (n_ + frames > cap_) flush(q, sample_rate, config_generation);
+        std::memcpy(in_.data() + n_ * 2, in, frames * 2 * sizeof(float));
+        std::memcpy(out_.data() + n_ * 2, out, frames * 2 * sizeof(float));
+        n_ += frames;
+        if (n_ >= kMinFrames) flush(q, sample_rate, config_generation);
+    }
+
+private:
+    void flush(ScopeBlockQueue& q, float sample_rate, uint64_t config_generation) {
+        if (n_ == 0) return;
+        q.push(in_.data(), out_.data(), n_, sample_rate, config_generation);
+        n_ = 0;
+    }
+
+    std::vector<float> in_, out_;
+    size_t cap_{0};
+    size_t n_{0};
+};
+
 // ---- Input generator feed (FR-GEN-3) ------------------------------------------
 
 // Audio-thread side of the generator: reads the EmulatorState atomics once per block,
@@ -471,6 +514,10 @@ static void run_simulated(float sample_rate,
     // (checked only at recordStop) or re-firing every block indefinitely.
     bool recorder_was_active   = false;
     bool recorder_error_reported = false;
+
+    // FR-EMU-12: coalesces block_size effect blocks for the scope pipeline.
+    ScopeStager scope_stager;
+    scope_stager.configure(block_size);
 
     // Process one block of audio: generate input, run effect, emit scope/FFT.
     // Also writes the computed output into out_buf so the caller can forward
@@ -599,7 +646,7 @@ static void run_simulated(float sample_rate,
 
         // FR-EMU-10: hand the raw block to the non-RT drain thread instead of
         // accumulating/JSON-building/FFT-ing inline — see ScopeBlockQueue.
-        scope_queue.push(in_buf.data(), out_buf.data(), frames, sample_rate, cfg_gen_seen);
+        scope_stager.add(scope_queue, in_buf.data(), out_buf.data(), frames, sample_rate, cfg_gen_seen);
         return true;
     };
 
@@ -609,26 +656,37 @@ static void run_simulated(float sample_rate,
     AudioDevice& device = *device_owner;
 
     // Work buffers are sized before the stream starts (below) from the backend's
-    // maximum callback size; the callback never resizes them (FR-WIN-AUD-2). A
-    // larger callback is clamped and its tail zero-filled.
+    // maximum callback size; the callback never resizes them (FR-WIN-AUD-2).
+    //
+    // FR-EMU-12: the device delivers at least 256 frames per callback (see
+    // hw_buf), but on hardware the effect always gets exactly block_size
+    // frames. The adapter runs process_one_block(block_size) as many times as
+    // the device's frames require and hands back buffered output, adding at
+    // most one block of latency.
+    BlockAdapter adapter;
+    bool adapter_exit = false;  // process_one_block asked to leave this mode
     auto ca_process = [&](const float* /*ca_in*/, float* ca_out, size_t frames) {
-        const size_t n = std::min(frames, in_buf.size() / 2);
-        if (!process_one_block(n)) {
+        if (adapter_exit || !g_state.transport_running.load()) {
+            // Stopped transport (or leaving the mode): silence, and drop any
+            // buffered audio so it is not played when the transport resumes.
+            if (!adapter_exit && !process_one_block(block_size)) adapter_exit = true;  // keeps the mode/config exit checks live
             std::fill(ca_out, ca_out + frames * 2, 0.f);
+            adapter.reset();
             return;
         }
-        if (g_state.transport_running.load()) {
-            std::memcpy(ca_out, out_buf.data(), n * 2 * sizeof(float));
-            std::fill(ca_out + n * 2, ca_out + frames * 2, 0.f);
-        } else {
-            std::fill(ca_out, ca_out + frames * 2, 0.f);
-        }
+        adapter.run(nullptr, ca_out, frames, [&](const float* /*blk_in*/, float* blk_out) {
+            if (adapter_exit) return;  // output stays zeroed
+            if (!process_one_block(block_size)) { adapter_exit = true; return; }
+            if (g_state.transport_running.load())
+                std::memcpy(blk_out, out_buf.data(), block_size * 2 * sizeof(float));
+        });
+        if (adapter_exit) std::fill(ca_out, ca_out + frames * 2, 0.f);
     };
 
     // Never request fewer than 256 frames from CoreAudio in simulated mode.
     // Very small block sizes (e.g. 4) cause ~12 000 callbacks/s, overwhelming
-    // the kernel scheduler and producing xrun distortion. Effects receive the
-    // full hardware frame count per call, which is correct for emulation.
+    // the kernel scheduler and producing xrun distortion. The adapter above
+    // re-blocks each device callback into block_size effect calls (FR-EMU-12).
     const size_t hw_buf = std::max(block_size, size_t(256));
     // Size every work buffer for the largest callback the backend can deliver
     // before the stream starts (non-RT); the silent fallback loop below needs
@@ -643,6 +701,7 @@ static void run_simulated(float sample_rate,
             out_ch0.resize(cap, 0.f);
             out_ch1.resize(cap, 0.f);
         }
+        adapter.configure(block_size, cap);
     }
     bool audio_started = device.start_output_only(
         static_cast<uint32_t>(sample_rate),
@@ -727,10 +786,17 @@ static void run_realtime(float sample_rate,
     // Sized up front for the largest callback the backend can deliver so the
     // callback never allocates (FR-WIN-AUD-2).
     const size_t capacity = device.maxCallbackFrames(buffer_size);
-    std::vector<float> in_buf(capacity * 2);
-    std::vector<float> out_buf(capacity * 2);
-    std::vector<float> local_in_ch0(capacity), local_in_ch1(capacity);
-    std::vector<float> local_out_ch0(capacity), local_out_ch1(capacity);
+    // FR-EMU-12: the effect is called with exactly block_size frames; the
+    // adapter re-blocks the device's callbacks (at most one block of latency).
+    const size_t block_size = std::max<size_t>(g_state.block_size.load(), 1);
+    BlockAdapter adapter;
+    adapter.configure(block_size, capacity);
+    ScopeStager scope_stager;
+    scope_stager.configure(block_size);
+    std::vector<float> in_buf(block_size * 2);
+    std::vector<float> out_buf(block_size * 2);
+    std::vector<float> local_in_ch0(block_size), local_in_ch1(block_size);
+    std::vector<float> local_out_ch0(block_size), local_out_ch1(block_size);
 
     // Xrun reporting: track last reported count.
     uint32_t last_reported_xruns = 0;
@@ -738,23 +804,13 @@ static void run_realtime(float sample_rate,
 
     GeneratorFeed generator_feed;
 
-    auto processBlock = [&](const float* ca_in, float* ca_out, size_t frames_in) {
-        // A callback larger than the pre-sized buffers is clamped; the tail is
-        // zero-filled instead of growing the buffers on the RT thread.
-        const size_t frames = std::min(frames_in, capacity);
-        if (frames_in > frames)
-            std::fill(ca_out + frames * 2, ca_out + frames_in * 2, 0.f);
-        // Copy CoreAudio input to interleaved in_buf
-        std::memcpy(in_buf.data(), ca_in, frames * 2 * sizeof(float));
+    // One effect block of exactly block_size frames (FR-EMU-12).
+    auto process_rt_block = [&](const float* blk_in, float* blk_out) {
+        const size_t frames = block_size;
+        std::memcpy(in_buf.data(), blk_in, frames * 2 * sizeof(float));
         // FR-GEN-3: a selected generator replaces the host input in real-time mode too.
         generator_feed.render(sample_rate, frames, in_buf.data());
         std::fill(out_buf.begin(), out_buf.begin() + static_cast<ptrdiff_t>(frames * 2), 0.f);
-
-        if (!g_state.transport_running.load()) {
-            // Transport stopped — output silence
-            std::fill(ca_out, ca_out + frames * 2, 0.f);
-            return;
-        }
 
         // FR-QA-EMU-3: re-read both callback pointers each block (see
         // run_simulated()'s processBlock lambda for rationale).
@@ -785,13 +841,26 @@ static void run_realtime(float sample_rate,
         if (vol != 1.f) {
             for (size_t i = 0; i < frames * 2; ++i) out_buf[i] *= vol;
         }
-        std::memcpy(ca_out, out_buf.data(), frames * 2 * sizeof(float));
+        std::memcpy(blk_out, out_buf.data(), frames * 2 * sizeof(float));
 
         // FR-EMU-10: hand the raw block to the non-RT drain thread instead of
         // accumulating/JSON-building/FFT-ing inline — see ScopeBlockQueue.
-        scope_queue.push(in_buf.data(), out_buf.data(), frames, sample_rate, cfg_gen_seen);
+        scope_stager.add(scope_queue, in_buf.data(), out_buf.data(), frames, sample_rate, cfg_gen_seen);
+    };
 
-        // Latency reporting (~once per SCOPE_BLOCKS)
+    auto processBlock = [&](const float* ca_in, float* ca_out, size_t frames_in) {
+        if (!g_state.transport_running.load()) {
+            // Transport stopped — output silence, and drop buffered audio so
+            // it is not played when the transport resumes.
+            std::fill(ca_out, ca_out + frames_in * 2, 0.f);
+            adapter.reset();
+            return;
+        }
+        // A callback larger than the pre-sized FIFOs is clamped and its tail
+        // zero-filled instead of growing buffers on the RT thread.
+        adapter.run(ca_in, ca_out, frames_in, process_rt_block);
+
+        // Latency reporting (~once per SCOPE_BLOCKS device callbacks)
         ++xrun_report_blocks;
         if (xrun_report_blocks >= ScopeState::SCOPE_BLOCKS) {
             xrun_report_blocks = 0;
@@ -907,20 +976,22 @@ void run_audio_engine() {
     // Runs for the lifetime of the audio engine; the mutex and ::send() stay off
     // the real-time thread. Reports ipc_queue_drops periodically (FR-QA-1).
     //
-    // Also drains oled_queue (FR-DEV-14, M46), led_queue (FR-EMU-9), and
-    // midi_tx_queue/midi_rx_queue (FR-DEV-16 M47, split FR-EMU-9) —
-    // independent SPSC queues whose producers are, respectively, the
-    // effect's own thread (OledDisplay::Update() and Led/RgbLed::Update(),
-    // all called from effect_main()'s while(1) loop) and the IPC-dispatch
-    // thread (parsing an inbound `midiEvent` message) — neither is this
-    // engine's RT callback. One consumer thread servicing several unrelated
-    // SPSC queues is safe: each queue's single-producer/single-consumer
-    // contract only constrains its own producer/consumer pair, not what else
-    // the consumer thread does between pops.
+    // Also drains oled_queue (FR-DEV-14, M46) and midi_rx_queue (FR-DEV-16
+    // M47, split FR-EMU-9) — SPSC queues whose producers are the effect's own
+    // thread (OledDisplay::Update()) and the IPC-dispatch thread — plus
+    // midi_tx_queue, a multi-producer queue (FR-EMU-13: MIDI may be sent from
+    // the effect loop and the audio callback), and samples LED state
+    // (FR-EMU-13: LedSampler sends `led`/`rgbLed` only when a value changed).
+    // One consumer thread servicing several queues is safe: each queue's
+    // contract only constrains its own producers/consumer.
     std::thread drain_thread([&]() {
         std::string msg;
         std::string oled_msg;
-        std::string led_msg;
+        LedSampler  led_sampler;
+        auto send_led = [](const char* m) {
+            std::lock_guard<std::mutex> lk(g_state.send_mutex);
+            if (g_state.send_ipc) g_state.send_ipc(m);
+        };
         std::string midi_tx_msg;
         std::string midi_rx_msg;
         uint32_t last_reported_drops = 0;
@@ -1000,11 +1071,7 @@ void run_audio_engine() {
                 if (g_state.send_ipc) g_state.send_ipc(oled_msg);
                 did_work = true;
             }
-            if (g_state.led_queue.pop(led_msg)) {
-                std::lock_guard<std::mutex> lk(g_state.send_mutex);
-                if (g_state.send_ipc) g_state.send_ipc(led_msg);
-                did_work = true;
-            }
+            if (led_sampler.collect(send_led) > 0) did_work = true;
             if (g_state.midi_tx_queue.pop(midi_tx_msg)) {
                 std::lock_guard<std::mutex> lk(g_state.send_mutex);
                 if (g_state.send_ipc) g_state.send_ipc(midi_tx_msg);
@@ -1030,7 +1097,6 @@ void run_audio_engine() {
                                    + g_state.ipc_queue.oversize_drops.load(std::memory_order_relaxed)
                                    + g_state.oled_queue_drops.load(std::memory_order_relaxed)
                                    + g_state.oled_queue.oversize_drops.load(std::memory_order_relaxed)
-                                   + g_state.led_queue.oversize_drops.load(std::memory_order_relaxed)
                                    + g_state.midi_tx_queue_drops.load(std::memory_order_relaxed)
                                    + g_state.midi_tx_queue.oversize_drops.load(std::memory_order_relaxed)
                                    + g_state.midi_rx_queue_drops.load(std::memory_order_relaxed)
@@ -1066,10 +1132,7 @@ void run_audio_engine() {
             std::lock_guard<std::mutex> lk(g_state.send_mutex);
             if (g_state.send_ipc) g_state.send_ipc(oled_msg);
         }
-        while (g_state.led_queue.pop(led_msg)) {
-            std::lock_guard<std::mutex> lk(g_state.send_mutex);
-            if (g_state.send_ipc) g_state.send_ipc(led_msg);
-        }
+        led_sampler.collect(send_led);
         while (g_state.midi_tx_queue.pop(midi_tx_msg)) {
             std::lock_guard<std::mutex> lk(g_state.send_mutex);
             if (g_state.send_ipc) g_state.send_ipc(midi_tx_msg);
